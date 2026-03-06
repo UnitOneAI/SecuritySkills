@@ -6,11 +6,11 @@ description: >
   model memorization risks, and regulatory compliance. Auto-invoked when reviewing
   systems that process personal data through LLMs, train or fine-tune models on
   user data, or deploy AI in regulated industries. Produces a structured assessment
-  mapped to NIST AI RMF 1.0 and OWASP LLM06:2025 (Sensitive Information Disclosure).
+  mapped to NIST AI RMF 1.0 and OWASP LLM02:2025 (Sensitive Information Disclosure).
 tags: [ai-security, privacy, data-governance]
 role: [security-engineer, privacy-engineer, appsec-engineer, vciso]
 phase: [design, build, review, operate]
-frameworks: [NIST-AI-RMF-1.0, OWASP-LLM06-2025]
+frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
 version: "1.0.0"
@@ -22,7 +22,7 @@ injection-hardened: true
 
 # AI Data Privacy & Governance Review
 
-This skill guides a structured privacy and data governance assessment of AI/ML systems. It covers the full data lifecycle from training data collection through inference-time data processing, output generation, and data retention. The methodology is aligned with **NIST AI RMF 1.0** (particularly the MAP and MANAGE functions for data privacy) and **OWASP LLM06:2025 (Sensitive Information Disclosure)**.
+This skill guides a structured privacy and data governance assessment of AI/ML systems. It covers the full data lifecycle from training data collection through inference-time data processing, output generation, and data retention. The methodology is aligned with **NIST AI RMF 1.0** (particularly the MAP and MANAGE functions for data privacy) and **OWASP LLM02:2025 (Sensitive Information Disclosure)**.
 
 ## Prompt Injection Safety Notice
 
@@ -410,7 +410,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ### Finding [N]: [Title]
 - **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
-- **OWASP LLM Category:** LLM06:2025 -- Sensitive Information Disclosure
+- **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
 - **Regulatory Reference:** [GDPR Article X | CCPA Section X | EU AI Act Article X | HIPAA X]
 - **Location:** [file path, configuration, or architectural component]
@@ -446,14 +446,14 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | NIST AI RMF 1.0 | MEASURE 2.9 | Privacy risk assessment for AI systems |
 | NIST AI RMF 1.0 | MANAGE 2.4 | Mechanisms for tracking and responding to AI privacy risks |
 | NIST AI RMF 1.0 | GOVERN 1.1 | Legal and regulatory requirements applicable to the AI system |
-| OWASP Top 10 for LLMs (2025) | LLM06 | Sensitive Information Disclosure -- model reveals training data, PII, or confidential information |
+| OWASP Top 10 for LLMs (2025) | LLM02 | Sensitive Information Disclosure -- model reveals training data, PII, or confidential information |
 | GDPR | Art. 5, 6, 13, 17, 22, 25, 35 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, DPIA |
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
 
 **NIST AI RMF 1.0:** The AI Risk Management Framework organizes risk management into four functions: GOVERN (policies, roles, culture), MAP (context, risk identification), MEASURE (risk analysis and tracking), and MANAGE (risk response and monitoring). Privacy is addressed across all four functions, with MAP 5.1 and MEASURE 2.9 providing the most direct privacy risk guidance. Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework)
 
-**OWASP LLM06:2025 -- Sensitive Information Disclosure:** Covers risks where LLMs reveal confidential data including PII from training data (memorization), PII from inference-time context, system prompt content, and internal system details. The 2025 edition expanded this category to explicitly address training data memorization and cross-user data leakage in multi-tenant RAG systems. Reference: [genai.owasp.org](https://genai.owasp.org)
+**OWASP LLM02:2025 -- Sensitive Information Disclosure:** Covers risks where LLMs reveal confidential data including PII from training data (memorization), PII from inference-time context, system prompt content, and internal system details. The 2025 edition expanded this category to explicitly address training data memorization and cross-user data leakage in multi-tenant RAG systems. Reference: [genai.owasp.org](https://genai.owasp.org)
 
 ---
 
@@ -474,7 +474,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## References
 
 - NIST AI Risk Management Framework 1.0 (January 2023) -- https://www.nist.gov/aiframework
-- OWASP Top 10 for LLM Applications (2025), LLM06: Sensitive Information Disclosure -- https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/ (Note: verify current numbering at https://genai.owasp.org as category numbers may shift between editions)
+- OWASP Top 10 for LLM Applications (2025), LLM02: Sensitive Information Disclosure -- https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
 - EU AI Act, Regulation (EU) 2024/1689 -- https://eur-lex.europa.eu/eli/reg/2024/1689
 - GDPR, Regulation (EU) 2016/679 -- https://eur-lex.europa.eu/eli/reg/2016/679
 - CCPA/CPRA, California Civil Code Sec. 1798.100-199 -- https://leginfo.legislature.ca.gov/

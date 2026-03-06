@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2025-03-06"
-  skill_count: 25
+  skill_count: 45
   role_count: 5
 
 tag_vocabulary:
@@ -262,12 +262,12 @@ skills:
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: agentic-top-10
-    name: "Agentic AI Security Review (OWASP 2026)"
+    name: "Agentic AI Security Review (OWASP 2025)"
     tags: [ai-security, agentic-ai, agents]
     role: [appsec-engineer, security-engineer, architect, vciso]
     phase: [design, build, review]
     activity: [review, assess, design]
-    frameworks: [OWASP-Agentic-Top-10-2026, MITRE-ATLAS]
+    frameworks: [OWASP-Agentic-Top-10-2025, MITRE-ATLAS]
     difficulty: advanced
     time_estimate: "45-90min"
     file: skills/ai-security/agentic-top-10.md
@@ -291,7 +291,7 @@ skills:
     role: [appsec-engineer, security-engineer]
     phase: [build, deploy]
     activity: [review, assess]
-    frameworks: [OWASP-LLM05-2025, SLSA-v1.0, MITRE-ATLAS]
+    frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
     difficulty: advanced
     time_estimate: "30-60min"
     file: skills/ai-security/model-supply-chain.md
@@ -303,7 +303,7 @@ skills:
     role: [security-engineer, vciso]
     phase: [design, operate]
     activity: [review, assess]
-    frameworks: [NIST-AI-RMF, OWASP-LLM06-2025]
+    frameworks: [NIST-AI-RMF, OWASP-LLM02-2025]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/ai-security/ai-data-privacy.md
@@ -315,7 +315,7 @@ skills:
     role: [appsec-engineer, architect, security-engineer]
     phase: [design, review]
     activity: [review, design, assess]
-    frameworks: [OWASP-Agentic-Top-10-2026, NIST-AI-RMF]
+    frameworks: [OWASP-Agentic-Top-10-2025, NIST-AI-RMF]
     difficulty: advanced
     time_estimate: "60-120min"
     file: skills/ai-security/agent-security.md

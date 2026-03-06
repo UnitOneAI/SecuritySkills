@@ -64,7 +64,7 @@ Each skill is a self-contained markdown file. Load any skill by pointing your ag
 
 ## Skills
 
-25 skills across 10 security domains.
+45 skills across 10 security domains.
 
 ### Application Security
 
@@ -83,8 +83,8 @@ Each skill is a self-contained markdown file. Load any skill by pointing your ag
 | LLM Top 10 Review | `skills/ai-security/llm-top-10.md` | OWASP LLM Top 10 2025 |
 | Agentic AI Top 10 | `skills/ai-security/agentic-top-10.md` | OWASP Agentic AI, MITRE ATLAS |
 | Prompt Injection Testing | `skills/ai-security/prompt-injection.md` | OWASP LLM01:2025, MITRE ATLAS |
-| Model Supply Chain | `skills/ai-security/model-supply-chain.md` | OWASP LLM05:2025, SLSA v1.0 |
-| AI Data Privacy | `skills/ai-security/ai-data-privacy.md` | NIST AI RMF, OWASP LLM06:2025 |
+| Model Supply Chain | `skills/ai-security/model-supply-chain.md` | OWASP LLM03:2025, SLSA v1.0 |
+| AI Data Privacy | `skills/ai-security/ai-data-privacy.md` | NIST AI RMF, OWASP LLM02:2025 |
 | Agent Security Architecture | `skills/ai-security/agent-security.md` | OWASP Agentic AI, NIST AI RMF |
 
 ### Identity & Access

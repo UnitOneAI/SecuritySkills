@@ -6,12 +6,12 @@ description: >
   dependency review, and backdoor detection. Auto-invoked when reviewing systems
   that download pre-trained models, fine-tune foundation models, or deploy models
   from third-party sources. Produces a structured assessment mapped to OWASP
-  LLM05:2025, SLSA v1.0 supply chain levels, and MITRE ATLAS poisoning and
+  LLM03:2025, SLSA v1.0 supply chain levels, and MITRE ATLAS poisoning and
   supply chain techniques.
 tags: [ai-security, supply-chain, model-provenance]
 role: [security-engineer, ml-engineer, appsec-engineer]
 phase: [build, review, operate]
-frameworks: [OWASP-LLM05-2025, SLSA-v1.0, MITRE-ATLAS]
+frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
 version: "1.0.0"
@@ -23,7 +23,7 @@ injection-hardened: true
 
 # Model Supply Chain Security Review
 
-This skill guides a structured security assessment of AI/ML model supply chains. It covers the full lifecycle from model acquisition through training data sourcing, fine-tuning, and inference deployment. The methodology is aligned with **OWASP LLM05:2025 (Supply Chain Vulnerabilities)**, **SLSA v1.0 (Supply-chain Levels for Software Artifacts)**, and **MITRE ATLAS** adversarial techniques for ML systems.
+This skill guides a structured security assessment of AI/ML model supply chains. It covers the full lifecycle from model acquisition through training data sourcing, fine-tuning, and inference deployment. The methodology is aligned with **OWASP LLM03:2025 (Supply Chain Vulnerabilities)**, **SLSA v1.0 (Supply-chain Levels for Software Artifacts)**, and **MITRE ATLAS** adversarial techniques for ML systems.
 
 ## Prompt Injection Safety Notice
 
@@ -384,7 +384,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 ### Finding [N]: [Title]
 - **Category:** [Provenance | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
 - **Severity:** [Critical | High | Medium | Low | Informational]
-- **OWASP LLM Category:** LLM05:2025 -- Supply Chain Vulnerabilities
+- **OWASP LLM Category:** LLM03:2025 -- Supply Chain Vulnerabilities
 - **MITRE ATLAS Technique:** [technique ID and name]
 - **SLSA Level Gap:** [current level -> recommended level]
 - **Location:** [file path and line numbers, or architectural component]
@@ -414,7 +414,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 | Framework | Identifier | Description |
 |---|---|---|
-| OWASP Top 10 for LLMs (2025) | LLM05 | Supply Chain Vulnerabilities -- risks from third-party models, training data, plugins, and deployment dependencies |
+| OWASP Top 10 for LLMs (2025) | LLM03 | Supply Chain Vulnerabilities -- risks from third-party models, training data, plugins, and deployment dependencies |
 | SLSA v1.0 | Build L0-L3 | Supply-chain Levels for Software Artifacts -- framework for assessing build/training pipeline integrity |
 | MITRE ATLAS | AML.T0010 | ML Supply Chain Compromise -- adversary introduces compromised ML artifacts |
 | MITRE ATLAS | AML.T0020 | Poison Training Data -- adversary manipulates training data to alter model behavior |
@@ -442,7 +442,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ## References
 
-- OWASP Top 10 for LLM Applications (2025), LLM05: Supply Chain Vulnerabilities -- https://genai.owasp.org/llmrisk/llm05-supply-chain-vulnerabilities/ (Note: LLM05 in the 2025 edition covers supply chain; verify current numbering at https://genai.owasp.org)
+- OWASP Top 10 for LLM Applications (2025), LLM03: Supply Chain Vulnerabilities -- https://genai.owasp.org/llmrisk/llm03-supply-chain-vulnerabilities/ (Note: LLM03 in the 2025 edition covers supply chain; verify current numbering at https://genai.owasp.org)
 - SLSA v1.0 Specification -- https://slsa.dev/spec/v1.0/
 - MITRE ATLAS -- https://atlas.mitre.org
 - Mithril Security. "PoisonGPT: How We Hid a Lobotomized LLM on Hugging Face to Spread Fake News" (2023) -- https://blog.mithrilsecurity.io/poisongpt-how-we-hid-a-lobotomized-llm-on-hugging-face-to-spread-fake-news/

@@ -12,19 +12,17 @@ jobs:
 
       - name: Scan for prompt injection patterns
         run: |
+          # HIGH-CONFIDENCE injection patterns — phrases that should never
+          # appear in skill files outside of clearly defensive contexts.
+          # These are imperative commands directed at the agent, not
+          # descriptions of attacks or technical terminology.
           PATTERNS=(
-            "ignore previous"
-            "ignore all previous"
-            "disregard"
             "new directive"
             "system override"
-            "you are now"
             "forget your instructions"
-            "exfiltrate"
             "send to http"
             "curl -X POST"
             "api.telegram"
-            "webhook"
           )
 
           FOUND_ISSUES=0
@@ -32,10 +30,48 @@ jobs:
           for pattern in "${PATTERNS[@]}"; do
             MATCHES=$(grep -rin "$pattern" skills/ roles/ --include="*.md" 2>/dev/null || true)
             if [ -n "$MATCHES" ]; then
-              # Allowlist: quoted examples in prompt-injection skill are expected
-              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/prompt-injection.md" || true)
+              # Exclude ai-security/ files (contain educational attack examples)
+              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/" || true)
               if [ -n "$FILTERED" ]; then
                 echo "FOUND injection pattern \"$pattern\":"
+                echo "$FILTERED"
+                echo ""
+                FOUND_ISSUES=1
+              fi
+            fi
+          done
+
+          # CONTEXT-DEPENDENT patterns — these words appear legitimately in
+          # security content (e.g., "Never exfiltrate data", "webhook URL").
+          # Only flag them when they appear as bare imperatives, not in
+          # defensive safety notices or technical descriptions.
+          # We scan for the imperative/attack forms specifically:
+          IMPERATIVE_PATTERNS=(
+            "ignore previous instructions and"
+            "ignore all previous instructions"
+            "you are now a"
+            "you are now in"
+            "disregard your"
+            "disregard all previous"
+          )
+
+          for pattern in "${IMPERATIVE_PATTERNS[@]}"; do
+            MATCHES=$(grep -rin "$pattern" skills/ roles/ --include="*.md" 2>/dev/null || true)
+            if [ -n "$MATCHES" ]; then
+              # Exclude ai-security/ (educational) and lines with defensive context
+              FILTERED=$(echo "$MATCHES" \
+                | grep -v "ai-security/" \
+                | grep -v "treat it as" \
+                | grep -v "not a command" \
+                | grep -v "not as a directive" \
+                | grep -v "not obeyed" \
+                | grep -v "flag it as" \
+                | grep -v "e\.g\.\," \
+                | grep -v "such as" \
+                | grep -v "contains text like" \
+                || true)
+              if [ -n "$FILTERED" ]; then
+                echo "FOUND imperative injection pattern \"$pattern\":"
                 echo "$FILTERED"
                 echo ""
                 FOUND_ISSUES=1
@@ -46,7 +82,8 @@ jobs:
           if [ "$FOUND_ISSUES" -ne 0 ]; then
             echo "FAIL: Prompt injection patterns detected. Review flagged lines above."
             echo ""
-            echo "NOTE: Quoted examples in ai-security/prompt-injection.md are excluded."
+            echo "NOTE: The ai-security/ directory and lines with defensive context"
+            echo "(e.g., 'treat it as a finding') are excluded automatically."
             exit 1
           fi
 

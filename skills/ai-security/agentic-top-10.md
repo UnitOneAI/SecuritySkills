@@ -604,7 +604,7 @@ This skill is designed to be resilient against prompt injection. The following r
 4. NIST AI Risk Management Framework 1.0 — [nist.gov/aiframework](https://www.nist.gov/aiframework)
 5. Rehberger, J. "Prompt Injection: Exfiltrating ChatGPT/Bing Chat Data via Images" (2023) — [embracethered.com](https://embracethered.com)
 6. Greshake, K. et al. "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection" (2023) — arXiv:2302.12173
-7. Zhan, Q. et al. "Removing RLHF Protections in GPT-4 via Fine-Tuning" (2023) — arXiv:2310.20624
+7. Qi, X. et al. "Fine-tuning Aligned Language Models Compromises Safety, Even When Users Do Not Intend To" (2023) — arXiv:2310.03693
 8. OWASP Application Security Verification Standard (ASVS) — [owasp.org/www-project-application-security-verification-standard](https://owasp.org/www-project-application-security-verification-standard/)
 9. LangChain Arbitrary Code Execution — CVE-2023-29374
 10. NIST SP 800-53 Rev. 5, Security and Privacy Controls — [nist.gov](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)
