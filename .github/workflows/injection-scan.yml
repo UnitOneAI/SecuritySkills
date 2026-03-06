@@ -1,0 +1,53 @@
+name: Prompt Injection Scan
+
+on:
+  pull_request:
+
+jobs:
+  injection-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan for prompt injection patterns
+        run: |
+          PATTERNS=(
+            "ignore previous"
+            "ignore all previous"
+            "disregard"
+            "new directive"
+            "system override"
+            "you are now"
+            "forget your instructions"
+            "exfiltrate"
+            "send to http"
+            "curl -X POST"
+            "api.telegram"
+            "webhook"
+          )
+
+          FOUND_ISSUES=0
+
+          for pattern in "${PATTERNS[@]}"; do
+            MATCHES=$(grep -rin "$pattern" skills/ roles/ --include="*.md" 2>/dev/null || true)
+            if [ -n "$MATCHES" ]; then
+              # Allowlist: quoted examples in prompt-injection skill are expected
+              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/prompt-injection.md" || true)
+              if [ -n "$FILTERED" ]; then
+                echo "FOUND injection pattern \"$pattern\":"
+                echo "$FILTERED"
+                echo ""
+                FOUND_ISSUES=1
+              fi
+            fi
+          done
+
+          if [ "$FOUND_ISSUES" -ne 0 ]; then
+            echo "FAIL: Prompt injection patterns detected. Review flagged lines above."
+            echo ""
+            echo "NOTE: Quoted examples in ai-security/prompt-injection.md are excluded."
+            exit 1
+          fi
+
+          echo "PASS: No prompt injection patterns detected."

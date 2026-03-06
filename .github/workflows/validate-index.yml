@@ -1,0 +1,63 @@
+name: Validate Index
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Validate all indexed files exist
+        run: |
+          EXIT_CODE=0
+
+          # Check skill files
+          SKILL_FILES=$(yq eval '.skills[].file' index.yaml)
+          echo "Checking skill files listed in index.yaml..."
+          while IFS= read -r filepath; do
+            if [ -z "$filepath" ] || [ "$filepath" = "null" ]; then
+              continue
+            fi
+            if [ ! -f "$filepath" ]; then
+              echo "MISSING: $filepath"
+              EXIT_CODE=1
+            else
+              echo "OK: $filepath"
+            fi
+          done <<< "$SKILL_FILES"
+
+          # Check role files
+          ROLE_FILES=$(yq eval '.roles[].file' index.yaml)
+          echo ""
+          echo "Checking role files listed in index.yaml..."
+          while IFS= read -r filepath; do
+            if [ -z "$filepath" ] || [ "$filepath" = "null" ]; then
+              continue
+            fi
+            if [ ! -f "$filepath" ]; then
+              echo "MISSING: $filepath"
+              EXIT_CODE=1
+            else
+              echo "OK: $filepath"
+            fi
+          done <<< "$ROLE_FILES"
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo ""
+            echo "FAIL: One or more files listed in index.yaml do not exist."
+            exit 1
+          fi
+
+          echo ""
+          echo "All indexed files are present."

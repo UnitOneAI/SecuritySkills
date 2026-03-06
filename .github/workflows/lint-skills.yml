@@ -1,0 +1,51 @@
+name: Lint Skills
+
+on:
+  pull_request:
+
+jobs:
+  lint-frontmatter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate frontmatter in skill and role files
+        run: |
+          EXIT_CODE=0
+          REQUIRED_FIELDS=("name" "description" "version" "author" "license")
+
+          FILES=$(find skills/ roles/ -name '*.md' 2>/dev/null || true)
+
+          if [ -z "$FILES" ]; then
+            echo "No .md files found in skills/ or roles/."
+            exit 0
+          fi
+
+          while IFS= read -r file; do
+            echo "Checking: $file"
+
+            FRONTMATTER=$(awk '/^---$/{if(++c==2) exit} c==1' "$file")
+
+            if [ -z "$FRONTMATTER" ]; then
+              echo "  ERROR: No YAML frontmatter found (missing --- delimiters)"
+              EXIT_CODE=1
+              continue
+            fi
+
+            for field in "${REQUIRED_FIELDS[@]}"; do
+              if ! echo "$FRONTMATTER" | grep -qE "^${field}:"; then
+                echo "  ERROR: Missing required field: $field"
+                EXIT_CODE=1
+              fi
+            done
+          done <<< "$FILES"
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo ""
+            echo "FAIL: One or more files have missing required frontmatter fields."
+            exit 1
+          fi
+
+          echo ""
+          echo "All frontmatter checks passed."
