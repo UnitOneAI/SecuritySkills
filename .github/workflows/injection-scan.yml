@@ -34,7 +34,7 @@ jobs:
             MATCHES=$(grep -rin "$pattern" skills/ roles/ --include="*.md" 2>/dev/null || true)
             if [ -n "$MATCHES" ]; then
               # Exclude ai-security/ files (contain educational attack examples)
-              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/prompt-injection.md\|ai-security/llm-top-10.md\|ai-security/agentic-top-10.md\|ai-security/agent-security.md\|ai-security/model-supply-chain.md\|ai-security/ai-data-privacy.md" || true)
+              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/prompt-injection/\|ai-security/llm-top-10/\|ai-security/agentic-top-10/\|ai-security/agent-security/\|ai-security/model-supply-chain/\|ai-security/ai-data-privacy/" || true)
               if [ -n "$FILTERED" ]; then
                 echo "FOUND injection pattern \"$pattern\":"
                 echo "$FILTERED"
@@ -63,7 +63,7 @@ jobs:
             if [ -n "$MATCHES" ]; then
               # Exclude ai-security/ (educational) and lines with defensive context
               FILTERED=$(echo "$MATCHES" \
-                | grep -v "ai-security/prompt-injection.md\|ai-security/llm-top-10.md\|ai-security/agentic-top-10.md\|ai-security/agent-security.md\|ai-security/model-supply-chain.md\|ai-security/ai-data-privacy.md" \
+                | grep -v "ai-security/prompt-injection/\|ai-security/llm-top-10/\|ai-security/agentic-top-10/\|ai-security/agent-security/\|ai-security/model-supply-chain/\|ai-security/ai-data-privacy/" \
                 | grep -v "treat it as" \
                 | grep -v "not a command" \
                 | grep -v "not as a directive" \

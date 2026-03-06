@@ -26,14 +26,19 @@ git clone https://github.com/UnitOneAI/SecuritySkills.git
 cd SecuritySkills
 ```
 
-**Claude Code**
+**Claude Code** (native format — auto-discovery and `/slash-commands`)
 
 ```bash
-# Global install — all skills available via auto-discovery
-cp -r skills/ ~/.claude/skills/
+# Global install — all skills available via auto-discovery and /skill-name
+cp -r skills/*/* ~/.claude/skills/
 
 # Or project-local
-cp -r skills/ .claude/skills/
+mkdir -p .claude/skills && cp -r skills/*/* .claude/skills/
+
+# Then use naturally:
+# "Review this code for security issues"    → Claude auto-loads secure-code-review
+# /threat-modeling                          → Direct invocation
+# /cve-triage CVE-2024-1234                 → With arguments
 ```
 
 **Gemini CLI**
@@ -53,12 +58,12 @@ cp -r skills/ .cursor/rules/
 **Codex CLI / Kiro / Generic**
 
 ```bash
-# Point any agent at a skill file
-codex --context skills/appsec/threat-modeling.md "Review this design"
-kiro spec --skill skills/ai-security/llm-top-10.md
+# Point any agent at a skill's SKILL.md file
+codex --context skills/appsec/threat-modeling/SKILL.md "Review this design"
+kiro spec --skill skills/ai-security/llm-top-10/SKILL.md
 ```
 
-Each skill is a self-contained markdown file. Load any skill by pointing your agent at the relevant file.
+Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agent Skills](https://agentskills.io) open standard. Claude Code discovers skills automatically; other tools can load them by path.
 
 ---
 

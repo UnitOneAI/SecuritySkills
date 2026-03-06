@@ -18,7 +18,7 @@ jobs:
           EXIT_CODE=0
           REQUIRED_FIELDS=("name" "description" "version" "author" "license" "injection-hardened" "allowed-tools" "tags" "role" "phase" "frameworks" "difficulty" "time_estimate")
 
-          FILES=$(find skills/ roles/ -name '*.md' 2>/dev/null || true)
+          FILES=$(find skills/ roles/ -name 'SKILL.md' 2>/dev/null || true)
 
           if [ -z "$FILES" ]; then
             echo "No .md files found in skills/ or roles/."

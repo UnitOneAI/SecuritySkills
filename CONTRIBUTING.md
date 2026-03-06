@@ -15,16 +15,39 @@ We reject skills that sound authoritative but contain invented framework referen
 
 ---
 
+## Skill File Structure
+
+Each skill is a directory containing `SKILL.md` as the entrypoint, with optional supporting files:
+
+```
+skills/<domain>/<skill-name>/
+├── SKILL.md              # Main instructions (required, keep under 500 lines)
+├── reference.md          # Detailed reference tables (optional)
+├── checklist.md          # Detailed checklists (optional)
+└── examples/             # Example outputs (optional)
+```
+
+This follows the [Agent Skills](https://agentskills.io) open standard and is compatible with Claude Code's native skill discovery.
+
+---
+
 ## Skill Format Specification
 
-Every skill file must follow this structure. If it doesn't have this format, it doesn't merge.
+Every `SKILL.md` file must follow this structure. If it doesn't have this format, it doesn't merge.
 
 ```markdown
 ---
+# --- Claude Code native fields ---
 name: <kebab-case-id>
 description: >
   One precise paragraph. State: (1) what this skill does, (2) when it
   auto-invokes, (3) what it produces. Mention key frameworks by name.
+allowed-tools: Read, Grep, Glob
+argument-hint: "[target-file-or-directory]"
+# context: fork                    # Add for heavy workflow skills
+# disable-model-invocation: true   # Add for manual-only skills
+
+# --- Cross-platform metadata (used by index.yaml, OpenClaw, multi-agent tools) ---
 tags: [domain-tag, activity-tag]
 role: [role-1, role-2]
 phase: [phase-1, phase-2]
@@ -34,7 +57,6 @@ time_estimate: "X-Y min"
 version: "1.0.0"
 author: unitoneai
 license: MIT
-allowed-tools: Read, Grep, Glob
 injection-hardened: true
 ---
 
@@ -179,6 +201,52 @@ Use tags from the controlled vocabulary in `index.yaml`:
 
 ---
 
+## Frontmatter Field Reference
+
+Skills use two categories of frontmatter fields:
+
+### Claude Code Native Fields
+
+These fields are consumed directly by Claude Code for skill discovery and execution:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Kebab-case skill ID. Becomes the `/slash-command`. Max 64 characters. |
+| `description` | Yes | What the skill does and when to use it. Claude uses this for auto-discovery. Competes in a 16k character budget. |
+| `allowed-tools` | Yes | Tools Claude can use when this skill is active. |
+| `argument-hint` | No | Hint shown during autocomplete (e.g., `[target-file]`, `[CVE-ID]`). |
+| `context` | No | Set to `fork` to run in an isolated subagent. Use for heavy workflow skills. |
+| `disable-model-invocation` | No | Set to `true` to prevent Claude from auto-invoking. Use for role bundles and manual-only workflows. |
+
+### Cross-Platform Metadata Fields
+
+These fields are used by `index.yaml`, OpenClaw, and multi-agent tooling. Claude Code ignores them but they don't cause issues:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `tags` | Yes | Domain and activity tags from the controlled vocabulary. |
+| `role` | Yes | Target personas (e.g., `[security-engineer, appsec-engineer]`). |
+| `phase` | Yes | SDLC/security lifecycle phases. |
+| `frameworks` | Yes | Security frameworks referenced. |
+| `difficulty` | Yes | `beginner`, `intermediate`, or `advanced`. |
+| `time_estimate` | Yes | Expected time range (e.g., `"30-60min"`). |
+| `version` | Yes | Semantic version. |
+| `author` | Yes | Skill author. |
+| `license` | Yes | License identifier. |
+| `injection-hardened` | Yes | Must be `true`. Declares the skill has been reviewed for injection safety. |
+
+### Arguments and Dynamic Content
+
+Skills support `$ARGUMENTS` placeholders that get replaced with user input when invoked:
+
+```markdown
+Review the following target for security issues: $ARGUMENTS
+```
+
+When a user runs `/secure-code-review src/auth/`, `$ARGUMENTS` becomes `src/auth/`.
+
+---
+
 ## Tool Access Scoping
 
 The `allowed-tools` field controls what tools the skill can use. Follow the principle of least privilege:
@@ -194,15 +262,18 @@ The `allowed-tools` field controls what tools the skill can use. Follow the prin
 
 Before submitting a pull request, confirm:
 
+- [ ] Skill uses directory structure: `skills/<domain>/<name>/SKILL.md`
+- [ ] `SKILL.md` is under 500 lines (move reference material to supporting files)
 - [ ] Skill follows the format specification above
 - [ ] At least one real framework is cited with correct control IDs
 - [ ] All framework references verified against primary sources
 - [ ] Prompt Injection Safety Notice section included
 - [ ] `injection-hardened: true` in frontmatter
 - [ ] `allowed-tools` scoped to minimum necessary
+- [ ] `argument-hint` added for skills that accept targets
 - [ ] Tested with at least one AI coding agent (note which one in PR)
 - [ ] No prohibited patterns per SECURITY.md
-- [ ] `index.yaml` updated with new skill entry
+- [ ] `index.yaml` updated with new skill entry (use `SKILL.md` path)
 
 ---
 

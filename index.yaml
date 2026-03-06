@@ -26,7 +26,7 @@ skills:
     frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/appsec/threat-modeling.md
+    file: skills/appsec/threat-modeling/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: secure-code-review
@@ -38,7 +38,7 @@ skills:
     frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
     difficulty: intermediate
     time_estimate: "15-45min per module"
-    file: skills/appsec/secure-code-review.md
+    file: skills/appsec/secure-code-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: owasp-top-10-web
@@ -50,7 +50,7 @@ skills:
     frameworks: [OWASP-Top-10-2021]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/appsec/owasp-top-10-web.md
+    file: skills/appsec/owasp-top-10-web/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: api-security
@@ -62,7 +62,7 @@ skills:
     frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
     difficulty: intermediate
     time_estimate: "20-40min"
-    file: skills/appsec/api-security.md
+    file: skills/appsec/api-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning
@@ -74,7 +74,7 @@ skills:
     frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
     difficulty: intermediate
     time_estimate: "15-30min"
-    file: skills/appsec/dependency-scanning.md
+    file: skills/appsec/dependency-scanning/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Identity -------------------------------------------------------------
@@ -87,7 +87,7 @@ skills:
     frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/identity/iam-review.md
+    file: skills/identity/iam-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: access-review
@@ -98,8 +98,8 @@ skills:
     activity: [audit, review]
     frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
     difficulty: intermediate
-    time_estimate: "30-60min"
-    file: skills/identity/access-review.md
+    time_estimate: "45-90min"
+    file: skills/identity/access-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: rbac-design
@@ -110,8 +110,8 @@ skills:
     activity: [design, review]
     frameworks: [NIST-RBAC, NIST-SP-800-162]
     difficulty: intermediate
-    time_estimate: "30-45min"
-    file: skills/identity/rbac-design.md
+    time_estimate: "45-90min"
+    file: skills/identity/rbac-design/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: zero-trust-assessment
@@ -123,7 +123,7 @@ skills:
     frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
     difficulty: advanced
     time_estimate: "90-180min"
-    file: skills/identity/zero-trust-assessment.md
+    file: skills/identity/zero-trust-assessment/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: privileged-access
@@ -134,8 +134,8 @@ skills:
     activity: [audit, review]
     frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
     difficulty: intermediate
-    time_estimate: "30-60min"
-    file: skills/identity/privileged-access.md
+    time_estimate: "45-90min"
+    file: skills/identity/privileged-access/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------
@@ -148,7 +148,7 @@ skills:
     frameworks: [CIS-AWS-v3.0.0]
     difficulty: intermediate
     time_estimate: "60-90min"
-    file: skills/cloud/aws-review.md
+    file: skills/cloud/aws-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: azure-review
@@ -160,7 +160,7 @@ skills:
     frameworks: [CIS-Azure-v2.1.0]
     difficulty: intermediate
     time_estimate: "60-90min"
-    file: skills/cloud/azure-review.md
+    file: skills/cloud/azure-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: gcp-review
@@ -169,10 +169,10 @@ skills:
     role: [cloud-security-engineer, security-engineer]
     phase: [assess, operate]
     activity: [audit, review]
-    frameworks: [CIS-GCP-Benchmark-v2.0]
+    frameworks: [CIS-GCP-v2.0.0]
     difficulty: intermediate
     time_estimate: "60-90min"
-    file: skills/cloud/gcp-review.md
+    file: skills/cloud/gcp-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: iac-security
@@ -184,7 +184,7 @@ skills:
     frameworks: [OWASP-IaC-Security, SLSA-v1.0, CIS-Benchmarks]
     difficulty: intermediate
     time_estimate: "45-90min"
-    file: skills/cloud/iac-security.md
+    file: skills/cloud/iac-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: container-security
@@ -196,7 +196,7 @@ skills:
     frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/cloud/container-security.md
+    file: skills/cloud/container-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Vulnerability Management ---------------------------------------------
@@ -209,7 +209,7 @@ skills:
     frameworks: [CVSS-4.0, SSVC-2.1, CISA-KEV, EPSS]
     difficulty: intermediate
     time_estimate: "10-20min per CVE"
-    file: skills/vuln-management/cve-triage.md
+    file: skills/vuln-management/cve-triage/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: patch-prioritization
@@ -221,7 +221,7 @@ skills:
     frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
     difficulty: intermediate
     time_estimate: "20-40min"
-    file: skills/vuln-management/patch-prioritization.md
+    file: skills/vuln-management/patch-prioritization/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: sbom-analysis
@@ -233,7 +233,7 @@ skills:
     frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
     difficulty: intermediate
     time_estimate: "20-40min"
-    file: skills/vuln-management/sbom-analysis.md
+    file: skills/vuln-management/sbom-analysis/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: scanner-tuning
@@ -245,7 +245,7 @@ skills:
     frameworks: [CVSS-4.0, CWE]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/vuln-management/scanner-tuning.md
+    file: skills/vuln-management/scanner-tuning/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- AI Security ----------------------------------------------------------
@@ -258,7 +258,7 @@ skills:
     frameworks: [OWASP-LLM-Top-10-2025]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/ai-security/llm-top-10.md
+    file: skills/ai-security/llm-top-10/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: agentic-top-10
@@ -270,7 +270,7 @@ skills:
     frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
     difficulty: advanced
     time_estimate: "45-90min"
-    file: skills/ai-security/agentic-top-10.md
+    file: skills/ai-security/agentic-top-10/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: prompt-injection
@@ -282,7 +282,7 @@ skills:
     frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
     difficulty: advanced
     time_estimate: "30-60min"
-    file: skills/ai-security/prompt-injection.md
+    file: skills/ai-security/prompt-injection/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: model-supply-chain
@@ -294,7 +294,7 @@ skills:
     frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
     difficulty: advanced
     time_estimate: "45-90min"
-    file: skills/ai-security/model-supply-chain.md
+    file: skills/ai-security/model-supply-chain/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: ai-data-privacy
@@ -306,19 +306,19 @@ skills:
     frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/ai-security/ai-data-privacy.md
+    file: skills/ai-security/ai-data-privacy/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: agent-security
     name: "AI Agent Security Architecture Review"
     tags: [ai-security, agents, agentic-ai, architecture]
     role: [security-engineer, architect, appsec-engineer, vciso]
-    phase: [design, review]
+    phase: [design, build, review]
     activity: [review, design, assess]
     frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
     difficulty: advanced
     time_estimate: "60-120min"
-    file: skills/ai-security/agent-security.md
+    file: skills/ai-security/agent-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Incident Response ----------------------------------------------------
@@ -331,7 +331,7 @@ skills:
     frameworks: [NIST-SP-800-61r2, SANS-IH]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/incident-response/ir-playbook.md
+    file: skills/incident-response/ir-playbook/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: forensics-checklist
@@ -343,7 +343,7 @@ skills:
     frameworks: [NIST-SP-800-86, RFC-3227]
     difficulty: advanced
     time_estimate: "30-60min"
-    file: skills/incident-response/forensics-checklist.md
+    file: skills/incident-response/forensics-checklist/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: containment
@@ -355,7 +355,7 @@ skills:
     frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
     difficulty: intermediate
     time_estimate: "15-30min"
-    file: skills/incident-response/containment.md
+    file: skills/incident-response/containment/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: post-incident-review
@@ -367,7 +367,7 @@ skills:
     frameworks: [NIST-SP-800-61r2]
     difficulty: beginner
     time_estimate: "30-60min"
-    file: skills/incident-response/post-incident-review.md
+    file: skills/incident-response/post-incident-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Compliance -----------------------------------------------------------
@@ -380,7 +380,7 @@ skills:
     frameworks: [AICPA-TSC, NIST-CSF-2.0]
     difficulty: intermediate
     time_estimate: "60-120min"
-    file: skills/compliance/soc2-gap.md
+    file: skills/compliance/soc2-gap/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: iso27001-gap
@@ -392,7 +392,7 @@ skills:
     frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
     difficulty: intermediate
     time_estimate: "90-180min"
-    file: skills/compliance/iso27001-gap.md
+    file: skills/compliance/iso27001-gap/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: pci-dss-review
@@ -404,7 +404,7 @@ skills:
     frameworks: [PCI-DSS-v4.0]
     difficulty: advanced
     time_estimate: "90-180min"
-    file: skills/compliance/pci-dss-review.md
+    file: skills/compliance/pci-dss-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: hipaa-review
@@ -416,7 +416,7 @@ skills:
     frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
     difficulty: intermediate
     time_estimate: "60-120min"
-    file: skills/compliance/hipaa-review.md
+    file: skills/compliance/hipaa-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: nist-csf-assessment
@@ -428,7 +428,7 @@ skills:
     frameworks: [NIST-CSF-2.0]
     difficulty: intermediate
     time_estimate: "90-180min"
-    file: skills/compliance/nist-csf-assessment.md
+    file: skills/compliance/nist-csf-assessment/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- SecOps ---------------------------------------------------------------
@@ -441,7 +441,7 @@ skills:
     frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
     difficulty: advanced
     time_estimate: "30-60min"
-    file: skills/secops/detection-engineering.md
+    file: skills/secops/detection-engineering/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: siem-rules
@@ -453,7 +453,7 @@ skills:
     frameworks: [MITRE-ATT&CK-v16]
     difficulty: intermediate
     time_estimate: "20-40min"
-    file: skills/secops/siem-rules.md
+    file: skills/secops/siem-rules/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: alert-triage
@@ -462,10 +462,10 @@ skills:
     role: [soc-analyst]
     phase: [operate, respond]
     activity: [triage, investigate]
-    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
+    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61r2]
     difficulty: beginner
     time_estimate: "10-20min per alert"
-    file: skills/secops/alert-triage.md
+    file: skills/secops/alert-triage/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: log-analysis
@@ -477,7 +477,7 @@ skills:
     frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
     difficulty: intermediate
     time_estimate: "20-40min"
-    file: skills/secops/log-analysis.md
+    file: skills/secops/log-analysis/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Network --------------------------------------------------------------
@@ -490,7 +490,7 @@ skills:
     frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/network/firewall-review.md
+    file: skills/network/firewall-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: segmentation
@@ -502,7 +502,7 @@ skills:
     frameworks: [NIST-SP-800-207, CIS-Controls-v8]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/network/segmentation.md
+    file: skills/network/segmentation/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dns-security
@@ -514,7 +514,7 @@ skills:
     frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
     difficulty: intermediate
     time_estimate: "20-40min"
-    file: skills/network/dns-security.md
+    file: skills/network/dns-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- DevSecOps ------------------------------------------------------------
@@ -527,7 +527,7 @@ skills:
     frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/devsecops/pipeline-security.md
+    file: skills/devsecops/pipeline-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: secrets-management
@@ -539,7 +539,7 @@ skills:
     frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
     difficulty: intermediate
     time_estimate: "20-40min"
-    file: skills/devsecops/secrets-management.md
+    file: skills/devsecops/secrets-management/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: sast-config
@@ -551,7 +551,7 @@ skills:
     frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/devsecops/sast-config.md
+    file: skills/devsecops/sast-config/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dast-config
@@ -563,7 +563,7 @@ skills:
     frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
     difficulty: intermediate
     time_estimate: "30-60min"
-    file: skills/devsecops/dast-config.md
+    file: skills/devsecops/dast-config/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
 roles:
@@ -571,28 +571,28 @@ roles:
     name: "Virtual CISO"
     description: "Security program leadership — risk assessment, compliance, board reporting"
     skills: [nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling]
-    file: roles/vciso.md
+    file: roles/vciso/SKILL.md
 
   - id: soc-analyst
     name: "SOC Analyst"
     description: "Alert triage, threat hunting, incident investigation, detection engineering"
     skills: [alert-triage, detection-engineering, ir-playbook, log-analysis, cve-triage]
-    file: roles/soc-analyst.md
+    file: roles/soc-analyst/SKILL.md
 
   - id: security-engineer
     name: "Security Engineer"
     description: "Building security into products and infrastructure — reviews, tooling, remediation"
     skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
-    file: roles/security-engineer.md
+    file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
     skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
-    file: roles/appsec-engineer.md
+    file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
     name: "Cloud Security Engineer"
     description: "Cloud security posture, IaC review, container security, identity"
     skills: [aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access]
-    file: roles/cloud-security-engineer.md
+    file: roles/cloud-security-engineer/SKILL.md
