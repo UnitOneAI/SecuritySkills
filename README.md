@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 25](https://img.shields.io/badge/Skills-25-green.svg)
+![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -22,8 +22,8 @@ These skills ground agents in real published frameworks -- OWASP, NIST, MITRE AT
 ## Quick Start
 
 ```bash
-git clone https://github.com/unitoneai/security-skills.git
-cd security-skills
+git clone https://github.com/UnitOneAI/SecuritySkills.git
+cd SecuritySkills
 ```
 
 **Claude Code**

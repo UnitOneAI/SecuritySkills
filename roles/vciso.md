@@ -38,12 +38,6 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is a single tactical task (e.g., "scan this repo for secrets"), use the individual skill directly. This bundle is for program-level work.
 
-**Skill availability note:** This bundle references skills across the full repository. Skills marked with (*) below are planned for v1.0 but may not yet be available. Check the `skills/` directory or `index.yaml` for current availability. The bundle is designed so you can skip unavailable skills and still get value from the ones that exist.
-
-Available now: `soc2-gap`, `iam-review`, `cve-triage`, `threat-modeling`, `llm-top-10`, `agentic-top-10`, `prompt-injection`, `pipeline-security`, `secure-code-review`.
-
-Planned: `nist-csf-assessment`*, `secrets-management`*, `ir-playbook`*, `containment`*, `forensics-checklist`*, `post-incident-review`*, `agent-security`*.
-
 ---
 
 ## Engagement Types
