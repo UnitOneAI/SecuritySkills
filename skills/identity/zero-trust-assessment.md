@@ -37,7 +37,7 @@ Invoke this skill when:
 - Preparing a zero trust roadmap for executive or board-level presentation
 - Evaluating compliance with federal zero trust mandates (OMB M-22-09, EO 14028)
 
-**Do NOT use this skill for:** IAM-specific deep dives (see `identity/iam-review.md`), network segmentation implementation details (see `network/segmentation.md`), or data classification design (see `data/classification.md`).
+**Do NOT use this skill for:** IAM-specific deep dives (see `identity/iam-review.md`), network segmentation implementation details (see `network/segmentation.md`), or data classification design.
 
 ---
 

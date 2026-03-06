@@ -3,17 +3,20 @@ name: Lint Skills
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   lint-frontmatter:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # pin to SHA for SLSA compliance in future iteration
 
       - name: Validate frontmatter in skill and role files
         run: |
           EXIT_CODE=0
-          REQUIRED_FIELDS=("name" "description" "version" "author" "license")
+          REQUIRED_FIELDS=("name" "description" "version" "author" "license" "injection-hardened" "allowed-tools" "tags" "role" "phase" "frameworks" "difficulty" "time_estimate")
 
           FILES=$(find skills/ roles/ -name '*.md' 2>/dev/null || true)
 

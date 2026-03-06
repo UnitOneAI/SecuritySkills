@@ -98,7 +98,7 @@ In 2023, researchers demonstrated that ChatGPT plugins (now deprecated in favor 
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM06 — Excessive Agency
-- MITRE ATLAS: AML.T0054 — LLM Plugin Compromise
+- MITRE ATLAS: AML.T0040 — ML Model Inference API Access (excessive tool permissions)
 - NIST AI RMF: GOVERN 1.2 (roles and responsibilities), MAP 3.5 (impact assessment)
 
 ---
@@ -214,7 +214,7 @@ In 2024, researchers demonstrated a persistent memory poisoning attack against a
 
 **Real-World Failure Mode:**
 
-In the 2024 Princeton S&P paper "Not What You've Signed Up For," researchers demonstrated cross-agent attacks in LangChain-based multi-agent systems where a compromised web-browsing agent injected manipulated content that was consumed by a downstream planning agent. The planning agent treated the browsing agent's output as factual without verification, leading to execution of attacker-controlled actions. The fundamental issue: no trust boundary existed between agents in the processing pipeline.
+In the Greshake et al. (2023) paper "Not What You've Signed Up For" (arXiv:2302.12173), researchers demonstrated cross-agent attacks in LangChain-based multi-agent systems where a compromised web-browsing agent injected manipulated content that was consumed by a downstream planning agent. The planning agent treated the browsing agent's output as factual without verification, leading to execution of attacker-controlled actions. The fundamental issue: no trust boundary existed between agents in the processing pipeline.
 
 **Mitigations:**
 
@@ -227,7 +227,7 @@ In the 2024 Princeton S&P paper "Not What You've Signed Up For," researchers dem
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM01 — Prompt Injection (cross-agent), LLM06 — Excessive Agency
-- MITRE ATLAS: AML.T0011 — User Compromise, AML.T0043 — Craft Adversarial Data
+- MITRE ATLAS: AML.T0043 — Craft Adversarial Data, AML.T0051 — LLM Prompt Injection (cross-agent)
 - NIST AI RMF: GOVERN 1.4 (risk management processes), MAP 3.4 (dependency mapping)
 
 ---
@@ -259,7 +259,7 @@ In 2023, security researcher Johann Rehberger demonstrated that Bing Chat (now C
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM02 — Sensitive Information Disclosure, LLM01 — Prompt Injection
-- MITRE ATLAS: AML.T0048 — Exfiltration via ML Model API
+- MITRE ATLAS: AML.T0051 — LLM Prompt Injection (exfiltration via manipulated agent output)
 - NIST AI RMF: MANAGE 2.4 (incident response), MEASURE 2.9 (privacy risk)
 
 ---
@@ -325,7 +325,7 @@ In 2024, a red team exercise at a technology company (published in their securit
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM06 — Excessive Agency
-- MITRE ATLAS: AML.T0050 — Command and Control via ML Model
+- MITRE ATLAS: AML.T0051 — LLM Prompt Injection (bypassing human oversight via prompt manipulation)
 - NIST AI RMF: GOVERN 1.3 (organizational commitments), MANAGE 1.3 (risk response prioritization)
 
 ---
@@ -395,7 +395,7 @@ In a 2024 incident disclosed at Black Hat, a penetration tester compromised an e
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM02 — Sensitive Information Disclosure (credential exposure)
-- MITRE ATLAS: AML.T0011 — User Compromise
+- MITRE ATLAS: AML.T0040 — ML Model Inference API Access (credential abuse)
 - NIST AI RMF: GOVERN 1.2 (roles and responsibilities), MAP 1.6 (deployment environment)
 
 ---
@@ -552,7 +552,7 @@ MITRE ATLAS (Adversarial Threat Landscape for AI Systems) provides a knowledge b
 
 ### NIST AI Risk Management Framework (AI RMF 1.0)
 
-The NIST AI RMF provides a structured approach to AI risk management organized around four functions: GOVERN, MAP, MEASURE, and MANAGE. Subcategory mappings in this skill reference AI RMF 1.0 (January 2023). Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework)
+The NIST AI RMF provides a structured approach to AI risk management organized around four functions: GOVERN, MAP, MEASURE, and MANAGE. Subcategory mappings in this skill use the AI RMF Playbook suggested action numbering format (e.g., GOVERN 1.2, MAP 3.5) from the companion AI RMF Playbook, not the formal framework subcategory IDs. Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework), [AI RMF Playbook](https://airc.nist.gov/AI_RMF_Playbook)
 
 ---
 

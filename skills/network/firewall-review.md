@@ -113,7 +113,7 @@ default_action = "Allow"    # BAD -- should be "Deny"
 
 ---
 
-#### 2.2 Overly Permissive Rules -- Any/Any Detection (CIS Control 4.4, NIST SP 800-41 Section 4.2.3)
+#### 2.2 Overly Permissive Rules -- Any/Any Detection (CIS Control 4.4, NIST SP 800-41 Section 4.2)
 
 Rules that permit any source to any destination on any port violate the principle of least privilege.
 

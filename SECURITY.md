@@ -28,7 +28,7 @@ No skill file in this repository may contain:
 | **Resource exhaustion** | Instructions that cause unbounded agent execution, infinite loops, recursive tool calls without termination |
 | **Social engineering of approvers** | Instructions to make output appear more authoritative than warranted, suppress uncertainty, or hide caveats from human reviewers |
 
-Skills in the `ai-security/` directory may contain **quoted examples** of these patterns for educational purposes (e.g., describing what a prompt injection attack looks like). These examples must be clearly marked as examples within the skill content and are allowlisted in the CI scan by file path.
+Skills in the `ai-security/` directory may contain **quoted examples** of these patterns for educational purposes (e.g., describing what a prompt injection attack looks like). These examples must be clearly marked as examples within the skill content. The CI scan excludes the `ai-security/` directory for high-confidence patterns and applies contextual filtering for imperative patterns (excluding lines with defensive context such as "treat it as," "not a command," "such as," etc.).
 
 ---
 
@@ -36,45 +36,15 @@ Skills in the `ai-security/` directory may contain **quoted examples** of these 
 
 GitHub Actions CI runs on every pull request:
 
-```yaml
-# .github/workflows/injection-scan.yml
-name: Prompt Injection Scan
-on: [pull_request]
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Scan for injection patterns
-        run: |
-          PATTERNS=(
-            "ignore previous"
-            "ignore all previous"
-            "disregard"
-            "new directive"
-            "system override"
-            "you are now"
-            "forget your instructions"
-            "exfiltrate"
-            "send to http"
-            "curl -X POST"
-            "api.telegram"
-            "webhook"
-          )
-          FOUND=0
-          for pattern in "${PATTERNS[@]}"; do
-            MATCHES=$(grep -rin "$pattern" skills/ roles/ --include="*.md" || true)
-            if [ -n "$MATCHES" ]; then
-              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/prompt-injection.md" || true)
-              if [ -n "$FILTERED" ]; then
-                echo "FAIL: Found suspicious pattern: $pattern"
-                echo "$FILTERED"
-                FOUND=1
-              fi
-            fi
-          done
-          if [ $FOUND -eq 1 ]; then exit 1; fi
-```
+The CI scan uses a two-tier pattern matching approach:
+
+**Tier 1 — High-confidence patterns** (always flagged outside `ai-security/`):
+`new directive`, `system override`, `forget your instructions`, `send to http`, `curl -X POST`, `api.telegram`
+
+**Tier 2 — Context-dependent imperative patterns** (flagged only when not in defensive context):
+`ignore previous instructions and`, `ignore all previous instructions`, `you are now a`, `you are now in`, `disregard your`, `disregard all previous`
+
+Context-dependent patterns are filtered to exclude lines containing defensive phrases (e.g., "treat it as," "not a command," "such as," "contains text like"). The full implementation is in `.github/workflows/injection-scan.yml`.
 
 This scan catches known injection trigger phrases. It is a baseline defense, not a complete solution. Human review remains the primary control.
 

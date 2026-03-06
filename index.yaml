@@ -5,14 +5,14 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2025-03-06"
+  last_updated: "2026-03-05"
   skill_count: 45
   role_count: 5
 
 tag_vocabulary:
   domains: [appsec, identity, cloud, network, secops, compliance, devsecops, vuln-management, incident-response, ai-security]
   activities: [review, design, audit, triage, investigate, remediate, monitor, assess, test, configure]
-  phases: [design, build, deploy, operate, respond, recover]
+  phases: [design, build, deploy, operate, respond, recover, assess, protect, detect, govern, review]
   difficulty: [beginner, intermediate, advanced]
 
 skills:
@@ -96,7 +96,7 @@ skills:
     role: [security-engineer, vciso]
     phase: [operate]
     activity: [audit, review]
-    frameworks: [CIS-Controls-v8, NIST-SP-800-53]
+    frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/identity/access-review.md
@@ -122,7 +122,7 @@ skills:
     activity: [assess, design]
     frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
     difficulty: advanced
-    time_estimate: "60-120min"
+    time_estimate: "90-180min"
     file: skills/identity/zero-trust-assessment.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
@@ -132,7 +132,7 @@ skills:
     role: [security-engineer, vciso]
     phase: [operate]
     activity: [audit, review]
-    frameworks: [CIS-Controls-v8, NIST-SP-800-53]
+    frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/identity/privileged-access.md
@@ -143,9 +143,9 @@ skills:
     name: "AWS Security Posture Review"
     tags: [cloud, aws, cis-benchmark]
     role: [cloud-security-engineer, security-engineer]
-    phase: [deploy, operate]
+    phase: [assess, operate]
     activity: [audit, review]
-    frameworks: [CIS-AWS-Benchmark-v3.0, AWS-Well-Architected]
+    frameworks: [CIS-AWS-v3.0.0]
     difficulty: intermediate
     time_estimate: "60-90min"
     file: skills/cloud/aws-review.md
@@ -155,9 +155,9 @@ skills:
     name: "Azure Security Posture Review"
     tags: [cloud, azure, cis-benchmark]
     role: [cloud-security-engineer, security-engineer]
-    phase: [deploy, operate]
+    phase: [assess, operate]
     activity: [audit, review]
-    frameworks: [CIS-Azure-Benchmark-v2.1, Azure-Security-Benchmark-v3]
+    frameworks: [CIS-Azure-v2.1.0]
     difficulty: intermediate
     time_estimate: "60-90min"
     file: skills/cloud/azure-review.md
@@ -167,7 +167,7 @@ skills:
     name: "GCP Security Posture Review"
     tags: [cloud, gcp, cis-benchmark]
     role: [cloud-security-engineer, security-engineer]
-    phase: [deploy, operate]
+    phase: [assess, operate]
     activity: [audit, review]
     frameworks: [CIS-GCP-Benchmark-v2.0]
     difficulty: intermediate
@@ -179,11 +179,11 @@ skills:
     name: "Infrastructure as Code Security Review"
     tags: [cloud, iac, terraform, cloudformation]
     role: [cloud-security-engineer, security-engineer, devsecops]
-    phase: [build, deploy]
+    phase: [build, review]
     activity: [review, test]
     frameworks: [OWASP-IaC-Security, SLSA-v1.0, CIS-Benchmarks]
     difficulty: intermediate
-    time_estimate: "20-40min"
+    time_estimate: "45-90min"
     file: skills/cloud/iac-security.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
@@ -193,7 +193,7 @@ skills:
     role: [cloud-security-engineer, security-engineer]
     phase: [build, deploy, operate]
     activity: [review, audit]
-    frameworks: [CIS-Docker-v1.6, CIS-Kubernetes-v1.9, NIST-SP-800-190]
+    frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/cloud/container-security.md
@@ -218,7 +218,7 @@ skills:
     role: [security-engineer, vciso]
     phase: [operate]
     activity: [triage, remediate]
-    frameworks: [SSVC-2.1, EPSS, CISA-KEV]
+    frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/vuln-management/patch-prioritization.md
@@ -230,7 +230,7 @@ skills:
     role: [security-engineer, appsec-engineer]
     phase: [build, operate]
     activity: [review, assess]
-    frameworks: [CycloneDX, SPDX, VEX, NTIA-SBOM]
+    frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/vuln-management/sbom-analysis.md
@@ -267,7 +267,7 @@ skills:
     role: [appsec-engineer, security-engineer, architect, vciso]
     phase: [design, build, review]
     activity: [review, assess, design]
-    frameworks: [OWASP-Agentic-Top-10-2025, MITRE-ATLAS]
+    frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
     difficulty: advanced
     time_estimate: "45-90min"
     file: skills/ai-security/agentic-top-10.md
@@ -288,22 +288,22 @@ skills:
   - id: model-supply-chain
     name: "Model Supply Chain Security"
     tags: [ai-security, supply-chain, model-provenance]
-    role: [appsec-engineer, security-engineer]
-    phase: [build, deploy]
+    role: [security-engineer, ml-engineer, appsec-engineer]
+    phase: [build, review, operate]
     activity: [review, assess]
     frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
     difficulty: advanced
-    time_estimate: "30-60min"
+    time_estimate: "45-90min"
     file: skills/ai-security/model-supply-chain.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: ai-data-privacy
     name: "AI Data Privacy & Governance Review"
     tags: [ai-security, privacy, data-governance]
-    role: [security-engineer, vciso]
-    phase: [design, operate]
+    role: [security-engineer, privacy-engineer, appsec-engineer, vciso]
+    phase: [design, build, review, operate]
     activity: [review, assess]
-    frameworks: [NIST-AI-RMF, OWASP-LLM02-2025]
+    frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/ai-security/ai-data-privacy.md
@@ -312,10 +312,10 @@ skills:
   - id: agent-security
     name: "AI Agent Security Architecture Review"
     tags: [ai-security, agents, agentic-ai, architecture]
-    role: [appsec-engineer, architect, security-engineer]
+    role: [security-engineer, architect, appsec-engineer, vciso]
     phase: [design, review]
     activity: [review, design, assess]
-    frameworks: [OWASP-Agentic-Top-10-2025, NIST-AI-RMF]
+    frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
     difficulty: advanced
     time_estimate: "60-120min"
     file: skills/ai-security/agent-security.md
@@ -328,7 +328,7 @@ skills:
     role: [soc-analyst, security-engineer, vciso]
     phase: [respond, recover]
     activity: [investigate, remediate]
-    frameworks: [NIST-SP-800-61, SANS-IR]
+    frameworks: [NIST-SP-800-61r2, SANS-IH]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/incident-response/ir-playbook.md
@@ -352,7 +352,7 @@ skills:
     role: [soc-analyst, security-engineer]
     phase: [respond]
     activity: [remediate]
-    frameworks: [NIST-SP-800-61, MITRE-ATT&CK]
+    frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
     difficulty: intermediate
     time_estimate: "15-30min"
     file: skills/incident-response/containment.md
@@ -364,7 +364,7 @@ skills:
     role: [soc-analyst, security-engineer, vciso]
     phase: [recover]
     activity: [assess]
-    frameworks: [NIST-SP-800-61]
+    frameworks: [NIST-SP-800-61r2]
     difficulty: beginner
     time_estimate: "30-60min"
     file: skills/incident-response/post-incident-review.md
@@ -389,7 +389,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO-27001-2022]
+    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap.md
@@ -413,7 +413,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [HIPAA-Security-Rule]
+    frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
     difficulty: intermediate
     time_estimate: "60-120min"
     file: skills/compliance/hipaa-review.md
@@ -462,7 +462,7 @@ skills:
     role: [soc-analyst]
     phase: [operate, respond]
     activity: [triage, investigate]
-    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61]
+    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
     difficulty: beginner
     time_estimate: "10-20min per alert"
     file: skills/secops/alert-triage.md
@@ -487,7 +487,7 @@ skills:
     role: [security-engineer]
     phase: [operate]
     activity: [audit, review]
-    frameworks: [CIS-Controls-v8, NIST-SP-800-41]
+    frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/network/firewall-review.md
@@ -511,7 +511,7 @@ skills:
     role: [security-engineer]
     phase: [operate]
     activity: [review, audit]
-    frameworks: [NIST-SP-800-81, CIS-Controls-v8]
+    frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/network/dns-security.md
@@ -536,7 +536,7 @@ skills:
     role: [security-engineer, devsecops]
     phase: [build, operate]
     activity: [review, audit]
-    frameworks: [OWASP-Secrets-Management, NIST-SP-800-57]
+    frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/devsecops/secrets-management.md
@@ -548,7 +548,7 @@ skills:
     role: [security-engineer, appsec-engineer]
     phase: [build]
     activity: [configure, review]
-    frameworks: [OWASP-ASVS, CWE-Top-25]
+    frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/devsecops/sast-config.md
@@ -560,7 +560,7 @@ skills:
     role: [security-engineer, appsec-engineer]
     phase: [build, deploy]
     activity: [configure, test]
-    frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide]
+    frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/devsecops/dast-config.md

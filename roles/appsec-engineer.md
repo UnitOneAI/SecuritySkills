@@ -36,11 +36,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is about infrastructure security (e.g., "review our Kubernetes RBAC") or program-level maturity (e.g., "assess our overall security posture"), use the `security-engineer` or `vciso` role bundle instead. This bundle is for application-layer security work.
 
-**Skill availability note:** This bundle references skills across the full repository. Skills marked with (*) below are planned but may not yet be available. Check the `skills/` directory or `index.yaml` for current availability. The bundle is designed so you can skip unavailable skills and still get value from the ones that exist.
-
-Available now: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`.
-
-Planned: `api-security`*, `dependency-scanning`*, `owasp-top-10-web`*, `sast-config`*, `agent-security`*.
+**Skills:** All skills referenced in this bundle are available: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`, `api-security`, `dependency-scanning`, `owasp-top-10-web`, `sast-config`, `agent-security`.
 
 ---
 
@@ -270,15 +266,15 @@ ARCHITECTURE
 LLM TOP 10 ASSESSMENT
 
   LLM01 Prompt Injection: [Risk Level] — [Findings]
-  LLM02 Insecure Output Handling: [Risk Level] — [Findings]
-  LLM03 Training Data Poisoning: [Risk Level] — [Findings]
-  LLM04 Model Denial of Service: [Risk Level] — [Findings]
-  LLM05 Supply Chain Vulnerabilities: [Risk Level] — [Findings]
-  LLM06 Sensitive Information Disclosure: [Risk Level] — [Findings]
-  LLM07 Insecure Plugin Design: [Risk Level] — [Findings]
-  LLM08 Excessive Agency: [Risk Level] — [Findings]
-  LLM09 Overreliance: [Risk Level] — [Findings]
-  LLM10 Model Theft: [Risk Level] — [Findings]
+  LLM02 Sensitive Information Disclosure: [Risk Level] — [Findings]
+  LLM03 Supply Chain Vulnerabilities: [Risk Level] — [Findings]
+  LLM04 Data and Model Poisoning: [Risk Level] — [Findings]
+  LLM05 Improper Output Handling: [Risk Level] — [Findings]
+  LLM06 Excessive Agency: [Risk Level] — [Findings]
+  LLM07 System Prompt Leakage: [Risk Level] — [Findings]
+  LLM08 Vector and Embedding Weaknesses: [Risk Level] — [Findings]
+  LLM09 Misinformation: [Risk Level] — [Findings]
+  LLM10 Unbounded Consumption: [Risk Level] — [Findings]
 
 PROMPT INJECTION TEST RESULTS
   Direct Injection Tests: [count] conducted — [count] successful

@@ -36,11 +36,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is a program-level concern (e.g., "assess our overall security maturity"), use the `vciso` role bundle instead. This bundle is for hands-on engineering work.
 
-**Skill availability note:** This bundle references skills across the full repository. Skills marked with (*) below are planned but may not yet be available. Check the `skills/` directory or `index.yaml` for current availability. The bundle is designed so you can skip unavailable skills and still get value from the ones that exist.
-
-Available now: `secure-code-review`, `cve-triage`, `pipeline-security`, `iam-review`, `threat-modeling`.
-
-Planned: `dependency-scanning`*, `sast-config`*, `secrets-management`*, `container-security`*, `patch-prioritization`*, `scanner-tuning`*, `firewall-review`*.
+**Skills:** All skills referenced in this bundle are available: `secure-code-review`, `cve-triage`, `pipeline-security`, `iam-review`, `threat-modeling`, `dependency-scanning`, `sast-config`, `secrets-management`, `container-security`, `patch-prioritization`, `scanner-tuning`, `firewall-review`.
 
 ---
 

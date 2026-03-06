@@ -174,7 +174,7 @@ Use tags from the controlled vocabulary in `index.yaml`:
 
 - **Domains:** appsec, identity, cloud, network, secops, compliance, devsecops, vuln-management, incident-response, ai-security
 - **Activities:** review, design, audit, triage, investigate, remediate, monitor, assess, test, configure
-- **Phases:** design, build, deploy, operate, respond, recover
+- **Phases:** design, build, deploy, operate, respond, recover, assess, protect, detect, govern, review
 - **Difficulty:** beginner, intermediate, advanced
 
 ---
@@ -186,7 +186,7 @@ The `allowed-tools` field controls what tools the skill can use. Follow the prin
 - **Default:** `Read, Grep, Glob` -- sufficient for most review skills
 - **Add `WebFetch`** only if the skill needs to check external references (e.g., CISA KEV lookup)
 - **Never add `Bash` or `Write`** unless the skill strictly requires command execution or file creation
-- Over-permissioned skills are a supply chain risk (OWASP LLM08:2025)
+- Over-permissioned skills are a supply chain risk (OWASP LLM06:2025 — Excessive Agency)
 
 ---
 

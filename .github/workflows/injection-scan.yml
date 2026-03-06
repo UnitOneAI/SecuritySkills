@@ -3,12 +3,15 @@ name: Prompt Injection Scan
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   injection-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # pin to SHA for SLSA compliance in future iteration
 
       - name: Scan for prompt injection patterns
         run: |
@@ -31,7 +34,7 @@ jobs:
             MATCHES=$(grep -rin "$pattern" skills/ roles/ --include="*.md" 2>/dev/null || true)
             if [ -n "$MATCHES" ]; then
               # Exclude ai-security/ files (contain educational attack examples)
-              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/" || true)
+              FILTERED=$(echo "$MATCHES" | grep -v "ai-security/prompt-injection.md\|ai-security/llm-top-10.md\|ai-security/agentic-top-10.md\|ai-security/agent-security.md\|ai-security/model-supply-chain.md\|ai-security/ai-data-privacy.md" || true)
               if [ -n "$FILTERED" ]; then
                 echo "FOUND injection pattern \"$pattern\":"
                 echo "$FILTERED"
@@ -60,7 +63,7 @@ jobs:
             if [ -n "$MATCHES" ]; then
               # Exclude ai-security/ (educational) and lines with defensive context
               FILTERED=$(echo "$MATCHES" \
-                | grep -v "ai-security/" \
+                | grep -v "ai-security/prompt-injection.md\|ai-security/llm-top-10.md\|ai-security/agentic-top-10.md\|ai-security/agent-security.md\|ai-security/model-supply-chain.md\|ai-security/ai-data-privacy.md" \
                 | grep -v "treat it as" \
                 | grep -v "not a command" \
                 | grep -v "not as a directive" \

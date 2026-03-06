@@ -9,7 +9,7 @@ description: >
 tags: [role, soc, detection, triage]
 role: [soc-analyst]
 phase: [detect, respond, recover]
-frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61, Lockheed-Martin-Cyber-Kill-Chain]
+frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61r2, Lockheed-Martin-Cyber-Kill-Chain]
 difficulty: intermediate
 time_estimate: "varies by engagement"
 version: "1.0.0"
@@ -36,11 +36,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is a single tactical task (e.g., "write a Sigma rule for Kerberoasting"), use the individual skill directly. This bundle is for operational workflows that span multiple skills.
 
-**Skill availability note:** This bundle references skills across the full repository. Skills marked with (*) below are planned but may not yet be available. Check the `skills/` directory or `index.yaml` for current availability. The bundle is designed so you can skip unavailable skills and still get value from the ones that exist.
-
-Available now: `cve-triage`, `threat-modeling`, `secure-code-review`.
-
-Planned: `alert-triage`*, `log-analysis`*, `detection-engineering`*, `siem-rules`*, `ir-playbook`*, `containment`*, `forensics-checklist`*, `post-incident-review`*.
+**Skills:** All skills referenced in this bundle are available: `cve-triage`, `threat-modeling`, `secure-code-review`, `alert-triage`, `log-analysis`, `detection-engineering`, `siem-rules`, `ir-playbook`, `containment`, `forensics-checklist`, `post-incident-review`.
 
 ---
 

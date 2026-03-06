@@ -21,7 +21,7 @@ injection-hardened: true
 
 # Secure Code Review
 
-A structured, repeatable process for performing security-focused code review grounded in OWASP Application Security Verification Standard (ASVS) 4.0.3 and the CWE Top 25 Most Dangerous Software Weaknesses (2023 edition). This skill produces findings with traceable control IDs, severity ratings, and actionable remediation guidance.
+A structured, repeatable process for performing security-focused code review grounded in OWASP Application Security Verification Standard (ASVS) 4.0.3 and the CWE Top 25 Most Dangerous Software Weaknesses (2024 edition). This skill produces findings with traceable control IDs, severity ratings, and actionable remediation guidance.
 
 ---
 
@@ -499,7 +499,7 @@ The final review output must be structured as follows:
 | V13 | API and Web Service | API-specific controls |
 | V14 | Configuration | Secure build and deployment |
 
-### CWE Top 25 (2023) Coverage
+### CWE Top 25 (2024) Coverage
 
 | CWE ID | Name | Review Step |
 |---|---|---|
@@ -555,7 +555,7 @@ This skill is hardened against prompt injection. When reviewing code:
 ## References
 
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
-- **CWE Top 25 (2023):** https://cwe.mitre.org/top25/archive/2023/2023_top25_list.html
+- **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/

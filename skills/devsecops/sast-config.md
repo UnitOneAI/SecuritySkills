@@ -38,7 +38,7 @@ A structured, repeatable process for reviewing and tuning Static Application Sec
 
 ## Context
 
-SAST tools are only as effective as their configuration. Default rule sets produce high false positive rates that erode developer trust, while overly aggressive tuning creates dangerous blind spots. OWASP ASVS 4.0.3 provides 286 verification requirements across 14 chapters -- a subset of these are automatable via SAST. The CWE Top 25 (2023 edition) identifies the most prevalent and impactful weakness types. Effective SAST tuning maps rules to these frameworks, tunes severity to organizational risk context, and integrates into CI with clear pass/fail criteria that developers can act on.
+SAST tools are only as effective as their configuration. Default rule sets produce high false positive rates that erode developer trust, while overly aggressive tuning creates dangerous blind spots. OWASP ASVS 4.0.3 provides 286 verification requirements across 14 chapters -- a subset of these are automatable via SAST. The CWE Top 25 (2024 edition) identifies the most prevalent and impactful weakness types. Effective SAST tuning maps rules to these frameworks, tunes severity to organizational risk context, and integrates into CI with clear pass/fail criteria that developers can act on.
 
 ---
 
@@ -92,7 +92,7 @@ Categorize by:
 
 ### Step 2: Rule Coverage Analysis Against CWE Top 25
 
-Map the active SAST rule set against CWE Top 25 (2023) to identify coverage gaps.
+Map the active SAST rule set against CWE Top 25 (2024) to identify coverage gaps.
 
 #### 2.1 CWE Top 25 Coverage Matrix
 
@@ -504,7 +504,7 @@ jobs:
 | V12 | File and Resources | Moderate -- upload validation, path traversal |
 | V13 | API and Web Service | Partial -- mass assignment, SSRF patterns |
 
-### CWE Top 25 (2023)
+### CWE Top 25 (2024)
 
 | Rank | CWE | Name |
 |------|-----|------|
@@ -549,7 +549,7 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 ## References
 
 - OWASP ASVS 4.0.3: https://owasp.org/www-project-application-security-verification-standard/
-- CWE Top 25 (2023): https://cwe.mitre.org/top25/archive/2023/2023_top25_list.html
+- CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
 - Semgrep Registry: https://semgrep.dev/r

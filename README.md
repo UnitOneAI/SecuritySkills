@@ -188,6 +188,20 @@ Pre-configured skill sequences for common security roles. Each bundle orchestrat
 
 ---
 
+## Disclaimer
+
+These skills were built through extensive research against published security frameworks (OWASP, NIST, MITRE ATT&CK, CIS Controls) and reviewed by five specialized AI security agents:
+
+- **CISO Reviewer** — Strategic risk, compliance alignment, and program-level gaps
+- **Security Architect** — Framework accuracy, control ID verification, and design patterns
+- **Security Engineer** — Implementation correctness, tooling gaps, and operational feasibility
+- **AI Security Researcher** — LLM/agentic threat modeling, prompt injection hardening, and ATLAS coverage
+- **SOC Analyst** — Detection engineering, alert triage accuracy, and incident response workflows
+
+Despite this multi-layered review process, these skills may contain inaccuracies, outdated framework references, or gaps in coverage. **Validate all control IDs, framework versions, and remediation guidance against authoritative sources before using these skills in production security workflows.** Security frameworks evolve — always cross-reference with the latest published versions.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the quality bar, skill format specification, and PR checklist. Every skill must cite a real framework with verifiable control IDs.

@@ -6,16 +6,23 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   validate-index:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # pin to SHA for SLSA compliance in future iteration
 
       - name: Install yq
         run: |
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          YQ_VERSION="v4.44.1"
+          YQ_SHA256="4dc385a8fba4e8c234e0f5a7c2e55e16df4e542b39ce27e3b59b6e92e3c39e17"
+          wget -qO /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /tmp/yq" | sha256sum -c -
+          sudo mv /tmp/yq /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
       - name: Validate all indexed files exist

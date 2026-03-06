@@ -193,7 +193,7 @@ forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
 
 ### Step 4: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
 
-CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (RFC 7719) is the standard mechanism for DNS-based filtering on recursive resolvers.
+CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (Response Policy Zones, defined by ISC) is the standard mechanism for DNS-based filtering on recursive resolvers.
 
 #### 4.1 RPZ Configuration
 
@@ -402,7 +402,8 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
-- RFC 7719 -- DNS Terminology (RPZ): https://datatracker.ietf.org/doc/html/rfc7719
+- RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
+- ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
 
 ---

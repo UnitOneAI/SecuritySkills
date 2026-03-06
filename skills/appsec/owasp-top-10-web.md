@@ -428,7 +428,7 @@ rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarni
 **Mitigations:**
 
 - Implement rate limiting and account lockout on authentication endpoints.
-- Enforce minimum password length of 8 characters (NIST 800-63B recommends up to 64); check passwords against breached-password databases (e.g., HaveIBeenPwned API).
+- Enforce minimum password length of 12 characters (NIST 800-63B requires at least 8; OWASP ASVS V2.1.1 recommends at least 12); verifiers SHOULD permit at least 64; check passwords against breached-password databases (e.g., HaveIBeenPwned API).
 - Regenerate session IDs after login, privilege escalation, and re-authentication.
 - Set session cookies with `Secure`, `HttpOnly`, and `SameSite=Lax` (or `Strict`) attributes.
 - Implement multi-factor authentication for all users, mandatory for administrative accounts.

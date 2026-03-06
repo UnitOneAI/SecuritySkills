@@ -642,4 +642,4 @@ Glob: **/security_architecture*
 7. Greshake, K. et al. "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection" (2023) -- arXiv:2302.12173
 8. LangChain Arbitrary Code Execution -- CVE-2023-29374
 9. OWASP Application Security Verification Standard (ASVS), V14: Configuration -- https://owasp.org/www-project-application-security-verification-standard/
-10. Google DeepMind. "Scalable Agent Alignment via Reward Modeling" -- foundational work on agent alignment and oversight mechanisms
+10. Leike, J. et al. "Scalable Agent Alignment via Reward Modeling: a Research Direction" (2018) -- arXiv:1811.07871 -- foundational work on agent alignment and oversight mechanisms
