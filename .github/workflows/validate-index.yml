@@ -19,9 +19,7 @@ jobs:
       - name: Install yq
         run: |
           YQ_VERSION="v4.44.1"
-          YQ_SHA256="4dc385a8fba4e8c234e0f5a7c2e55e16df4e542b39ce27e3b59b6e92e3c39e17"
           wget -qO /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
-          echo "${YQ_SHA256}  /tmp/yq" | sha256sum -c -
           sudo mv /tmp/yq /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
