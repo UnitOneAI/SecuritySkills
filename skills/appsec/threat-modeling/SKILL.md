@@ -3,9 +3,10 @@ name: threat-modeling
 description: >
   Runs a structured STRIDE threat model on any system design, API specification,
   or codebase. Auto-invoked when the user discusses architecture, shares a system
-  diagram or design document, or asks "what could go wrong?" Produces a threat
-  register with STRIDE classification, data-flow diagram template, trust boundary
-  identification, and prioritized mitigations mapped to MITRE ATT&CK techniques.
+  diagram or design document, or asks "what could go wrong?" Produces threat actor
+  profiles, component-threat matrix, a threat register with STRIDE classification,
+  data-flow diagram template, trust boundary identification, and prioritized
+  mitigations mapped to MITRE ATT&CK techniques.
 tags: [appsec, design, architecture, threat-model]
 role: [security-engineer, architect, appsec-engineer, vciso]
 phase: [design, review]
@@ -78,7 +79,24 @@ Enumerate all assets that an adversary would target and all entry points through
 - CI/CD pipeline triggers
 - DNS and network edge (load balancers, CDN origins)
 
-### Step 2: Map Data Flows and Trust Boundaries
+### Step 2: Define Threat Actor Profiles
+
+Identify which threat actors are relevant to the system under review. Use the summary table below to scope the threat model; adjust likelihood ratings based on the actors most likely to target this system.
+
+| Actor Type | Capabilities | Motivation | Persistence | Primary STRIDE Targets | Example ATT&CK TTPs |
+|------------|-------------|------------|-------------|----------------------|---------------------|
+| Nation-State APT | Zero-days, supply chain, unlimited budget | Espionage, pre-positioning | Very High | S, I, E | T1195, T1556, T1071 |
+| Organized Cybercrime | RaaS, credential markets, exploit brokers | Financial gain | Medium | I, D, T | T1486, T1078, T1566 |
+| Malicious Insider | Legitimate creds, internal knowledge | Revenge, financial, coercion | Persistent (employed) | I, T, R | T1530, T1567, T1070 |
+| Hacktivist | DDoS tools, public exploits | Ideological, embarrassment | Low | D, T, I | T1498, T1491, T1190 |
+| Script Kiddie | Public exploits, scanners, defaults | Curiosity, bragging rights | Very Low | S, E, D | T1078, T1190, T1059 |
+| Supply Chain | Inherited trust, code-level access | Varies (state or financial) | High | T, E, I | T1195.001, T1195.002 |
+
+For each relevant actor, document: (1) why they would target this system, (2) their most likely attack path, and (3) which components are in their primary blast radius.
+
+> **Detailed profiles:** See [threat-actor-profiles.md](threat-actor-profiles.md) for expanded capabilities, modeling guidance, and full TTP mappings for each actor type.
+
+### Step 3: Map Data Flows and Trust Boundaries
 
 Construct a Data Flow Diagram (DFD) that captures processes, data stores, data flows, external entities, and trust boundaries.
 
@@ -131,13 +149,40 @@ Construct a Data Flow Diagram (DFD) that captures processes, data stores, data f
 +--------------------------------------------------------------------+
 ```
 
+**Implicit Trust Boundary Discovery Checklist:**
+
+Use this checklist to identify trust boundaries that are often missed:
+
+- [ ] **Inter-service boundaries** — Services owned by different teams or deployed from different repositories
+- [ ] **Container/pod boundaries** — Between containers in the same pod, between pods, between namespaces
+- [ ] **Network segment boundaries** — VPC, subnet, security group, and firewall rule boundaries
+- [ ] **Cloud account/subscription boundaries** — Cross-account access, shared services, peered VPCs
+- [ ] **CI/CD pipeline boundaries** — Between source control, build system, artifact registry, and deployment target
+- [ ] **Third-party SDK/library boundaries** — Between your code and vendor SDKs, open-source packages, or embedded interpreters
+
 For each data flow crossing a trust boundary, document:
 1. Source and destination components
 2. Protocol and transport security
 3. Authentication mechanism on the flow
 4. Data classification of the payload
 
-### Step 3: Apply STRIDE per Element
+**DFD Annotation Requirements:**
+
+Every data flow in the DFD must be annotated with the following properties:
+
+| Property | Values / Examples |
+|----------|------------------|
+| Protocol and version | TLS 1.3, HTTP/2, gRPC, AMQP 0-9-1, WebSocket over TLS |
+| Authentication mechanism | mTLS, JWT (RS256), API key, OAuth 2.0 client credentials, none |
+| Data classification | Public, Internal, Confidential, Restricted |
+| Encryption at rest | AES-256-GCM, envelope encryption (KMS), none |
+| Encryption in transit | TLS 1.3, WireGuard, none |
+| Key management | AWS KMS, HashiCorp Vault, application-managed, N/A |
+| Failure mode | Fail-closed (deny on error) or fail-open (allow on error) |
+
+Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
+
+### Step 4: Apply STRIDE per Element
 
 For every component and data flow identified in the DFD, systematically ask the following questions organized by STRIDE category.
 
@@ -213,7 +258,46 @@ Threat: An attacker gains access to resources or actions beyond their authorized
 | Can an attacker exploit deserialization or injection for code execution? | Remote code execution via insecure deserialization |
 | Are default credentials and unnecessary services removed? | Default admin/admin on management interfaces |
 
-### Step 4: Map Threats to MITRE ATT&CK Techniques
+### Step 5: Build Component-Threat Matrix
+
+Synthesize the STRIDE-per-element analysis into a heatmap-style matrix. For each component, rate the threat level (H=High, M=Medium, L=Low, N=None) per STRIDE category based on Step 4 findings, then derive an overall risk.
+
+| Component | S | T | R | I | D | E | Overall Risk |
+|-----------|---|---|---|---|---|---|-------------|
+| Auth Service | H | M | M | L | L | H | Critical |
+| API Gateway | H | M | L | M | H | M | High |
+| Database | L | H | L | H | M | M | High |
+| Object Storage | L | M | L | H | L | M | Medium |
+| Message Queue | L | M | L | M | M | L | Medium |
+
+**How to fill in:**
+1. For each component from the DFD, review every threat identified in Step 4.
+2. Assign H/M/L/N per STRIDE column based on the highest-severity threat in that category for that component.
+3. Derive Overall Risk: Critical if any H+H combination; High if 2+ H ratings; Medium if 1 H or 2+ M; Low otherwise.
+4. Use this matrix to prioritize which components need the deepest mitigation analysis.
+
+### Step 6: Map Threat Actors to Components
+
+Combine threat actor profiles (Step 2) with the component-threat matrix (Step 5) to produce a three-dimensional mapping showing which actors target which components via which threats.
+
+**Mapping Template:**
+
+| Actor | Capability Used | Target Component | STRIDE Threat | Likelihood Modifier | Resulting Risk |
+|-------|----------------|-----------------|---------------|-------------------|---------------|
+| Nation-State APT | Supply chain implant | CI/CD Pipeline | Tampering | +1 (high sophistication) | Critical |
+| Organized Cybercrime | Credential stuffing | Auth Service | Spoofing | +0 (standard capability) | High |
+| Malicious Insider | Legitimate DB access | Database | Info Disclosure | +1 (internal access) | Critical |
+| Hacktivist | DDoS toolkit | API Gateway | Denial of Service | +0 | High |
+| Supply Chain | Compromised package | Application Runtime | Elev. of Privilege | +1 (trusted context) | Critical |
+
+**Instructions:**
+1. For each relevant actor from Step 2, identify their most likely target components.
+2. Map the actor's capabilities to specific STRIDE threats on those components.
+3. Apply a likelihood modifier: +1 if the actor has special access or sophistication that increases likelihood beyond the base rating, +0 otherwise.
+4. Recalculate risk using the modified likelihood in the Step 8 risk matrix.
+5. Flag any component targeted by 3+ actor types as a high-value target requiring defense-in-depth.
+
+### Step 7: Map Threats to MITRE ATT&CK Techniques
 
 Map each identified threat to the corresponding MITRE ATT&CK Enterprise technique to enable standardized tracking and correlation with threat intelligence.
 
@@ -226,7 +310,7 @@ Map each identified threat to the corresponding MITRE ATT&CK Enterprise techniqu
 | **Denial of Service** | T1498 — Network Denial of Service, T1499 — Endpoint Denial of Service, T1499.003 — Application Exhaustion Flood, T1499.004 — Application or System Exploitation, T1489 — Service Stop |
 | **Elevation of Privilege** | T1068 — Exploitation for Privilege Escalation, T1548 — Abuse Elevation Control Mechanism, T1611 — Escape to Host, T1053 — Scheduled Task/Job, T1055 — Process Injection |
 
-### Step 5: Risk Rating
+### Step 8: Risk Rating
 
 Use a **Likelihood x Impact** matrix to assign a risk rating to each threat. This approach is aligned with OWASP Risk Rating Methodology.
 
@@ -274,7 +358,7 @@ Use a **Likelihood x Impact** matrix to assign a risk rating to each threat. Thi
 | Low | 1-2 | Accept with documented rationale or address in backlog |
 | Info | 1 | Document for awareness; no action required |
 
-### Step 6: Prioritize Mitigations
+### Step 9: Prioritize Mitigations
 
 Rank mitigations using the following prioritization criteria:
 
@@ -332,6 +416,20 @@ STRIDE is a threat classification model developed by Loren Kohnfelder and Praeri
 | Elevation of Privilege | Authorization | Gaining capabilities beyond those that were legitimately granted |
 
 STRIDE is typically applied "per element" — meaning each component in the data flow diagram is analyzed against all six categories. External entities are most susceptible to Spoofing and Repudiation; data flows to Tampering and Information Disclosure; data stores to Tampering, Information Disclosure, and Denial of Service; processes to all six categories.
+
+### PASTA (Process for Attack Simulation and Threat Analysis)
+
+PASTA is a 7-stage, risk-centric threat modeling methodology that complements STRIDE by adding business impact analysis and multi-stage attack simulation:
+
+1. **Define Objectives** — Align threat model scope with business goals and risk appetite.
+2. **Define Technical Scope** — Inventory technical components, dependencies, and infrastructure.
+3. **Application Decomposition** — Produce DFDs, trust boundaries, and entry points (overlaps with Steps 1 and 3 above).
+4. **Threat Analysis** — Identify threat actors and intelligence (aligns with Step 2 actor profiles above).
+5. **Vulnerability Analysis** — Map known CVEs and weakness patterns to components.
+6. **Attack Simulation** — Model multi-stage attack trees showing how an adversary chains vulnerabilities across components to reach an objective. This is PASTA's key addition over STRIDE — it models realistic attack paths rather than isolated per-element threats.
+7. **Risk and Impact Analysis** — Quantify business impact (revenue loss, regulatory fines, reputational damage) and prioritize residual risk.
+
+When running this skill, use STRIDE for systematic per-element threat identification (Step 4) and layer in PASTA stages 5-7 when the threat model requires attack chain simulation or business impact quantification beyond what the STRIDE risk matrix provides.
 
 ### MITRE ATT&CK Framework
 
