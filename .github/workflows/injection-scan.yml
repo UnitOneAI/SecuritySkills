@@ -26,6 +26,8 @@ jobs:
             "send to http"
             "curl -X POST"
             "api.telegram"
+            "discord.com/api/webhooks"
+            "hooks.slack.com/services"
           )
 
           FOUND_ISSUES=0

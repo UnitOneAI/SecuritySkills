@@ -8,5 +8,12 @@ Thumbs.db
 *.swp
 *.swo
 
+# Secrets and credentials
+*.secrets
+.env*
+*.credentials
+*.pem
+*.key
+
 # Plan file (internal reference, not published)
 skillsrepo.md
