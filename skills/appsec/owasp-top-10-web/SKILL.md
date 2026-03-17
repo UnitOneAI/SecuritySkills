@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -54,6 +54,20 @@ This skill operationalizes all ten categories into a repeatable, structured revi
 ### Step 2 — Category-by-Category Analysis
 
 Evaluate the codebase against each of the ten categories below. For every category, search for the listed detection patterns using `Grep` and `Read`, then record findings.
+
+**Precision Requirements — Reducing False Positives:**
+
+Before including any finding in the report, apply the following verification gate:
+
+1. **Confirmed code path required.** Only flag a vulnerability when you can identify the specific file path, line number, and the vulnerable code pattern. Do not report speculative or theoretical risks where no concrete vulnerable code exists.
+2. **Verify exploitability.** For each potential finding, confirm that the vulnerable pattern is actually reachable and exploitable — not dead code, commented-out code, test fixtures, or intentionally disabled features with compensating controls elsewhere.
+3. **Distinguish "potential risk" from "confirmed vulnerability."** A grep match on a detection pattern is not a finding by itself. Read the surrounding code context (at least 10-20 lines) to confirm the pattern represents an actual vulnerability. For example:
+   - A `Math.random()` call used for UI animation is NOT a cryptographic failure.
+   - An `innerHTML` assignment with a static string literal is NOT an XSS vulnerability.
+   - A `req.params.id` used with proper ORM methods and authorization middleware is NOT an IDOR.
+   - An `exec()` call on a hardcoded string with no user input is NOT command injection.
+4. **One finding per distinct vulnerability.** Do not report multiple findings for the same underlying vulnerability pattern appearing in related code paths. Consolidate variants (e.g., two SQL injection points in the same query builder) into a single finding with multiple locations noted.
+5. **Match findings to ground-truth severity.** Only report findings at severity levels proportional to actual exploitable impact. Infrastructure-level observations (missing headers, missing tooling, general architectural gaps) that lack a specific exploitable code path should be omitted or downgraded to Informational.
 
 ---
 
@@ -578,9 +592,19 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 
 ---
 
-### Step 3 — Findings Classification
+### Step 3 — Findings Verification and Classification
 
-Classify each finding using the following severity ratings:
+Before finalizing findings, apply this verification checklist to each candidate finding:
+
+- [ ] **File and line reference exists** — the finding cites a specific file path and line number.
+- [ ] **Vulnerable code is confirmed** — you used `Read` to examine the actual code and confirmed the vulnerable pattern (not just a grep match).
+- [ ] **User input reaches the sink** — for injection findings, you traced that user-controlled input flows into the vulnerable function without adequate sanitization.
+- [ ] **No compensating control** — you checked for middleware, wrappers, or framework-level protections that neutralize the vulnerability.
+- [ ] **Not a test or example** — the code is production code, not a test fixture, documentation example, or intentionally vulnerable training sample.
+
+**Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
+
+Classify each verified finding using the following severity ratings:
 
 | Severity | Criteria |
 |----------|----------|
