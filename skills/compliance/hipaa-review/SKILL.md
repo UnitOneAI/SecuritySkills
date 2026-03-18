@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -147,6 +147,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
   - Not updated after significant changes (new systems, incidents, organizational changes)
   - Treats risk analysis as one-time rather than ongoing process
   - **This is the #1 most cited HIPAA violation in OCR enforcement actions**
+  - Risk analysis does not account for nation-state threat actors deploying destructive/wiper malware against ePHI custodians. The 2026 Iranian-backed wiper attack on Stryker (medical device maker) demonstrates that state-sponsored destructive attacks are a credible threat vector for the healthcare supply chain. Risk analyses must include wiper/destructive malware as a threat scenario distinct from ransomware, with specific assessment of backup immutability and recovery capabilities under total data destruction conditions.
 
 **164.308(a)(1)(ii)(B) — Risk Management (R)**
 - Implement security measures sufficient to reduce risks and vulnerabilities to a reasonable and appropriate level
@@ -196,6 +197,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 **164.308(a)(5)(ii)(B) — Protection from Malicious Software (A)**
 - Procedures for guarding against, detecting, and reporting malicious software
+- Must now address destructive/wiper malware as a distinct threat category. Nation-state actors (Iranian, Russian, North Korean groups) are actively targeting healthcare and medtech organizations with wiper malware designed to destroy ePHI rather than encrypt it. Training should cover the distinction between ransomware (data encrypted, recovery possible via decryptor) and wiper malware (data destroyed, recovery only from immutable backups).
 
 **164.308(a)(5)(ii)(C) — Log-in Monitoring (A)**
 - Procedures for monitoring log-in attempts and reporting discrepancies
@@ -214,6 +216,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 **164.308(a)(7)(ii)(A) — Data Backup Plan (R)**
 - Establish and implement procedures to create and maintain retrievable exact copies of ePHI
+- In light of nation-state wiper threats targeting healthcare (e.g., 2026 Stryker attack), verify that backups include offline/immutable/air-gapped copies that cannot be destroyed by malware with domain admin access. Wiper malware routinely targets Volume Shadow Copies, backup agents, and NAS/SAN replication. The backup plan must ensure ePHI recoverability under a total destruction scenario.
 
 **164.308(a)(7)(ii)(B) — Disaster Recovery Plan (R)**
 - Establish and implement procedures to restore any loss of data
@@ -593,3 +596,6 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - NIST SP 800-66 Rev. 2 — Implementing the Health Insurance Portability and Accountability Act (HIPAA) Security Rule: A Cybersecurity Resource Guide (February 2024)
 - HHS OCR Breach Portal and Resolution Agreements archive
 - HITECH Act, Section 13401-13411 — Security provisions and enforcement
+- H-ISAC (Health Information Sharing and Analysis Center) — https://h-isac.org/
+- CISA Healthcare and Public Health Sector Guidance — https://www.cisa.gov/topics/critical-infrastructure-security-and-resilience/critical-infrastructure-sectors/healthcare-and-public-health-sector
+- KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026) — https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/

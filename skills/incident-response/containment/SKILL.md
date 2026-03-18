@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -175,6 +175,31 @@ Map observed attacker techniques to targeted containment actions. Each ATT&CK te
 | T1547 -- Boot or Logon Autostart Execution | Audit startup entries (Run keys, startup folders, systemd units); restrict write access to autostart locations |
 | T1505.003 -- Web Shell | Scan web-accessible directories for unauthorized files; deploy file integrity monitoring; restrict write permissions on web roots |
 | T1136 -- Create Account | Audit and disable unauthorized accounts; restrict account creation permissions; alert on new account creation |
+
+### Step 4b: Wiper / Destructive Malware Containment
+
+Wiper and destructive malware require a distinct containment approach from ransomware or standard malware. The goal shifts from "stop encryption and preserve data" to "stop destruction and protect remaining systems," since wiped data is irrecoverable.
+
+**Containment priorities (in order):**
+
+1. **Immediate network segmentation** -- Disconnect affected segments at the switch/router level. Wiper propagation via SMB (T1021.002), WMI (T1047), or Group Policy (T1484.001) must be severed before forensic triage.
+2. **Preemptive shutdown of unaffected systems** -- If the wiper propagation vector is unknown, power off systems that have not yet been hit. A wiper that has not triggered yet is stopped by a cold shutdown. This is the opposite of ransomware guidance (where you keep systems on for memory forensics).
+3. **Protect backup infrastructure** -- Verify offline/immutable/air-gapped backups are intact. Disconnect backup agents and NAS/SAN replication from the network. Wipers frequently target backup systems (Volume Shadow Copies, vCenter, backup catalogs).
+4. **Block propagation protocols** -- Emergency firewall rules to block SMB (445), WMI (135/5985/5986), RDP (3389), and PsExec/admin shares between all endpoints. Allow only from designated jump servers.
+5. **Disable compromised service accounts** -- Wiper deployment often uses compromised domain admin or service accounts. Disable all accounts showing anomalous activity; reset krbtgt if domain compromise is suspected.
+
+**ATT&CK techniques specific to wiper malware:**
+
+| ATT&CK Technique | Description | Containment Action |
+|---|---|---|
+| T1485 -- Data Destruction | Overwrite or delete data on local and remote drives | Isolate affected systems; power off systems not yet hit; verify backup integrity |
+| T1490 -- Inhibit System Recovery | Delete Volume Shadow Copies, disable Windows Recovery, destroy backup catalogs | Disconnect backup infrastructure from network; verify offline backup integrity |
+| T1561.001 -- Disk Wipe: MBR | Overwrite Master Boot Record to prevent boot | Power off unaffected systems; preserve one affected disk for forensics |
+| T1561.002 -- Disk Wipe: Content | Overwrite or corrupt file content across volumes | Network segmentation to prevent spread; emergency shutdown of at-risk systems |
+| T1047 -- WMI | Remote execution of wiper payload via WMI | Block WMI ports (135, 5985, 5986); disable WinRM on endpoints |
+| T1484.001 -- Domain Policy Modification: GPO | Deploy wiper via Group Policy push | Disconnect domain controllers from network if GPO deployment confirmed |
+
+**Key difference from ransomware containment:** Do not attempt to "monitor and observe" a wiper in progress. Every second of observation is data permanently destroyed. Aggressive, immediate containment is always the correct posture for confirmed wiper activity.
 
 ### Step 5: Containment Validation
 
@@ -347,3 +372,7 @@ This skill processes incident data including attacker-controlled indicators (IP 
 6. **SANS Incident Handler's Handbook** -- Containment Phase -- https://www.sans.org/white-papers/33901/
 7. **Microsoft Incident Response Containment Guidance** -- https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-compromised-malicious-app
 8. **NIST SP 800-83** -- Guide to Malware Incident Prevention and Handling for Desktops and Laptops -- https://csrc.nist.gov/publications/detail/sp/800-83/rev-1/final
+9. **MITRE ATT&CK -- Data Destruction (T1485)** -- https://attack.mitre.org/techniques/T1485/
+10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
+11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
+12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/

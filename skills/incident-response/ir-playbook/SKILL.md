@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -120,6 +120,7 @@ Classify the incident using the NIST SP 800-61 taxonomy:
 |-------------------|-------------|----------|
 | **Unauthorized Access** | Unauthorized logical access to systems, networks, or data | Compromised credentials, brute force success, privilege escalation |
 | **Malware** | Malicious code execution on organization systems | Ransomware, trojan, worm, cryptominer, rootkit |
+| **Destructive / Wiper** | Malware designed to destroy data or render systems inoperable, with no recovery mechanism (unlike ransomware) | Wiper malware, MBR overwrite, firmware destruction, partition table corruption |
 | **Data Exfiltration** | Unauthorized transfer of data outside the organization | Database dump to external host, email forwarding rule, cloud storage sync |
 | **Denial of Service** | Disruption of service availability | DDoS, application-layer flood, resource exhaustion |
 | **Insider Threat** | Malicious or negligent actions by authorized users | Data theft by employee, accidental exposure, policy violation |
@@ -229,6 +230,28 @@ START: Is the attack actively ongoing?
                           - Rebuild from known-good baseline
 ```
 
+#### Step 3.1b: Wiper / Destructive Malware Response Track
+
+Wiper malware destroys data irrecoverably (unlike ransomware which preserves encrypted data for ransom). This demands a fundamentally different response posture.
+
+**Immediate actions (first 30 minutes):**
+
+1. **Isolate aggressively** -- Disconnect affected segments at switch/firewall level. Wipers propagate via SMB, WMI, or GPO. Do not wait for forensic imaging.
+2. **Preemptively shut down unaffected systems** if propagation vector is unknown. A wiper that has not triggered is stopped by cold shutdown.
+3. **Verify backup integrity** -- Wipers target Volume Shadow Copies, backup agents, and NAS/SAN. Confirm offline/immutable backups exist before recovery planning.
+4. **Preserve one affected system** (powered off, disk intact) for forensics and attribution.
+
+**Key differences from ransomware:**
+
+| Factor | Ransomware | Wiper / Destructive |
+|--------|-----------|---------------------|
+| **Recovery** | Via decryption key | Only from immutable backups |
+| **Motivation** | Financial | Disruption, sabotage, geopolitical |
+| **Containment urgency** | High | Critical -- every second is permanent data loss |
+| **Attribution** | Lower priority (criminal) | Higher priority (often nation-state; FBI/CISA/ISAC engagement) |
+
+**Nation-state context:** State-sponsored actors (Iranian, Russian, North Korean) increasingly deploy wipers against healthcare and defense supply chains. The 2026 Stryker medtech wiper attack demonstrates ePHI custodians are active targets. IR teams must account for pre-positioned backdoors beyond the wiper payload, potential prior data exfiltration, and the need for FBI/CISA/H-ISAC notification.
+
 #### Step 3.2: Eradication
 
 After containment, remove the threat from the environment:
@@ -315,6 +338,7 @@ Escalate to the next tier when any of the following conditions are met:
 |---------|------------|-----------|
 | Confirmed data exfiltration involving PII/PHI | Legal counsel, Privacy Officer, Executive leadership | Immediately |
 | Ransomware with encryption of production systems | Executive leadership, External IR, Cyber insurance carrier, Law enforcement (FBI IC3) | Within 1 hour |
+| Wiper/destructive malware with active data destruction | Executive leadership, External IR, Cyber insurance, FBI IC3, CISA, Sector ISAC (e.g., H-ISAC for healthcare) | Immediately |
 | Active attacker with domain admin / root access | External IR firm, Executive leadership | Within 1 hour |
 | Incident duration exceeds 4 hours without containment | IR lead escalates to management for resource allocation | At 4-hour mark |
 | Evidence of supply chain compromise affecting customers | Legal, Customer communications, Executive leadership | Within 2 hours |
@@ -406,30 +430,11 @@ and recommended immediate actions. Lead with the most critical fact.]
 
 ### NIST SP 800-61 Rev 2 -- Computer Security Incident Handling Guide
 
-Published by the National Institute of Standards and Technology, SP 800-61 Revision 2 (August 2012) provides a structured approach to computer security incident handling. It defines a four-phase incident response lifecycle:
-
-1. **Preparation** -- Establishing the IR capability: policies, procedures, team structure, tools, training, and communication plans. This phase emphasizes that effective response depends on advance preparation, including regular exercises and pre-established relationships with law enforcement and external responders.
-
-2. **Detection and Analysis** -- Identifying and validating incidents through monitoring, alerting, and analysis. NIST defines incident categories, severity determination criteria (functional impact, information impact, recoverability), and emphasizes the importance of accurate incident documentation from the point of detection.
-
-3. **Containment, Eradication, and Recovery** -- Limiting the damage (containment), removing the threat (eradication), and restoring normal operations (recovery). NIST treats these as a single phase because they are iterative -- responders may cycle between containment and analysis as new information emerges.
-
-4. **Post-Incident Activity** -- Learning from the incident through structured review, identifying improvements to prevention and detection capabilities, and retaining evidence per organizational policy and legal requirements.
-
-Key principles: incident response is iterative (phases may repeat), documentation must be continuous from detection through closure, and coordination with external parties (law enforcement, CERT, sector ISACs) should follow pre-established protocols.
+NIST SP 800-61 Rev 2 (August 2012) defines a four-phase IR lifecycle: (1) Preparation, (2) Detection and Analysis, (3) Containment/Eradication/Recovery (iterative), and (4) Post-Incident Activity. Key principles: response is iterative, documentation is continuous from detection through closure, and coordination with external parties (law enforcement, CERT, sector ISACs) follows pre-established protocols.
 
 ### SANS Incident Handler's Handbook
 
-The SANS Institute's Incident Handler's Handbook provides a practitioner-focused six-step process:
-
-1. **Preparation** -- Building the IR team, defining policies, acquiring tools, conducting training and tabletop exercises.
-2. **Identification** -- Determining whether an event constitutes an incident through alert triage, log analysis, and IOC correlation.
-3. **Containment** -- Short-term containment (immediate threat isolation), long-term containment (applying temporary fixes while maintaining evidence), and system backup before remediation.
-4. **Eradication** -- Removing the root cause: malware removal, vulnerability patching, credential rotation, and hardening.
-5. **Recovery** -- Restoring systems to production, validating integrity, and implementing enhanced monitoring.
-6. **Lessons Learned** -- Conducting a post-mortem within two weeks, documenting findings, updating playbooks, and tracking remediation actions.
-
-The SANS model separates containment, eradication, and recovery into distinct steps, which provides clearer operational boundaries for practitioners. SANS also explicitly distinguishes short-term and long-term containment strategies.
+The SANS Incident Handler's Handbook provides a six-step process: (1) Preparation, (2) Identification, (3) Containment (short-term and long-term), (4) Eradication, (5) Recovery, (6) Lessons Learned. Unlike NIST, SANS separates containment, eradication, and recovery into distinct steps with clearer operational boundaries.
 
 ### MITRE ATT&CK -- Mapping Attacker Behavior
 
@@ -489,3 +494,6 @@ This skill processes incident data that may include attacker-controlled content 
 8. **SEC Cybersecurity Incident Disclosure (Item 1.05 Form 8-K)** -- https://www.sec.gov/rules/final/2023/33-11216.pdf
 9. **FBI Internet Crime Complaint Center (IC3)** -- https://www.ic3.gov/
 10. **FIRST CSIRT Framework** -- https://www.first.org/education/csirt
+11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
+12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
+13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
