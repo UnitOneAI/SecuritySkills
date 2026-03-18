@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -91,6 +91,40 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 
 ## Process
 
+### Tri-Layered Risk Assessment Lens (FASA Framework)
+
+When assessing agent architectures, evaluate risks across three interdependent layers derived from the FASA tri-layered risk taxonomy (ArXiv 2603.13151):
+
+| Layer | Scope | Example Risks |
+|---|---|---|
+| **AI Cognitive** | Risks arising from the model's reasoning, planning, and decision-making | Hallucinated tool arguments, goal drift, context amnesia across long sessions, confused-deputy behavior |
+| **Software Execution** | Risks in the runtime environment where agent actions are executed | Sequential tool attack chains, sandbox escapes, dependency exploits, cascading failure in long-horizon workflows |
+| **Information System** | Risks to the broader IT environment the agent operates within | Lateral movement, data exfiltration, credential theft, persistent access |
+
+Use this layered lens throughout Steps 1-7 to ensure findings are not clustered in a single layer while risks in other layers go unassessed.
+
+### Additional Threat Categories
+
+The following threat patterns warrant explicit attention during architecture review:
+
+- **Context amnesia:** In long-running or multi-session agent workflows, security-relevant context (active constraints, prior denied actions, accumulated risk) may be lost across context window boundaries or session resets. Verify that security state persists independently of the LLM context window.
+- **Sequential tool attack chains:** An attacker (or a manipulated agent) may chain individually benign tool calls into an attack sequence where the combined effect is harmful. Evaluate whether the system monitors tool call sequences, not just individual invocations.
+- **Confused-deputy behavior:** An agent with legitimate tool access is tricked -- typically via indirect prompt injection -- into performing unintended actions using its own authorized capabilities. The agent acts as a confused deputy: it has valid credentials and permissions, but an attacker directs its actions. This is distinct from privilege escalation; the agent never exceeds its permissions, yet causes harm within them.
+- **Cascading failure in long-horizon workflows:** Multi-step agent workflows (planning, research, execution sequences spanning minutes to hours) are vulnerable to error accumulation. An early-stage mistake or injection can compound through subsequent steps, producing increasingly harmful outcomes that are difficult to detect until the workflow completes.
+
+### Red-Team Validation Tooling
+
+For hands-on validation of agent permission boundaries and tool-use attack surface, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs mapped to OWASP Agentic AI threat categories, enabling practitioners to test architectural controls against concrete attack scenarios rather than theoretical threats alone.
+
+### Layered Defense Ordering
+
+For high-consequence agentic systems, apply defenses in the following order. Each layer catches failures that slip through the previous layer:
+
+1. **Input validation** -- Sanitize and validate all inputs reaching the agent (user input, retrieved content, inter-agent messages) before they enter the model context.
+2. **Model-level mitigations** -- Instruction hierarchy, system prompt hardening, and model-level safety training to resist manipulation.
+3. **Sandboxed execution** -- Run tool calls in isolated, resource-limited environments with minimal permissions.
+4. **Deterministic policy enforcement** -- For high-consequence actions (production deployments, financial transactions, data deletion), enforce hard-coded policy checks and HITL gates that cannot be overridden by model output, regardless of reasoning.
+
 ### Step 1 -- Agent Permission Model Review
 
 Evaluate what each agent can do, under what conditions, and whether the permission model follows least-privilege principles.
@@ -104,23 +138,7 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 - **Per-session vs. permanent tool access:** Is tool access scoped to a specific task or session, or does every invocation receive the same broad tool set regardless of the task?
 - **Cross-agent tool sharing:** Can one agent invoke another agent's tools? If so, through what authorization mechanism?
 
-**Detection methods using allowed tools:**
-
-```
-# Find agent and tool definitions
-Glob: **/*agent*.{py,ts,js,yaml,yml,json}
-Glob: **/tools/*.{py,ts,js}
-Glob: **/*tool*.{py,ts,js,yaml,yml,json}
-Grep: "register_tool|add_tool|tool_list|available_tools|function_map|tool_registry" in **/*.{py,ts,js}
-Grep: "Tool(|@tool|FunctionTool|StructuredTool|BaseTool" in **/*.{py,ts,js}
-
-# Find permission and credential configurations
-Grep: "service_account|iam|role_arn|credentials|api_key|secret|permission" in **/*.{py,yaml,yml,json,tf,env}
-Grep: "Action.*\*|Resource.*\*|admin|PowerUser|FullAccess" in **/*.{json,yaml,yml,tf}
-
-# Find tool scoping logic
-Grep: "scope|allow|deny|restrict|filter_tools|permitted_tools|enabled_tools" in **/*.{py,ts,js}
-```
+**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), and tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`).
 
 **Permission model evaluation matrix:**
 
@@ -162,28 +180,7 @@ Evaluate whether the agent architecture is designed from the ground up around le
 - **Resource limits:** Are CPU, memory, token budget, and execution time limits enforced at the infrastructure level?
 - **Capability escalation paths:** Can the agent request elevated permissions at runtime, modify its own configuration, or influence the orchestrator to grant it additional tools?
 
-**Detection methods using allowed tools:**
-
-```
-# Check for network restrictions
-Grep: "network_policy|egress|firewall|sandbox|allowed_hosts|url_whitelist|allowed_urls" in **/*.{py,yaml,yml,json,tf}
-Grep: "requests.get|requests.post|urllib|httpx|fetch|axios" in **/*agent*.{py,ts,js}
-
-# Check for file system restrictions
-Grep: "chroot|sandbox|allowed_paths|base_dir|restrict_path|working_dir" in **/*.{py,yaml,yml,json}
-Grep: "open(|write(|read(|os.path|pathlib|shutil" in **/*agent*.{py,ts,js}
-Grep: "os.listdir|os.walk|glob|Path(" in **/*agent*.{py,ts,js}
-
-# Check for environment access
-Grep: "os.environ|os.getenv|process.env|env_var" in **/*agent*.{py,ts,js}
-
-# Check for resource limits
-Grep: "max_tokens|token_budget|max_iterations|timeout|time_limit|max_steps|rate_limit" in **/*.{py,yaml,yml,json}
-Grep: "memory_limit|cpu_limit|resource_limit|ulimit" in **/*.{yaml,yml,json,tf,Dockerfile}
-
-# Check for self-modification capability
-Grep: "self.tools|self.config|self.system_prompt|modify_config|update_tools|set_permissions" in **/*.{py,ts,js}
-```
+**Detection methods:** Search for network restrictions (`network_policy`, `egress`, `allowed_hosts`), file system restrictions (`chroot`, `sandbox`, `allowed_paths`), environment access (`os.environ`, `process.env`), resource limits (`max_tokens`, `token_budget`, `timeout`, `memory_limit`), and self-modification patterns (`self.tools`, `self.config`, `modify_config`).
 
 **Least-privilege design checklist:**
 
@@ -224,27 +221,7 @@ Evaluate the design, placement, and robustness of human approval gates in the ag
 - **Approval fatigue management:** How many approval requests per session does a human reviewer face? Systems generating hundreds of low-context requests have effectively no human oversight.
 - **Fail-closed design:** If the approval service is unreachable, does the agent halt (fail-closed) or proceed without approval (fail-open)?
 
-**Detection methods using allowed tools:**
-
-```
-# Find approval gate implementations
-Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize|require_approval" in **/*.{py,ts,js}
-Grep: "approval_gate|confirmation_gate|human_review|manual_review" in **/*.{py,ts,js,yaml,yml}
-
-# Check for bypass paths
-Grep: "skip_approval|auto_approve|bypass|override|fallback|fail_open" in **/*.{py,ts,js,yaml,yml}
-Grep: "except|catch|timeout|unavailable|unreachable" in **/*approv*.{py,ts,js}
-Grep: "except|catch|timeout|unavailable|unreachable" in **/*confirm*.{py,ts,js}
-
-# Check for cumulative tracking
-Grep: "cumulative|aggregate|session_risk|total_risk|action_count|budget" in **/*.{py,ts,js}
-
-# Check what context is provided to approvers
-Grep: "approval_context|review_context|display|present|show_details" in **/*.{py,ts,js}
-
-# Find action classification (which actions need approval)
-Grep: "risk_level|action_type|destructive|irreversible|high_risk|write|delete|send|deploy" in **/*.{py,ts,js,yaml,yml}
-```
+**Detection methods:** Search for approval gates (`approve`, `human_in_the_loop`, `hitl`, `require_approval`), bypass paths (`skip_approval`, `auto_approve`, `fail_open`), cumulative tracking (`cumulative`, `session_risk`, `action_count`), and action classification (`risk_level`, `destructive`, `irreversible`, `high_risk`).
 
 **HITL gate design principles:**
 
@@ -286,28 +263,7 @@ Evaluate the architectural controls that limit the damage when an agent is compr
 - **Kill switch:** Can an agent be immediately terminated by an operator? Is there a mechanism to halt all agents simultaneously in an emergency?
 - **Rate and scope limiters:** Even within its permitted tool set, are there limits on how much an agent can do in a given time window (e.g., maximum 10 database writes per minute, maximum 5 emails per session)?
 
-**Detection methods using allowed tools:**
-
-```
-# Check for container/process isolation
-Glob: **/Dockerfile*
-Glob: **/docker-compose*.{yml,yaml}
-Glob: **/*.tf
-Grep: "container|sandbox|isolat|namespace|seccomp|apparmor|gvisor" in **/*.{yaml,yml,json,tf,Dockerfile}
-
-# Check for network segmentation
-Grep: "network_policy|NetworkPolicy|security_group|firewall_rule|egress|ingress" in **/*.{yaml,yml,json,tf}
-Grep: "169.254.169.254|metadata|IMDS|instance.metadata" in **/*.{py,ts,js,yaml,yml}
-
-# Check for kill switch / emergency stop
-Grep: "kill|stop|halt|emergency|shutdown|circuit_breaker|breaker" in **/*.{py,ts,js,yaml,yml}
-
-# Check for rate limiting on agent actions
-Grep: "rate_limit|throttle|max_per_minute|max_per_session|action_limit|cooldown" in **/*.{py,ts,js,yaml,yml}
-
-# Check for action reversibility
-Grep: "undo|rollback|revert|compensat|reverse|cancel" in **/*.{py,ts,js}
-```
+**Detection methods:** Search for isolation (`container`, `sandbox`, `seccomp`, `gvisor`), network segmentation (`network_policy`, `security_group`, `169.254.169.254`), kill switches (`emergency`, `circuit_breaker`, `shutdown`), rate limiting (`rate_limit`, `throttle`, `max_per_session`), and reversibility (`undo`, `rollback`, `compensat`).
 
 **Blast radius assessment framework:**
 
@@ -349,27 +305,7 @@ Evaluate whether the audit logging for agent actions is sufficient for incident 
 - **Log retention and access:** Are agent audit logs retained for the required compliance period? Are they accessible to security and compliance teams?
 - **Cross-agent correlation:** In multi-agent systems, can logs be correlated across agents to reconstruct the full action chain for a given workflow?
 
-**Detection methods using allowed tools:**
-
-```
-# Find logging implementations
-Grep: "log|logger|logging|audit|record|track|emit" in **/*agent*.{py,ts,js}
-Grep: "log|logger|logging|audit|record|track|emit" in **/*tool*.{py,ts,js}
-
-# Check what is logged per tool invocation
-Grep: "tool_name|tool_input|tool_output|tool_result|parameters|arguments" in **/*log*.{py,ts,js}
-Grep: "session_id|correlation_id|trace_id|request_id|agent_id" in **/*.{py,ts,js}
-
-# Check for log integrity
-Grep: "immutable|append_only|write_once|tamper|integrity|sign|hash" in **/*log*.{py,yaml,yml}
-
-# Check for decision/reasoning logging
-Grep: "reasoning|thought|chain_of_thought|decision|rationale|explanation" in **/*log*.{py,ts,js}
-
-# Check log pipeline configuration
-Glob: **/logging*.{yaml,yml,json,conf,ini}
-Grep: "siem|splunk|datadog|cloudwatch|elasticsearch|loki|fluentd" in **/*.{yaml,yml,json}
-```
+**Detection methods:** Search for logging implementations (`logger`, `audit`, `emit`), per-invocation fields (`tool_name`, `tool_input`, `correlation_id`, `trace_id`), log integrity (`immutable`, `append_only`, `tamper`), decision logging (`reasoning`, `chain_of_thought`, `rationale`), and SIEM integration (`splunk`, `datadog`, `cloudwatch`, `elasticsearch`).
 
 **Audit trail completeness checklist:**
 
@@ -647,3 +583,7 @@ Glob: **/security_architecture*
 8. LangChain Arbitrary Code Execution -- CVE-2023-29374
 9. OWASP Application Security Verification Standard (ASVS), V14: Configuration -- https://owasp.org/www-project-application-security-verification-standard/
 10. Leike, J. et al. "Scalable Agent Alignment via Reward Modeling: a Research Direction" (2018) -- arXiv:1811.07871 -- foundational work on agent alignment and oversight mechanisms
+11. FASA Tri-Layered Risk Taxonomy for AI Agent Systems (2026) -- arXiv:2603.13151
+12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
+13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
+14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground

@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -192,6 +192,16 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Is the system prompt structurally separated from user input (e.g., via the API's system message role) rather than concatenated in a single string?
 - Are retrieved documents and external content clearly demarcated as data, not instructions?
 
+### 5.7 Adaptive Attack Resilience
+
+> **Warning:** Static prompt injection defenses (hardcoded system prompts, simple keyword filtering) are demonstrably insufficient against adaptive attackers. PISmith (Yin et al. 2026) achieved highest attack success rates across 13 benchmarks using RL-optimized adaptive black-box attacks.
+
+- **Continuous red-team evaluation:** Prompt injection defenses must be evaluated continuously, not as a one-time test. Adaptive attackers iteratively refine their payloads against deployed defenses. Schedule recurring red-team assessments using automated adversarial tooling alongside manual expert testing.
+- **Agentic benchmark suites:** For applications where LLMs invoke tools or take autonomous actions, standard prompt injection benchmarks are insufficient. Use agentic-specific benchmark suites that test injection in the context of tool use and multi-step workflows:
+  - **InjecAgent** -- Tests indirect prompt injection in agentic settings where the LLM processes external content and has tool access.
+  - **AgentDojo** -- Evaluates agent robustness against injection attacks across diverse tool-use scenarios with realistic adversarial content.
+  - **fabraix/playground** (https://github.com/fabraix/playground) -- Open-source library of AI agent exploit PoCs that can serve as a test harness for validating direct and indirect injection defenses against published attack patterns.
+
 ---
 
 ## Step 6: Report Findings
@@ -274,3 +284,5 @@ Each finding should be assigned a severity based on potential impact:
 - Perez, F. & Ribeiro, I. (2022). "Ignore Previous Prompt: Attack Techniques For Language Models." arXiv:2211.09527.
 - Greshake, K. et al. (2023). "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection." arXiv:2302.12173.
 - Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
+- Yin, X. et al. "PISmith: RL-Optimized Adaptive Black-Box Prompt Injection Attacks" (2026) -- arXiv:2603.13026
+- fabraix/playground — Open-source AI agent exploit library for testing injection defenses — https://github.com/fabraix/playground

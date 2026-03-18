@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -430,6 +430,10 @@ Grep: "send_message|delegate|dispatch|publish|subscribe|queue" in **/*.{py,ts,js
 Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,js,yaml,yml}
 ```
 
+### Hands-On Assessment Tooling
+
+For practical validation of OWASP Agentic AI risks against concrete exploits, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs that can be used alongside the theoretical framework in Step 2 to test each AG01-AG10 category against real attack scenarios.
+
 ### Step 2 — Threat Assessment
 
 For each of the 10 categories, assess the system and assign a risk rating:
@@ -612,3 +616,4 @@ This skill is designed to be resilient against prompt injection. The following r
 8. OWASP Application Security Verification Standard (ASVS) — [owasp.org/www-project-application-security-verification-standard](https://owasp.org/www-project-application-security-verification-standard/)
 9. LangChain Arbitrary Code Execution — CVE-2023-29374
 10. NIST SP 800-53 Rev. 5, Security and Privacy Controls — [nist.gov](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)
+11. fabraix/playground — Open-source AI agent red-team exploit library with PoCs for OWASP Agentic AI Top 10 risks — https://github.com/fabraix/playground
