@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,6 +23,8 @@ argument-hint: "[target-file-or-directory]"
 ---
 
 # OWASP Top 10 for Agentic AI Applications — Security Review Skill
+
+> **Skill boundary:** This skill provides OWASP Agentic Top 10 framework compliance assessment. For deep architecture review of agent security patterns (permission models, blast radius, rollback), see the `agent-security` skill.
 
 ## Purpose
 
@@ -111,6 +113,18 @@ In 2023, researchers demonstrated that ChatGPT plugins (now deprecated in favor 
 
 **Threat:** An agent invokes a tool in a manner outside its intended design — passing unexpected parameters, chaining tool calls to achieve unintended effects, or using a benign tool as a stepping stone for malicious action. Unlike AG01, the agent may have legitimate access to the tool but uses it incorrectly.
 
+**Detection methods using allowed tools:**
+
+```
+# Find tools accepting free-form string inputs
+Grep: "execute.*sql|raw.*query|query.*str|exec.*command|subprocess.*arg" in **/*.{py,ts,js}
+Grep: "os\.system|subprocess\.run|subprocess\.call|child_process\.exec" in **/*.{py,ts,js}
+
+# Find tool output flowing back to agent without validation
+Grep: "tool_result|tool_output|function_result" in **/*.{py,ts,js}
+Grep: "return.*result|return.*output" in **/*tool*.{py,ts,js}
+```
+
 **What to Look For in Architecture and Code:**
 
 - Tool schemas that accept free-form string inputs without validation (e.g., a SQL query tool that passes agent-generated SQL directly to the database).
@@ -144,6 +158,18 @@ The 2024 Anthropic research paper on tool use showed that Claude, when given a c
 
 **Threat:** An agent obtains elevated permissions it was not originally granted, typically through prompt manipulation that causes it to request higher privileges, modify its own configuration, or exploit delegation mechanisms in multi-agent systems.
 
+**Detection methods using allowed tools:**
+
+```
+# Find self-modification capabilities
+Grep: "self\.tools|self\.system_prompt|self\.config|modify_config|update_tools|set_permissions" in **/*.{py,ts,js}
+Grep: "write.*config|update.*prompt|change.*role|elevate|escalat" in **/*.{py,ts,js}
+
+# Find delegation without verification
+Grep: "delegate|spawn_agent|create_agent|request.*agent|ask.*agent" in **/*.{py,ts,js}
+Grep: "trust|verify_sender|authenticate_agent|agent_identity" in **/*.{py,ts,js}
+```
+
 **What to Look For in Architecture and Code:**
 
 - Agents that can modify their own system prompt, tool list, or configuration at runtime.
@@ -175,6 +201,18 @@ In early 2024, researchers from UIUC demonstrated a multi-agent privilege escala
 ### AG04 — Memory Poisoning
 
 **Threat:** An attacker injects false, malicious, or manipulative content into an agent's persistent memory — vector stores, conversation history, scratchpads, or any state that persists across sessions. On subsequent invocations, the agent treats this poisoned memory as trusted context, altering its behavior.
+
+**Detection methods using allowed tools:**
+
+```
+# Find persistent memory stores
+Grep: "memory|persist|vector_store|conversation_history|long_term|scratchpad" in **/*agent*.{py,ts,js}
+Grep: "save_memory|store_memory|update_memory|add_memory|remember" in **/*.{py,ts,js}
+
+# Check for memory integrity controls
+Grep: "checksum|hash_chain|merkle|integrity|append_only|immutable" in **/*memory*.{py,ts,js}
+Grep: "validate_memory|verify_memory|trust_level|provenance" in **/*.{py,ts,js}
+```
 
 **What to Look For in Architecture and Code:**
 
@@ -208,6 +246,18 @@ In 2024, researchers demonstrated a persistent memory poisoning attack against a
 
 **Threat:** In multi-agent systems, agents trust messages, data, or instructions from other agents without verifying authenticity, authorization, or integrity. An attacker who compromises one agent can pivot to others by exploiting this implicit trust.
 
+**Detection methods using allowed tools:**
+
+```
+# Find inter-agent communication without authentication
+Grep: "send_message|dispatch|forward|route_to|agent_message" in **/*.{py,ts,js}
+Grep: "AutoGen|CrewAI|LangGraph|multi_agent|swarm|orchestrat" in **/*.{py,ts,js,yaml,yml}
+
+# Check for message signing/verification
+Grep: "sign|verify|jwt|hmac|authenticate|mutual_tls|mtls" in **/*agent*.{py,ts,js}
+Grep: "trust_model|trust_boundary|trust_zone|trust_level" in **/*.{py,yaml,yml,md}
+```
+
 **What to Look For in Architecture and Code:**
 
 - Multi-agent orchestration frameworks (AutoGen, CrewAI, LangGraph, custom systems) where inter-agent messages are plain text with no authentication envelope.
@@ -240,6 +290,18 @@ In the Greshake et al. (2023) paper "Not What You've Signed Up For" (arXiv:2302.
 
 **Threat:** An agent, through either direct compromise or indirect prompt injection, uses its legitimate tool access to transmit sensitive data to an attacker-controlled destination. The tool call itself may appear normal — the exfiltration hides in the parameters or the destination.
 
+**Detection methods using allowed tools:**
+
+```
+# Find tools with external communication capability
+Grep: "requests\.post|requests\.get|httpx|urllib|fetch|axios|webhook" in **/*tool*.{py,ts,js}
+Grep: "send_email|smtp|send_message|slack|webhook|notify" in **/*tool*.{py,ts,js}
+
+# Check for DLP or egress controls
+Grep: "dlp|data_loss|egress|whitelist|allowlist|allowed_domains|block_external" in **/*.{py,yaml,yml,json}
+Grep: "network_policy|NetworkPolicy|firewall|security_group" in **/*.{yaml,yml,tf}
+```
+
 **What to Look For in Architecture and Code:**
 
 - Agents with simultaneous access to sensitive data sources (databases, file systems, APIs) and external communication tools (web requests, email, Slack, webhooks).
@@ -271,6 +333,18 @@ In 2023, security researcher Johann Rehberger demonstrated that Bing Chat (now C
 ### AG07 — Cascading Failures
 
 **Threat:** In agent chains and multi-agent systems, an error, hallucination, or compromised output in one agent propagates through the pipeline, amplifying the failure at each stage. Unlike traditional software where errors are typically contained by exception handling, agentic failures propagate through natural language — they look like valid output.
+
+**Detection methods using allowed tools:**
+
+```
+# Find agent chains without validation checkpoints
+Grep: "chain|pipeline|pipe|sequential|step.*step|stage.*stage" in **/*agent*.{py,ts,js}
+Grep: "output.*input|result.*next|pass.*through|forward.*result" in **/*agent*.{py,ts,js}
+
+# Check for circuit breakers and validation
+Grep: "circuit_breaker|breaker|validate_output|check_output|confidence|threshold" in **/*.{py,ts,js}
+Grep: "rollback|compensat|undo|revert|idempotent" in **/*.{py,ts,js}
+```
 
 **What to Look For in Architecture and Code:**
 
@@ -305,6 +379,18 @@ In 2024, a financial services firm reported an incident (disclosed at a CISO rou
 
 **Threat:** An agent circumvents approval gates designed to keep a human in the decision loop for sensitive operations. This can occur through prompt manipulation, workflow exploitation, batching operations below approval thresholds, or exploiting race conditions in approval logic.
 
+**Detection methods using allowed tools:**
+
+```
+# Find approval gate implementations and potential bypasses
+Grep: "approve|confirm|human_in_the_loop|hitl|require_approval" in **/*.{py,ts,js}
+Grep: "skip_approval|auto_approve|bypass|override|fallback|fail_open" in **/*.{py,ts,js,yaml,yml}
+
+# Check for cumulative risk tracking
+Grep: "cumulative|aggregate|session_risk|total_risk|action_count|batch" in **/*.{py,ts,js}
+Grep: "threshold|risk_level|risk_score|approval_threshold" in **/*.{py,ts,js,yaml,yml}
+```
+
 **What to Look For in Architecture and Code:**
 
 - Approval gates implemented in application logic that the agent can influence (e.g., approval thresholds stored in a database the agent can write to).
@@ -337,6 +423,18 @@ In 2024, a red team exercise at a technology company (published in their securit
 ### AG09 — Resource Exhaustion
 
 **Threat:** An agent consumes unbounded compute, tokens, API calls, storage, or cost due to runaway loops, adversarial inputs designed to maximize resource consumption, or the absence of budget limits. This is both a denial-of-service vector and a financial risk.
+
+**Detection methods using allowed tools:**
+
+```
+# Check for token/cost budgets
+Grep: "token_budget|cost_limit|max_tokens|max_cost|spend_limit|budget" in **/*.{py,ts,js,yaml,yml}
+Grep: "max_iterations|max_steps|iteration_limit|max_depth|recursion_limit" in **/*.{py,ts,js}
+
+# Find runaway loop patterns
+Grep: "while True|while.*running|recursive.*agent|spawn.*agent" in **/*agent*.{py,ts,js}
+Grep: "retry|backoff|exponential|max_retries" in **/*.{py,ts,js}
+```
 
 **What to Look For in Architecture and Code:**
 
@@ -373,6 +471,18 @@ In multiple documented incidents throughout 2023-2024, developers using autonomo
 
 **Threat:** Agents operate without verifiable identity, share credentials across roles, or use long-lived static credentials that are not rotated. When an incident occurs, it is impossible to determine which agent performed which action, and compromised credentials provide persistent access.
 
+**Detection methods using allowed tools:**
+
+```
+# Find shared credentials
+Grep: "api_key|API_KEY|secret|credential|password|token" in **/*.{env,yaml,yml}
+Grep: "shared_key|shared_secret|common_token|default_credential" in **/*.{py,ts,js,yaml,yml}
+
+# Check for per-agent identity
+Grep: "agent_id|agent_identity|service_account|workload_identity|managed_identity" in **/*.{py,ts,js,yaml,yml}
+Grep: "credential_rotation|rotate|expire|ttl|short_lived|temporary" in **/*.{py,yaml,yml}
+```
+
 **What to Look For in Architecture and Code:**
 
 - Agents sharing a single service account or API key.
@@ -405,6 +515,8 @@ In a 2024 incident disclosed at Black Hat, a penetration tester compromised an e
 ---
 
 ## Assessment Process
+
+> **Parallelization:** AG01-AG05 and AG06-AG10 can be assessed in parallel. The first group covers permission and trust architecture; the second covers operational controls and identity. Each group's findings are independent.
 
 ### Step 1 — Scope and Inventory
 
@@ -452,6 +564,14 @@ For each finding, document:
 3. The evidence (file path, code snippet, configuration).
 4. The risk rating with justification.
 5. The recommended remediation with priority.
+
+---
+
+## Verification
+
+The following test validates that this skill is operating correctly:
+
+- **Test:** If a multi-agent system has agents communicating over a shared message queue with no message signing or sender verification, and the review produces no finding under AG05, the review has failed. Unsigned inter-agent communication is a Critical-severity trust boundary violation.
 
 ---
 
@@ -529,6 +649,9 @@ Structure the final report as follows:
 ---
 
 ## Framework Reference
+
+-> See `references/framework-mapping.md` for complete framework mapping tables.
+-> See `references/case-studies.md` for detailed case studies (PoisonGPT, Rehberger, UIUC CrewAI, LangChain CVE).
 
 This skill maps findings to three established frameworks:
 

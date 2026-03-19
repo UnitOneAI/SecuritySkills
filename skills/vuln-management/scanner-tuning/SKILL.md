@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -63,6 +63,11 @@ Before starting, collect or confirm:
 Systematically identify and classify false positives in scan results to establish tuning priorities.
 
 **Framework mapping:** CWE (MITRE) for vulnerability classification
+
+→ See [references/fp-patterns.md](references/fp-patterns.md) for the complete FP pattern table.
+→ See [references/auth-comparison.md](references/auth-comparison.md) for authenticated vs. unauthenticated scanning comparison.
+→ See [references/scheduling-matrix.md](references/scheduling-matrix.md) for the scan scheduling matrix.
+→ See [templates/fp-record.md](templates/fp-record.md), [templates/severity-override.md](templates/severity-override.md), and [templates/cross-scanner-correlation.md](templates/cross-scanner-correlation.md) for output templates.
 
 #### Common False Positive Patterns
 

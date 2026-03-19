@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -144,6 +144,9 @@ The final review output must be structured as follows:
 | API5:2023 | Broken Function Level Authorization | CWE-285 | Missing role/permission checks on operations |
 | API6:2023 | Unrestricted Access to Sensitive Business Flows | CWE-799, CWE-837 | Automated abuse of legitimate business logic |
 | API7:2023 | Server Side Request Forgery | CWE-918 | Fetching user-supplied URLs without validation |
+
+> **Cross-reference:** API7:2023 (SSRF) overlaps significantly with OWASP Top 10 Web A10:2021 (Server-Side Request Forgery). See [api-top10-checklist.md](api-top10-checklist.md) API7 section for API-specific SSRF patterns. For web application SSRF detection patterns and mitigations, see the owasp-top-10-web skill's A10 section.
+
 | API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, XXE |
 | API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, deprecated versions, missing documentation |
 | API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
@@ -214,6 +217,26 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+---
+
+## Verification
+
+### Expected Behavior
+
+A complete API security review should evaluate all ten API risk categories (API1-API10) and produce findings or explicit "clear" assessments for each.
+
+### Actual Behavior Check
+
+- Verify that all ten API risk categories appear in the output summary table.
+- Verify that each finding includes the OWASP API risk ID, CWE, API style, location, and remediation.
+- Verify that authorization checks (API1, API3, API5) are evaluated independently -- authentication alone is insufficient.
+
+### Falsifiable Test
+
+"If reviewing an API with no auth on /admin endpoints and no API2 finding, the review failed."
+
+An API that exposes administrative endpoints without any authentication mechanism is a direct API2:2023 (Broken Authentication) violation. A review that does not flag unauthenticated admin endpoints is incomplete and must be rerun.
 
 ---
 

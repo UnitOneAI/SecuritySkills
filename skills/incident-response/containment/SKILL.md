@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -134,6 +134,8 @@ Long-term containment allows the organization to maintain operations while keepi
 | **Backup system deployment** | Stand up clean replacement systems from known-good images to restore business functions while compromised systems remain isolated | Until compromised systems are eradicated and validated |
 | **DNS policy enforcement** | Implement DNS filtering to block known-malicious domains and restrict DNS to internal resolvers only | Permanent improvement |
 | **Egress filtering** | Restrict outbound network traffic to only approved destinations and protocols | Permanent improvement |
+
+→ See [references/attack-containment-mapping.md](references/attack-containment-mapping.md) for the complete ATT&CK technique-to-containment mapping tables.
 
 ### Step 4: ATT&CK Technique-Specific Containment
 

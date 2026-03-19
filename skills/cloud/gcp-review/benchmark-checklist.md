@@ -24,9 +24,49 @@ members.*gmail.com
 
 Check for org policies or Workspace settings enforcing MFA. Look for documentation of MFA enforcement.
 
+**Grep patterns:**
+
+```
+# Look for org policy constraints related to MFA
+google_organization_policy
+constraints/iam
+```
+
+**What to look for in Terraform:**
+
+```hcl
+# Org policy enforcing MFA (typically configured via Workspace admin, but
+# check for IaC-managed org policies referencing identity settings)
+resource "google_organization_policy" "mfa" {
+  org_id     = var.org_id
+  constraint = "constraints/iam.allowedPolicyMemberDomains"
+  list_policy {
+    allow {
+      values = [var.allowed_domain]  # Restricts to corporate domain
+    }
+  }
+}
+```
+
+**Note:** MFA enforcement is primarily a Google Workspace admin setting. In IaC, verify that IAM bindings only use corporate domain accounts (not `@gmail.com`), which indicates corporate identity with MFA is required. Mark as "Not Evaluable" if Workspace settings are not available.
+
 ### CIS 1.3 -- Ensure that Security Key Enforcement is Enabled for All Admin Accounts
 
 Verify that admin accounts require hardware security keys via Workspace admin settings.
+
+**Grep patterns:**
+
+```
+# Look for admin role bindings to verify admin accounts exist
+roles/owner
+roles/editor
+roles/iam.admin
+roles/resourcemanager.organizationAdmin
+google_organization_iam_member
+google_project_iam_member
+```
+
+**Note:** Security key enforcement is a Google Workspace admin setting and cannot be fully verified through IaC alone. When reviewing IaC, identify all accounts with admin-level roles and verify that organizational policy restricts these accounts to corporate identities where security key enforcement can be applied. Mark as "Not Evaluable" if Workspace settings are not available.
 
 ### CIS 1.4 -- Ensure that There Are Only GCP-Managed Service Account Keys for Each Service Account
 
@@ -75,6 +115,37 @@ These roles should be granted at the service account level, not project level.
 ### CIS 1.7 -- Ensure User-Managed/External Keys for Service Accounts Are Rotated Every 90 Days or Fewer
 
 Check for key rotation mechanisms or expiration policies on service account keys.
+
+**Grep patterns:**
+
+```
+# Look for service account key resources (each represents a user-managed key)
+google_service_account_key
+keepers
+rotation_days
+
+# Look for Cloud Scheduler or Cloud Function that rotates keys
+google_cloud_scheduler_job.*rotate
+google_cloudfunctions_function.*rotate.*key
+```
+
+**What to look for in Terraform:**
+
+```hcl
+# Check for key rotation via time_rotating resource
+resource "time_rotating" "sa_key_rotation" {
+  rotation_days = 90  # Must be <= 90 days
+}
+
+resource "google_service_account_key" "example" {
+  service_account_id = google_service_account.example.name
+  keepers = {
+    rotation_time = time_rotating.sa_key_rotation.rotation_rfc3339
+  }
+}
+```
+
+**Note:** If `google_service_account_key` resources exist without any rotation mechanism (no `keepers` tied to `time_rotating`, no external rotation automation), flag as High. The preferred remediation is to eliminate user-managed keys entirely (CIS 1.4) rather than rotating them.
 
 ### CIS 1.8 -- Ensure that Separation of Duties is Enforced While Assigning Service Account Related Roles to Users
 
@@ -572,6 +643,76 @@ resource "google_storage_bucket" {
 }
 ```
 
+### CIS 5.3 -- Ensure that Cloud Storage Buckets Have Versioning Enabled
+
+**Grep patterns:**
+
+```
+google_storage_bucket
+versioning
+enabled\s*=\s*true
+```
+
+**What to look for in Terraform:**
+
+```hcl
+resource "google_storage_bucket" "example" {
+  versioning {
+    enabled = true  # Must be true for buckets containing critical data
+  }
+}
+```
+
+**Note:** Versioning protects against accidental deletion and provides audit trail for object changes. Flag as Medium if versioning is disabled on buckets that store application data or logs.
+
+### CIS 5.4 -- Ensure that Cloud Storage Buckets Have Access Logging Enabled
+
+**Grep patterns:**
+
+```
+google_storage_bucket
+logging
+log_bucket
+log_object_prefix
+```
+
+**What to look for in Terraform:**
+
+```hcl
+resource "google_storage_bucket" "example" {
+  logging {
+    log_bucket        = google_storage_bucket.access_logs.name
+    log_object_prefix = "access-logs/"
+  }
+}
+```
+
+**Note:** Access logging provides visibility into who accesses bucket objects and when. Flag as Medium if logging is not configured on buckets containing sensitive data.
+
+### CIS 5.5 -- Ensure that Cloud Storage Buckets Have Retention Policies Configured
+
+**Grep patterns:**
+
+```
+google_storage_bucket
+retention_policy
+retention_period
+is_locked
+```
+
+**What to look for in Terraform:**
+
+```hcl
+resource "google_storage_bucket" "example" {
+  retention_policy {
+    retention_period = 2678400  # 31 days minimum for compliance
+    is_locked        = true     # Locks the retention policy (irreversible)
+  }
+}
+```
+
+**Note:** Retention policies prevent premature deletion of data required for compliance or audit. Flag as Medium for buckets storing log data or regulated data without retention policies. The `is_locked` setting is irreversible -- flag for awareness during remediation.
+
 ---
 
 ## Section 6 -- Cloud SQL
@@ -773,3 +914,7 @@ resource "google_bigquery_dataset" {
 ### CIS 7.3 -- Ensure that a Default Customer-Managed Encryption Key (CMEK) Is Specified for All BigQuery Datasets
 
 Verify `default_encryption_configuration` is set on all datasets.
+
+---
+
+> **Note:** Inline detection patterns have been consolidated in [references/gcp-detection-patterns.md](references/gcp-detection-patterns.md) for reuse across tooling.

@@ -1,0 +1,29 @@
+// Privileged Account Usage Outside Business Hours
+// ATT&CK: T1078.002 -- Valid Accounts: Domain Accounts
+let business_start = 7;
+let business_end = 19;
+let weekend_days = dynamic(["Saturday", "Sunday"]);
+let privileged_patterns = dynamic(["admin", "svc-", "sa-", "break-glass", "emergency"]);
+SigninLogs
+| where TimeGenerated > ago(24h)
+| where ResultType == 0
+| extend
+    HourOfDay = hourofday(TimeGenerated),
+    DayOfWeek = dayofweek(TimeGenerated),
+    DayName = case(
+        dayofweek(TimeGenerated) == 0d, "Sunday",
+        dayofweek(TimeGenerated) == 1d, "Monday",
+        dayofweek(TimeGenerated) == 2d, "Tuesday",
+        dayofweek(TimeGenerated) == 3d, "Wednesday",
+        dayofweek(TimeGenerated) == 4d, "Thursday",
+        dayofweek(TimeGenerated) == 5d, "Friday",
+        dayofweek(TimeGenerated) == 6d, "Saturday",
+        "Unknown")
+| where HourOfDay < business_start or HourOfDay >= business_end
+    or DayName in (weekend_days)
+| where UserPrincipalName has_any (privileged_patterns)
+| project
+    TimeGenerated, UserPrincipalName, HourOfDay, DayName,
+    IPAddress, AppDisplayName,
+    LocationDetails.city, LocationDetails.countryOrRegion,
+    ConditionalAccessStatus

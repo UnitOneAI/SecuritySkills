@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -120,6 +120,10 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | Azure Activity Log | Azure | Resource operations -- create, delete, modify at the control plane | Cloud Service (DS0025) |
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
+
+→ See [references/windows-event-ids.md](references/windows-event-ids.md) for the Windows Event ID reference tables.
+→ See [references/sysmon-events.md](references/sysmon-events.md) for the Sysmon Event ID reference.
+→ See [references/linux-auth-patterns.md](references/linux-auth-patterns.md) for Linux authentication log patterns.
 
 ### Step 2: Critical Windows Event IDs
 

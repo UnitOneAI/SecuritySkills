@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -475,6 +475,8 @@ Assess:
 ---
 
 ## Framework Reference
+
+→ See [references/hipaa-safeguards.md](references/hipaa-safeguards.md) for the HIPAA safeguards summary and OCR enforcement priorities.
 
 ### HIPAA Security Rule Structure (45 CFR Part 164, Subpart C)
 

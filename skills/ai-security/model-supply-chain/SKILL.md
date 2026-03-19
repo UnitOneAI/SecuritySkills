@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -118,6 +118,8 @@ Glob: **/model_config.json
 Glob: **/config.json
 ```
 
+-> See `references/case-studies.md` for detailed case studies including PoisonGPT, ShadowRay, and CoLoRA.
+
 **Real-world case -- PoisonGPT (Mithril Security, 2023):** Researchers at Mithril Security demonstrated that a model on Hugging Face Hub could be surgically modified to spread targeted misinformation while maintaining normal performance on standard benchmarks. They took GPT-J-6B, used the ROME (Rank-One Model Editing) technique to alter specific factual associations, and uploaded the modified model under a name resembling a legitimate organization. Users downloading the model by name would receive the poisoned version with no indication of tampering. The attack succeeded because Hugging Face Hub at the time did not enforce model signing, and most download code did not verify checksums against a trusted source. This demonstrated that model provenance verification is not optional -- it is the first line of defense against supply chain compromise.
 
 **What constitutes a finding:**
@@ -187,6 +189,8 @@ Assess the integrity and access controls of the fine-tuning pipeline from data i
 - Fine-tuning outputs (new weights, adapters) written to shared storage without signing or integrity protection.
 - CI/CD pipelines for model training that do not enforce code review on training configuration changes.
 
+-> See `references/slsa-levels.md` for the complete SLSA level mapping table.
+
 **SLSA v1.0 applicability:** SLSA (Supply-chain Levels for Software Artifacts) defines four levels of supply chain security for build processes. While originally designed for software, the same principles apply directly to model training pipelines:
 
 | SLSA Level | Model Training Equivalent | What to Check |
@@ -226,6 +230,14 @@ Glob: **/Jenkinsfile
 | No code review requirement on training configuration changes | Medium |
 | Training pipeline lacks reproducibility controls | Medium |
 | No experiment tracking or training audit trail | Medium |
+
+#### Composition-Aware Adapter Verification
+
+Individual LoRA/PEFT adapters may appear benign in isolation but compose to bypass safety alignment (CoLoRA attack, Ding 2026; arXiv:2603.12681). Single-module scanning is insufficient -- test adapter compositions before production deployment. When multiple adapters are merged or stacked:
+
+- Evaluate the merged model's safety alignment, not just each adapter independently.
+- Run behavioral differential tests comparing the composed model against the base model on safety-critical test sets.
+- Treat adapter composition as a distinct supply chain checkpoint requiring its own verification gate.
 
 ---
 
@@ -352,6 +364,17 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ---
 
+## Verification
+
+The following tests validate that this skill is operating correctly:
+
+- **Test 1:** If model loaded via `pickle.load()` with no Critical finding for unsafe deserialization, the review has failed. Pickle deserialization enables arbitrary code execution and must always be flagged as Critical severity.
+- **Test 2:** If a model is downloaded from Hugging Face Hub via `from_pretrained("org/model")` with no `revision=` parameter and no checksum verification, and the review produces no finding, the review has failed. Unpinned model downloads from public registries are at minimum a High severity finding.
+
+-> See `scripts/verify-model-provenance.sh` for a provenance verification script stub.
+
+---
+
 ## Findings Classification
 
 | Severity | Criteria | Response SLA |
@@ -456,3 +479,4 @@ Assess whether architectural and procedural controls exist to detect model backd
 - Hugging Face. "Safetensors: A Simple and Safe Serialization Format" -- https://huggingface.co/docs/safetensors
 - NIST AI Risk Management Framework 1.0 -- https://www.nist.gov/aiframework
 - Open Source Security Foundation (OpenSSF) -- https://openssf.org
+- Ding, Y. "CoLoRA: Composing LoRA Adapters to Bypass Safety Alignment" (2026) -- arXiv:2603.12681

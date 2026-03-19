@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -252,6 +252,8 @@ Restore systems to normal operations:
 6. **Update IOC blocklists** -- Ensure all identified IOCs remain blocked across perimeter and endpoint controls
 
 #### Step 3.4: Stakeholder Notification
+
+→ See [templates/comms-executive.md](templates/comms-executive.md), [templates/comms-legal.md](templates/comms-legal.md), and [templates/comms-regulatory.md](templates/comms-regulatory.md) for communication templates.
 
 Use the appropriate communication template based on the audience.
 

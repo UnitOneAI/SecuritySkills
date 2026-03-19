@@ -1,0 +1,7 @@
+# zap-rules.tsv
+# Rule ID	Action	Description
+10015	IGNORE	# Incomplete Cache-control -- accepted risk for public content
+10020	WARN	# X-Frame-Options -- downgrade to warning, CSP frame-ancestors in use
+40012	FAIL	# XSS Reflected -- must block
+40018	FAIL	# SQL Injection -- must block
+90020	FAIL	# OS Command Injection -- must block

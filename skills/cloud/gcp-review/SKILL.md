@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -88,8 +88,28 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Findings Verification Checklist
 
+Before finalizing findings, apply this checklist to each candidate finding:
+
+- [ ] **Resource exists in configuration** -- the finding references a specific resource block that exists in the IaC files reviewed.
+- [ ] **Misconfiguration confirmed via Read** -- you used `Read` to examine the actual resource configuration and confirmed the insecure setting is present (not just inferred from absence).
+- [ ] **No compensating control present** -- you checked for other resources or settings that neutralize the risk (e.g., a public GCS bucket behind an org policy enforcing `storage.publicAccessPrevention`, or a Cloud SQL instance with public IP but restricted `authorized_networks`).
+- [ ] **Severity matches actual risk** -- the severity rating reflects the real-world exploitability and impact, not just the CIS profile level.
+- [ ] **Not a secure default** -- the flagged attribute is not one that defaults to a secure value in the provider version in use.
+
+**Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
+
+---
+
+### File References
+
+- **Detection patterns:** GCP detection patterns have been extracted to [references/gcp-detection-patterns.md](references/gcp-detection-patterns.md).
+- **Benchmark checklist:** Full CIS control details are in [benchmark-checklist.md](benchmark-checklist.md).
+
+---
+
+### Step 9: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -225,4 +245,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Add findings verification checklist (backport from azure-review). Expand Storage section (CIS 5.x) with versioning, logging, and retention controls. Fill stub controls CIS 1.2, 1.3, 1.7. Extract detection patterns to `references/gcp-detection-patterns.md`.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.

@@ -1,0 +1,27 @@
+name: DAST Baseline
+on:
+  pull_request: {}
+
+jobs:
+  dast-baseline:
+    runs-on: ubuntu-latest
+    services:
+      app:
+        image: ${{ env.APP_IMAGE }}
+        ports:
+          - 8080:8080
+    steps:
+      - uses: actions/checkout@v4
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "http://app:8080"
+          rules_file_name: "zap-baseline-rules.tsv"
+          fail_action: "warn"            # Baseline: warn only
+          artifact_name: "zap-baseline"
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "report_sarif.json"

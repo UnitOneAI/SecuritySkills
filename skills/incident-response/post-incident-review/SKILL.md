@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -118,6 +118,9 @@ Build a comprehensive timeline of the incident from initial compromise through c
 ### Step 3: Root Cause Analysis
 
 Apply structured RCA techniques to identify underlying causes. Use at least one of the following methods.
+
+→ See [templates/five-whys.md](templates/five-whys.md) for the 5 Whys template.
+→ See [templates/fishbone-diagram.md](templates/fishbone-diagram.md) for the Fishbone (Ishikawa) diagram template.
 
 #### Method 1: 5 Whys
 

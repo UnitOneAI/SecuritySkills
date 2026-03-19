@@ -1,0 +1,59 @@
+rules:
+  - id: custom.auth.jwt-none-algorithm
+    patterns:
+      - pattern: |
+          jwt.encode($PAYLOAD, ..., algorithm="none")
+      - pattern: |
+          jwt.decode($TOKEN, ..., algorithms=["none", ...])
+    message: >
+      JWT with 'none' algorithm detected. This disables signature verification
+      and allows token forgery. Use RS256 or ES256.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      owasp:
+        - "A02:2021 - Cryptographic Failures"
+      asvs:
+        - "V6.2.1"
+      confidence: HIGH
+      impact: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/327.html
+
+  - id: custom.auth.hardcoded-admin-bypass
+    pattern: |
+      if $USER == "admin":
+          return True
+    message: >
+      Hardcoded admin bypass detected. Authentication decisions must use
+      proper identity verification, not string comparison against hardcoded values.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-798: Use of Hard-coded Credentials"
+      asvs:
+        - "V2.10.1"
+      confidence: HIGH
+
+  - id: custom.crypto.weak-random
+    patterns:
+      - pattern-either:
+          - pattern: random.random()
+          - pattern: random.randint(...)
+          - pattern: Math.random()
+      - pattern-not-inside: |
+          # nosemgrep: custom.crypto.weak-random
+          ...
+    message: >
+      Weak PRNG used in potentially security-sensitive context. Use
+      secrets.token_bytes() or crypto.getRandomValues() for security purposes.
+    languages: [python, javascript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-330: Use of Insufficiently Random Values"
+      asvs:
+        - "V6.3.1"

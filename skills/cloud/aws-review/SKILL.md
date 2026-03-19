@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -96,6 +96,44 @@ Record all discovered files. If no AWS configurations are found, report that fin
 Evaluate all AWS configurations against CIS AWS v3.0.0 Sections 1 through 5, covering Identity and Access Management, Storage, Logging, Monitoring, and Networking.
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, grep patterns, and configuration examples for all five sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
+
+---
+
+### Precision Requirements -- Reducing False Positives
+
+Before including any finding in the report, apply the following verification gate:
+
+1. **Confirmed misconfiguration with specific resource reference.** Only flag a finding when you can identify the specific resource block, file path, and line number where the misconfiguration exists. Do not report findings based on the absence of a resource type that was never intended to be in scope (e.g., do not flag "missing Access Analyzer" in a region where no resources are deployed).
+
+2. **Distinguish "best practice recommendation" from "security misconfiguration."** A best practice recommendation is an improvement that hardens posture but whose absence does not create an exploitable risk. A security misconfiguration is a setting that, as configured, creates a concrete exploitable attack path. Only report security misconfigurations as findings. Best practice gaps may be noted in an appendix or as Informational, never as High or Critical.
+   - Missing `mfa_delete` on an S3 bucket is a **best practice** (versioning and access controls still protect data).
+   - `publicly_accessible = true` on an RDS instance is a **security misconfiguration** (direct internet exposure of database).
+   - Missing Macie classification is a **best practice** unless the bucket stores regulated data.
+   - `cidr_blocks = ["0.0.0.0/0"]` on an SSH security group rule is a **security misconfiguration** (direct internet exposure of management ports).
+
+3. **Only flag findings where the default or configured value actually creates exploitable risk.** Many AWS resource attributes have secure defaults in recent provider versions. Before flagging a missing attribute:
+   - Check whether the AWS provider version in use defaults to a secure value (e.g., S3 buckets encrypt by default since January 2023).
+   - If the default is secure, do not flag the missing attribute. Only flag explicitly insecure values.
+
+4. **One finding per distinct misconfiguration.** Do not report multiple findings for the same underlying issue across related resources. Consolidate (e.g., if 5 security groups all have the same open SSH rule, that is one finding with multiple affected resources listed, not 5 findings).
+
+5. **Do not flag "Not Evaluable" items as failures.** If a CIS recommendation cannot be evaluated due to insufficient data (e.g., root account MFA not present in IaC), mark it as "Not Evaluable" -- never as "Fail." Only configurations that are present and insecure should be reported as failures.
+
+6. **Severity must match actual exploitable risk.** Assign severity based on the real-world attack impact of the specific misconfiguration, not on the CIS profile level. A Level 1 CIS recommendation may be Low severity if the misconfiguration has minimal exploitable impact in context.
+
+---
+
+### Findings Verification Checklist
+
+Before finalizing findings, apply this checklist to each candidate finding:
+
+- [ ] **Resource exists in configuration** -- the finding references a specific resource block that exists in the IaC files reviewed.
+- [ ] **Misconfiguration confirmed via Read** -- you used `Read` to examine the actual resource configuration and confirmed the insecure setting is present (not just inferred from absence).
+- [ ] **No compensating control present** -- you checked for other resources or settings that neutralize the risk (e.g., a public RDS instance behind a security group that only allows private CIDR ranges, or an S3 bucket with a public ACL overridden by a `aws_s3_bucket_public_access_block`).
+- [ ] **Severity matches actual risk** -- the severity rating reflects the real-world exploitability and impact, not just the CIS profile level.
+- [ ] **Not a secure default** -- the flagged attribute is not one that defaults to a secure value in the provider version in use.
+
+**Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
 
 ---
 
@@ -231,4 +269,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Add precision requirements and findings verification checklist to reduce false positives. Distinguish best practice recommendations from confirmed security misconfigurations. Require specific resource references, compensating control checks, and exploitability-based severity. Extract detection patterns to `references/aws-detection-patterns.md`.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).

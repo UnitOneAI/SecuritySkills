@@ -13,7 +13,7 @@ phase: [build, review]
 frameworks: [OWASP-IaC-Security, SLSA-v1.0, CIS-Benchmarks]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -96,8 +96,50 @@ Evaluate all IaC configurations across eight security domains: Hardcoded Secrets
 
 For detailed tool-specific rule sets, detection patterns, vulnerable code examples, and remediation guidance for Checkov, tfsec, and KICS equivalents across all eight domains, see [tool-rules.md](tool-rules.md) in this skill directory.
 
+> **Parallelization:** Secrets scan and encryption scan can run in parallel -- they examine independent attributes and do not depend on each other's results. Similarly, public exposure checks and network security checks can run concurrently.
+
 ---
 
+### Precision Requirements -- Reducing False Positives
+
+Before including any finding in the report, apply the following verification gate. This is critical: static IaC analysis is prone to high false positive rates. Every finding must pass these checks.
+
+1. **Require specific file:line reference for every finding.** Only flag a misconfiguration when you can cite the exact file path, line number, and resource block where the insecure configuration exists. Findings that reference a "missing resource" (e.g., "no `aws_s3_bucket_public_access_block` exists") are only valid if there is a corresponding resource that is demonstrably exposed without it.
+
+2. **Distinguish between default values that are insecure vs. intentional configurations.** Many cloud providers have changed defaults over time. Before flagging a missing attribute:
+   - Check the provider version constraints in the project (e.g., `required_providers` block).
+   - If the provider version defaults to a secure value for the missing attribute, do not flag it. Only flag explicitly insecure values that are set in the configuration.
+   - Example: AWS S3 buckets encrypt by default since January 2023. Do not flag missing `server_side_encryption_configuration` unless the provider version predates this change.
+   - Example: `enable_https_traffic_only` defaults to `true` in AzureRM 3.0+. Only flag `enable_https_traffic_only = false`.
+
+3. **Distinguish "security misconfiguration" from "best practice recommendation."** A security misconfiguration creates a concrete, exploitable attack path. A best practice recommendation improves defense-in-depth but its absence alone is not exploitable.
+   - `publicly_accessible = true` on an RDS instance is a **security misconfiguration**.
+   - Missing `versioning { enabled = true }` on an S3 bucket is a **best practice** (does not create an attack path).
+   - `image_tag_mutability = "MUTABLE"` on ECR is a **best practice** for supply chain hygiene, not a directly exploitable misconfiguration -- report as Low or Informational, not Medium/High.
+   - Missing CMEK on a compute disk where Google-managed encryption is active is a **best practice**, not a misconfiguration.
+
+4. **Consolidate duplicate findings for the same resource pattern.** If the same misconfiguration appears across multiple instances of the same resource type (e.g., 7 MSSQL servers with the same hardcoded password, or 9 RDS clusters without encryption), report it as ONE finding with all affected locations listed. Do not generate separate findings for each instance.
+
+5. **Consolidate cross-cloud duplicates of the same resource misconfiguration.** If the same logical finding (e.g., "SSL enforcement disabled on database server") appears in both the Azure and AWS sections, it may be reported separately per cloud, but each cloud finding must still pass all verification checks independently. Do not inflate finding counts by reporting the same issue at multiple abstraction levels (e.g., do not report both "MySQL SSL disabled" and "Encryption in transit missing on database" for the same resource).
+
+6. **Severity must reflect real-world exploitability.** Assign severity based on actual attack impact:
+   - **Critical/High:** The misconfiguration directly enables unauthorized access, data exposure, or credential compromise without requiring additional attack steps. Examples: hardcoded credentials, `0.0.0.0/0` on management ports, public database endpoints, wildcard IAM policies.
+   - **Medium:** The misconfiguration weakens a defense layer but requires additional conditions to exploit. Examples: missing logging, missing key rotation, unpinned provider versions.
+   - **Low/Informational:** Best practice deviations that improve posture but whose absence is not directly exploitable. Examples: missing versioning, mutable image tags, missing CMEK where provider encryption exists, dashboard enabled.
+
+---
+
+### Findings Verification Checklist
+
+Before finalizing findings, apply this checklist to each candidate finding:
+
+- [ ] **Resource block exists in configuration** -- the finding references a specific resource block that you confirmed exists in the IaC files (not a hypothetical or inferred resource).
+- [ ] **Misconfiguration is in the actual config, not inferred** -- you used `Read` to verify the insecure setting is explicitly present in the code, or confirmed via provider documentation that the absent attribute defaults to an insecure value for the provider version in use.
+- [ ] **No compensating control present** -- you checked for related resources that mitigate the risk (e.g., a public S3 bucket behind `aws_s3_bucket_public_access_block`, an open security group attached only to a private subnet, a database with public access but restricted by `security_ips`/firewall rules).
+- [ ] **Severity reflects real-world exploitability** -- Critical/High findings represent directly exploitable attack paths; best practice gaps are Low/Informational.
+- [ ] **Finding is not a duplicate** -- the same misconfiguration is not already reported in another finding covering the same resource or a consolidated multi-resource finding.
+
+**Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
 
 ---
 
@@ -203,7 +245,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ### Checkov / tfsec / KICS Rule Equivalents
 
-This skill applies checks equivalent to the following high-impact rules:
+This skill applies checks equivalent to the following high-impact rules (summary -- full mapping in [references/scanner-rule-mapping.md](references/scanner-rule-mapping.md)):
 
 | Tool | Rule | Description |
 |------|------|-------------|
@@ -218,6 +260,12 @@ This skill applies checks equivalent to the following high-impact rules:
 | tfsec | aws-vpc-no-public-ingress-sgr | No public SG ingress |
 | KICS | 3406e4d3 | S3 public ACL |
 | KICS | 5b4f3042 | Unrestricted security group |
+
+### File References
+
+- **Scanner rule mapping:** Full Checkov/tfsec/KICS rule mapping table extracted to [references/scanner-rule-mapping.md](references/scanner-rule-mapping.md).
+- **Secret detection patterns:** 25+ secret detection regex patterns extracted to [references/secret-patterns.md](references/secret-patterns.md).
+- **Tool rules:** Detection patterns, vulnerable code examples, and remediation guidance in [tool-rules.md](tool-rules.md).
 
 ---
 
@@ -265,4 +313,6 @@ This skill applies checks equivalent to the following high-impact rules:
 
 ## Changelog
 
+- **1.0.2** -- Extract scanner rule mapping to `references/scanner-rule-mapping.md` and secret detection patterns to `references/secret-patterns.md`. Add parallelization markers for concurrent scan domains. Add file reference pointers.
+- **1.0.1** -- Add precision requirements and findings verification checklist to reduce false positives. Require specific file:line references, distinguish secure defaults from misconfigurations, consolidate duplicate findings, and enforce exploitability-based severity ratings.
 - **1.0.0** -- Initial release. Coverage of eight security domains across Terraform, CloudFormation, Pulumi, and Bicep with Checkov/tfsec/KICS rule equivalents.

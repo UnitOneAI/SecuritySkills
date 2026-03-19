@@ -12,7 +12,7 @@ phase: [assess, operate]
 frameworks: [AICPA-TSC, NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -368,6 +368,14 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
 6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
 7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+
+## Common Pitfalls
+
+1. **Compensating control flagged as non-compliant (false positive).** A compensating control that meets the intent of a TSC criterion may be flagged as a gap if the assessor evaluates only against the literal control description rather than the objective. For example, an organization using a zero-trust network architecture instead of traditional VPN may satisfy CC6.6 but appear non-compliant if evaluated against a VPN-specific checklist. Always assess against the criterion's objective, not a prescriptive implementation pattern.
+
+2. **Shared responsibility model misattribution (false positive).** When using cloud service providers (AWS, Azure, GCP), controls that are the provider's responsibility may be flagged as organizational gaps. For example, physical security (CC6.4) is the cloud provider's responsibility for IaaS -- the organization's evidence is the provider's SOC 2 report, not their own badge system logs. Map each criterion to the shared responsibility model and verify evidence sources accordingly.
+
+---
 
 ## Prompt Injection Safety Notice
 

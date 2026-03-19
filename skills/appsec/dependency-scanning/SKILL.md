@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -42,24 +42,9 @@ This skill activates when any of the following are present:
 
 A Software Bill of Materials (SBOM) is a machine-readable inventory of every component in a software artifact, including direct and transitive dependencies, version identifiers, supplier information, and relationship data.
 
-### Recommended Formats
+### Recommended Formats and Generation Tools
 
-| Format | Specification | Best For |
-|---|---|---|
-| CycloneDX | [cyclonedx.org/specification](https://cyclonedx.org/specification/overview/) | Security-focused analysis, VEX integration, vulnerability tracking |
-| SPDX | [spdx.github.io/spdx-spec](https://spdx.github.io/spdx-spec/v2.3/) | License compliance, provenance, regulatory requirements (e.g., EO 14028) |
-
-### Generation Tools by Ecosystem
-
-| Ecosystem | Tool | Command |
-|---|---|---|
-| Node.js | `@cyclonedx/cyclonedx-npm` | `npx @cyclonedx/cyclonedx-npm --output-file sbom.json` |
-| Python | `cyclonedx-bom` | `cyclonedx-py requirements -i requirements.txt -o sbom.json` |
-| Go | `cyclonedx-gomod` | `cyclonedx-gomod mod -json -output sbom.json` |
-| Java/Maven | `cyclonedx-maven-plugin` | `mvn org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom` |
-| Rust | `cargo-cyclonedx` | `cargo cyclonedx --format json` |
-| Multi-ecosystem | `syft` (Anchore) | `syft dir:. -o cyclonedx-json > sbom.json` |
-| Multi-ecosystem | `trivy` (Aqua) | `trivy fs --format cyclonedx -o sbom.json .` |
+> **SBOM format comparison and per-ecosystem tool commands:** See [references/sbom-tools.md](references/sbom-tools.md) for CycloneDX/SPDX format details and generation commands for Node.js, Python, Go, Java, Rust, and multi-ecosystem tools.
 
 ### SLSA v1.0 Alignment
 
@@ -95,32 +80,7 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 
 ### Triage Framework
 
-Not all CVEs carry equal operational risk. Use a three-signal triage model to prioritize remediation:
-
-| Signal | Source | What It Measures | Action Threshold |
-|---|---|---|---|
-| **CVSS** | NVD / vendor advisory | Technical severity of the flaw | Critical (9.0-10.0) and High (7.0-8.9) warrant immediate review |
-| **EPSS** | [FIRST EPSS](https://www.first.org/epss/) | Probability of exploitation in the next 30 days | Score > 0.1 (10%) indicates elevated real-world risk |
-| **CISA KEV** | [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Confirmed active exploitation in the wild | Any match requires remediation within the CISA-mandated timeline |
-
-### Triage Decision Matrix
-
-| CVSS | EPSS | KEV Listed | Priority | Action |
-|---|---|---|---|---|
-| Critical/High | > 0.1 | Yes | P0 - Immediate | Patch or mitigate within 24-48 hours |
-| Critical/High | > 0.1 | No | P1 - Urgent | Patch within current sprint |
-| Critical/High | <= 0.1 | No | P2 - Scheduled | Patch in next release cycle |
-| Medium | > 0.1 | Yes | P1 - Urgent | Patch within current sprint |
-| Medium | <= 0.1 | No | P3 - Backlog | Track and remediate opportunistically |
-| Low | Any | No | P4 - Monitor | Document and revisit quarterly |
-
-### Enrichment Process
-
-1. Extract CVE identifiers from scanner output (e.g., `npm audit --json`, `pip-audit --format json`, `trivy fs --format json`).
-2. Query EPSS scores via `https://api.first.org/data/v1/epss?cve=CVE-XXXX-XXXXX`.
-3. Cross-reference against the CISA KEV catalog (available as JSON/CSV at `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`).
-4. Apply the decision matrix above to assign priority.
-5. Document each finding with CVE ID, affected package and version, CVSS score, EPSS score, KEV status, and recommended fix version.
+> **EPSS + CVSS + CISA KEV triage model, decision matrix, and enrichment process:** See [references/triage-matrix.md](references/triage-matrix.md) for the three-signal triage model, priority assignment matrix, and step-by-step enrichment process.
 
 ## License Compliance
 
@@ -151,72 +111,23 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 
 ## Typosquatting Detection
 
-### What Is Typosquatting
-
-Typosquatting (also called dependency confusion or combosquatting) is a supply chain attack where a malicious package is published with a name similar to a popular legitimate package, hoping developers will install it by mistake.
-
-### Common Patterns
-
-| Pattern | Legitimate | Typosquat Example |
-|---|---|---|
-| Character swap | `requests` | `reqeusts`, `requets` |
-| Hyphen/underscore confusion | `python-dateutil` | `python_dateutil` (may or may not be malicious; verify publisher) |
-| Scope/namespace omission | `@angular/core` | `angular-core` (unscoped) |
-| Prefix/suffix addition | `lodash` | `lodash-utils`, `lodash-js` |
-| Combosquatting | `colors` | `colors2`, `node-colors` |
-| Namespace confusion | Internal package `@company/auth` | Public `company-auth` on npm (dependency confusion) |
-
-### Detection Approach
-
-1. **Manifest review**: For each declared dependency, verify the package name against the canonical registry listing (npmjs.com, pypi.org, crates.io, pkg.go.dev).
-2. **Publisher verification**: Check that the package publisher/maintainer matches known trusted entities. Look for verified publisher badges where available.
-3. **Download count anomalies**: A package with a similar name to a popular one but very low download counts is suspicious.
-4. **Recency check**: Packages created very recently that shadow established package names warrant extra scrutiny.
-5. **Install script inspection**: In npm, review `preinstall`/`postinstall` scripts. Malicious typosquat packages frequently use install hooks to exfiltrate environment variables or credentials.
-
-### Mitigation
-
-- Use scoped packages where possible (`@org/package`).
-- Configure `.npmrc` or pip index settings to point to a private registry with an allow-list for public packages.
-- Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
-- Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
+> **Typosquatting patterns, detection approach, and mitigations:** See [references/typosquatting-patterns.md](references/typosquatting-patterns.md) for common typosquatting patterns, detection methodology, and mitigation strategies.
 
 ## Assessment Output Template
 
-When performing a dependency scan, produce findings in the following structure:
+When performing a dependency scan, produce findings using the structured report template.
 
-```
-## Dependency Scan Report
+> **Report template:** See [templates/scan-report.md](templates/scan-report.md) for the full output format including vulnerability findings, license findings, and supply chain risk indicators.
 
-**Project**: [name]
-**Manifest**: [file path]
-**Date**: [scan date]
-**Total Dependencies**: [direct] direct, [transitive] transitive
+## Gotchas
 
-### Vulnerability Findings
+1. **False positives from version range mismatches between lockfile and manifest.** A manifest may declare `^1.2.0` while the lockfile resolves to `1.2.3`. Scanners that check the manifest range against CVE-affected versions may flag vulnerabilities that the actually-resolved version is not affected by. Always verify findings against the lockfile-resolved version, not the manifest range.
 
-| # | CVE | Package | Version | Fixed In | CVSS | EPSS | KEV | Priority |
-|---|-----|---------|---------|----------|------|------|-----|----------|
-| 1 | ... | ...     | ...     | ...      | ...  | ...  | ... | ...      |
+2. **CVEs only affecting unused code paths.** A dependency may have a critical CVE, but if the vulnerable function is never called by your application, the operational risk is significantly lower. Use reachability analysis tools (e.g., `govulncheck` for Go, Snyk reachability) to distinguish exploitable vulnerabilities from theoretical ones before deprioritizing.
 
-### License Findings
+3. **Scanner disagreements (npm audit vs Snyk vs Trivy).** Different scanners use different vulnerability databases, version matching algorithms, and severity scoring. A CVE flagged as Critical by npm audit may appear as High in Snyk or may not appear in Trivy at all. When scanners disagree, check the NVD entry directly and apply the EPSS+CVSS+KEV triage model rather than relying on a single scanner's judgment.
 
-| # | Package | Version | License | Risk Level | Action Required |
-|---|---------|---------|---------|------------|-----------------|
-| 1 | ...     | ...     | ...     | ...        | ...             |
-
-### Supply Chain Risk Indicators
-
-- [ ] Typosquatting risk detected
-- [ ] Packages with no license
-- [ ] Packages with install scripts
-- [ ] Unmaintained packages (no release in 2+ years)
-- [ ] Dependency confusion risk (internal name collisions)
-
-### Recommendations
-
-1. [Prioritized list of remediation actions]
-```
+4. **EPSS score volatility.** EPSS scores are updated daily and can change significantly as new exploit intelligence emerges. A CVE with an EPSS of 0.02 today may jump to 0.5 tomorrow if a proof-of-concept exploit is published. Do not treat a single EPSS snapshot as a permanent risk assessment -- re-check EPSS scores during each triage cycle, especially for Critical and High CVSS vulnerabilities that were previously deprioritized due to low EPSS.
 
 ## Procedure
 
@@ -228,6 +139,27 @@ When performing a dependency scan, produce findings in the following structure:
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
 7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
 8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+
+## Verification
+
+### Expected Behavior
+
+A complete dependency scan should identify all manifests and lockfiles, enumerate direct and transitive dependencies, flag known CVEs with triage priority, assess license compliance, and check for typosquatting indicators.
+
+### Actual Behavior Check
+
+- Verify that all manifests and lockfiles in the project are identified and analyzed.
+- Verify that each vulnerability finding includes CVE ID, affected package, version, CVSS, EPSS, KEV status, and priority.
+- Verify that license findings flag copyleft and unlicensed packages.
+- Verify that the supply chain risk checklist is populated.
+
+### Falsifiable Test
+
+"If a project's lockfile pins a package version with a CISA KEV-listed CVE and no P0 finding is emitted, the scan failed."
+
+A dependency resolved to a version with a confirmed actively-exploited vulnerability (CISA KEV listed) must be flagged as P0 (Immediate) per the triage matrix. A scan that misses this is incomplete.
+
+---
 
 ## Prompt Injection Safety Notice
 

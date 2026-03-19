@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -144,23 +144,7 @@ RBAC-ASSESS-08: Authorization decisions not logged or auditable
 
 #### Recommended Hierarchy Pattern
 
-```
-Level 0 (Base):       employee-base
-                      ├── read-only-global
-                      └── self-service-portal
-
-Level 1 (Functional): developer          finance-analyst       hr-specialist
-                      ├── code-repos      ├── financial-reports  ├── hris-read
-                      ├── ci-cd-pipeline  ├── expense-approve    ├── personnel-records
-                      └── dev-infra       └── budget-view        └── benefits-admin
-
-Level 2 (Elevated):   senior-developer   finance-manager       hr-manager
-                      ├── prod-deploy     ├── journal-entries    ├── personnel-write
-                      └── secrets-read    └── audit-reports      └── compensation-view
-
-Level 3 (Admin):      platform-admin     finance-admin         hr-admin
-                      (JIT activation)   (JIT activation)      (JIT activation)
-```
+For the complete role hierarchy ASCII diagram and design principles, see [`templates/role-hierarchy.md`](templates/role-hierarchy.md).
 
 **What to look for in existing hierarchies:**
 
@@ -265,26 +249,7 @@ RBAC-BOUND-06: OAuth scopes overly broad — default tokens get maximum permissi
 
 #### ABAC Policy Structure (NIST SP 800-162 Section 3.2)
 
-```
-Policy := {
-  PolicyID:    unique identifier,
-  Description: human-readable purpose,
-  Target:      {resource_type, action_type},
-  Condition:   boolean expression over attributes,
-  Effect:      Permit | Deny,
-  Obligations: actions PEP must perform (logging, notification)
-}
-
-Example:
-PolicyID:    "finance-reports-department-match"
-Description: "Finance reports accessible only by members of the owning department"
-Target:      {resource_type: "financial-report", action: "read"}
-Condition:   subject.department == resource.owning_department
-             AND subject.clearance >= resource.sensitivity_level
-             AND environment.device_compliance == true
-Effect:      Permit
-Obligations: log_access(subject.id, resource.id, timestamp)
-```
+For the complete ABAC policy pseudocode structure, attribute categories, and functional architecture, see [`templates/abac-policy-template.md`](templates/abac-policy-template.md).
 
 **What to look for in existing ABAC implementations:**
 
@@ -403,27 +368,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 
 ## Framework Reference
 
-### NIST RBAC Standard — Key Definitions
-
-| Term | Definition (per ANSI INCITS 359-2012) |
-|---|---|
-| **User** | A human being or autonomous agent |
-| **Role** | A job function within the context of an organization with associated semantics regarding authority and responsibility |
-| **Permission** | An approval to perform an operation on one or more protected objects |
-| **Session** | A mapping of one user to potentially many roles |
-| **User Assignment (UA)** | Many-to-many mapping of users to roles |
-| **Permission Assignment (PA)** | Many-to-many mapping of permissions to roles |
-
-### NIST SP 800-162 — ABAC Planning Considerations (Section 5)
-
-| Consideration | Description |
-|---|---|
-| **Attribute Assurance** | Attributes must come from authoritative, trusted sources with integrity protections |
-| **Policy Completeness** | Policies must cover all access scenarios; implicit deny for unmatched requests |
-| **Attribute Granularity** | Attributes must be granular enough to express required policies without over-engineering |
-| **Performance** | PDP evaluation latency must meet application SLA requirements |
-| **Interoperability** | Standards-based attribute formats (XACML, ALFA, OPA/Rego, Cedar) for portability |
-| **Auditability** | All policy evaluations logged with input attributes and decision rationale |
+For detailed NIST RBAC model definitions (ANSI INCITS 359-2012) and NIST SP 800-162 ABAC planning considerations, see [`references/nist-rbac.md`](references/nist-rbac.md).
 
 ---
 
@@ -436,6 +381,25 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+
+---
+
+## Gotchas
+
+1. **Role mining that replicates existing privilege creep (FP).** Role mining algorithms cluster users by observed access patterns. If existing access includes privilege creep (accumulated permissions from prior job functions), the mined roles will encode that creep as "normal." Always validate mined roles against documented job function requirements, not just observed usage. Cross-reference with HR job descriptions and manager-approved access profiles.
+
+2. **DSoD enforcement blocking legitimate dual-role activation during incident response (precision trap).** Dynamic Separation of Duties (DSoD) constraints prevent activating conflicting roles in the same session. During incidents, an engineer may legitimately need both `developer` and `incident-commander` roles simultaneously. Design SoD exceptions for documented break-glass scenarios with post-incident review, rather than weakening DSoD rules globally.
+
+---
+
+## Verification
+
+**Falsifiable test:** If a role hierarchy exceeds 3 levels with no RBAC-HIER-02 finding raised, the review has failed.
+
+To verify review completeness:
+1. Count the maximum depth of the role hierarchy (inheritance chain)
+2. Any hierarchy with depth > 3 must have a corresponding RBAC-HIER-02 finding
+3. Confirm the hierarchy depth was measured from actual role definitions, not documentation only
 
 ---
 
@@ -481,4 +445,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-03-19 | Extract ABAC template, role hierarchy, and NIST references to templates/ and references/. Add Gotchas and Verification sections. |
 | 1.0.0 | 2025-03-06 | Initial release |

@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -239,6 +239,8 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ### Step 5: DNS Exfiltration and Tunneling Detection Patterns
 
+→ See [references/dns-exfiltration-patterns.md](references/dns-exfiltration-patterns.md) for tunneling tool signatures and exfiltration indicator thresholds.
+
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
 #### 5.1 Exfiltration Indicators
@@ -383,6 +385,8 @@ abcdef0123456789.dnscat.example.com TXT
 3. **Relying solely on domain reputation lists for exfiltration detection.** Attackers use attacker-controlled domains that are not yet categorized. Behavioral detection (entropy, volume, query type anomalies) catches novel exfiltration domains that reputation feeds miss.
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
+
+5. **CDNs and anti-malware update queries produce high-entropy subdomains that trigger DNS exfiltration detection false positives.** Content delivery networks (Akamai, Cloudflare, Fastly) and security product update mechanisms (CrowdStrike, Microsoft Defender) generate DNS queries with high-entropy subdomain labels that closely resemble DNS tunneling patterns. Whelist known CDN domains and security vendor update domains before alerting on entropy-based exfiltration indicators to avoid alert fatigue from legitimate traffic.
 
 ---
 

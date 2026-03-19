@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -95,17 +95,11 @@ Evaluate the SBOM against all seven NTIA "minimum elements for an SBOM" as defin
 
 **Framework mapping:** NTIA Minimum Elements for an SBOM (NTIA, July 2021)
 
-The seven NTIA minimum elements are:
+→ See [references/ntia-elements.md](references/ntia-elements.md) for the complete NTIA elements mapping with CycloneDX and SPDX field names.
+→ See [references/vex-justifications.md](references/vex-justifications.md) for VEX justification categories.
+→ See [references/license-compatibility.md](references/license-compatibility.md) for the license compatibility matrix.
 
-| # | NTIA Minimum Element | CycloneDX 1.5 Field | SPDX 2.3 Field | Required |
-|---|---|---|---|---|
-| 1 | **Supplier Name** | `component.supplier.name` or `component.publisher` | `Package: PackageSupplier` | Yes |
-| 2 | **Component Name** | `component.name` | `Package: PackageName` | Yes |
-| 3 | **Version of the Component** | `component.version` | `Package: PackageVersion` | Yes |
-| 4 | **Unique Identifier** | `component.bom-ref`, `component.cpe`, `component.purl` | `Package: SPDXID`, `Package: ExternalRef (purl)` | Yes |
-| 5 | **Dependency Relationship** | `dependencies[]` array with `dependsOn` | `Relationship: DEPENDS_ON`, `DEPENDENCY_OF` | Yes |
-| 6 | **Author of SBOM Data** | `metadata.authors[]` or `metadata.manufacture` | `CreationInfo: Creator` | Yes |
-| 7 | **Timestamp** | `metadata.timestamp` | `CreationInfo: Created` | Yes |
+The seven NTIA minimum elements are: Supplier Name, Component Name, Version, Unique Identifier, Dependency Relationship, Author of SBOM Data, and Timestamp.
 
 #### Completeness Scoring
 

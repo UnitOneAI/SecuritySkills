@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -155,6 +155,12 @@ ZT-ID-09: Federation trust not validated — implicit trust of partner IdPs
 ZT-ID-10: Session management lacks continuous evaluation (no CAE or equivalent)
 ```
 
+**Executable verification commands:**
+- Grep: `mfa|multi.factor|conditional.access|phishing.resistant` in IAM configs and IdP policy exports
+- AWS: `aws iam generate-credential-report` — check `mfa_active` column for `false` values
+- Azure: `az ad conditional-access policy list` — verify MFA enforcement policies exist
+- GCP: `gcloud organizations get-iam-policy [ORG_ID]` — check for 2SV enforcement constraint
+
 ---
 
 ### Step 2: Pillar 2 — Devices
@@ -188,6 +194,12 @@ ZT-DEV-08: IoT/OT devices not inventoried or segmented
 ZT-DEV-09: Device state changes do not trigger access re-evaluation
 ZT-DEV-10: Endpoint telemetry not fed into policy engine for risk scoring
 ```
+
+**Executable verification commands:**
+- Grep: `device.compliance|health.attestation|mdm|intune|jamf|workspace.one` in endpoint config and conditional access policies
+- Azure: `az ad conditional-access policy list` — check for `deviceComplianceRequired` grant controls
+- AWS: Check AWS Verified Access trust provider config for device posture integration
+- Grep: `edr|endpoint.detection|crowdstrike|sentinel.one|defender` in deployment configs to verify EDR coverage
 
 ---
 
@@ -223,6 +235,13 @@ ZT-NET-09: No NDR capability — lateral movement detection is blind spot
 ZT-NET-10: Microsegmentation policies not dynamically updated based on threat intelligence
 ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
 ```
+
+**Executable verification commands:**
+- Grep: `microsegment|network.policy|zero.trust|ztna|sdp` in network configs and firewall rules
+- Grep: `mtls|mutual.tls|service.mesh|istio|linkerd|cilium` in Kubernetes and service mesh configs
+- AWS: `aws ec2 describe-security-groups` — check for overly permissive `0.0.0.0/0` ingress rules
+- Azure: `az network nsg list` — verify microsegmentation NSG rules exist per workload
+- Grep: `telnet|ftp[^s]|ldap://` (without TLS) in config files to detect legacy protocol usage
 
 #### Microsegmentation Readiness Assessment
 
@@ -269,6 +288,12 @@ ZT-APP-09: Application-to-application communication not authenticated
 ZT-APP-10: Legacy applications with no path to zero trust integration
 ```
 
+**Executable verification commands:**
+- Grep: `oauth|saml|oidc|jwt|openid.connect` in application configs and API gateway settings
+- Grep: `waf|web.application.firewall|modsecurity|cloudflare|akamai` in infrastructure configs
+- Grep: `sbom|cyclonedx|spdx|sigstore|slsa|cosign` in CI/CD pipeline definitions
+- Grep: `rate.limit|throttl|api.gateway|kong|apigee|aws.apigateway` in API configurations
+
 ---
 
 ### Step 5: Pillar 5 — Data
@@ -302,6 +327,13 @@ ZT-DATA-08: Data residency and sovereignty requirements not enforced technically
 ZT-DATA-09: No data rights management — documents unprotected once shared
 ZT-DATA-10: Shadow data stores (unmanaged copies) not discovered or controlled
 ```
+
+**Executable verification commands:**
+- Grep: `encrypt|classification|dlp|sensitivity.label|data.protection` in data governance and storage configs
+- AWS: `aws s3api get-bucket-encryption --bucket [BUCKET]` — verify encryption at rest for S3 buckets
+- Azure: `az storage account show --name [ACCOUNT]` — check `encryption` settings
+- Grep: `byok|hyok|customer.managed.key|cmk|kms` in encryption configs to verify key management
+- Grep: `purview|macie|dlp|data.loss.prevention` in security tooling configs
 
 ---
 
@@ -413,23 +445,11 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ## Framework Reference
 
-### NIST SP 800-207 — Deployment Models
+Detailed framework reference tables have been extracted to dedicated files for reuse:
 
-| Model | Description | When to Use |
-|---|---|---|
-| **Device Agent / Gateway** | Agent on device communicates with gateway PEP before accessing resources | Enterprise-managed devices accessing on-prem and cloud |
-| **Enclave-Based** | Gateway protects a group of resources (enclave) | Legacy applications that cannot be individually proxied |
-| **Resource Portal** | Single portal PEP for all resource access | SaaS-heavy environments, ZTNA as front door |
-| **Device Application Sandboxing** | Sandboxed apps with built-in PEP | BYOD scenarios, container-based workspaces |
-
-### CISA ZTMM v2.0 — Maturity Stage Details
-
-| Stage | Identity | Devices | Networks | Apps & Workloads | Data |
-|---|---|---|---|---|---|
-| **Traditional** | Passwords, limited MFA | Partial inventory | Perimeter-centric | Network-based access | No classification |
-| **Initial** | MFA rollout, IdP consolidation | Automated inventory | Initial segmentation | App-aware access | Classification policy |
-| **Advanced** | Phishing-resistant MFA, continuous verification | Compliance-gated access | Microsegmentation | ZTNA for most apps | Automated classification + DLP |
-| **Optimal** | Adaptive, risk-based, continuous | Real-time posture assessment | Identity-aware microseg | Per-request authorization | Persistent protection |
+- **NIST SP 800-207 deployment models and ZTA logical architecture:** See [`references/nist-800-207.md`](references/nist-800-207.md)
+- **CISA ZTMM v2.0 maturity stage details (all five pillars):** See [`references/ztmm-maturity-criteria.md`](references/ztmm-maturity-criteria.md)
+- **Maturity scorecard template:** See [`templates/zt-scorecard.md`](templates/zt-scorecard.md)
 
 ---
 
@@ -442,6 +462,30 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+
+---
+
+## Parallelization
+
+All 5 pillars (Identity, Devices, Networks, Applications & Workloads, Data) plus the 3 cross-cutting capabilities (Visibility & Analytics, Automation & Orchestration, Governance) can be assessed in parallel. Each pillar assessment is independent and produces its own maturity rating. Cross-cutting capabilities should be evaluated after pillar assessments are complete to inform the overall maturity scorecard.
+
+---
+
+## Gotchas
+
+1. **Org claims Advanced identity maturity because MFA deployed but legacy auth bypass exists (FP in self-assessment).** An organization may self-assess at "Advanced" identity maturity because MFA is deployed for all users. However, legacy authentication protocols (IMAP, POP3, SMTP basic auth, Exchange ActiveSync, WS-Trust) may bypass MFA entirely, effectively creating an unauthenticated backdoor. Verify by checking Entra ID sign-in logs for "Legacy Authentication" client app types, or checking AWS CloudTrail for console logins without MFA. A legacy auth bypass downgrades identity maturity to "Initial" regardless of MFA deployment breadth.
+
+---
+
+## Verification
+
+**Falsifiable test:** To verify Advanced identity maturity, confirm MFA enrollment exceeds 95% of all user accounts AND no legacy authentication bypass paths exist.
+
+To verify review completeness:
+1. Calculate MFA enrollment percentage from IdP reports (Entra ID, Okta, etc.)
+2. If MFA enrollment < 95%, identity pillar cannot be rated above "Initial"
+3. Check for legacy auth bypass: Grep for `legacy.auth|basic.auth|imap|pop3|smtp.auth|activesync|ws-trust` in authentication logs
+4. If legacy auth bypass exists, identity pillar cannot be rated above "Initial" regardless of MFA deployment
 
 ---
 
@@ -487,4 +531,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-03-19 | Add executable verification commands per pillar. Extract ZTMM criteria and NIST 800-207 to references/. Extract scorecard to templates/. Add Gotchas, Verification, and Parallelization sections. |
 | 1.0.0 | 2025-03-06 | Initial release |
