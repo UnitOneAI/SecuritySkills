@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -144,14 +144,7 @@ PAM-INV-10: Third-party/vendor privileged access not inventoried
 
 #### PAM Capability Assessment Matrix
 
-| Capability | Not Present | Basic | Mature | Advanced |
-|---|---|---|---|---|
-| **Credential Vaulting** | Credentials in plaintext/spreadsheets | Vault deployed, partial onboarding | All privileged credentials vaulted | Auto-discovered, auto-onboarded, auto-rotated |
-| **Session Management** | No privileged session controls | Session proxy for some systems | Session proxy for all critical systems | Session recording + real-time monitoring + termination |
-| **JIT Access** | Standing privileges only | Manual request/approval process | Automated JIT with approval workflows | Risk-adaptive JIT with behavioral analytics |
-| **Password Rotation** | Manual or no rotation | Scheduled rotation (e.g., 90 days) | Automatic rotation after each use | Dynamic credentials (ephemeral, single-use) |
-| **Discovery** | Manual inventory | Periodic scan for privileged accounts | Continuous discovery and alerting | Auto-onboarding of discovered privileged accounts |
-| **Analytics** | No privileged activity analytics | Basic usage reports | Anomaly detection on privileged sessions | ML-driven behavioral analytics with automated response |
+For the complete PAM capability maturity matrix, credential management hierarchy, JIT maturity levels, and session recording capability matrix, see [`references/pam-capability-matrix.md`](references/pam-capability-matrix.md).
 
 **What to look for:**
 
@@ -285,15 +278,7 @@ PAM-REC-11: No automated alerting on high-risk commands during privileged sessio
 PAM-REC-12: Privileged database queries not recorded (data exfiltration blind spot)
 ```
 
-**Session recording capability matrix:**
-
-| Capability | Not Present | Basic | Mature | Advanced |
-|---|---|---|---|---|
-| **Protocol coverage** | None | SSH only | SSH + RDP + web | SSH + RDP + web + database + API |
-| **Recording type** | None | Metadata only (who, when, where) | Full session replay (video/text) | Full replay + indexed search + command extraction |
-| **Storage** | None | Local to PAM | Forwarded to secure storage | Immutable storage with integrity verification |
-| **Monitoring** | None | Post-hoc review | Near-real-time alerts on keywords | Real-time behavioral analytics with auto-termination |
-| **Retention** | None | < 90 days | 12 months | Policy-driven, aligned with regulatory requirements |
+**Session recording capability matrix:** See [`references/pam-capability-matrix.md`](references/pam-capability-matrix.md) for the full session recording maturity matrix (protocol coverage, recording type, storage, monitoring, retention).
 
 ---
 
@@ -321,15 +306,7 @@ PAM-VAULT-11: API keys and tokens with admin scope not rotated or vaulted
 PAM-VAULT-12: No secrets scanning in code repositories to detect credential leaks
 ```
 
-**Credential management hierarchy (prefer top):**
-
-| Tier | Method | Risk Level | Example |
-|---|---|---|---|
-| **Tier 1** | Ephemeral / dynamic credentials | Lowest | HashiCorp Vault dynamic secrets, AWS STS, Azure Managed Identity |
-| **Tier 2** | Vaulted with auto-rotation | Low | CyberArk CPM rotation, Vault lease-based secrets |
-| **Tier 3** | Vaulted with manual rotation | Medium | Vault with manual rotation schedule, Azure Key Vault |
-| **Tier 4** | Managed secrets without vault | High | AWS Secrets Manager without rotation, encrypted config files |
-| **Tier 5** | Plaintext / unmanaged | Critical | Environment variables, hardcoded in source, spreadsheets |
+**Credential management hierarchy:** See [`references/pam-capability-matrix.md`](references/pam-capability-matrix.md) for the full Tier 1-5 credential management hierarchy (prefer ephemeral/dynamic credentials at Tier 1).
 
 **Platform-specific vaulting patterns:**
 
@@ -460,6 +437,28 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 
 ---
 
+## Gotchas
+
+1. **Vault reports credential not rotated but rotation occurred via direct API (FP).** The PAM vault may flag a credential as stale (not rotated within the policy window), but the rotation was performed directly via the target system's API (e.g., `aws iam update-access-key`, Azure Key Vault auto-rotation, direct database `ALTER USER` command) without updating the vault's last-rotation timestamp. Before raising PAM-VAULT-05, verify rotation status against the target system's own audit logs, not just the vault's metadata.
+
+2. **CyberArk PSM bypass enabling unrecorded privileged sessions (exploit lesson).** In deployments where CyberArk Privileged Session Manager (PSM) is the session recording mechanism, administrators with direct network access to target hosts (e.g., via jump box, VPN, or physical access) can bypass PSM entirely, creating unrecorded privileged sessions. This is a PAM-TOOL-03 finding. Mitigation requires enforcing network-level controls that block all direct privileged access paths (SSH, RDP, console) and route them exclusively through PSM. Verify by attempting direct SSH/RDP to target hosts from admin workstations — if it succeeds without going through PAM, the control is bypassed.
+
+---
+
+## Verification
+
+**Falsifiable test:** If a break-glass account has no session recording configured and no PAM-SESS finding (PAM-REC-01 or PAM-REC-02) is raised, the review has failed.
+
+To verify review completeness:
+1. Identify all break-glass / emergency accounts from the privileged account inventory
+2. For each break-glass account, confirm session recording is configured and functional
+3. If any break-glass account lacks session recording, confirm PAM-REC-01 or PAM-REC-02 is raised
+4. Verify by testing: activate a break-glass account and confirm the session appears in recordings
+
+**Exception/risk acceptance template:** See [`templates/risk-acceptance.md`](templates/risk-acceptance.md) for the PAM exception documentation template.
+
+---
+
 ## Prompt Injection Safety Notice
 
 ```
@@ -502,4 +501,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-03-19 | Extract PAM capability matrix and credential hierarchy to references/. Extract risk acceptance template to templates/. Add Gotchas and Verification sections. |
 | 1.0.0 | 2025-03-06 | Initial release |

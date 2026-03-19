@@ -1,0 +1,40 @@
+{
+  "name": "@unitoneai/skills",
+  "version": "1.0.0",
+  "description": "45 security skills for AI coding agents — Claude Code, Gemini CLI, Cursor, Codex, and more",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "skills": "./bin/skills.mjs"
+  },
+  "files": [
+    "bin/",
+    "skills/",
+    "roles/",
+    "index.yaml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "security",
+    "claude-code",
+    "gemini-cli",
+    "cursor",
+    "codex",
+    "skills",
+    "appsec",
+    "devsecops",
+    "threat-modeling",
+    "vulnerability-management",
+    "ai-security"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UnitOneAI/SecuritySkills"
+  },
+  "homepage": "https://github.com/UnitOneAI/SecuritySkills#readme",
+  "author": "UnitOne AI",
+  "engines": {
+    "node": ">=18"
+  }
+}

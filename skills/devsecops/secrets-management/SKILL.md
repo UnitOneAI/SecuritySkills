@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -107,68 +107,17 @@ Use Glob and Grep to locate files that commonly contain or reference secrets.
 
 ### Step 2: Secret Detection Pattern Analysis
 
-Evaluate whether secret detection tooling is deployed and properly configured. The following regex patterns represent what detection tools (Gitleaks, TruffleHog, detect-secrets) should be configured to catch.
+Evaluate whether secret detection tooling is deployed and properly configured.
 
 #### 2.1 Detection Patterns by Secret Type (for tooling configuration only)
 
-**API Keys and Tokens:**
-
-```regex
-# AWS Access Key ID (starts with AKIA)
-(?:AKIA)[0-9A-Z]{16}
-
-# AWS Secret Access Key (40 chars, base64-like)
-(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
-
-# GitHub Personal Access Token
-(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
-
-# GitLab Personal Access Token
-glpat-[A-Za-z0-9\-_]{20,}
-
-# Slack Bot/User OAuth Token
-xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
-
-# Generic Bearer Token
-[Bb]earer\s+[A-Za-z0-9\-._~+/]+=*
-
-# Generic API Key pattern
-(?i)(?:api[_-]?key|apikey)\s*[=:]\s*['"][A-Za-z0-9]{20,}['"]
-```
-
-**Private Keys:**
-
-```regex
-# RSA/DSA/EC/OpenSSH Private Key Headers
------BEGIN\s(?:RSA|DSA|EC|OPENSSH)\sPRIVATE\sKEY-----
-
-# PGP Private Key
------BEGIN\sPGP\sPRIVATE\sKEY\sBLOCK-----
-```
-
-**Connection Strings and Passwords:**
-
-```regex
-# Database connection strings with embedded passwords
-(?i)(?:mysql|postgres|postgresql|mongodb|redis|amqp)://[^:]+:[^@]+@
-
-# Generic password assignment
-(?i)(?:password|passwd|pwd)\s*[=:]\s*['"][^'"]{8,}['"]
-
-# JWT tokens (three base64url segments separated by dots)
-eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*
-```
+-> See references/secret-detection-patterns.md for 15+ regex patterns covering API keys, tokens, private keys, connection strings, and passwords.
 
 #### 2.2 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
-| Tool | Configuration File | CI Integration |
-|------|-------------------|----------------|
-| **Gitleaks** | `.gitleaks.toml` | GitHub Actions, GitLab CI |
-| **TruffleHog** | Command-line or `.trufflehog.yml` | Pre-commit hook, CI |
-| **detect-secrets** | `.secrets.baseline` | Pre-commit hook, CI |
-| **git-secrets** | `.git/hooks/pre-commit` | Git hook |
+-> See references/detection-tools.md for tool comparison table and selection guidance.
 
 **What to verify:**
 
@@ -243,21 +192,7 @@ Verify that a centralized secrets manager is deployed:
 
 **Patterns to check in IaC:**
 
-```hcl
-# Terraform -- AWS Secrets Manager with rotation
-resource "aws_secretsmanager_secret_rotation" "example" {
-  secret_id           = aws_secretsmanager_secret.example.id
-  rotation_lambda_arn = aws_lambda_function.rotation.arn
-  rotation_rules {
-    automatically_after_days = 30    # NIST SP 800-57 cryptoperiod compliance
-  }
-}
-
-# Terraform -- Vault audit backend (must be enabled)
-resource "vault_audit" "syslog" {
-  type = "syslog"
-}
-```
+-> See templates/rotation-terraform.tf for Terraform examples of AWS Secrets Manager rotation and Vault audit backend configuration.
 
 **Finding classification:** No centralized secrets manager (secrets in config files or environment variables only) is **High**. Secrets manager deployed but audit logging disabled is **High**.
 
@@ -265,15 +200,7 @@ resource "vault_audit" "syslog" {
 
 #### 4.2 Rotation Automation (NIST SP 800-57, Section 5.3 -- Cryptoperiods)
 
-NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key type. For authentication secrets:
-
-| Secret Type | Recommended Max Cryptoperiod | Rotation Method |
-|-------------|------------------------------|-----------------|
-| Database credentials | 90 days | Vault dynamic secrets, Secrets Manager rotation Lambda |
-| API keys | 90 days | Provider API key rotation, dual-key rollover |
-| TLS certificates | 398 days (CA/B Forum max), 90 days preferred | ACME (Let's Encrypt), cert-manager |
-| SSH keys | 1 year | SSH CA with short-lived certificates preferred |
-| Service account keys | 90 days | Workload identity federation preferred (no keys) |
+-> See references/cryptoperiods.md for NIST SP 800-57 recommended cryptoperiods by secret type.
 
 **What to verify:**
 
@@ -317,22 +244,11 @@ For agentic systems (AI agents, automation bots, CI/CD agents), evaluate credent
   env:
     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-# Kubernetes -- GOOD: Vault Agent sidecar injection
-annotations:
-  vault.hashicorp.com/agent-inject: "true"
-  vault.hashicorp.com/role: "app-role"
-  vault.hashicorp.com/agent-inject-secret-db: "database/creds/app"
-
-# Kubernetes -- GOOD: External Secrets Operator
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: vault-backend
-    kind: SecretStore
 ```
+
+**Kubernetes Vault sidecar and External Secrets patterns:**
+
+-> See templates/vault-sidecar.yaml for Vault Agent sidecar injection and External Secrets Operator examples.
 
 **Finding classification:** Agents using long-lived static credentials is **High**. No JIT credential mechanism for automated systems is **Medium**. Token TTL exceeding 10x task duration is **Medium**.
 
@@ -418,7 +334,7 @@ spec:
 
 ---
 
-## Common Pitfalls
+## Gotchas
 
 1. **Rotating the secret but not redeploying all consumers.** Rotation is only effective if every system using the old secret is updated to use the new one. Implement dual-key validation (accept both old and new during rollover window) or use vault dynamic secrets that eliminate this problem entirely.
 
@@ -427,6 +343,27 @@ spec:
 3. **Using environment variables as the secrets "manager."** Environment variables are better than hardcoded secrets in source, but they are still stored in plaintext in process memory, visible in `/proc/PID/environ` on Linux, and logged by many frameworks on crash. A proper secrets manager (Vault, cloud-native) with sidecar injection or API-based retrieval is the target state.
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
+
+5. **Test fixtures with example keys triggering false positives.** Test files frequently contain example API keys, placeholder tokens, and mock credentials (e.g., `AKIAIOSFODNN7EXAMPLE` from AWS documentation, `sk_test_...` from Stripe). These are intentionally non-functional values used in test fixtures and documentation. Secret detection tools flag them because they match key format patterns. Remediation: add specific allowlist entries for documented example/test keys (e.g., AWS's published example key ID) with justification, rather than broadly excluding test directories. Excluding entire test directories creates blind spots for real secrets accidentally committed to test files.
+
+6. **Base64-encoded non-secrets matching JWT patterns.** The JWT detection pattern (`eyJ...`) matches any base64-encoded JSON object starting with `{"`. Configuration files, API response fixtures, and serialized data structures frequently contain base64-encoded JSON that is not a JWT token. This is especially common in Kubernetes manifests (where Secret values are base64-encoded) and test fixtures. Before classifying a JWT-pattern match as a finding, verify that the matched string has three dot-separated segments and that the header segment decodes to a JSON object containing `"alg"`.
+
+7. **High-entropy random strings matching secret key patterns.** UUIDs, content hashes (SHA-256 digests), random identifiers, and build artifact checksums are high-entropy strings that trigger entropy-based secret detection rules. These are not secrets but are flagged because they resemble cryptographic key material. Remediation: tune the entropy threshold in your detection tool (Gitleaks `entropy` config, detect-secrets `--base64-limit` / `--hex-limit`) and add path-based exclusions for files known to contain checksums (e.g., `*.lock`, `*.sum`, `CHECKSUMS`).
+
+---
+
+## Verification
+
+**Falsifiable test:** If a `.env` file contains `AWS_SECRET_ACCESS_KEY=AKIA...` and no Critical finding is produced, the review failed.
+
+To verify the skill produced correct output, check:
+
+1. Every `.env` file found in the repository (not in `.gitignore`) must generate a finding with severity High or Critical.
+2. If no secret detection tool is configured (no Gitleaks, TruffleHog, or detect-secrets config found), the report must contain a Critical finding.
+3. Any secret type with no rotation schedule and age exceeding 180 days must generate a High finding.
+4. Any hardcoded credential pattern match in source code (not in test fixtures with documented allowlist) must generate a Critical finding.
+
+If any of these conditions are violated, the assessment is incomplete.
 
 ---
 
@@ -457,4 +394,5 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.1.0** -- Extract secret detection patterns, cryptoperiods, detection tools, rotation Terraform, and vault sidecar YAML to references/ and templates/. Add gotchas for test fixture FPs, base64 JWT FPs, and high-entropy string FPs. Add Verification section.
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.

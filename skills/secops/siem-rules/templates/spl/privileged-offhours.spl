@@ -1,0 +1,25 @@
+`comment("Privileged Account Off-Hours Logon -- ATT&CK T1078.002")`
+`comment("Detects privileged account logins outside business hours")`
+index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624
+    (TargetUserName="admin*" OR TargetUserName="svc-*" OR TargetUserName="sa-*")
+| eval hour = strftime(_time, "%H")
+| eval day_of_week = strftime(_time, "%A")
+| where (hour < 7 OR hour >= 19)
+    OR (day_of_week="Saturday" OR day_of_week="Sunday")
+| stats
+    count as logon_count,
+    values(IpAddress) as source_ips,
+    values(WorkstationName) as workstations,
+    earliest(_time) as first_seen,
+    latest(_time) as last_seen
+    by TargetUserName, LogonType
+| eval first_seen = strftime(first_seen, "%Y-%m-%d %H:%M:%S")
+| eval last_seen = strftime(last_seen, "%Y-%m-%d %H:%M:%S")
+| eval logon_type_desc = case(
+    LogonType=2, "Interactive", LogonType=3, "Network",
+    LogonType=4, "Batch", LogonType=5, "Service",
+    LogonType=7, "Unlock", LogonType=8, "NetworkCleartext",
+    LogonType=9, "NewCredentials", LogonType=10, "RemoteInteractive",
+    LogonType=11, "CachedInteractive", true(), "Unknown")
+| sort - logon_count
+| table TargetUserName, logon_type_desc, logon_count, source_ips, workstations, first_seen, last_seen

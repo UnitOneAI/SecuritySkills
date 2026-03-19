@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -70,6 +70,9 @@ Before beginning evidence collection, gather or confirm:
 ### Step 1: Establish Chain of Custody
 
 Before touching any evidence, initialize the chain-of-custody record. Every transfer, access, or modification of evidence must be documented.
+
+→ See [templates/chain-of-custody.md](templates/chain-of-custody.md) for the chain-of-custody form template.
+→ See [references/cloud-forensics-commands.md](references/cloud-forensics-commands.md) for cloud forensics commands (AWS, Azure, GCP).
 
 **Chain of Custody Form:**
 

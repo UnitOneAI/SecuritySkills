@@ -1,0 +1,21 @@
+name: DAST Full Scan
+on:
+  push:
+    branches: [main]              # After merge to main, scan staging
+  schedule:
+    - cron: '0 2 * * 1'          # Weekly full scan
+
+jobs:
+  dast-full:
+    runs-on: ubuntu-latest
+    environment: staging           # Requires environment approval
+    steps:
+      - uses: actions/checkout@v4
+      - name: ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.10.0
+        with:
+          target: "https://staging.example.com"
+          rules_file_name: "zap-full-rules.tsv"
+          cmd_options: >
+            -config automation.plan=/zap/af-plan.yaml
+          fail_action: "error"     # Full scan: fail on high findings

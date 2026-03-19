@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.2.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -99,18 +99,7 @@ Map the active SAST rule set against CWE Top 25 (2024) to identify coverage gaps
 
 #### 2.1 CWE Top 25 Coverage Matrix
 
-| Rank | CWE ID | Weakness | SAST Detectable | Semgrep Registry | CodeQL Coverage |
-|------|--------|----------|-----------------|-----------------|-----------------|
-| 1 | CWE-787 | Out-of-bounds Write | Partial (C/C++) | Limited | `cpp/overflow-buffer` |
-| 2 | CWE-79 | Cross-site Scripting (XSS) | Yes | `javascript.browser.security.*.xss` | `js/xss`, `js/reflected-xss` |
-| 3 | CWE-89 | SQL Injection | Yes | `python.django.security.injection.sql.*`, `java.lang.security.audit.sqli.*` | `java/sql-injection`, `python/sql-injection` |
-| 4 | CWE-416 | Use After Free | Partial (C/C++) | Limited | `cpp/use-after-free` |
-| 5 | CWE-78 | OS Command Injection | Yes | `python.lang.security.audit.dangerous-subprocess-use.*` | `python/command-injection`, `java/command-injection` |
-| 6 | CWE-20 | Improper Input Validation | Partial | Pattern-dependent | Pattern-dependent |
-| 7 | CWE-125 | Out-of-bounds Read | Partial (C/C++) | Limited | `cpp/out-of-bounds-read` |
-| 8 | CWE-22 | Path Traversal | Yes | `python.lang.security.audit.path-traversal.*` | `python/path-injection`, `java/path-injection` |
-| 9 | CWE-352 | CSRF | Partial | Framework-specific | `java/csrf`, `python/csrf` |
-| 10 | CWE-434 | Unrestricted Upload | Partial | Framework-specific | Pattern-dependent |
+-> See references/cwe-coverage-matrix.md
 
 For each CWE, verify:
 - At least one active rule covers the weakness for each language in the codebase.
@@ -155,69 +144,7 @@ node_modules/
 
 #### 3.2 Custom Semgrep Rule Authoring (YAML format)
 
-Custom rules should follow Semgrep's rule schema. Example of a well-authored custom rule:
-
-```yaml
-rules:
-  - id: custom.auth.jwt-none-algorithm
-    patterns:
-      - pattern: |
-          jwt.encode($PAYLOAD, ..., algorithm="none")
-      - pattern: |
-          jwt.decode($TOKEN, ..., algorithms=["none", ...])
-    message: >
-      JWT with 'none' algorithm detected. This disables signature verification
-      and allows token forgery. Use RS256 or ES256.
-    languages: [python]
-    severity: ERROR
-    metadata:
-      cwe:
-        - "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
-      owasp:
-        - "A02:2021 - Cryptographic Failures"
-      asvs:
-        - "V6.2.1"
-      confidence: HIGH
-      impact: HIGH
-      references:
-        - https://cwe.mitre.org/data/definitions/327.html
-
-  - id: custom.auth.hardcoded-admin-bypass
-    pattern: |
-      if $USER == "admin":
-          return True
-    message: >
-      Hardcoded admin bypass detected. Authentication decisions must use
-      proper identity verification, not string comparison against hardcoded values.
-    languages: [python]
-    severity: ERROR
-    metadata:
-      cwe:
-        - "CWE-798: Use of Hard-coded Credentials"
-      asvs:
-        - "V2.10.1"
-      confidence: HIGH
-
-  - id: custom.crypto.weak-random
-    patterns:
-      - pattern-either:
-          - pattern: random.random()
-          - pattern: random.randint(...)
-          - pattern: Math.random()
-      - pattern-not-inside: |
-          # nosemgrep: custom.crypto.weak-random
-          ...
-    message: >
-      Weak PRNG used in potentially security-sensitive context. Use
-      secrets.token_bytes() or crypto.getRandomValues() for security purposes.
-    languages: [python, javascript]
-    severity: WARNING
-    metadata:
-      cwe:
-        - "CWE-330: Use of Insufficiently Random Values"
-      asvs:
-        - "V6.3.1"
-```
+-> See templates/semgrep-rules.yaml for example custom rules with proper metadata, CWE mappings, and ASVS references.
 
 **Rule quality checklist:**
 
@@ -263,40 +190,7 @@ query-filters:
 
 #### 4.2 CodeQL Custom Query Structure
 
-```ql
-/**
- * @name SQL injection from user-controlled source
- * @description Detects SQL queries built from user input without parameterization.
- * @kind path-problem
- * @problem.severity error
- * @security-severity 9.8
- * @precision high
- * @id custom/sql-injection
- * @tags security
- *       external/cwe/cwe-089
- *       external/owasp/a03-2021
- */
-
-import java
-import semmle.code.java.dataflow.TaintTracking
-import semmle.code.java.security.SqlInjectionQuery
-
-class CustomSqlInjectionConfig extends TaintTracking::Configuration {
-  CustomSqlInjectionConfig() { this = "CustomSqlInjectionConfig" }
-
-  override predicate isSource(DataFlow::Node source) {
-    source instanceof RemoteFlowSource
-  }
-
-  override predicate isSink(DataFlow::Node sink) {
-    sink instanceof SqlInjectionSink
-  }
-}
-
-from CustomSqlInjectionConfig config, DataFlow::PathNode source, DataFlow::PathNode sink
-where config.hasFlowPath(source, sink)
-select sink.getNode(), source, sink, "SQL injection from $@.", source.getNode(), "user input"
-```
+-> See templates/codeql-queries.ql for example custom queries with proper metadata annotations.
 
 **Query quality checklist:**
 
@@ -313,13 +207,7 @@ select sink.getNode(), source, sink, "SQL injection from $@.", source.getNode(),
 
 #### 5.1 Severity Mapping to OWASP ASVS
 
-Map tool-native severity levels to a consistent organizational severity:
-
-| ASVS Level | Risk Context | Semgrep Severity | CodeQL Severity | CI Action |
-|------------|-------------|------------------|-----------------|-----------|
-| L1 (Opportunistic) | Internet-facing, unauthenticated | ERROR | error, @security-severity >= 7.0 | Block merge |
-| L2 (Standard) | Authenticated, business-critical | ERROR or WARNING | error or warning, >= 4.0 | Block or warn |
-| L3 (Advanced) | High-value targets, regulated data | WARNING or INFO | All severities | Warn, review required |
+-> See references/asvs-sast-mapping.md for severity mapping tables.
 
 #### 5.2 False Positive Management Workflow
 
@@ -496,16 +384,7 @@ jobs:
 
 ### OWASP ASVS 4.0.3 (SAST-Relevant Chapters)
 
-| Chapter | Title | SAST Coverage |
-|---------|-------|---------------|
-| V2 | Authentication | Partial -- hardcoded credentials, weak password checks |
-| V3 | Session Management | Limited -- configuration review only |
-| V4 | Access Control | Partial -- missing authorization checks |
-| V5 | Validation, Sanitization, Encoding | Strong -- injection, XSS, path traversal |
-| V6 | Stored Cryptography | Moderate -- weak algorithms, hardcoded keys |
-| V8 | Data Protection | Partial -- sensitive data in logs |
-| V12 | File and Resources | Moderate -- upload validation, path traversal |
-| V13 | API and Web Service | Partial -- mass assignment, SSRF patterns |
+-> See references/asvs-sast-mapping.md
 
 ### CWE Top 25 (2024)
 
@@ -524,7 +403,7 @@ jobs:
 
 ---
 
-## Common Pitfalls
+## Gotchas
 
 1. **Running SAST only on changed files in PRs.** Incremental scanning misses vulnerabilities introduced by the interaction of new code with existing code. Run full-repo scans on schedule (weekly minimum) to catch cross-file taint flows that PR-scoped scans miss.
 
@@ -535,6 +414,24 @@ jobs:
 4. **Not testing custom rules against both vulnerable and safe code.** A custom rule that fires on vulnerable patterns but also fires on safe patterns is worse than no rule (it trains developers to suppress). Maintain a test corpus with expected true positives and expected true negatives for every custom rule.
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
+
+6. **ORM-generated SQL triggering SQL injection rules (CWE-89 false positive).** ORMs like Django ORM, SQLAlchemy, and ActiveRecord generate parameterized queries internally. SAST rules for CWE-89 (SQL Injection) frequently flag ORM method calls as injection vectors because the tool sees string concatenation or dynamic query building without recognizing the ORM's parameterization layer. This is the single most common SAST false positive in web applications. Remediation: add `pattern-not-inside` clauses for ORM query methods (e.g., `Model.objects.filter(...)` in Django, `session.query(...).filter(...)` in SQLAlchemy) rather than disabling the CWE-89 rule entirely.
+
+7. **Detection accuracy gaps for specific CWE/language combinations.** No SAST tool provides uniform coverage across all CWE/language pairs. Known weak spots include: CWE-787 (Out-of-bounds Write) detection is limited to C/C++ and nearly absent for Rust/Go; CWE-352 (CSRF) detection depends heavily on framework-specific rules that may not exist for newer frameworks (e.g., Remix, SvelteKit); CWE-434 (Unrestricted Upload) detection requires framework-aware rules that most default rulesets lack. When reporting CWE coverage, cross-reference the specific languages in the repository against the tool's documented language support for each CWE.
+
+---
+
+## Verification
+
+**Falsifiable test:** Given a SAST configuration with a CWE-89 rule disabled (e.g., via `query-filters` exclusion in CodeQL or rule removal in Semgrep config), the assessment MUST produce a gap finding for SQL injection coverage in the CWE Top 25 Coverage table.
+
+To verify the skill produced correct output, check:
+
+1. Every CWE in the Top 10 must have an explicit coverage entry (covered or GAP) for each language in the repository.
+2. Any disabled or excluded rule covering a Top 10 CWE must generate a finding with severity High or Critical.
+3. If no SAST tool is found in CI, the report must contain a Critical finding as the first item.
+
+If any of these conditions are violated, the assessment is incomplete.
 
 ---
 
@@ -564,4 +461,6 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.2.0** -- Extract CWE coverage matrix, ASVS mapping, Semgrep rules, and CodeQL queries to references/ and templates/. Add gotchas for ORM false positives and CWE/language detection gaps. Add Verification section.
+- **1.1.0** -- Restructure to Claude Code native directory format.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.

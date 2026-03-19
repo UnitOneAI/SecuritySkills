@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -24,6 +24,8 @@ argument-hint: "[target-file-or-directory]"
 ---
 
 # AI Agent Security Architecture Review
+
+> **Skill boundary:** This skill provides deep architecture review of agent security patterns (permission models, blast radius, rollback, audit trails). For OWASP Agentic Top 10 framework compliance checklist, see the `agentic-top-10` skill.
 
 This skill guides a structured security architecture review of AI agent systems -- applications where LLM-powered agents operate autonomously, invoke tools, maintain state, and potentially collaborate with other agents. The focus is on architectural security controls: permission models, containment boundaries, human oversight gates, auditability, and recoverability. The methodology is aligned with **OWASP Agentic AI threat categories** (from the OWASP GenAI Security Project) and **NIST AI RMF 1.0**.
 
@@ -91,9 +93,11 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 
 ## Process
 
-### Step 1 -- Agent Permission Model Review
+### Step 1 -- Agent Permission Model and Least-Privilege Design
 
-Evaluate what each agent can do, under what conditions, and whether the permission model follows least-privilege principles.
+Evaluate what each agent can do, under what conditions, and whether the permission model follows least-privilege principles -- both at the tool level and across data, network, file system, and resource dimensions.
+
+> **Parallelization:** Steps 1-3 (permissions, HITL gates) and Steps 4-6 (containment, audit, rollback, multi-agent trust) can run in parallel.
 
 **What to look for in code and configuration:**
 
@@ -103,6 +107,12 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 - **Dynamic vs. static tool sets:** Can the agent's tool set change at runtime? If an orchestrator dynamically assigns tools, what governs which tools are assigned?
 - **Per-session vs. permanent tool access:** Is tool access scoped to a specific task or session, or does every invocation receive the same broad tool set regardless of the task?
 - **Cross-agent tool sharing:** Can one agent invoke another agent's tools? If so, through what authorization mechanism?
+- **Data access scope:** Can the agent read data beyond what its current task requires? If the agent is summarizing a single document, can it access the entire document store?
+- **Network access:** Does the agent's runtime environment have unrestricted network egress? Can it make outbound HTTP requests to arbitrary destinations?
+- **File system access:** Is the agent sandboxed to a specific directory, or can it read/write anywhere on the host file system?
+- **Environment variable access:** Can the agent read all environment variables, including those containing secrets for other services?
+- **Resource limits:** Are CPU, memory, token budget, and execution time limits enforced at the infrastructure level?
+- **Capability escalation paths:** Can the agent request elevated permissions at runtime, modify its own configuration, or influence the orchestrator to grant it additional tools?
 
 **Detection methods using allowed tools:**
 
@@ -120,51 +130,7 @@ Grep: "Action.*\*|Resource.*\*|admin|PowerUser|FullAccess" in **/*.{json,yaml,ym
 
 # Find tool scoping logic
 Grep: "scope|allow|deny|restrict|filter_tools|permitted_tools|enabled_tools" in **/*.{py,ts,js}
-```
 
-**Permission model evaluation matrix:**
-
-| Principle | What to Check | Finding If Absent |
-|---|---|---|
-| Least privilege | Each agent has only the tools it needs | High -- excessive agency |
-| Separation of duties | Read agents cannot write; analysis agents cannot execute | High -- insufficient separation |
-| Scoped credentials | Service identity permissions match tool requirements, no wildcards | High -- over-privileged identity |
-| Per-task scoping | Tool set varies by task, not globally assigned | Medium -- static over-provisioning |
-| Time-bounded access | Credentials and tool access expire, requiring renewal | Medium -- persistent access risk |
-| Explicit deny | Actions not explicitly permitted are denied by default | High -- fail-open permission model |
-
-**NIST AI RMF mapping:** GOVERN 1.2 (roles and responsibilities for AI actors), MAP 3.5 (impact assessment for AI system capabilities).
-
-**What constitutes a finding:**
-
-| Condition | Severity |
-|---|---|
-| Agent has write/delete access to production databases without task justification | Critical |
-| Agent service account has wildcard IAM permissions | Critical |
-| Agent has access to tools it never needs for its defined purpose | High |
-| No per-task or per-session tool scoping -- every invocation gets full tool set | High |
-| Tool registration allows runtime tool injection by the agent itself | High |
-| Agent credentials do not expire or rotate | Medium |
-| Tool permissions not documented or reviewed periodically | Medium |
-
----
-
-### Step 2 -- Least-Privilege Agent Design Assessment
-
-Evaluate whether the agent architecture is designed from the ground up around least-privilege principles, beyond just tool-level permissions.
-
-**What to look for in code and configuration:**
-
-- **Data access scope:** Can the agent read data beyond what its current task requires? If the agent is summarizing a single document, can it access the entire document store?
-- **Network access:** Does the agent's runtime environment have unrestricted network egress? Can it make outbound HTTP requests to arbitrary destinations?
-- **File system access:** Is the agent sandboxed to a specific directory, or can it read/write anywhere on the host file system?
-- **Environment variable access:** Can the agent read all environment variables, including those containing secrets for other services?
-- **Resource limits:** Are CPU, memory, token budget, and execution time limits enforced at the infrastructure level?
-- **Capability escalation paths:** Can the agent request elevated permissions at runtime, modify its own configuration, or influence the orchestrator to grant it additional tools?
-
-**Detection methods using allowed tools:**
-
-```
 # Check for network restrictions
 Grep: "network_policy|egress|firewall|sandbox|allowed_hosts|url_whitelist|allowed_urls" in **/*.{py,yaml,yml,json,tf}
 Grep: "requests.get|requests.post|urllib|httpx|fetch|axios" in **/*agent*.{py,ts,js}
@@ -172,7 +138,6 @@ Grep: "requests.get|requests.post|urllib|httpx|fetch|axios" in **/*agent*.{py,ts
 # Check for file system restrictions
 Grep: "chroot|sandbox|allowed_paths|base_dir|restrict_path|working_dir" in **/*.{py,yaml,yml,json}
 Grep: "open(|write(|read(|os.path|pathlib|shutil" in **/*agent*.{py,ts,js}
-Grep: "os.listdir|os.walk|glob|Path(" in **/*agent*.{py,ts,js}
 
 # Check for environment access
 Grep: "os.environ|os.getenv|process.env|env_var" in **/*agent*.{py,ts,js}
@@ -185,33 +150,32 @@ Grep: "memory_limit|cpu_limit|resource_limit|ulimit" in **/*.{yaml,yml,json,tf,D
 Grep: "self.tools|self.config|self.system_prompt|modify_config|update_tools|set_permissions" in **/*.{py,ts,js}
 ```
 
-**Least-privilege design checklist:**
+-> See `templates/security-posture-matrix.md` for the permission model evaluation matrix and least-privilege design checklist.
 
-| Control Layer | Desired State | Common Violation |
-|---|---|---|
-| Tool access | Only task-relevant tools per invocation | Full tool registry always available |
-| Data access | Only data needed for current task | Agent can query any table, any collection |
-| Network egress | Allowlisted destinations only | Unrestricted outbound access |
-| File system | Sandboxed to working directory | Host file system fully accessible |
-| Secrets | No direct access; tools broker secret access | Agent can read all env vars including secrets |
-| Compute | Hard limits on tokens, time, memory | No limits; agent runs until it decides to stop |
-| Self-modification | Immutable config at runtime | Agent can modify its own tools or prompts |
+**NIST AI RMF mapping:** GOVERN 1.2 (roles and responsibilities for AI actors), MAP 3.5 (impact assessment for AI system capabilities).
 
 **What constitutes a finding:**
 
 | Condition | Severity |
 |---|---|
+| Agent has write/delete access to production databases without task justification | Critical |
+| Agent service account has wildcard IAM permissions | Critical |
 | Agent can make arbitrary outbound HTTP requests (exfiltration channel) | Critical |
 | Agent can read environment variables containing secrets for other services | Critical |
+| Agent has access to tools it never needs for its defined purpose | High |
+| No per-task or per-session tool scoping -- every invocation gets full tool set | High |
+| Tool registration allows runtime tool injection by the agent itself | High |
 | Agent has unrestricted file system access on the host | High |
 | Agent can modify its own system prompt or tool list at runtime | High |
 | No token budget or execution time limit enforced | High |
+| Agent credentials do not expire or rotate | Medium |
 | Agent can query any database table regardless of task scope | Medium |
 | No resource limits at container/infrastructure level | Medium |
+| Tool permissions not documented or reviewed periodically | Medium |
 
 ---
 
-### Step 3 -- Human-in-the-Loop Gate Placement
+### Step 2 -- Human-in-the-Loop Gate Placement
 
 Evaluate the design, placement, and robustness of human approval gates in the agent workflow.
 
@@ -273,7 +237,7 @@ Grep: "risk_level|action_type|destructive|irreversible|high_risk|write|delete|se
 
 ---
 
-### Step 4 -- Blast Radius Containment
+### Step 3 -- Blast Radius Containment
 
 Evaluate the architectural controls that limit the damage when an agent is compromised, malfunctions, or is manipulated via prompt injection.
 
@@ -309,6 +273,8 @@ Grep: "rate_limit|throttle|max_per_minute|max_per_session|action_limit|cooldown"
 Grep: "undo|rollback|revert|compensat|reverse|cancel" in **/*.{py,ts,js}
 ```
 
+-> See `references/blast-radius-framework.md` for the complete blast radius assessment framework and rollback capability tables.
+
 **Blast radius assessment framework:**
 
 | If Agent Is Compromised | Question | Worst Case If No Control |
@@ -335,7 +301,7 @@ Grep: "undo|rollback|revert|compensat|reverse|cancel" in **/*.{py,ts,js}
 
 ---
 
-### Step 5 -- Audit Trail Completeness
+### Step 4 -- Audit Trail Completeness
 
 Evaluate whether the audit logging for agent actions is sufficient for incident investigation, compliance, and forensic analysis.
 
@@ -403,7 +369,7 @@ Grep: "siem|splunk|datadog|cloudwatch|elasticsearch|loki|fluentd" in **/*.{yaml,
 
 ---
 
-### Step 6 -- Rollback Capability
+### Step 5 -- Rollback Capability
 
 Evaluate whether agent-initiated actions can be undone when something goes wrong -- whether due to agent malfunction, prompt injection, hallucination, or operator error.
 
@@ -461,7 +427,7 @@ Grep: "draft|staging|preview|dry_run|dry.run|simulate|sandbox_mode" in **/*.{py,
 
 ---
 
-### Step 7 -- Multi-Agent Trust Boundaries
+### Step 6 -- Multi-Agent Trust Boundaries
 
 Evaluate the trust model between agents in multi-agent architectures, including authentication, authorization, and data isolation between agents.
 

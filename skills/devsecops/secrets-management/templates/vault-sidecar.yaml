@@ -1,0 +1,36 @@
+# Kubernetes -- Vault Agent sidecar injection
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "app-role"
+        vault.hashicorp.com/agent-inject-secret-db: "database/creds/app"
+    spec:
+      serviceAccountName: app-sa
+      containers:
+        - name: app
+          image: app:latest
+
+---
+# Kubernetes -- External Secrets Operator
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: app-secrets
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: SecretStore
+  target:
+    name: app-secrets
+  data:
+    - secretKey: db-password
+      remoteRef:
+        key: database/creds/app
+        property: password

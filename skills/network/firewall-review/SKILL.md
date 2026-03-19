@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -50,6 +50,8 @@ Firewall rule bases accumulate technical debt rapidly. Rules added during incide
 ### Step 1: Discovery -- Locate Firewall Configurations
 
 Use Glob and Grep to locate firewall configuration files, ACL definitions, and network policy documents.
+
+→ See [references/firewall-patterns.md](references/firewall-patterns.md) for platform-specific pattern examples (iptables, Cisco ASA, Terraform, Palo Alto).
 
 **Patterns to search:**
 

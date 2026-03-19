@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -203,6 +203,9 @@ Use the following maturity scoring:
 | 3 | Defined | Standardized, consistently applied across scope |
 | 4 | Measured | Monitored with KPIs, effectiveness verified |
 | 5 | Optimized | Continuously improved, automated where feasible |
+
+→ See [references/annex-a-controls.md](references/annex-a-controls.md) for the complete 93 Annex A control descriptions.
+→ See [templates/gap-report.md](templates/gap-report.md) for the gap report template.
 
 #### 4.1 Organizational Controls (A.5.1 - A.5.37)
 

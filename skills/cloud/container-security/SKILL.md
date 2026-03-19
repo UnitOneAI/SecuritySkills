@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -113,10 +113,25 @@ Evaluate all container and Kubernetes configurations against CIS Docker Benchmar
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
+> **Parallelization:** Dockerfile checks and K8s manifest checks can run in parallel -- they examine independent file types and do not depend on each other's results. Run Dockerfile USER/COPY/HEALTHCHECK analysis concurrently with K8s securityContext/RBAC/NetworkPolicy analysis.
+
+> **Cross-Framework Control Consolidation:** The "run as non-root" check appears in CIS Docker 4.1 (Ensure a user for the container has been created), CIS K8s 5.2.7 (Minimize admission of root containers), and NIST SP 800-190 CM-11 (Container runtime hardening). This control is checked once and mapped across all three frameworks to avoid duplicate findings. A single finding should reference all three framework IDs.
+
+---
+
+### Verification
+
+The following falsifiable tests validate this skill's detection logic:
+
+- **Test 1 (Root user):** If a Dockerfile has `USER root` as the final stage (or no USER instruction at all) and the review produces no finding, the review has failed. Expected: High severity finding referencing CIS Docker 4.1, CIS K8s 5.2.7, and NIST SP 800-190 CM-11.
+
+- **Test 2 (Privileged container):** If a Kubernetes manifest contains `securityContext: { privileged: true }` and the review produces no finding, the review has failed. Expected: Critical severity finding referencing CIS K8s 5.2.1.
+
+- **Test 3 (No network policy):** If a namespace contains workload manifests but no NetworkPolicy resource, and the review produces no finding, the review has failed. Expected: Medium severity finding referencing CIS K8s 5.3.2.
+
 ---
 
 ### Step 7: Compile Assessment Report
-
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -293,4 +308,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Add verification section with falsifiable tests. Add cross-framework control consolidation note for run-as-non-root. Add parallelization markers for Dockerfile and K8s manifest checks.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.

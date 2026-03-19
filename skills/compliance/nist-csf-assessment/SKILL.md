@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -381,6 +381,11 @@ For each subcategory where Current < Target:
 
 ---
 
+→ See [references/csf-2-subcategories.md](references/csf-2-subcategories.md) for the complete subcategory enumeration.
+→ See [references/csf-crosswalk.md](references/csf-crosswalk.md) for informative references mapping.
+
+**Parallelization:** All 6 CSF functions can be assessed in parallel.
+
 ### Step 6: Informative References Mapping
 
 Map assessment findings to specific implementation guidance:
@@ -540,30 +545,6 @@ RECOVER (RC)
   RC.CO  Incident Recovery Communication (RC.CO-03, RC.CO-04)
 ```
 
-### CSF Tier Characteristics Detail
-
-```
-Tier 1 — Partial
-  Risk Management Process:  Ad hoc; prioritization not based on objectives or threat environment
-  Integrated Program:       Limited awareness; irregular implementation
-  External Participation:   Organization does not understand its role in the ecosystem
-
-Tier 2 — Risk Informed
-  Risk Management Process:  Approved by management; may not be organization-wide policy
-  Integrated Program:       Awareness exists; practices not consistently implemented
-  External Participation:   Understands role but informal collaboration
-
-Tier 3 — Repeatable
-  Risk Management Process:  Formally approved; expressed as policy; regularly updated
-  Integrated Program:       Organization-wide approach; consistently implemented
-  External Participation:   Collaborates with and receives information from partners
-
-Tier 4 — Adaptive
-  Risk Management Process:  Adapts based on previous and current activities; advanced technologies
-  Integrated Program:       Continuously improved; cyber risk management is part of organizational culture
-  External Participation:   Active sharing; contributes to community understanding of risk
-```
-
 ---
 
 ## Common Pitfalls
@@ -574,7 +555,9 @@ Tier 4 — Adaptive
 
 3. **Assessing subcategories in isolation without considering dependencies.** CSF functions are interdependent. Detection capabilities (DE) are meaningless without response capabilities (RS). Protection (PR) without asset identification (ID.AM) leaves gaps. The assessment must consider the maturity chain across functions, not just individual subcategory scores.
 
-4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
+4. **Failing to develop actionable organizational profiles.**  The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
+
+5. **Assessing CSF subcategories without mapping to organizational risk appetite produces compliance theater, not security improvement.** Scoring subcategories in isolation without connecting them to the organization's documented risk appetite (GV.RM-02) and business objectives (GV.OC-01) reduces the assessment to a checkbox exercise. The resulting profile may show high maturity scores while missing the organization's actual critical risks. Always anchor the target profile in the risk appetite statement and validate that subcategory targets reflect genuine risk reduction priorities, not aspirational scores.
 
 ---
 

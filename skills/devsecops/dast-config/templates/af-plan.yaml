@@ -1,0 +1,67 @@
+# af-plan.yaml -- ZAP Automation Framework plan
+env:
+  contexts:
+    - name: "target-app"
+      urls:
+        - "https://staging.example.com"
+      includePaths:
+        - "https://staging.example.com/.*"
+      excludePaths:
+        - "https://staging.example.com/logout.*"
+        - "https://staging.example.com/admin/destroy.*"
+      authentication:
+        method: "browser"
+        parameters:
+          loginPageUrl: "https://staging.example.com/login"
+          loginPageWait: 5
+        verification:
+          method: "response"
+          loggedInRegex: "\\QSign Out\\E"
+          loggedOutRegex: "\\QSign In\\E"
+      users:
+        - name: "test-user"
+          credentials:
+            username: "${DAST_USERNAME}"
+            password: "${DAST_PASSWORD}"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 10
+      scanOnlyInScope: true
+
+  - type: spider
+    parameters:
+      maxDuration: 5           # minutes
+      maxDepth: 10
+      maxChildren: 20
+
+  - type: spiderAjax
+    parameters:
+      maxDuration: 5
+      maxCrawlDepth: 5
+      inScopeOnly: true
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 10
+
+  - type: activeScan
+    parameters:
+      maxRuleDurationInMins: 5
+      maxScanDurationInMins: 30
+      scanOnlyInScope: true
+
+  - type: report
+    parameters:
+      template: "traditional-json"
+      reportDir: "/zap/reports/"
+      reportFile: "zap-report"
+    risks:
+      - high
+      - medium
+      - low

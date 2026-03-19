@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -114,6 +114,8 @@ Grep: "personal.data|personally.identifiable|gdpr|ccpa|hipaa|phi|protected.healt
 Grep: "consent|opt.in|opt.out|data.subject|right.to.delete|erasure|forget" in **/*.{py,yaml,yml,json}
 ```
 
+-> See `references/regulatory-requirements.md` for complete regulatory mapping tables (GDPR, EU AI Act, CCPA, HIPAA).
+
 **Key regulatory requirements:**
 
 - **GDPR Article 6:** Processing requires a legal basis. Training on personal data typically requires consent (Art. 6(1)(a)) or legitimate interest (Art. 6(1)(f)) with a documented balancing test.
@@ -146,6 +148,19 @@ Assess whether personal data is exposed, leaked, or inadequately protected in th
 - Model completions returned to users without PII scanning -- the model may reproduce PII from its context or generate plausible PII from memorized training data.
 - PII transmitted to third-party LLM APIs where the provider's data handling terms are unclear or insufficient.
 
+**PII detection regex patterns** (reference: Microsoft Presidio pattern library):
+
+| PII Type | Regex Pattern | Notes |
+|---|---|---|
+| SSN (US) | `\b\d{3}-\d{2}-\d{4}\b` | Social Security Number format XXX-XX-XXXX |
+| Email | `\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z\|a-z]{2,}\b` | Standard email pattern |
+| Phone (US) | `\b(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b` | US phone with optional country code |
+| Credit Card | `\b(?:\d{4}[-\s]?){3}\d{4}\b` | 16-digit card number with optional separators |
+| IP Address | `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b` | IPv4 address |
+| Date of Birth | `\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b` | Common date formats |
+
+These patterns should be applied to both prompts (input) and completions (output). For production use, integrate Microsoft Presidio (https://github.com/microsoft/presidio) or equivalent NER-based PII detection for higher accuracy.
+
 **Detection methods using allowed tools:**
 
 ```
@@ -156,6 +171,10 @@ Grep: "messages.append|format_prompt|build_prompt|render_template" in **/*.{py,t
 # Check for PII filtering on inputs and outputs
 Grep: "pii|redact|filter|mask|scrub|presidio|detect_pii|anonymize" in **/*.{py,ts,js}
 Grep: "output.filter|response.filter|post.process|sanitize.output" in **/*.{py,ts,js}
+
+# Scan for hardcoded PII patterns in code and config
+Grep: "\b\d{3}-\d{2}-\d{4}\b" in **/*.{py,ts,js,yaml,yml,json,env}
+Grep: "\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b" in **/*.{py,ts,js,yaml,yml,json,env}
 
 # Check for data sent to external APIs
 Grep: "openai|anthropic|api.key|azure.openai|bedrock|vertex.ai|cohere|mistral" in **/*.{py,ts,js,yaml,yml,env}
@@ -214,6 +233,8 @@ Grep: "log_prompt|log_completion|log_conversation|log_message|prompt_log|chat_lo
 Glob: **/backup*.{py,sh,yaml,yml}
 Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 ```
+
+-> See `references/data-retention-risks.md` for the complete data retention risk table.
 
 **AI-specific retention considerations:**
 
@@ -376,6 +397,14 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 | Consent for AI training bundled with general ToS (not specific) | Medium |
 | No documentation of consent management process for AI training data | Medium |
 | Opt-out flagged in database but not enforced in data pipeline | Medium |
+
+---
+
+## Verification
+
+The following test validates that this skill is operating correctly:
+
+- **Test:** If a training pipeline ingests unredacted PII (e.g., raw customer support tickets with names, emails, phone numbers) into a fine-tuning dataset with no PII detection step in the pipeline, and the review produces no finding, the review has failed. This requires at minimum a High severity finding under Step 1 (Training Data Privacy Assessment).
 
 ---
 

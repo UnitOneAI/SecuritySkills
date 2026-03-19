@@ -1,0 +1,28 @@
+`comment("Impossible Travel Detection -- ATT&CK T1078")`
+`comment("Detects logins from geographically distant locations within implausible time")`
+index=o365 sourcetype="o365:management:activity" Operation=UserLoggedIn
+| iplocation ClientIP
+| where isnotnull(lat) AND isnotnull(lon)
+| sort 0 UserId _time
+| streamstats current=f window=1
+    last(lat) as prev_lat,
+    last(lon) as prev_lon,
+    last(_time) as prev_time,
+    last(City) as prev_city,
+    last(Country) as prev_country,
+    last(ClientIP) as prev_ip
+    by UserId
+| where isnotnull(prev_lat)
+| eval time_diff_hours = (_time - prev_time) / 3600
+| eval distance_km = 2 * 6371 * asin(sqrt(
+    pow(sin((lat - prev_lat) * pi() / 360), 2) +
+    cos(prev_lat * pi() / 180) * cos(lat * pi() / 180) *
+    pow(sin((lon - prev_lon) * pi() / 360), 2)
+    ))
+| where distance_km >= 500
+| eval required_speed_kmh = if(time_diff_hours > 0, distance_km / time_diff_hours, 99999)
+| where required_speed_kmh > 900
+| eval current_location = City . ", " . Country
+| eval previous_location = prev_city . ", " . prev_country
+| table _time, UserId, current_location, previous_location,
+    time_diff_hours, distance_km, required_speed_kmh, ClientIP, prev_ip

@@ -2,6 +2,8 @@
 
 This file contains the detailed CIS benchmark checklist items for the Azure Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
 
+> **Note:** HCL and Bicep detection patterns have been extracted to [references/azure-detection-patterns.md](references/azure-detection-patterns.md) for reuse across tooling.
+
 ---
 
 ## Section 1 -- Identity and Access Management

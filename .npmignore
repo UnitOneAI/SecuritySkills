@@ -1,0 +1,9 @@
+.claude/
+.git/
+.github/
+.gitignore
+CONTRIBUTING.md
+SECURITY.md
+skillsrepo.md
+*.swp
+*.swo

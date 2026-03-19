@@ -12,9 +12,40 @@ Evaluate IAM configurations against CIS AWS v3.0.0 Section 1 recommendations.
 
 Verify that account contact information is configured. Check for `aws_account_alternate_contact` resources in Terraform or equivalent.
 
+**Grep patterns:**
+
+```
+aws_account_alternate_contact
+contact_type\s*=\s*"BILLING"
+contact_type\s*=\s*"OPERATIONS"
+contact_type\s*=\s*"SECURITY"
+```
+
 ### CIS 1.2 -- Ensure security contact information is registered
 
 Look for security-specific alternate contact configuration.
+
+**Grep patterns:**
+
+```
+# Security-specific contact
+aws_account_alternate_contact
+contact_type\s*=\s*"SECURITY"
+email_address
+phone_number
+```
+
+**What to look for in Terraform:**
+
+```hcl
+resource "aws_account_alternate_contact" "security" {
+  alternate_contact_type = "SECURITY"
+  email_address          = "security@example.com"
+  name                   = "Security Team"
+  phone_number           = "+1-555-0100"
+  title                  = "Security Contact"
+}
+```
 
 ### CIS 1.4 -- Ensure no 'root' account access key exists
 
@@ -30,9 +61,55 @@ aws_iam_access_key.*root
 
 Check for `aws_iam_account_password_policy` or SCP policies enforcing root MFA.
 
+**Grep patterns:**
+
+```
+# Look for SCP enforcing MFA on root
+aws_organizations_policy
+"aws:MultiFactorAuthPresent"
+"Deny".*"root"
+
+# Look for IAM password policy
+aws_iam_account_password_policy
+```
+
+**What to look for in Terraform:**
+
+```hcl
+# SCP denying root actions without MFA
+resource "aws_organizations_policy" "require_root_mfa" {
+  content = jsonencode({
+    Statement = [{
+      Effect    = "Deny"
+      Action    = "*"
+      Resource  = "*"
+      Condition = {
+        BoolIfExists = {
+          "aws:MultiFactorAuthPresent" = "false"
+        }
+        StringLike = {
+          "aws:PrincipalArn" = "arn:aws:iam::*:root"
+        }
+      }
+    }]
+  })
+}
+```
+
 ### CIS 1.6 -- Ensure hardware MFA is enabled for the 'root' user account
 
 Verify hardware MFA enforcement in SCPs or organizational policies.
+
+**Grep patterns:**
+
+```
+# Look for hardware MFA requirements in policies
+"arn:aws:iam::.*:mfa/root-account-mfa-device"
+hardware_mfa
+aws_iam_virtual_mfa_device
+```
+
+**Note:** Hardware MFA (CIS Level 2) cannot be fully verified through IaC alone. If virtual MFA is configured via `aws_iam_virtual_mfa_device`, flag as Low (hardware MFA recommended but virtual MFA provides baseline protection). Mark as "Not Evaluable" if no MFA configuration is found in IaC.
 
 ### CIS 1.7 -- Eliminate use of the 'root' user for administrative and daily tasks
 
@@ -488,3 +565,7 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+> **Note:** Inline detection patterns have been consolidated in [references/aws-detection-patterns.md](references/aws-detection-patterns.md) for reuse across tooling.

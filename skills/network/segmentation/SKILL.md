@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -163,6 +163,8 @@ NIST SP 800-207 Tenet 4: "Access to individual enterprise resources is granted o
 - **Within application tier:** Can any application server communicate with any other application server? If yes, micro-segmentation is absent.
 - **Within data tier:** Can Database A communicate with Database B? Unrestricted intra-tier communication enables lateral movement after initial compromise.
 - **Within management plane:** Can a compromised jump box reach all other management endpoints?
+
+→ See [templates/network-policy-examples.md](templates/network-policy-examples.md) for Kubernetes NetworkPolicy and Calico examples.
 
 **Patterns to check:**
 

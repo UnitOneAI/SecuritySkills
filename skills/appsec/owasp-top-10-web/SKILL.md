@@ -12,13 +12,17 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
 injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
+
+> **Note:** For detailed code-level detection patterns, see secure-code-review. This skill focuses on OWASP Top 10 gap analysis and compliance mapping.
+
+<!-- parallelizable: true — A01-A10 categories can be analyzed independently -->
 
 # OWASP Top 10:2021 — Web Application Security Review
 
@@ -72,32 +76,9 @@ Evaluate the codebase against each of the ten categories below. For every catego
 - Path traversal in file-serving endpoints.
 - Missing `deny-by-default` policies — routes are open unless explicitly restricted rather than closed unless explicitly opened.
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A01 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-200 | Exposure of Sensitive Information to an Unauthorized Actor |
-| CWE-201 | Insertion of Sensitive Information Into Sent Data |
-| CWE-352 | Cross-Site Request Forgery (CSRF) |
-| CWE-284 | Improper Access Control |
-| CWE-285 | Improper Authorization |
-| CWE-639 | Authorization Bypass Through User-Controlled Key |
-| CWE-862 | Missing Authorization |
-| CWE-863 | Incorrect Authorization |
-| CWE-22  | Improper Limitation of a Pathname to a Restricted Directory (Path Traversal) |
-
-**Detection Patterns (Grep):**
-
-```
-# IDOR — direct use of user-supplied ID in DB query without ownership check
-params\.id|req\.params|request\.args\.get.*id
-# Missing CSRF protection
-csrf.*disable|csrf.*false|@csrf_exempt
-# Permissive CORS
-Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
-# Path traversal indicators
-\.\.\/|\.\.\\|path\.join.*req\.|sendFile.*req\.
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A01 section.
 
 **Mitigations:**
 
@@ -124,35 +105,9 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 - Insufficient randomness — use of `Math.random()`, `random.random()`, or similar non-CSPRNG functions for security-sensitive values.
 - Secrets committed to version control (`.env` files, config files with credentials).
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A02 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-259 | Use of Hard-coded Password |
-| CWE-261 | Weak Encoding for Password |
-| CWE-296 | Improper Following of a Certificate's Chain of Trust |
-| CWE-310 | Cryptographic Issues |
-| CWE-319 | Cleartext Transmission of Sensitive Information |
-| CWE-321 | Use of Hard-coded Cryptographic Key |
-| CWE-326 | Inadequate Encryption Strength |
-| CWE-327 | Use of a Broken or Risky Cryptographic Algorithm |
-| CWE-328 | Use of Weak Hash |
-| CWE-330 | Use of Insufficiently Random Values |
-| CWE-331 | Insufficient Entropy |
-| CWE-798 | Use of Hard-coded Credentials |
-
-**Detection Patterns (Grep):**
-
-```
-# Weak hashing
-md5|sha1|DES|RC4|ECB
-# Hard-coded secrets
-password\s*=\s*["']|secret\s*=\s*["']|api_key\s*=\s*["']|private_key\s*=\s*["']
-# Insecure random
-Math\.random|random\.random|rand\(\)
-# Missing TLS
-http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A02 section.
 
 **Mitigations:**
 
@@ -180,37 +135,9 @@ http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
 - NoSQL injection via query operator injection (`$gt`, `$ne`, `$regex` in MongoDB).
 - Header injection — user input placed into HTTP response headers without sanitization.
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A03 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-20  | Improper Input Validation |
-| CWE-74  | Improper Neutralization of Special Elements in Output Used by a Downstream Component (Injection) |
-| CWE-75  | Failure to Sanitize Special Elements into a Different Plane |
-| CWE-77  | Improper Neutralization of Special Elements used in a Command (Command Injection) |
-| CWE-78  | Improper Neutralization of Special Elements used in an OS Command (OS Command Injection) |
-| CWE-79  | Improper Neutralization of Input During Web Page Generation (XSS) |
-| CWE-80  | Improper Neutralization of Script-Related HTML Tags |
-| CWE-89  | Improper Neutralization of Special Elements used in an SQL Command (SQL Injection) |
-| CWE-90  | Improper Neutralization of Special Elements used in an LDAP Query (LDAP Injection) |
-| CWE-94  | Improper Control of Generation of Code (Code Injection) |
-| CWE-643 | Improper Neutralization of Data within XPath Expressions (XPath Injection) |
-| CWE-917 | Improper Neutralization of Special Elements used in an Expression Language Statement (EL Injection) |
-
-**Detection Patterns (Grep):**
-
-```
-# SQL injection
-execute\(.*%s|execute\(.*\+|query\(.*\+|\.raw\(|\.rawQuery\(|\$\{.*\}.*SELECT|\.format\(.*SELECT
-# OS command injection
-exec\(|system\(|popen\(|child_process|shell=True|Runtime\.getRuntime\(\)\.exec
-# XSS / template injection
-innerHTML|\.html\(|dangerouslySetInnerHTML|v-html|\|safe|\|raw|render_template_string
-# NoSQL injection
-\$where|\$gt|\$ne|\$regex.*req\.|find\(.*req\.
-# Header injection
-setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A03 section.
 
 **Mitigations:**
 
@@ -237,33 +164,9 @@ setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
 - Missing trust boundaries — internal services accessible without authentication from external networks.
 - Absence of security requirements or threat model documentation.
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A04 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-73  | External Control of File Name or Path |
-| CWE-183 | Permissive List of Allowed Inputs |
-| CWE-209 | Generation of Error Message Containing Sensitive Information |
-| CWE-256 | Plaintext Storage of a Password |
-| CWE-501 | Trust Boundary Violation |
-| CWE-522 | Insufficiently Protected Credentials |
-| CWE-602 | Client-Side Enforcement of Server-Side Security |
-| CWE-656 | Reliance on Security Through Obscurity |
-| CWE-799 | Improper Control of Interaction Frequency |
-| CWE-840 | Business Logic Errors |
-
-**Detection Patterns (Grep):**
-
-```
-# Client-side-only validation
-# (Look for validation logic only in frontend files, absent from backend handlers)
-# Rate limiting absent
-rateLimit|rate_limit|throttle|slowDown
-# Account enumeration
-"user not found"|"email not found"|"no account"|"invalid email"
-# Missing lockout
-failedAttempts|failed_attempts|lockout|max_attempts
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A04 section.
 
 **Mitigations:**
 
@@ -293,35 +196,9 @@ failedAttempts|failed_attempts|lockout|max_attempts
 - XML parsers configured to allow external entities (XXE).
 - Verbose error pages that expose stack traces, framework versions, or internal paths.
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A05 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-2   | Direct Use of Environment Configuration File |
-| CWE-11  | ASP.NET Misconfiguration: Creating Debug Binary |
-| CWE-13  | ASP.NET Misconfiguration: Password in Configuration File |
-| CWE-15  | External Control of System or Configuration Setting |
-| CWE-16  | Configuration |
-| CWE-611 | Improper Restriction of XML External Entity Reference (XXE) |
-| CWE-614 | Sensitive Cookie in HTTPS Session Without 'Secure' Attribute |
-| CWE-756 | Missing Custom Error Page |
-| CWE-776 | Improper Restriction of Recursive Entity References in DTDs (XML Entity Expansion) |
-| CWE-942 | Permissive Cross-domain Policy with Untrusted Domains |
-
-**Detection Patterns (Grep):**
-
-```
-# Debug mode
-DEBUG\s*=\s*True|debug\s*:\s*true|NODE_ENV.*development
-# XXE
-DocumentBuilderFactory|SAXParser|XMLReader|etree\.parse|lxml.*parse
-# Missing security headers
-X-Content-Type-Options|X-Frame-Options|Content-Security-Policy|Strict-Transport-Security
-# Default credentials
-admin.*admin|password.*password|default.*key|changeme|TODO.*password
-# Verbose errors
-stack.*trace|stackTrace|detailed.*error|showErrors\s*:\s*true
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A05 section.
 
 **Mitigations:**
 
@@ -348,24 +225,9 @@ stack.*trace|stackTrace|detailed.*error|showErrors\s*:\s*true
 - No automated dependency scanning in CI/CD pipeline.
 - Vendored or copy-pasted library code that will never receive upstream patches.
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A06 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-829 | Inclusion of Functionality from Untrusted Control Sphere |
-| CWE-1035 | OWASP Top Ten 2017 Category A9 — Using Components with Known Vulnerabilities |
-| CWE-1104 | Use of Unmaintained Third-Party Components |
-
-**Detection Patterns (Grep):**
-
-```
-# Dependency files to inspect
-package\.json|requirements\.txt|Pipfile|Gemfile|pom\.xml|build\.gradle|go\.mod|composer\.json
-# Lock files (verify existence)
-package-lock\.json|yarn\.lock|Pipfile\.lock|Gemfile\.lock|composer\.lock
-# Deprecated libraries (examples)
-angular\.js|jquery\s*["\'].*1\.|lodash.*3\.|moment\(\)|request\(  # (npm 'request' is deprecated)
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A06 section.
 
 **Mitigations:**
 
@@ -393,40 +255,9 @@ angular\.js|jquery\s*["\'].*1\.|lodash.*3\.|moment\(\)|request\(  # (npm 'reques
 - "Remember me" tokens that never expire or use predictable values.
 - Password recovery that uses knowledge-based questions or sends passwords in plaintext.
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A07 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-255 | Credentials Management Errors |
-| CWE-287 | Improper Authentication |
-| CWE-288 | Authentication Bypass Using an Alternate Path or Channel |
-| CWE-290 | Authentication Bypass by Spoofing |
-| CWE-294 | Authentication Bypass by Capture-replay |
-| CWE-295 | Improper Certificate Validation |
-| CWE-297 | Improper Validation of Certificate with Host Mismatch |
-| CWE-300 | Channel Accessible by Non-Endpoint |
-| CWE-302 | Authentication Bypass by Assumed-Immutable Data |
-| CWE-304 | Missing Critical Step in Authentication |
-| CWE-306 | Missing Authentication for Critical Function |
-| CWE-307 | Improper Restriction of Excessive Authentication Attempts |
-| CWE-384 | Session Fixation |
-| CWE-521 | Weak Password Requirements |
-| CWE-613 | Insufficient Session Expiration |
-
-**Detection Patterns (Grep):**
-
-```
-# Session management
-session\.id|sessionId|JSESSIONID|connect\.sid|session_token
-# Weak password policy
-minLength.*[0-5]|passwordMinLength|min_password_length
-# Session in URL
-session.*=.*req\.query|token.*=.*req\.query|url.*session
-# Missing session rotation
-regenerate|rotateSession|session\.create|session_regenerate_id
-# Certificate validation bypass
-rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarning.*disable
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A07 section.
 
 **Mitigations:**
 
@@ -453,29 +284,9 @@ rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarni
 - Auto-update mechanisms that do not verify package signatures or checksums.
 - Unsigned or unverified webhook payloads triggering automated actions.
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A08 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-345 | Insufficient Verification of Data Authenticity |
-| CWE-353 | Missing Support for Integrity Check |
-| CWE-426 | Untrusted Search Path |
-| CWE-494 | Download of Code Without Integrity Check |
-| CWE-502 | Deserialization of Untrusted Data |
-| CWE-565 | Reliance on Cookies without Validation and Integrity Checking |
-| CWE-784 | Reliance on Cookies without Validation and Integrity Checking in a Security Decision |
-| CWE-829 | Inclusion of Functionality from Untrusted Control Sphere |
-
-**Detection Patterns (Grep):**
-
-```
-# Insecure deserialization
-ObjectInputStream|readObject\(|pickle\.load|yaml\.load|yaml\.unsafe_load|unserialize\(|Marshal\.load|BinaryFormatter|JsonConvert\.DeserializeObject.*TypeNameHandling
-# Missing SRI
-<script.*src=.*cdn|<link.*href=.*cdn|integrity=
-# CI/CD integrity
-curl.*\|.*sh|curl.*\|.*bash|wget.*\|.*sh|pip install.*--trusted-host
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A08 section.
 
 **Mitigations:**
 
@@ -503,26 +314,9 @@ curl.*\|.*sh|curl.*\|.*bash|wget.*\|.*sh|pip install.*--trusted-host
 - No alerting on suspicious patterns (brute-force attempts, impossible travel, privilege escalation).
 - Log injection vulnerabilities (user input written to logs without sanitization, enabling log forging).
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A09 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-117 | Improper Output Neutralization for Logs |
-| CWE-223 | Omission of Security-relevant Information |
-| CWE-532 | Insertion of Sensitive Information into Log File |
-| CWE-778 | Insufficient Logging |
-| CWE-779 | Logging of Excessive Data |
-
-**Detection Patterns (Grep):**
-
-```
-# Logging presence
-logger\.|log\.|console\.log|logging\.|Log\.|syslog|winston|bunyan|pino|log4j|NLog|Serilog
-# Sensitive data in logs
-log.*password|log.*token|log.*secret|log.*credit_card|log.*ssn|logger.*api_key
-# Log injection
-log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A09 section.
 
 **Mitigations:**
 
@@ -549,23 +343,9 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 - Lack of allowlist validation on destination URLs (scheme, host, port, path).
 - No blocking of requests to private/reserved IP ranges (127.0.0.0/8, 10.0.0.0/8, 169.254.169.254, 172.16.0.0/12, 192.168.0.0/16, fd00::/8).
 
-**CWE Mappings:**
+**CWE Mappings:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- A10 section.
 
-| CWE | Name |
-|-----|------|
-| CWE-918 | Server-Side Request Forgery (SSRF) |
-| CWE-441 | Unintended Proxy or Intermediary (Confused Deputy) |
-
-**Detection Patterns (Grep):**
-
-```
-# HTTP client calls with user input
-requests\.get\(|requests\.post\(|urllib\.request|http\.get\(|fetch\(|axios\(|HttpClient|WebClient|curl_exec
-# URL parameters
-url=|dest=|redirect=|uri=|callback=|src=.*http
-# Cloud metadata (hardcoded blocking check)
-169\.254\.169\.254|metadata\.google|metadata\.azure
-```
+**Detection Patterns (Grep):** See [references/owasp-detection-patterns.md](references/owasp-detection-patterns.md) -- A10 section.
 
 **Mitigations:**
 
@@ -638,18 +418,7 @@ Present findings in this structure:
 
 ## Framework Reference
 
-| OWASP ID | Category | Key CWEs | Primary Risk |
-|----------|----------|----------|-------------|
-| A01:2021 | Broken Access Control | CWE-284, CWE-285, CWE-639, CWE-862, CWE-863 | Unauthorized data access or action |
-| A02:2021 | Cryptographic Failures | CWE-259, CWE-327, CWE-328, CWE-330, CWE-798 | Sensitive data exposure |
-| A03:2021 | Injection | CWE-77, CWE-78, CWE-79, CWE-89, CWE-94 | Arbitrary command/query execution |
-| A04:2021 | Insecure Design | CWE-209, CWE-501, CWE-522, CWE-602, CWE-840 | Architectural security gaps |
-| A05:2021 | Security Misconfiguration | CWE-16, CWE-611, CWE-614, CWE-756, CWE-942 | Exploitable default/weak settings |
-| A06:2021 | Vulnerable and Outdated Components | CWE-829, CWE-1035, CWE-1104 | Known-CVE exploitation |
-| A07:2021 | Identification and Authentication Failures | CWE-287, CWE-306, CWE-307, CWE-384, CWE-613 | Identity compromise |
-| A08:2021 | Software and Data Integrity Failures | CWE-345, CWE-494, CWE-502, CWE-565 | Tampering and malicious updates |
-| A09:2021 | Security Logging and Monitoring Failures | CWE-117, CWE-223, CWE-532, CWE-778 | Undetected breaches |
-| A10:2021 | Server-Side Request Forgery (SSRF) | CWE-918, CWE-441 | Internal network/service access |
+> **Full OWASP Top 10 summary reference table:** See [references/owasp-cwe-mapping.md](references/owasp-cwe-mapping.md) -- Summary Reference Table section.
 
 ## Common Pitfalls
 
@@ -662,6 +431,26 @@ Present findings in this structure:
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+
+## Verification
+
+### Expected Behavior
+
+A complete OWASP Top 10 review should evaluate all ten categories (A01-A10) and produce findings or explicit "clear" assessments for each.
+
+### Actual Behavior Check
+
+- Verify that all ten categories appear in the output summary table with a findings count or "clear" status.
+- Verify that each finding includes the OWASP category, CWE, location, and remediation.
+- Verify that the Statistics section lists which categories had findings and which were clear.
+
+### Falsifiable Test
+
+"If reviewing a web application with `Access-Control-Allow-Origin: *` and no A01 (Broken Access Control) finding emitted, the review failed."
+
+A permissive CORS policy that reflects all origins is a direct A01 violation (CWE-942). A review that does not flag this pattern is incomplete.
+
+---
 
 ## Prompt Injection Safety Notice
 

@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -104,16 +104,7 @@ Identify:
 - **Entitlement sources** — IdP group memberships, cloud IAM roles, application-level permissions, database grants
 - **Review cadence compliance** — verify the current review meets the organization-defined frequency
 
-**What to look for:**
-
-```
-AR-SCOPE-01: No defined access review cadence (AC-2(j) requires organization-defined frequency)
-AR-SCOPE-02: Review scope excludes critical systems (production databases, admin consoles)
-AR-SCOPE-03: Service accounts excluded from review population
-AR-SCOPE-04: SaaS applications not included in centralized review (shadow IT gap)
-AR-SCOPE-05: No single authoritative source for entitlements (CIS 6.7 — centralize access control)
-AR-SCOPE-06: Guest/external accounts not included in review scope
-```
+**What to look for:** See [`references/finding-codes.md`](references/finding-codes.md) section **AR-SCOPE** for complete finding codes (AR-SCOPE-01 through AR-SCOPE-06).
 
 **Recommended cadences:**
 
@@ -136,18 +127,7 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 
 For each user-entitlement pair, the certifier (typically the user's manager or resource owner) must affirm or revoke:
 
-**What to look for:**
-
-```
-AR-CERT-01: No manager/owner certification workflow exists
-AR-CERT-02: Rubber-stamping — certifiers approve all entitlements without review (>95% approve rate)
-AR-CERT-03: No evidence of review decisions (approve/revoke/modify not logged)
-AR-CERT-04: Certifiers lack visibility into what permissions the entitlement grants
-AR-CERT-05: No escalation path for entitlements where the certifier is uncertain
-AR-CERT-06: Certification decisions not enforced — revoked entitlements not actually removed
-AR-CERT-07: No SLA for certification completion (recommended: 14 business days)
-AR-CERT-08: Delegated reviews without accountability (certifier delegates but is not tracked)
-```
+**What to look for:** See [`references/finding-codes.md`](references/finding-codes.md) section **AR-CERT** for complete finding codes (AR-CERT-01 through AR-CERT-08).
 
 **Rubber-stamp detection criteria:**
 
@@ -166,18 +146,7 @@ AR-CERT-08: Delegated reviews without accountability (certifier delegates but is
 **NIST SP 800-53 Reference:** AC-2(3) — Disable Accounts
 **CIS Controls v8 Reference:** Control 5.3 — Disable Dormant Accounts; Control 6.2 — Establish an Access Revoking Process
 
-**What to look for:**
-
-```
-AR-ORPH-01: Accounts belonging to terminated employees still active
-AR-ORPH-02: Accounts belonging to departed contractors not deprovisioned
-AR-ORPH-03: Service accounts with no documented owner (CIS 5.5)
-AR-ORPH-04: Shared accounts with no accountable individual
-AR-ORPH-05: Accounts inactive > 45 days without documented exception (CIS 5.3)
-AR-ORPH-06: Accounts not correlated with authoritative HR source (HRIS feed gap)
-AR-ORPH-07: Deprovisioning SLA exceeded (same-day for terminations, 24 hours for role changes)
-AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle management
-```
+**What to look for:** See [`references/finding-codes.md`](references/finding-codes.md) section **AR-ORPH** for complete finding codes (AR-ORPH-01 through AR-ORPH-08).
 
 **Platform-specific checks:**
 
@@ -198,18 +167,7 @@ AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle man
 **NIST SP 800-53 Reference:** AC-2 — Account Management (role-based schemes)
 **CIS Controls v8 Reference:** Control 6.8 — Define and Maintain Role-Based Access Control
 
-**What to look for:**
-
-```
-AR-ROLE-01: Role count exceeds user count (ratio > 1:1 indicates explosion)
-AR-ROLE-02: Roles with single-user assignment (likely snowflake roles)
-AR-ROLE-03: Roles with overlapping permissions (> 80% permission overlap between roles)
-AR-ROLE-04: Roles not reviewed or updated in > 12 months
-AR-ROLE-05: No role lifecycle process (creation, modification, retirement)
-AR-ROLE-06: Role naming conventions inconsistent or undocumented
-AR-ROLE-07: Nested role hierarchies exceeding 3 levels (complexity creates audit blind spots)
-AR-ROLE-08: Custom roles duplicating built-in/managed role permissions
-```
+**What to look for:** See [`references/finding-codes.md`](references/finding-codes.md) section **AR-ROLE** for complete finding codes (AR-ROLE-01 through AR-ROLE-08).
 
 **Role health metrics:**
 
@@ -242,17 +200,7 @@ AC-5 states: "The organization separates duties of individuals as necessary, to 
 | Key/secret management | Application deployment | Credential exfiltration |
 | Vendor onboarding | Payment approval | Vendor fraud |
 
-**What to look for:**
-
-```
-AR-SOD-01: No documented SoD matrix or conflict rules
-AR-SOD-02: SoD violations detected — user holds both sides of a conflict pair
-AR-SOD-03: SoD violations with no compensating controls documented
-AR-SOD-04: SoD analysis not automated (manual review only)
-AR-SOD-05: Emergency/break-glass access bypasses SoD without post-hoc review
-AR-SOD-06: Role combinations that create SoD conflicts not flagged during provisioning
-AR-SOD-07: SoD conflicts in service accounts (single account spans multiple functions)
-```
+**What to look for:** See [`references/finding-codes.md`](references/finding-codes.md) section **AR-SOD** for complete finding codes (AR-SOD-01 through AR-SOD-07).
 
 **Severity classification for SoD violations:**
 
@@ -273,18 +221,7 @@ AR-SOD-07: SoD conflicts in service accounts (single account spans multiple func
 **NIST SP 800-53 Reference:** AC-2 — Account Management (enforcement); AC-6 — Least Privilege (ongoing)
 **CIS Controls v8 Reference:** Control 6.2 — Establish an Access Revoking Process
 
-**What to look for:**
-
-```
-AR-ENF-01: Revocation decisions from reviews not executed within SLA
-AR-ENF-02: No automated enforcement — revocations require manual ticket processing
-AR-ENF-03: Review evidence (decisions, timestamps, certifier identity) not retained
-AR-ENF-04: Evidence retention period less than audit window (SOC 2 requires 12 months)
-AR-ENF-05: No reconciliation between review decisions and actual access state
-AR-ENF-06: Exception process not documented or exceptions not time-bounded
-AR-ENF-07: Compensating controls for exceptions not validated
-AR-ENF-08: No metrics or reporting on review completion rates and outcomes
-```
+**What to look for:** See [`references/finding-codes.md`](references/finding-codes.md) section **AR-ENF** for complete finding codes (AR-ENF-01 through AR-ENF-08).
 
 **Evidence requirements for audit:**
 
@@ -394,13 +331,32 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 
 ## Common Pitfalls
 
-1. **Rubber-stamp reviews** — Certifiers approve everything to clear their queue. Mitigate with approval rate monitoring and sampling audits.
-2. **Scope creep exclusion** — New SaaS apps and shadow IT systems get added without inclusion in access reviews. Require SaaS inventory integration.
-3. **Service account blind spot** — Service accounts often lack an owner and are skipped. Assign ownership at creation and include in every review cycle.
-4. **Revocation without enforcement** — Reviews produce revocation decisions but no one executes them. Automate enforcement or track with SLA-bound tickets.
-5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
-6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
-7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+1. **Scope creep exclusion** — New SaaS apps and shadow IT systems get added without inclusion in access reviews. Require SaaS inventory integration.
+2. **Revocation without enforcement** — Reviews produce revocation decisions but no one executes them. Automate enforcement or track with SLA-bound tickets.
+3. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
+4. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
+5. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+
+> **Note:** Rubber-stamp reviews and service account blind spots are covered by finding codes AR-CERT-02 and AR-ORPH-03 respectively. See [`references/finding-codes.md`](references/finding-codes.md).
+
+---
+
+## Gotchas
+
+1. **Inactive account that is actually a quarterly batch job (FP).** An account flagged as inactive at the 45-day CIS 5.3 threshold may legitimately run only on a quarterly schedule (tax processing, regulatory filings, annual compliance reports). Before raising AR-ORPH-05, verify the account's intended usage pattern against scheduling systems (cron, Azure Automation, AWS EventBridge, ServiceNow). If the account runs quarterly, document the exception with a next-expected-use date.
+
+2. **45-day threshold catching seasonal workers (precision trap).** The CIS 5.3 45-day inactivity threshold can generate false positives for seasonal employees (retail holiday staff, agricultural workers, academic summer staff). These accounts may be legitimately inactive for months between seasons. Check for a documented seasonal workforce pattern before flagging. If seasonal, recommend a "seasonal" account classification with an adjusted inactivity threshold aligned to the employment cycle.
+
+---
+
+## Verification
+
+**Falsifiable test:** If the rubber-stamp rate exceeds 80% (certifiers approving >80% of entitlements without modification or revocation) and no AR-CERT-02 finding is raised, the review has failed.
+
+To verify review completeness:
+1. Calculate the approval rate per certifier across the most recent review cycle
+2. Any certifier with >80% approval rate on >50 entitlements must have a corresponding AR-CERT-02 finding
+3. If no review cycle data is available, raise AR-SCOPE-01 (no defined access review cadence)
 
 ---
 
@@ -443,4 +399,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-03-19 | Extract finding codes to references/finding-codes.md. Add Gotchas and Verification sections. Remove redundant pitfalls (AR-CERT-02, AR-ORPH-03 duplicates). |
 | 1.0.0 | 2025-03-06 | Initial release |

@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -95,75 +95,7 @@ Categorize by:
 
 ZAP's Automation Framework (AF) is the preferred configuration method for CI/CD integration. Verify the plan structure:
 
-```yaml
-# af-plan.yaml -- ZAP Automation Framework plan
-env:
-  contexts:
-    - name: "target-app"
-      urls:
-        - "https://staging.example.com"
-      includePaths:
-        - "https://staging.example.com/.*"
-      excludePaths:
-        - "https://staging.example.com/logout.*"
-        - "https://staging.example.com/admin/destroy.*"
-      authentication:
-        method: "browser"
-        parameters:
-          loginPageUrl: "https://staging.example.com/login"
-          loginPageWait: 5
-        verification:
-          method: "response"
-          loggedInRegex: "\\QSign Out\\E"
-          loggedOutRegex: "\\QSign In\\E"
-      users:
-        - name: "test-user"
-          credentials:
-            username: "${DAST_USERNAME}"
-            password: "${DAST_PASSWORD}"
-  parameters:
-    failOnError: true
-    failOnWarning: false
-    progressToStdout: true
-
-jobs:
-  - type: passiveScan-config
-    parameters:
-      maxAlertsPerRule: 10
-      scanOnlyInScope: true
-
-  - type: spider
-    parameters:
-      maxDuration: 5           # minutes
-      maxDepth: 10
-      maxChildren: 20
-
-  - type: spiderAjax
-    parameters:
-      maxDuration: 5
-      maxCrawlDepth: 5
-      inScopeOnly: true
-
-  - type: passiveScan-wait
-    parameters:
-      maxDuration: 10
-
-  - type: activeScan
-    parameters:
-      maxRuleDurationInMins: 5
-      maxScanDurationInMins: 30
-      scanOnlyInScope: true
-
-  - type: report
-    parameters:
-      template: "traditional-json"
-      reportDir: "/zap/reports/"
-      reportFile: "zap-report"
-    risks:
-      - high
-      - medium
-      - low
-```
+-> See templates/af-plan.yaml for a complete example AF plan with authentication, scope, and scan configuration.
 
 **What to verify in the plan:**
 
@@ -186,37 +118,9 @@ jobs:
 | **Passive scanning** | Analyzes responses without sending attack payloads | None (read-only) | WSTG-INFO, WSTG-CONF, partial WSTG-CRYP |
 | **Active scanning** | Sends injection payloads, fuzzes parameters | Moderate (may cause errors, data modification) | WSTG-INPV, WSTG-ATHZ, WSTG-SESS, WSTG-BUSL |
 
-**Passive scan rules to verify are enabled:**
+**Passive and active scan rule tables:**
 
-| ZAP Rule ID | Rule Name | OWASP Top 10 | WSTG Reference |
-|-------------|-----------|-------------|----------------|
-| 10010 | Cookie No HttpOnly Flag | A05:2021 | WSTG-SESS-02 |
-| 10011 | Cookie Without Secure Flag | A05:2021 | WSTG-SESS-02 |
-| 10015 | Incomplete or No Cache-control Header | A05:2021 | WSTG-CONF-06 |
-| 10017 | Cross-Domain JavaScript Source | A05:2021 | WSTG-CLNT-01 |
-| 10020 | X-Frame-Options Header | A05:2021 | WSTG-CLNT-09 |
-| 10021 | X-Content-Type-Options Header | A05:2021 | WSTG-CONF-06 |
-| 10023 | Information Disclosure - Debug Errors | A05:2021 | WSTG-ERRH-01 |
-| 10035 | Strict-Transport-Security Header | A05:2021 | WSTG-CONF-07 |
-| 10036 | Server Leaks Version Information | A05:2021 | WSTG-INFO-02 |
-| 10038 | Content Security Policy Header | A05:2021 | WSTG-CONF-12 |
-| 10063 | Permissions Policy Header | A05:2021 | WSTG-CONF-06 |
-| 90004 | Insufficient Site Isolation Against Spectre | A05:2021 | N/A |
-
-**Active scan rules to verify for OWASP Top 10 coverage:**
-
-| OWASP Top 10 | ZAP Active Scanner | WSTG Reference |
-|-------------|-------------------|----------------|
-| A01:2021 Broken Access Control | Path Traversal (6), Remote File Inclusion (7) | WSTG-ATHZ-01 |
-| A02:2021 Cryptographic Failures | Passive rules + TLS config check | WSTG-CRYP-01 |
-| A03:2021 Injection | SQL Injection (40018, 40019, 40020, 40021, 40022), XSS Reflected (40012, 40014), XSS Persistent (40016, 40017), OS Command Injection (90020), SSTI (90035) | WSTG-INPV-05, WSTG-INPV-01 |
-| A04:2021 Insecure Design | Limited DAST coverage -- manual testing required | WSTG-BUSL-* |
-| A05:2021 Security Misconfiguration | Directory Browsing (0), Backup File Disclosure (10095) | WSTG-CONF-04, WSTG-CONF-03 |
-| A06:2021 Vulnerable Components | Passive technology fingerprinting + Retire.js | WSTG-INFO-02 |
-| A07:2021 Auth Failures | Brute Force (not default), Session Fixation (40013) | WSTG-ATHN-*, WSTG-SESS-* |
-| A08:2021 Software/Data Integrity | Limited DAST coverage | N/A |
-| A09:2021 Logging Failures | Not DAST-testable | N/A |
-| A10:2021 SSRF | SSRF (40046) | WSTG-INPV-19 |
+-> See references/zap-rules-mapping.md for complete passive and active rule mappings to OWASP Top 10 and WSTG.
 
 **Finding classification:** Active scanning disabled entirely is **High**. OWASP Top 10 A03 (Injection) scan rules disabled is **Critical**. Missing passive scan rules for security headers is **Medium**.
 
@@ -335,63 +239,9 @@ env:
 
 #### 5.1 Pipeline Integration Patterns
 
-**GitHub Actions -- ZAP Baseline Scan (passive only, safe for every PR):**
+-> See templates/ci-baseline-scan.yaml for GitHub Actions ZAP baseline (passive) scan workflow.
 
-```yaml
-name: DAST Baseline
-on:
-  pull_request: {}
-
-jobs:
-  dast-baseline:
-    runs-on: ubuntu-latest
-    services:
-      app:
-        image: ${{ env.APP_IMAGE }}
-        ports:
-          - 8080:8080
-    steps:
-      - uses: actions/checkout@v4
-      - name: ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.12.0
-        with:
-          target: "http://app:8080"
-          rules_file_name: "zap-baseline-rules.tsv"
-          fail_action: "warn"            # Baseline: warn only
-          artifact_name: "zap-baseline"
-
-      - name: Upload SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: "report_sarif.json"
-```
-
-**GitHub Actions -- ZAP Full Scan (active scanning, staging environment):**
-
-```yaml
-name: DAST Full Scan
-on:
-  push:
-    branches: [main]              # After merge to main, scan staging
-  schedule:
-    - cron: '0 2 * * 1'          # Weekly full scan
-
-jobs:
-  dast-full:
-    runs-on: ubuntu-latest
-    environment: staging           # Requires environment approval
-    steps:
-      - uses: actions/checkout@v4
-      - name: ZAP Full Scan
-        uses: zaproxy/action-full-scan@v0.10.0
-        with:
-          target: "https://staging.example.com"
-          rules_file_name: "zap-full-rules.tsv"
-          cmd_options: >
-            -config automation.plan=/zap/af-plan.yaml
-          fail_action: "error"     # Full scan: fail on high findings
-```
+-> See templates/ci-full-scan.yaml for GitHub Actions ZAP full (active) scan workflow.
 
 **What to verify:**
 
@@ -455,15 +305,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 **ZAP rules file for suppression and severity override:**
 
-```tsv
-# zap-rules.tsv
-# Rule ID    Action    Description
-10015        IGNORE    # Incomplete Cache-control -- accepted risk for public content
-10020        WARN      # X-Frame-Options -- downgrade to warning, CSP frame-ancestors in use
-40012        FAIL      # XSS Reflected -- must block
-40018        FAIL      # SQL Injection -- must block
-90020        FAIL      # OS Command Injection -- must block
-```
+-> See templates/zap-rules.tsv for example rules file with IGNORE/WARN/FAIL configuration.
 
 **What to verify:**
 
@@ -539,40 +381,13 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 ## Framework Reference
 
-### OWASP Top 10:2021
+### OWASP Top 10:2021 and WSTG Mappings
 
-| Category | Name | DAST Testability |
-|----------|------|-----------------|
-| A01 | Broken Access Control | Moderate -- path traversal, IDOR (with authenticated scanning) |
-| A02 | Cryptographic Failures | Limited -- TLS config, cleartext transmission |
-| A03 | Injection | Strong -- SQLi, XSS, Command Injection, SSTI, SSRF |
-| A04 | Insecure Design | Minimal -- business logic flaws require manual testing |
-| A05 | Security Misconfiguration | Strong -- headers, directory listing, default pages, error handling |
-| A06 | Vulnerable Components | Moderate -- technology fingerprinting, Retire.js |
-| A07 | Identification and Authentication Failures | Moderate -- session fixation, weak session IDs |
-| A08 | Software and Data Integrity Failures | Minimal -- SRI checks, limited CSP analysis |
-| A09 | Security Logging and Monitoring Failures | Not testable via DAST |
-| A10 | Server-Side Request Forgery | Moderate -- SSRF active scanner |
-
-### OWASP Testing Guide v4.2 (WSTG) -- DAST-Relevant Categories
-
-| Category | ID Prefix | DAST Coverage |
-|----------|-----------|--------------|
-| Information Gathering | WSTG-INFO | Strong (passive fingerprinting) |
-| Configuration and Deployment Management | WSTG-CONF | Strong (passive + active) |
-| Identity Management | WSTG-IDNT | Limited |
-| Authentication | WSTG-ATHN | Moderate (with auth scanning) |
-| Authorization | WSTG-ATHZ | Moderate (IDOR, path traversal) |
-| Session Management | WSTG-SESS | Moderate (passive cookie analysis, session fixation) |
-| Input Validation | WSTG-INPV | Strong (injection scanners) |
-| Error Handling | WSTG-ERRH | Strong (error message analysis) |
-| Cryptography | WSTG-CRYP | Limited (TLS only) |
-| Business Logic | WSTG-BUSL | Minimal (manual testing required) |
-| Client-Side | WSTG-CLNT | Moderate (DOM XSS, clickjacking) |
+-> See references/framework-mapping.md
 
 ---
 
-## Common Pitfalls
+## Gotchas
 
 1. **Running active scans against production.** Active scanning sends injection payloads (SQL injection, XSS, command injection) that can modify data, trigger alerts, or cause service disruption. Active DAST must target staging or ephemeral environments only. Use passive-only baseline scans against production if any production scanning is required.
 
@@ -583,6 +398,25 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 4. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
+
+6. **Rule 10015 (Cache-control) false positive for API-only applications.** ZAP rule 10015 flags missing or incomplete `Cache-Control` headers. For API-only applications (no browser-rendered content), this is frequently a false positive: API responses are consumed by programmatic clients that do not use browser caching. However, do NOT blanket-IGNORE rule 10015 -- it is valid for applications serving HTML, JavaScript, or any content rendered in browsers. The correct approach is to set rule 10015 to IGNORE in the ZAP rules TSV only for API-only scan contexts, while keeping it active for web application scans.
+
+7. **WAF bypass patterns affecting DAST scan accuracy.** If the target application sits behind a WAF (Cloudflare, AWS WAF, Azure Front Door), the WAF may block ZAP's active scan payloads before they reach the application. This creates a false sense of security: the DAST report shows no injection findings, but the application itself may be vulnerable. To get accurate results: (a) scan against the origin server directly (bypassing WAF) in staging environments, or (b) allowlist the scanner's IP in the WAF for the scan window, or (c) document that DAST results reflect WAF+app combined posture, not application-only posture. If WAF is present and not bypassed, note this limitation in the assessment report.
+
+---
+
+## Verification
+
+**Falsifiable test:** If the ZAP configuration has active scanning disabled AND the assessment does not contain a High-severity finding for missing active scanning coverage, the review failed.
+
+To verify the skill produced correct output, check:
+
+1. Every OWASP Top 10 category must have an explicit coverage entry (covered or GAP) in the DAST Coverage table.
+2. If no authenticated scanning is configured, the report must contain a Critical finding.
+3. If injection scan rules (40018, 40012, 90020) are set to IGNORE or WARN in the rules TSV, the report must contain a Critical finding.
+4. If active scanning targets production, the report must contain a Critical finding.
+
+If any of these conditions are violated, the assessment is incomplete.
 
 ---
 
@@ -614,4 +448,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **1.1.0** -- Extract ZAP AF plan, rules TSV, CI workflows, and framework mappings to templates/ and references/. Add gotchas for Rule 10015 API FP and WAF bypass patterns. Add Verification section.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.

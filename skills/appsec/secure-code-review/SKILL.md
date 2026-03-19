@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.2.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -49,58 +49,11 @@ Before examining any code, establish the review boundary.
 
 ### 2.1 Controls to Verify
 
-| ASVS Control | Description |
-|---|---|
-| V5.1.1 | Input validation is applied on a trusted service layer, not solely client-side |
-| V5.1.3 | All input is validated against an allowlist of permitted characters or patterns |
-| V5.2.1 | All HTML form output is properly encoded to prevent reflected XSS |
-| V5.2.2 | Unstructured data is sanitized to enforce safety and allowed characters |
-| V5.3.1 | Output encoding is relevant for the interpreter context (HTML, JS, URL, CSS, SQL) |
-| V5.3.4 | Data selection or database queries use parameterized queries or ORM |
-| V5.3.7 | The application protects against LDAP injection |
-| V5.3.8 | The application protects against OS command injection |
-| V5.5.1 | Serialized objects use integrity checks or encryption to prevent hostile object creation |
+> **V5 controls table:** See [references/asvs-controls.md](references/asvs-controls.md) for the full V5 (Validation, Sanitization and Encoding) control table.
 
 ### 2.2 Vulnerable Patterns by Language
 
-**Python -- SQL Injection (CWE-89)**
-```python
-# VULNERABLE: string formatting in SQL query
-def get_user(username):
-    query = f"SELECT * FROM users WHERE name = '{username}'"
-    cursor.execute(query)
-```
-Remediation: Use parameterized queries -- `cursor.execute("SELECT * FROM users WHERE name = %s", (username,))`.
-
-**JavaScript -- Cross-site Scripting (CWE-79)**
-```javascript
-// VULNERABLE: inserting unsanitized user input into DOM
-app.get('/search', (req, res) => {
-  res.send(`<h1>Results for: ${req.query.q}</h1>`);
-});
-```
-Remediation: Use a templating engine with auto-escaping enabled, or explicitly escape with a library such as `he` or `DOMPurify`.
-
-**Go -- OS Command Injection (CWE-78)**
-```go
-// VULNERABLE: user input passed directly to shell execution
-func handler(w http.ResponseWriter, r *http.Request) {
-    filename := r.URL.Query().Get("file")
-    cmd := exec.Command("sh", "-c", "cat "+filename)
-    output, _ := cmd.Output()
-    w.Write(output)
-}
-```
-Remediation: Avoid shell invocations. Use `exec.Command("cat", filename)` with an allowlist of permitted filenames.
-
-**Java -- Path Traversal (CWE-22)**
-```java
-// VULNERABLE: user-controlled path with no canonicalization
-String filename = request.getParameter("file");
-File f = new File("/uploads/" + filename);
-FileInputStream fis = new FileInputStream(f);
-```
-Remediation: Canonicalize the resolved path and verify it remains within the expected base directory.
+> **Vulnerable + remediated code snippets for injection:** See [references/vuln-patterns.md](references/vuln-patterns.md) -- patterns 1-4 cover SQL Injection (Python), XSS (JavaScript), OS Command Injection (Go), and Path Traversal (Java).
 
 ### 2.3 Review Checklist
 
@@ -120,49 +73,11 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 
 ### 3.1 Controls to Verify
 
-| ASVS Control | Description |
-|---|---|
-| V2.1.1 | User-set passwords are at least 12 characters in length |
-| V2.1.7 | Passwords are checked against a set of breached passwords (e.g., haveibeenpwned) |
-| V2.2.1 | Anti-automation controls are effective against credential stuffing and brute-force |
-| V2.5.1 | A system-generated initial activation or recovery secret is not sent in cleartext |
-| V2.8.1 | Time-based OTP (TOTP) tokens have a defined validity period |
-| V2.10.1 | No hard-coded credentials exist in the source code |
-| V2.10.2 | No shared or default accounts are present |
-| V3.1.1 | Session tokens are generated using a cryptographically secure random number generator |
-| V3.2.1 | Session tokens are invalidated on user logout |
-| V3.3.1 | Session idle timeout is enforced |
-| V3.4.1 | Cookie-based session tokens have the Secure attribute set |
-| V3.4.2 | Cookie-based session tokens have the HttpOnly attribute set |
-| V3.4.3 | Cookie-based session tokens have the SameSite attribute set |
+> **V2 (Authentication) and V3 (Session Management) controls:** See [references/asvs-controls.md](references/asvs-controls.md) for the full control tables.
 
 ### 3.2 Vulnerable Patterns by Language
 
-**Python -- Hard-coded Credentials (CWE-798)**
-```python
-# VULNERABLE: credentials embedded in source code
-DB_PASSWORD = "s3cretPassw0rd!"
-conn = psycopg2.connect(host="db.internal", password=DB_PASSWORD)
-```
-Remediation: Load credentials from environment variables or a secrets manager. Never commit secrets to version control.
-
-**JavaScript -- Missing Authentication (CWE-306)**
-```javascript
-// VULNERABLE: admin endpoint with no authentication middleware
-app.post('/admin/delete-user', (req, res) => {
-  db.deleteUser(req.body.userId);
-  res.json({ success: true });
-});
-```
-Remediation: Apply authentication middleware to all sensitive endpoints -- `app.post('/admin/delete-user', requireAuth, requireAdmin, handler)`.
-
-**Java -- Weak Session Management (CWE-287)**
-```java
-// VULNERABLE: predictable session identifier
-String sessionId = "session-" + System.currentTimeMillis();
-response.addCookie(new Cookie("SESSIONID", sessionId));
-```
-Remediation: Use the framework's built-in session management (e.g., `HttpSession`) which generates cryptographically random tokens.
+> **Vulnerable + remediated code snippets for auth/session:** See [references/vuln-patterns.md](references/vuln-patterns.md) -- patterns 5-7 cover Hard-coded Credentials (Python), Missing Authentication (JavaScript), and Weak Session Management (Java).
 
 ### 3.3 Review Checklist
 
@@ -182,37 +97,11 @@ Remediation: Use the framework's built-in session management (e.g., `HttpSession
 
 ### 4.1 Controls to Verify
 
-| ASVS Control | Description |
-|---|---|
-| V4.1.1 | Access control is enforced at a trusted service layer, not only at the UI |
-| V4.1.2 | All user and data attributes used by access controls cannot be manipulated by end users |
-| V4.1.3 | The principle of least privilege is applied -- users only access functions and data they need |
-| V4.2.1 | Sensitive data and APIs are protected against Insecure Direct Object Reference (IDOR) attacks |
-| V4.2.2 | The application enforces a strong anti-CSRF mechanism |
-| V4.3.1 | Administrative interfaces use appropriate multi-factor or role-based access control |
+> **V4 (Access Control) controls:** See [references/asvs-controls.md](references/asvs-controls.md) for the full control table.
 
 ### 4.2 Vulnerable Patterns by Language
 
-**Python -- Missing Authorization (CWE-862)**
-```python
-# VULNERABLE: no ownership check -- any authenticated user can view any profile
-@app.route('/api/profile/<user_id>')
-@login_required
-def get_profile(user_id):
-    return jsonify(db.get_profile(user_id))
-```
-Remediation: Verify `current_user.id == user_id` or that the requester holds an explicit role granting access.
-
-**Go -- CSRF on State-Changing Operations (CWE-352)**
-```go
-// VULNERABLE: state-changing operation via GET with no CSRF token
-http.HandleFunc("/transfer", func(w http.ResponseWriter, r *http.Request) {
-    amount := r.URL.Query().Get("amount")
-    to := r.URL.Query().Get("to")
-    doTransfer(r.Context(), to, amount)
-})
-```
-Remediation: Require POST with a validated CSRF token. Use a CSRF middleware library (e.g., `gorilla/csrf`).
+> **Vulnerable + remediated code snippets for authorization:** See [references/vuln-patterns.md](references/vuln-patterns.md) -- patterns 8-9 cover Missing Authorization (Python) and CSRF (Go).
 
 ### 4.3 Review Checklist
 
@@ -231,35 +120,11 @@ Remediation: Require POST with a validated CSRF token. Use a CSRF middleware lib
 
 ### 5.1 Controls to Verify
 
-| ASVS Control | Description |
-|---|---|
-| V6.1.1 | Regulated private data is stored encrypted at rest |
-| V6.2.1 | All cryptographic modules fail in a secure manner and errors are handled properly |
-| V6.2.2 | Industry-proven or government-approved cryptographic algorithms and modes are used |
-| V6.2.3 | Encryption initialization vectors, cipher configurations, and block modes are configured securely |
-| V6.2.5 | Known insecure block modes (ECB), padding modes, and weak algorithms (DES, RC4) are not used |
-| V6.3.1 | All random numbers and strings are generated using a cryptographically secure PRNG |
-| V6.4.1 | A key management solution is in place to create, distribute, rotate, and revoke keys |
+> **V6 (Stored Cryptography) controls:** See [references/asvs-controls.md](references/asvs-controls.md) for the full control table.
 
 ### 5.2 Vulnerable Patterns by Language
 
-**Python -- Weak Cryptography**
-```python
-# VULNERABLE: using ECB mode (does not provide semantic security)
-from Crypto.Cipher import AES
-cipher = AES.new(key, AES.MODE_ECB)
-ciphertext = cipher.encrypt(pad(data, AES.block_size))
-```
-Remediation: Use AES-GCM or AES-CBC with HMAC. Prefer high-level libraries like `cryptography.fernet`.
-
-**JavaScript -- Insecure Randomness**
-```javascript
-// VULNERABLE: Math.random() is not cryptographically secure
-function generateToken() {
-  return Math.random().toString(36).substring(2);
-}
-```
-Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.getRandomValues()` (browser).
+> **Vulnerable + remediated code snippets for cryptography:** See [references/vuln-patterns.md](references/vuln-patterns.md) -- patterns 10-11 cover Weak Cryptography/ECB (Python) and Insecure Randomness (JavaScript).
 
 ### 5.3 Review Checklist
 
@@ -277,34 +142,11 @@ Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.g
 
 ### 6.1 Controls to Verify
 
-| ASVS Control | Description |
-|---|---|
-| V7.1.1 | The application does not log credentials or payment details |
-| V7.1.2 | The application does not log other sensitive data as defined by local privacy laws |
-| V7.2.1 | All authentication decisions are logged |
-| V7.2.2 | All access control decisions are logged |
-| V7.3.1 | Logging mechanisms are protected from injection attacks |
-| V7.4.1 | A generic error message is shown to users; detailed errors are only logged server-side |
-| V7.4.3 | Error handling logic denies access by default |
+> **V7 (Error Handling and Logging) controls:** See [references/asvs-controls.md](references/asvs-controls.md) for the full control table.
 
 ### 6.2 Vulnerable Patterns by Language
 
-**Java -- Verbose Error Disclosure**
-```java
-// VULNERABLE: stack trace exposed to the end user
-catch (SQLException e) {
-    response.getWriter().println("Error: " + e.getMessage());
-    e.printStackTrace(response.getWriter());
-}
-```
-Remediation: Log the exception server-side with a correlation ID. Return a generic message -- `"An internal error occurred. Reference: <correlationId>"`.
-
-**Python -- Sensitive Data in Logs**
-```python
-# VULNERABLE: logging user credentials
-logger.info(f"Login attempt for {username} with password {password}")
-```
-Remediation: Never log secrets. Log only the username and the outcome -- `logger.info(f"Login attempt for {username}: {'success' if ok else 'failure'}")`.
+> **Vulnerable + remediated code snippets for error handling:** See [references/vuln-patterns.md](references/vuln-patterns.md) -- patterns 16-17 cover Verbose Error Disclosure (Java) and Sensitive Data in Logs (Python).
 
 ### 6.3 Review Checklist
 
@@ -322,13 +164,7 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 
 ### 7.1 Controls to Verify
 
-| ASVS Control | Description |
-|---|---|
-| V8.1.1 | The application protects sensitive data from being cached in server components |
-| V8.2.1 | The application sets sufficient anti-caching headers for sensitive responses |
-| V8.3.1 | Sensitive data is sent to the server in the HTTP message body or headers, not via URL parameters |
-| V8.3.4 | Sensitive information in autocomplete fields is disabled |
-| V8.3.6 | Sensitive information in memory is overwritten as soon as it is no longer needed |
+> **V8 (Data Protection) controls:** See [references/asvs-controls.md](references/asvs-controls.md) for the full control table.
 
 ### 7.2 Review Checklist
 
@@ -347,54 +183,11 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 
 ### 8.1 Controls to Verify
 
-| ASVS Control | Description |
-|---|---|
-| V12.1.1 | The application will not accept large files that could fill up storage or cause a denial of service |
-| V12.1.2 | Compressed files are checked for decompression bombs |
-| V12.3.1 | User-submitted filenames are validated and metadata from user uploads is not used directly by the system |
-| V12.3.2 | User-submitted filenames are sanitized to prevent directory traversal |
-| V12.4.1 | Files obtained from untrusted sources are stored outside the webroot |
-| V12.4.2 | Files obtained from untrusted sources are scanned by antivirus or verified by content type |
-| V12.6.1 | The web server only processes requests to specified and permitted file types |
+> **V12 (Files and Resources) controls:** See [references/asvs-controls.md](references/asvs-controls.md) for the full control table.
 
 ### 8.2 Vulnerable Patterns by Language
 
-**Python -- Unsafe Deserialization (CWE-502)**
-```python
-# VULNERABLE: deserializing untrusted data with pickle
-import pickle
-data = pickle.loads(request.data)
-```
-Remediation: Never use `pickle` on untrusted input. Use JSON or a schema-validated format. If object serialization is required, use a safe library with type restrictions.
-
-**Java -- Unsafe Deserialization (CWE-502)**
-```java
-// VULNERABLE: deserializing arbitrary objects from user input
-ObjectInputStream ois = new ObjectInputStream(request.getInputStream());
-Object obj = ois.readObject();
-```
-Remediation: Avoid native Java deserialization of untrusted data. Use JSON with explicit type mapping, or apply an allowlist filter (e.g., Apache Commons IO `ValidatingObjectInputStream`).
-
-**TypeScript -- Unrestricted File Upload (CWE-434)**
-```typescript
-// VULNERABLE: no validation on uploaded file type or size
-app.post('/upload', upload.single('file'), (req, res) => {
-  fs.renameSync(req.file.path, `/uploads/${req.file.originalname}`);
-  res.json({ url: `/uploads/${req.file.originalname}` });
-});
-```
-Remediation: Validate MIME type against an allowlist, enforce maximum file size, generate a random filename, and store uploads outside the webroot.
-
-**Go -- SSRF (CWE-918)**
-```go
-// VULNERABLE: user-supplied URL fetched without restriction
-func fetchURL(w http.ResponseWriter, r *http.Request) {
-    url := r.URL.Query().Get("url")
-    resp, _ := http.Get(url)
-    io.Copy(w, resp.Body)
-}
-```
-Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
+> **Vulnerable + remediated code snippets for deserialization and file handling:** See [references/vuln-patterns.md](references/vuln-patterns.md) -- patterns 12-15 cover Unsafe Deserialization (Python, Java), Unrestricted File Upload (TypeScript), and SSRF (Go).
 
 ### 8.3 Review Checklist
 
@@ -437,47 +230,9 @@ Each finding produced by this review must include the following fields:
 
 ## Output Format
 
-The final review output must be structured as follows:
+The final review output must be structured according to the report template.
 
-```
-## Security Code Review Report
-
-**Scope:** [list of files reviewed]
-**Languages:** [detected languages and frameworks]
-**Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
-
-### Summary
-- Critical: [count]
-- High: [count]
-- Medium: [count]
-- Low: [count]
-- Informational: [count]
-
-### Findings
-
-#### SCR-001: [Title]
-- **Severity:** [Critical|High|Medium|Low|Informational]
-- **CWE:** CWE-[number] -- [name]
-- **ASVS Control:** V[x.y.z]
-- **Location:** [file:line]
-- **Description:** [explanation]
-- **Evidence:**
-  ```[language]
-  [code snippet]
-  ```
-- **Remediation:** [specific fix with code example]
-- **Status:** Open
-
-[Repeat for each finding]
-
-### ASVS Coverage Matrix
-| ASVS Section | Applicable | Findings | Pass/Fail |
-|---|---|---|---|
-| V2 Authentication | Yes/No | [count] | [result] |
-| V3 Session Management | Yes/No | [count] | [result] |
-| ... | ... | ... | ... |
-```
+> **Report template:** See [templates/review-report.md](templates/review-report.md) for the full output format including findings structure and ASVS coverage matrix.
 
 ---
 
@@ -504,28 +259,7 @@ The final review output must be structured as follows:
 
 ### CWE Top 25 (2024) Coverage
 
-| CWE ID | Name | Review Step |
-|---|---|---|
-| CWE-787 | Out-of-bounds Write | Step 2 (memory-safe language check) |
-| CWE-79 | Cross-site Scripting (XSS) | Step 2 |
-| CWE-89 | SQL Injection | Step 2 |
-| CWE-416 | Use After Free | Step 2 (memory-safe language check) |
-| CWE-78 | OS Command Injection | Step 2 |
-| CWE-20 | Improper Input Validation | Step 2 |
-| CWE-125 | Out-of-bounds Read | Step 2 (memory-safe language check) |
-| CWE-22 | Path Traversal | Step 2 |
-| CWE-352 | Cross-Site Request Forgery | Step 4 |
-| CWE-434 | Unrestricted Upload of File with Dangerous Type | Step 8 |
-| CWE-862 | Missing Authorization | Step 4 |
-| CWE-476 | NULL Pointer Dereference | Step 6 (error handling) |
-| CWE-287 | Improper Authentication | Step 3 |
-| CWE-190 | Integer Overflow or Wraparound | Step 2 (memory-safe language check) |
-| CWE-502 | Deserialization of Untrusted Data | Step 8 |
-| CWE-77 | Command Injection | Step 2 |
-| CWE-119 | Improper Restriction of Operations within Memory Buffer | Step 2 (memory-safe language check) |
-| CWE-798 | Use of Hard-coded Credentials | Step 3 |
-| CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
-| CWE-306 | Missing Authentication for Critical Function | Step 3 |
+> **CWE Top 25 mapping table:** See [references/cwe-top25-mapping.md](references/cwe-top25-mapping.md) for the full CWE-to-review-step mapping.
 
 ---
 
@@ -540,6 +274,26 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+---
+
+## Verification
+
+### Expected Behavior
+
+A complete secure code review should identify all instances of vulnerable patterns covered by the ASVS controls and CWE Top 25 mappings within the scope of the reviewed code.
+
+### Actual Behavior Check
+
+- Verify that every applicable ASVS section has been evaluated and appears in the coverage matrix.
+- Verify that every finding includes CWE ID, ASVS control, location, evidence, and remediation.
+- Verify that no high-severity patterns were silently skipped.
+
+### Falsifiable Test
+
+"If reviewing code containing `cursor.execute(f\"SELECT...\")` and no CWE-89 finding emitted, the review failed."
+
+Any code that constructs SQL queries via f-string interpolation and passes them to `cursor.execute()` is a textbook SQL injection vulnerability (CWE-89, ASVS V5.3.4). A review that does not flag this pattern is incomplete and must be rerun.
 
 ---
 

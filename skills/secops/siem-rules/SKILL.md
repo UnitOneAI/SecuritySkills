@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -81,6 +81,10 @@ Select the appropriate detection logic pattern based on the threat being detecte
 ### Step 2: Write the Detection Query
 
 #### KQL (Microsoft Sentinel) Syntax Reference
+
+→ See [templates/kql/password-spray.kql](templates/kql/password-spray.kql), [templates/kql/impossible-travel.kql](templates/kql/impossible-travel.kql), [templates/kql/privileged-offhours.kql](templates/kql/privileged-offhours.kql) for KQL query templates.
+→ See [templates/spl/password-spray.spl](templates/spl/password-spray.spl), [templates/spl/impossible-travel.spl](templates/spl/impossible-travel.spl), [templates/spl/privileged-offhours.spl](templates/spl/privileged-offhours.spl) for SPL query templates.
+→ See [references/siem-reference-tables.md](references/siem-reference-tables.md) for Sentinel tables, Splunk sourcetypes, and operator reference.
 
 **Common Sentinel tables:**
 

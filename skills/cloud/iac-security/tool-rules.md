@@ -2,6 +2,8 @@
 
 This file contains the detailed tool-specific rule sets, detection patterns, and remediation examples for the Infrastructure as Code Security Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
 
+> **Note:** The Checkov/tfsec/KICS rule mapping table has been extracted to [references/scanner-rule-mapping.md](references/scanner-rule-mapping.md). Secret detection regex patterns have been extracted to [references/secret-patterns.md](references/secret-patterns.md).
+
 ---
 
 ## Hardcoded Secrets Detection

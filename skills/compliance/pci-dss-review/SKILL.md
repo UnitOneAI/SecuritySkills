@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -141,6 +141,12 @@ PCI DSS v4.0 requires scope confirmation at least every 12 months and upon signi
 ---
 
 ### Step 2: Requirement-by-Requirement Assessment
+
+→ See [references/pci-dss-v4-requirements.md](references/pci-dss-v4-requirements.md) for the requirements summary and parallelization guidance.
+→ See [templates/compensating-control-worksheet.md](templates/compensating-control-worksheet.md) for the compensating control worksheet.
+→ See [templates/customized-approach.md](templates/customized-approach.md) for the customized approach template.
+
+**Parallelization:** Requirements 1-4 can be assessed independently of 5-8 and 9-12.
 
 For each requirement, assess: (a) whether controls exist, (b) whether they meet the Defined Approach testing procedures, (c) whether documentation satisfies evidence requirements, (d) gaps.
 

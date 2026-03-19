@@ -519,6 +519,8 @@ After scoring, calculate:
 
 ## Evidence Artifact Reference
 
+→ See [references/evidence-artifacts.md](references/evidence-artifacts.md) for the complete evidence artifact reference table.
+
 | Criteria | Required Evidence Artifacts |
 |----------|-----------------------------|
 | CC1.1 | Code of Conduct; signed acknowledgment records; ethics hotline documentation |

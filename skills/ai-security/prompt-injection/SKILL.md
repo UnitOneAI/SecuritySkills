@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -74,6 +74,30 @@ For each user input channel identified in Step 1, determine whether an attacker 
 - **Multi-turn injection** — Can an attacker embed instructions in earlier conversation turns that alter the model's behavior in subsequent turns?
 - **Parameter injection** — Can user-controlled values (e.g., a "name" field, a search query) that are inserted into prompts carry executable instructions?
 
+**Detection methods using allowed tools:**
+
+```
+# Find string concatenation in prompt construction
+Grep: "prompt.*\+.*user|prompt.*\+.*input|system.*\+.*user|message.*\+.*input" in **/*.{py,ts,js}
+
+# Find f-string interpolation with user input
+Grep: "f['\"].*\{user_input|f['\"].*\{user_message|f['\"].*\{query|f['\"].*\{input" in **/*.py
+
+# Find template literal injection (JavaScript/TypeScript)
+Grep: "\`.*\$\{user|input\}.*\`|\`.*\$\{query\}.*\`|\`.*\$\{message\}" in **/*.{ts,js}
+
+# Find raw user input in system prompts
+Grep: "system.*content.*user|system.*content.*input|system.*content.*format" in **/*.{py,ts,js}
+Grep: "\.format\(.*user|\.format\(.*input|\.format\(.*query" in **/*.py
+
+# Find prompt templates with user data placeholders
+Grep: "PromptTemplate|ChatPromptTemplate|prompt_template|SystemMessagePromptTemplate" in **/*.py
+Grep: "jinja|render_template|Template\(" in **/*.{py,ts,js}
+
+# Check for input validation before prompt assembly
+Grep: "validate.*input|sanitize.*input|clean.*input|filter.*input|input.*validation" in **/*.{py,ts,js}
+```
+
 **What to look for in code:**
 - String concatenation or interpolation with user input going into LLM API calls
 - Prompt templates with placeholder variables filled by user data
@@ -92,6 +116,21 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+
+**Detection methods using allowed tools:**
+
+```
+# Find document loaders and web scrapers feeding into prompts
+Grep: "DocumentLoader|WebBaseLoader|PyPDFLoader|TextLoader|load_documents" in **/*.py
+Grep: "scrape|crawl|fetch_url|BeautifulSoup|requests\.get.*html" in **/*.{py,ts,js}
+
+# Find RAG pipelines without content sanitization
+Grep: "retriever|retrieve|similarity_search|vector_search|get_relevant" in **/*.{py,ts,js}
+Grep: "sanitize|escape|filter_content|clean_content|strip_instructions" in **/*retriev*.{py,ts,js}
+
+# Check for content provenance tracking
+Grep: "source|provenance|attribution|metadata.*source|trust_level" in **/*retriev*.{py,ts,js}
+```
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
@@ -155,6 +194,8 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 
 ## Step 5: Defense Evaluation
 
+-> See `templates/defense-checklist.md` for the extractable defense evaluation checklist.
+
 Evaluate which of the following mitigations are implemented and how effectively. Note that no single defense is sufficient; a layered approach is required.
 
 ### 5.1 Input Validation and Sanitization
@@ -191,6 +232,14 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Does the application use a model or framework that supports instruction hierarchy (system instructions take precedence over user instructions)?
 - Is the system prompt structurally separated from user input (e.g., via the API's system message role) rather than concatenated in a single string?
 - Are retrieved documents and external content clearly demarcated as data, not instructions?
+
+---
+
+## Verification
+
+The following test validates that this skill is operating correctly:
+
+- **Test:** If code uses `f'You are a helpful assistant. User says: {user_input}'` passed to an LLM API call with no finding, the review has failed. This is a textbook direct prompt injection vector -- raw user input interpolated directly into the prompt with no sanitization, no delimiter, and no structural separation.
 
 ---
 
@@ -265,9 +314,13 @@ Each finding should be assigned a severity based on potential impact:
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
 
+6. **False positive: delimiter-based defenses that appear vulnerable but are safe.** A system using XML delimiters around user input (e.g., `<user_input>...</user_input>`) may appear vulnerable to delimiter injection but is safe if the model is instruction-tuned to respect delimiters as trust boundaries. Similarly, systems using structured message roles (`system` vs `user` in the API) with instruction-hierarchy-aware models have a legitimate defense even though user input still reaches the model. Verify whether the delimiter or hierarchy defense is backed by the model's training before flagging as a finding. Do not conflate "user input reaches the model" with "prompt injection is possible."
+
 ---
 
 ## References
+
+-> See `references/academic-refs.md` for detailed academic references and framework mappings.
 
 - OWASP Top 10 for Large Language Model Applications (2025), LLM01: Prompt Injection — https://genai.owasp.org
 - MITRE ATLAS, AML.T0051: LLM Prompt Injection — https://atlas.mitre.org

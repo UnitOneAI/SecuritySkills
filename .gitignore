@@ -8,5 +8,8 @@ Thumbs.db
 *.swp
 *.swo
 
+# Node
+node_modules/
+
 # Plan file (internal reference, not published)
 skillsrepo.md
