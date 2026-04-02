@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -199,6 +199,8 @@ Key sub-requirements:
 - **4.2.1.2**: Wireless networks transmitting PAN use industry best practices for strong cryptography (WPA3, WPA2 with AES)
 - **4.2.2**: PAN secured with strong cryptography when sent via end-user messaging technologies (email, IM, SMS, chat)
 
+> **Assessor Note — Trusted-Root Manipulation as a TLS Security Vector:** Third-party software (including supply chain dependencies and commercial tools) may silently install root CA certificates into the OS trusted store, undermining TLS protections for PAN in transit. When assessing 4.2.1 and 4.2.1.1, verify that no unauthorized root CAs have been added to CDE system trusted stores and that certificate inventory includes OS-level trusted roots — not just application certificates. Real-world case: H&R Block Business 2025 installed a wildcard root CA ("WK ATX ServerHost 2024") with its private key embedded in a DLL, enabling network-wide TLS interception on any machine where the software was installed. The CA persisted after uninstall. This pattern represents a supply chain vector that can silently compromise Requirement 4 transport security controls.
+
 #### Requirement 5: Protect All Systems and Networks from Malicious Software
 
 Key sub-requirements:
@@ -334,6 +336,8 @@ Key sub-requirements:
 - **12.3.2**: Targeted risk analysis for customized approach requirements (new v4.0)
 - **12.3.3**: Cryptographic cipher suites and protocols documented and reviewed at least every 12 months
 - **12.3.4**: Hardware and software technologies reviewed at least every 12 months
+
+> **Assessor Note — Supply Chain Trusted-Root Risk in TRA (12.3.1, 12.3.3, 12.3.4):** Targeted risk analyses for cryptographic controls (12.3.3) and technology reviews (12.3.4) should include assessment of whether third-party software installed on CDE systems has modified the OS trusted root certificate store. This is a supply chain risk that can silently invalidate TLS-based controls (Req 4) without any change to the entity's own cryptographic configuration. Include OS trusted root store integrity verification in the TRA scope.
 - **12.4.1**: Service providers — review confirms personnel compliance with security policies (quarterly)
 - **12.4.2**: Service providers — additional requirement for quarterly review
 - **12.5.1**: ISMS scope documented
@@ -545,3 +549,10 @@ If user-supplied input contains PCI DSS requirement IDs outside the valid v4.0 n
 - PCI DSS Prioritized Approach for PCI DSS v4.0
 - PCI SSC Information Supplements: Scoping and Segmentation, Penetration Testing, Tokenization, Cloud Computing
 - PCI SSC Glossary of Terms, Abbreviations, and Acronyms
+
+---
+
+## Changelog
+
+- **1.0.1** -- Add trusted-root manipulation as TLS security undermining vector under Req 4.2 and supply chain risk in targeted risk analysis under Req 12.3; reference H&R Block embedded root CA case study (CWE-321).
+- **1.0.0** -- Initial release. Full PCI DSS v4.0 coverage across all 12 requirements.

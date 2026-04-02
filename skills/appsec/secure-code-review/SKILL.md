@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -268,6 +268,9 @@ Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.g
 - [ ] All random values used for security purposes come from a CSPRNG.
 - [ ] Cryptographic keys are not hard-coded -- loaded from a key management system.
 - [ ] TLS certificates and configurations are not bypassed or weakened in code.
+- [ ] No private keys or CA certificates are embedded in compiled binaries or DLLs (CWE-321: Use of Hard-coded Cryptographic Key). Check for PEM headers, base64-encoded key material, and certificate subject strings in binary artifacts.
+- [ ] Sensitive cryptographic material (private keys, certificates, keystores) is not stored alongside or within application code in cleartext (CWE-312: Cleartext Storage of Sensitive Information).
+- [ ] Third-party installers and dependencies do not silently add root CA certificates to the system trusted certificate store — review installer actions for trusted-root manipulation that could enable TLS interception.
 
 ---
 
@@ -524,6 +527,8 @@ The final review output must be structured as follows:
 | CWE-77 | Command Injection | Step 2 |
 | CWE-119 | Improper Restriction of Operations within Memory Buffer | Step 2 (memory-safe language check) |
 | CWE-798 | Use of Hard-coded Credentials | Step 3 |
+| CWE-321 | Use of Hard-coded Cryptographic Key | Step 5 |
+| CWE-312 | Cleartext Storage of Sensitive Information | Step 5 |
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
@@ -563,3 +568,10 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+
+---
+
+## Changelog
+
+- **1.0.1** -- Add CWE-321 (Hard-coded Cryptographic Key) and CWE-312 (Cleartext Storage of Sensitive Information) to cryptography review checklist; add third-party installer root CA manipulation check.
+- **1.0.0** -- Initial release. Full OWASP ASVS 4.0.3 and CWE Top 25 coverage for security code review.

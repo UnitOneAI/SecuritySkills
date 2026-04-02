@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -145,6 +145,28 @@ xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
 # PGP Private Key
 -----BEGIN\sPGP\sPRIVATE\sKEY\sBLOCK-----
 ```
+
+**Embedded Private Keys in Compiled Binaries (CWE-321: Use of Hard-coded Cryptographic Key):**
+
+Private keys and CA certificates may be embedded directly in compiled binaries (DLLs, .exe, .so) rather than stored as standalone PEM/key files. This bypasses file-based detection entirely.
+
+```regex
+# Base64-encoded certificate/key material in binary strings
+(?:MIIE|MIID|MIIG)[A-Za-z0-9+/]{40,}={0,2}
+
+# Certificate subject strings embedded in binaries
+(?:CN=|O=|OU=).*(?:Root CA|Server CA|Signing CA)
+```
+
+Detection tools must scan binary artifacts — not just source and config files — for embedded key material. Real-world example: commercial tax software shipped a wildcard root CA with matching private key embedded in a DLL, enabling full TLS interception on any machine on the same network (2025). The CA persisted in the system trusted store even after uninstall.
+
+**What to verify for binary-embedded keys:**
+- Run `strings` or binary analysis on installer DLLs/executables for PEM headers and high-entropy base64 blobs
+- Check whether installers add certificates to the OS trusted root store (Windows: `certutil -store Root`, Linux: `/etc/ssl/certs/`, macOS: Keychain)
+- Verify uninstallers remove any CA certificates they installed
+- Flag any private key material co-located with its certificate in the same binary as **Critical**
+
+**Finding classification:** Private key embedded in a distributed binary is **Critical**. Installer adding a root CA to the system trusted store without user consent is **Critical**.
 
 **Connection Strings and Passwords:**
 
@@ -471,5 +493,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Add embedded binary private key / root CA detection pattern (CWE-321); binary artifact scanning guidance for compiled DLLs and installers.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
