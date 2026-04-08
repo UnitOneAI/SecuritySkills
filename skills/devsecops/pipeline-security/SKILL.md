@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -233,6 +233,8 @@ poetry install --no-update
 
 **Finding format:** Report dependency pinning status, lock file presence, automated update tooling, and whether install commands use locked/frozen modes.
 
+> **⚠️ Emerging threat (2026-04-08):** Attackers are specifically targeting **AI/ML toolchain packages** (LiteLLM, LangChain) via PyPI — the same CICD-SEC-3 controls apply with elevated urgency. Treat `requirements.txt` or `pyproject.toml` references to LLM libraries as critical dependencies requiring pinned hashes (`--require-hashes`). See: [PyPI Incident Report: LiteLLM/Telnyx](https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/)
+
 ---
 
 #### CICD-SEC-4: Poisoned Pipeline Execution (PPE)
@@ -265,6 +267,8 @@ on: pull_request_target
 ```
 
 **Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+
+> **⚠️ MCP repo targeting (2026-04-08):** Attackers are specifically targeting **Model Context Protocol (MCP) repositories** via GitHub Actions workflow poisoning. If the repository hosts MCP servers or tools, apply maximum PPE scrutiny — these repos are now an active high-value target. Flag any MCP repo using `pull_request_target` or lacking branch protection as **Critical**. See: [Anatomy of a GitHub Actions Supply Chain Attack Targeting MCP Repos](https://www.wshoffner.dev/blog/anatomy-of-a-github-actions-supply-chain-attack-targeting-mcp-repos)
 
 ---
 
@@ -552,9 +556,14 @@ This skill processes user-supplied content including CI/CD configuration files, 
 - GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
 - Sigstore / Cosign: https://docs.sigstore.dev/
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
+- Anatomy of a GitHub Actions Supply Chain Attack Targeting MCP Repos: https://www.wshoffner.dev/blog/anatomy-of-a-github-actions-supply-chain-attack-targeting-mcp-repos
+- PyPI Incident Report: LiteLLM/Telnyx Supply Chain Attacks: https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/
+- Axios Supply Chain Attack via Targeted Social Engineering: https://simonwillison.net/2026/Apr/3/supply-chain-social-engineering/
+- The TeamPCP Attacks — CI/CD Pipeline as Primary Attack Surface: https://thenewstack.io/cicd-pipeline-front-line/
 
 ---
 
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
+- **1.0.1** -- Social intelligence update (2026-04-08): Added MCP repo targeting alert under CICD-SEC-4; AI/ML toolchain dependency warning under CICD-SEC-3; new references for Axios, LiteLLM/Telnyx, and TeamPCP attacks.
