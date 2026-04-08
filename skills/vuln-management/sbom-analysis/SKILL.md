@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -342,6 +342,44 @@ conflicts), and overall classification.]
 
 ---
 
+## Supply Chain Incident Case Studies
+
+### Why These Cases Matter for SBOM Practice
+
+Real-world supply chain attacks illustrate exactly where SBOM controls succeed and fail. Use these as calibration points when evaluating an organization's SBOM maturity.
+
+---
+
+### Case Study: Axios Supply Chain Attack (April 2026)
+
+**What happened:** Attackers used targeted social engineering to compromise an npm package maintainer, then injected malicious code into Axios — a JavaScript HTTP library with ~7 billion weekly downloads.
+
+**SBOM signal that would have helped:**
+- An SBOM diff between the pre-compromise and post-compromise versions would reveal the behavioral change in the package.
+- VEX documents issued by the Axios maintainer post-discovery allowed downstream consumers to assess impact without manually reviewing every application using Axios.
+- Integrity hashes in SBOMs (`sha512` component hashes in CycloneDX) would have caught the mismatch between the published lockfile and the installed artifact.
+
+**Lesson for SBOM programs:** Treat SBOM generation as a **diff-capable artifact**, not just a point-in-time snapshot. Automated SBOM comparison between versions surfaces unexpected component additions or hash changes.
+
+**Reference:** [Axios Supply Chain Attack via Social Engineering (Simon Willison, 2026)](https://simonwillison.net/2026/Apr/3/supply-chain-social-engineering/) | [Elastic Detection Writeup](https://www.elastic.co/security-labs/how-we-caught-the-axios-supply-chain-attack)
+
+---
+
+### Case Study: LiteLLM / Telnyx PyPI Supply Chain Attack (April 2026)
+
+**What happened:** Attackers coordinated simultaneous supply chain attacks targeting LiteLLM (widely-used LLM proxy library) and Telnyx packages on PyPI. This is the first confirmed coordinated supply chain attack specifically targeting the AI/ML toolchain.
+
+**SBOM signal that would have helped:**
+- Organizations with continuous SBOM monitoring and VEX subscription would have received automated alerts when PyPI published the incident report, enabling rapid triage.
+- Dependency graph analysis showing LiteLLM as a transitive dependency would scope the blast radius across all affected applications without manual search.
+- AI/ML dependencies should be treated as **critical infrastructure** in SBOM risk tiering — they sit in the data path of all LLM API calls.
+
+**Lesson for SBOM programs:** Add a **"critical dependency tier"** to your SBOM risk classification specifically for AI/ML toolchain packages. Apply stricter change monitoring, faster VEX processing, and lower patching SLAs for this tier.
+
+**Reference:** [PyPI Incident Report: LiteLLM/Telnyx Supply Chain Attacks (2026)](https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/) | [Cycode Post-Mortem](https://cycode.com/blog/lite-llm-supply-chain-attack/)
+
+---
+
 ## Framework Reference
 
 ### CycloneDX 1.5 (OWASP)
@@ -408,3 +446,7 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 - EU Cyber Resilience Act: https://digital-strategy.ec.europa.eu/en/policies/cyber-resilience-act
 - OSV (Open Source Vulnerability Database): https://osv.dev/
 - GitHub Advisory Database: https://github.com/advisories
+- Axios Supply Chain Attack via Targeted Social Engineering: https://simonwillison.net/2026/Apr/3/supply-chain-social-engineering/
+- Elastic Security Labs — How We Caught the Axios Supply Chain Attack: https://www.elastic.co/security-labs/how-we-caught-the-axios-supply-chain-attack
+- PyPI Incident Report: LiteLLM/Telnyx Supply Chain Attacks: https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/
+- Cycode Post-Mortem: LiteLLM Supply Chain Attack: https://cycode.com/blog/lite-llm-supply-chain-attack/

@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -149,6 +149,58 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 - `go-licenses` (Google): `go-licenses check ./...`
 - `cargo-license`: `cargo license --json`
 
+## Maintainer Compromise via Social Engineering
+
+### Targeted Maintainer Attacks: A New Escalation
+
+The Axios supply chain attack (April 2026) demonstrated a significant escalation in attacker tactics: rather than mass-phishing developers, attackers used **individually targeted social engineering** to compromise a specific npm package maintainer. This is a fundamentally different threat model than opportunistic typosquatting or automated credential stuffing.
+
+**Key distinctions:**
+
+| Attack Type | Target | Technique | Scale |
+|---|---|---|---|
+| **Opportunistic** | Any developer | Mass phishing, credential stuffing | High volume, low precision |
+| **Targeted maintainer compromise** | Specific maintainer of high-value package | Personalized social engineering, impersonation | Low volume, high impact |
+
+### Why Maintainer Compromise Is High-Impact
+
+A compromised maintainer has legitimate publish access. Malicious code injected under a trusted package name with legitimate signing/provenance passes many automated controls that catch typosquats. The Axios attack injected malicious code into a library with **~7 billion weekly downloads** — no typosquatting heuristic catches this.
+
+### Detection Signals for Compromised Legitimate Packages
+
+Following Elastic Security Labs' analysis of the Axios attack, these behavioral signals surfaced the compromise post-injection:
+
+1. **Unexpected outbound network calls**: A pure HTTP library (Axios) making DNS/HTTP requests to external domains not in its documented behavior is anomalous. Monitor for packages initiating network connections at install time or during application startup outside their declared API surface.
+2. **Hash mismatches**: The package hash changed between lockfile and the installed artifact — compare `package-lock.json` integrity hashes against the live registry. Tools: `npm audit signatures`, `cosign` for attestation verification.
+3. **Package telemetry anomalies**: Sudden spike in install volume, new contributor with recent account creation merging code, or version published at unusual hours for the maintainer's known timezone.
+4. **Post-install script additions**: A new `preinstall`/`postinstall` hook appearing in an update from a package that previously had none is a high-confidence signal.
+
+### Mitigation Controls
+
+1. **Pin exact versions in lockfiles** — floating ranges allow compromised versions to reach production silently.
+2. **Enable `npm audit signatures`** (npm ≥ 8.x) to verify registry package signatures against the npm public key.
+3. **Monitor dependency graph changes in PRs** — alert on `package-lock.json` diffs that add unexpected transitive packages.
+4. **Subscribe to maintainer security advisories** for critical dependencies (GitHub Advisories, Deps.dev alerts).
+5. **Implement runtime behavioral monitoring** in production for unexpected outbound connections from dependency code.
+
+### AI/ML Dependency Ecosystem: Emerging High-Value Target
+
+The coordinated supply chain attacks on **LiteLLM** and **Telnyx** (PyPI incident report, April 2026) confirm that attackers are now specifically targeting the AI/ML toolchain. LiteLLM is a widely-used LLM proxy library — compromising it provides a vector into any application routing traffic through LLM APIs.
+
+**AI/ML packages requiring elevated dependency scrutiny:**
+
+- **LLM proxy/routing**: LiteLLM, LangChain, LlamaIndex, Haystack
+- **AI SDK wrappers**: OpenAI Python SDK, Anthropic SDK, Cohere SDK
+- **Vector stores / embeddings**: ChromaDB, Qdrant, Pinecone clients
+- **Model serving**: vLLM, Transformers (HuggingFace), ONNX Runtime
+- **Agent frameworks**: AutoGen, CrewAI, Semantic Kernel
+
+Apply **heightened scrutiny** to these packages during dependency review:
+- Check maintainer commit signing and 2FA status (visible on PyPI project page under "Maintainers")
+- Verify package hashes against PyPI JSON API: `https://pypi.org/pypi/{package}/{version}/json`
+- Review recent commit history for unexpected contributors or obfuscated code additions
+- Enable PyPI Malware Alerts for critical AI/ML dependencies
+
 ## Typosquatting Detection
 
 ### What Is Typosquatting
@@ -251,3 +303,6 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Axios Supply Chain Attack via Targeted Social Engineering (Simon Willison, 2026)](https://simonwillison.net/2026/Apr/3/supply-chain-social-engineering/)
+- [How We Caught the Axios Supply Chain Attack - Elastic Security Labs (2026)](https://www.elastic.co/security-labs/how-we-caught-the-axios-supply-chain-attack)
+- [PyPI Incident Report: LiteLLM/Telnyx Supply Chain Attacks (2026)](https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/)
