@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -218,16 +218,86 @@ When performing a dependency scan, produce findings in the following structure:
 1. [Prioritized list of remediation actions]
 ```
 
+## Vendored Native Library Analysis
+
+### Why Vendored Libraries Create Blind Spots
+
+Many Python, Node.js, and Ruby packages vendor (bundle) native C/C++ libraries -- OpenSSL, libxml2, zlib, SQLite, etc. -- compiled directly into wheel or binary distributions. Standard SCA scanners only examine the package manifest and miss these embedded native components entirely, creating two systematic failure modes (per ArXiv 2603.18693):
+
+- **False negatives (missed vulnerabilities)**: A Python wheel bundles an outdated `libexpat` with a known CVE. `pip-audit` sees only the Python package version, which appears clean. The vendored native library vulnerability is invisible.
+- **False positives (phantom vulnerabilities)**: OS-level scanners flag `libssl 1.1.1` as vulnerable, but the distribution backported the fix (common in RHEL, Debian, Ubuntu LTS). The CVE applies to upstream OpenSSL but not to the patched OS package.
+
+### Required Scan Dimensions
+
+Dependency scanning must cover three layers to eliminate these blind spots:
+
+1. **Package-level**: Standard manifest/lockfile scanning (npm audit, pip-audit, cargo audit).
+2. **Vendored native libraries**: Inspect binary distributions for bundled C/C++ libraries. Tools: `syft` (detects vendored libs in Python wheels and container layers), `trivy` (filesystem mode with `--scanners vuln`), or manual inspection of `.so`/`.dll` files in site-packages.
+3. **OS package cross-reference**: For containerized or server deployments, cross-reference OS package versions against upstream CVEs, accounting for distribution backports. Use `trivy image` or `grype` which understand distro-specific version schemes.
+
+### Cross-Ecosystem False Positive/Negative Patterns
+
+| Pattern | Cause | Scanner Behavior | Fix |
+|---|---|---|---|
+| Vendored vuln (FN) | Native lib bundled in wheel/gem | Package scanner reports clean | Scan with syft/trivy at binary level |
+| Backport phantom (FP) | Distro backported fix, version number unchanged | OS scanner flags CVE | Cross-reference distro security tracker |
+| Dual-source conflict | pip package and OS package provide same lib | Contradictory findings | Determine which copy is actually loaded at runtime |
+
+## Shift-Left: IDE and Install-Time Scanning
+
+### Detection at Install Time
+
+Traditional dependency scanning runs in CI -- after code is committed and pushed. This misses the **pre-CI attack surface**: developers installing malicious or vulnerable packages locally during development. The GlassWorm campaign (2025-2026) demonstrated attackers specifically targeting this phase, publishing malicious npm/PyPI packages designed to execute during `npm install` or `pip install` before any CI gate runs.
+
+### Recommended IDE and Install-Time Tools
+
+| Ecosystem | Tool | Mode | Behavior |
+|---|---|---|---|
+| npm/Node.js | socket.dev | IDE extension + CLI | Flags malicious install scripts, typosquats, and known vulns at `npm install` time |
+| npm/Node.js | `npm audit signatures` | CLI | Verifies registry signatures on packages at install |
+| Python/pip | pip-audit | CLI (pre-commit hook) | Scans resolved dependencies before code runs |
+| Java/Maven | OWASP Dependency-Check Maven plugin | Build plugin | Flags CVEs during `mvn compile` |
+| Multi-ecosystem | Snyk for VS Code | IDE extension | Real-time vulnerability warnings in editor, soft-alert mode |
+| Rust/Cargo | cargo-audit | CLI (pre-commit hook) | Checks Cargo.lock against RustSec advisory DB |
+
+### Gate Strategy
+
+- **IDE (soft alert)**: Show warnings inline but do not block installation. Developers need fast iteration; hard blocks at the IDE level cause alert fatigue and workarounds.
+- **Pre-commit hook (soft gate)**: Run `pip-audit` / `cargo audit` / `npm audit` as a pre-commit check. Warn on new vulnerabilities but allow override with documented justification.
+- **CI pipeline (hard gate)**: Block merge on Critical/High CVEs with EPSS > 0.1 or KEV listing. This is the enforcement point -- IDE and install-time layers are early warning only.
+
+## AI Confirmation Bias in CI Supply Chain Gates
+
+### The Risk
+
+LLM-based vulnerability detection is increasingly used as a CI gate -- automated code review bots that approve or flag PRs. Research (ArXiv 2603.18740) demonstrates that LLMs used in this role exhibit confirmation bias: they favor interpretations consistent with surrounding context (comments, commit messages, PR descriptions).
+
+### Exploitation Vector
+
+Attackers targeting CI pipelines with LLM-based review can:
+
+1. **Craft adversarial context**: Write PR descriptions, code comments, and variable names that prime the LLM to interpret a malicious dependency change as benign.
+2. **Exploit framing effects**: Introduce a vulnerable dependency alongside a legitimate security fix, relying on the LLM to generalize the "security improvement" framing to the entire changeset.
+3. **Target auto-merge flows**: In pipelines where LLM approval triggers automatic merge, a single bypassed review can introduce a compromised dependency into production.
+
+### Mitigation
+
+- **Never use LLM review as the sole CI security gate** for dependency changes. Pair with deterministic SCA tools (npm audit, pip-audit, trivy) that are not susceptible to contextual manipulation.
+- **Separate dependency PRs from code PRs** to prevent framing contamination. A dependency bump should be reviewed in isolation, not bundled with feature work.
+- **Require human approval for new dependencies** and major version bumps, regardless of automated review outcome.
+- **Audit LLM reviewer decisions**: Log the full LLM reasoning chain for dependency-related approvals. Periodically review for patterns of missed findings that correlate with adversarial context.
+
 ## Procedure
 
 1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
-6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+5. **Vendored library scan**: Check for vendored native libraries in binary distributions. Cross-reference OS package versions against upstream CVEs, accounting for distro backports.
+6. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
+7. **Typosquatting check**: Review dependency names for patterns described in the detection section.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability. Note any CI gates relying solely on LLM-based review.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +321,5 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- ArXiv 2603.18693: Cross-Ecosystem Vulnerability Analysis for Python Applications -- vendored native library analysis and cross-ecosystem FP/FN patterns
+- ArXiv 2603.18740: Measuring and Exploiting Confirmation Bias in LLM-Assisted Security Code Review -- AI confirmation bias in CI supply chain gates
