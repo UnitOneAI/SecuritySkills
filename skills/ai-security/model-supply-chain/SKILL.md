@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -241,6 +241,10 @@ Assess the security of libraries, frameworks, and runtime dependencies used in t
 - Inference containers built from unverified base images or without pinned dependency versions.
 - Model serving endpoints exposed without authentication or rate limiting.
 
+**Real-world case -- LiteLLM/Telnyx PyPI Supply Chain Attack (2026):** Attackers coordinated simultaneous supply chain attacks on **LiteLLM** (a widely-used LLM proxy library routing traffic between apps and LLM APIs) and **Telnyx** packages on PyPI. This is the first confirmed coordinated supply chain attack specifically targeting the AI/ML toolchain. LLM proxy and orchestration libraries are now an established high-value attack target because they sit in the data path of every LLM API call — compromising them enables credential theft, data interception, and prompt manipulation at scale. Treat `litellm`, `langchain`, `llama-index`, `openai`, and `anthropic` SDK packages with the same supply chain scrutiny as core infrastructure dependencies. Apply `--require-hashes` in pip installs and verify PyPI package hashes against `https://pypi.org/pypi/{package}/{version}/json`. Reference: [PyPI Incident Report](https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/) | [Cycode Post-Mortem](https://cycode.com/blog/lite-llm-supply-chain-attack/)
+
+**Real-world case -- GitHub Actions Targeting MCP Repos (2026):** Attackers specifically targeted Model Context Protocol (MCP) repositories via GitHub Actions workflow poisoning — combining CI/CD pipeline attack techniques with agentic AI ecosystem targeting. MCP servers expose tools that AI agents invoke; a compromised MCP tool can hijack agent actions at runtime. When reviewing AI systems that use MCP, extend supply chain assessment to MCP server registries and installation pipelines. Use [MCP Shield](https://github.com/GaboITB/mcp-shield) to audit MCP servers before installation. Reference: [Anatomy of a GitHub Actions Supply Chain Attack Targeting MCP Repos](https://www.wshoffner.dev/blog/anatomy-of-a-github-actions-supply-chain-attack-targeting-mcp-repos)
+
 **Real-world case -- ShadowRay (Oligo Security, 2024):** Researchers discovered active exploitation of CVE-2023-48022 in Ray, a popular framework used for distributed ML training and inference. The vulnerability allowed unauthenticated remote code execution on Ray clusters. Attackers compromised production ML infrastructure at multiple organizations, stealing credentials, deploying cryptominers, and accessing training data. The attack surface existed because Ray's dashboard API was exposed without authentication by default, and organizations running Ray clusters for model serving did not apply network-level access controls. This case demonstrates that inference infrastructure dependencies are high-value targets and must be treated with the same rigor as application dependencies.
 
 **Detection methods using allowed tools:**
@@ -456,3 +460,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 - Hugging Face. "Safetensors: A Simple and Safe Serialization Format" -- https://huggingface.co/docs/safetensors
 - NIST AI Risk Management Framework 1.0 -- https://www.nist.gov/aiframework
 - Open Source Security Foundation (OpenSSF) -- https://openssf.org
+- PyPI Incident Report: LiteLLM/Telnyx Supply Chain Attacks (2026) -- https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/
+- Cycode: Unfolding the LiteLLM Supply Chain Attack (2026) -- https://cycode.com/blog/lite-llm-supply-chain-attack/
+- Anatomy of a GitHub Actions Supply Chain Attack Targeting MCP Repos (2026) -- https://www.wshoffner.dev/blog/anatomy-of-a-github-actions-supply-chain-attack-targeting-mcp-repos
+- MCP Shield -- Audit MCP servers for supply chain attacks: https://github.com/GaboITB/mcp-shield

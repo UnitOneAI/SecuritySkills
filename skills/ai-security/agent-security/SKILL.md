@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -77,7 +77,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Context Item | Where to Find It | Why It Matters |
 |---|---|---|
 | Agent architecture diagram | Design docs, README, infrastructure code | Maps trust boundaries, delegation chains, tool surface |
-| Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters |
+| Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters. **MCP servers are now an active supply chain attack target** (GitHub Actions workflow poisoning specifically targeting MCP repos, 2026) — verify MCP server provenance using [MCP Shield](https://github.com/GaboITB/mcp-shield) before deployment. |
 | Permission/IAM configuration | Cloud IAM, role definitions, service account configs, .env files | Reveals whether least-privilege is enforced |
 | Human approval gate implementation | Workflow code, UI code, approval service configs | Determines if HITL is architecturally sound or bypassable |
 | Agent identity and credential management | Auth middleware, secret managers, token configs | Exposes credential scope and rotation practices |
@@ -587,3 +587,6 @@ Glob: **/security_architecture*
 12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
 13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
 14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
+15. Anatomy of a GitHub Actions Supply Chain Attack Targeting MCP Repos (2026) -- https://www.wshoffner.dev/blog/anatomy-of-a-github-actions-supply-chain-attack-targeting-mcp-repos
+16. MCP Shield -- Audit MCP servers for supply chain attacks before installation -- https://github.com/GaboITB/mcp-shield
+17. Oasis Security: Claude.ai Prompt Injection / Data Exfiltration Vulnerability (2026) -- https://www.oasis.security/blog/claude-ai-prompt-injection-data-exfiltration-vulnerability

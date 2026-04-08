@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -277,6 +277,28 @@ Each finding should be assigned a severity based on potential impact:
 
 ---
 
+## Confirmed Real-World Exploitation Cases
+
+These are documented, confirmed prompt injection vulnerabilities in production systems. Use them to calibrate risk ratings and to demonstrate real-world exploitability to stakeholders.
+
+### Claude.ai — Indirect Prompt Injection Leading to Data Exfiltration (Oasis Security, 2026)
+
+**Severity:** Critical
+**Type:** Indirect prompt injection → data exfiltration
+
+**What happened:** Oasis Security disclosed a confirmed indirect prompt injection vulnerability in Claude.ai that enabled data exfiltration. Malicious instructions embedded in external content (documents, web pages) processed by the model caused it to leak sensitive conversation data to an attacker-controlled endpoint. This is a confirmed, documented case of the theoretical indirect injection → exfiltration chain executing in a major production LLM product.
+
+**Why this matters:** This crosses the vulnerability from theoretical to practical with documented real-world impact. The attack required no special access — any user who could cause the target to process attacker-controlled content could trigger the exfiltration.
+
+**Implications for your assessment:**
+- Any application that processes external content (documents, emails, web scrapes, database records) and has access to sensitive data or conversation history should be rated **Critical** if indirect injection defenses are absent.
+- Markdown rendering (image tags, links) is a key exfiltration mechanism — audit whether the application renders model output in a browser context without sanitization.
+- Applications where the LLM can summarize or reference prior conversation context are specifically vulnerable to context extraction via injected instructions.
+
+**Reference:** [Oasis Security: Claude.ai Prompt Injection Data Exfiltration Vulnerability (2026)](https://www.oasis.security/blog/claude-ai-prompt-injection-data-exfiltration-vulnerability)
+
+---
+
 ## References
 
 - OWASP Top 10 for Large Language Model Applications (2025), LLM01: Prompt Injection — https://genai.owasp.org
@@ -286,3 +308,4 @@ Each finding should be assigned a severity based on potential impact:
 - Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
 - Yin, X. et al. "PISmith: RL-Optimized Adaptive Black-Box Prompt Injection Attacks" (2026) -- arXiv:2603.13026
 - fabraix/playground — Open-source AI agent exploit library for testing injection defenses — https://github.com/fabraix/playground
+- Oasis Security: Claude.ai Prompt Injection / Data Exfiltration Vulnerability (2026) — https://www.oasis.security/blog/claude-ai-prompt-injection-data-exfiltration-vulnerability
