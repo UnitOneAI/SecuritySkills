@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -278,6 +278,111 @@ Grep: "langchain|llamaindex|llama.index|vllm|ray|transformers|onnxruntime" in **
 
 ---
 
+### Step 4b -- MCP Server Namespace Confusion / Fork Republishing
+
+Assess whether MCP (Model Context Protocol) server dependencies are sourced from verified original publishers or from potentially malicious forks and namespace squats.
+
+**Threat model:** Attackers systematically fork legitimate MCP server repositories and republish them under their own npm scopes or PyPI packages without disclosure (e.g., iflow-mcp mass-fork campaign, 2025 -- hundreds of MCP servers forked and republished). Unlike typosquatting (misspelled names), fork republishing creates legitimate-looking scoped packages (e.g., `@attacker-org/mcp-server-github` vs. the original `@modelcontextprotocol/server-github`) that may contain injected payloads.
+
+**What to look for in code and configuration:**
+
+- MCP server packages installed from npm scoped packages or PyPI that do not match the original publisher's namespace.
+- `mcp.json`, `claude_desktop_config.json`, or agent configuration files referencing MCP servers by package name without verifying the publisher.
+- MCP server dependencies without pinned exact versions or integrity hashes (SRI).
+- Missing provenance verification for MCP tool packages.
+
+**Detection methods using allowed tools:**
+
+```
+# Find MCP server configuration and usage
+Grep: "mcp|model.context.protocol|mcp-server|mcpServers" in **/*.{json,yaml,yml,toml,py,ts,js}
+Grep: "@.*mcp.*server|mcp.server" in **/package.json **/requirements*.txt **/pyproject.toml
+
+# Check for integrity hashes on MCP packages
+Grep: "integrity|sha512-|sha256-" in **/package-lock.json **/yarn.lock
+
+# Find MCP configuration files
+Glob: **/mcp.json
+Glob: **/claude_desktop_config.json
+Glob: **/.mcp/**
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| MCP server package installed from unverified fork (publisher does not match upstream repo) | High |
+| MCP server dependencies without pinned exact versions | High |
+| No integrity hash verification (SRI) on MCP server packages | Medium |
+| MCP server configuration references packages without publisher verification guidance | Medium |
+| No process for cross-checking MCP package publisher identity against upstream repo | Medium |
+
+**MITRE ATLAS mapping:** AML.T0010 (ML Supply Chain Compromise) -- attacker substitutes a legitimate MCP tool component with a modified fork.
+
+**SLSA v1.0 mapping:** Verify MCP server packages have provenance linking to the original source repository. Use `npm audit signatures` and check for Sigstore attestations.
+
+**Recommended mitigations:**
+
+1. **Verify provenance and publisher identity**: Run `npm audit signatures`; confirm publisher matches the upstream repo owner (e.g., `github.com/modelcontextprotocol/servers`).
+2. **Pin exact versions with integrity hashes**: Use `npm install --save-exact` with SRI hashes in lockfiles; for Python, use `pip install --require-hashes`.
+3. **Monitor for fork divergence**: Periodically diff installed MCP server packages against the original repository.
+
+---
+
+### Step 4c -- MCP Server Schema Vulnerabilities
+
+Assess whether MCP server implementations contain exploitable schema vulnerabilities that attackers can leverage through malformed tool calls.
+
+**Threat model:** Research by Munio (March 2026) scanning 763 publicly accessible MCP servers found that 31% contained exploitable schema vulnerabilities — including improper input validation, missing type checks, and unsafe parameter handling in tool request handlers. These vulnerabilities can be triggered by an attacker controlling an MCP client or by a compromised agent that sends crafted tool invocations.
+
+**What to look for:**
+
+- MCP server tool handlers that do not validate input against declared schema types before processing.
+- Missing bounds checks on numeric parameters (integer overflow, out-of-range values).
+- Path traversal risks in file-system MCP tools that accept filename parameters.
+- SQL injection or command injection in MCP tool backends that incorporate tool parameters into queries or shell commands without sanitization.
+- Missing error handling that leaks internal state through MCP error responses.
+
+**Grep patterns:**
+```
+Grep: "def.*tool|async def.*tool|@tool|tool_handler|handle_call" in **/server.py **/index.ts **/handler.ts
+Grep: "subprocess|exec|shell=True|os.system" in **/server.py (MCP tools calling shell commands)
+```
+
+**Finding format:** For each MCP server tool, verify: (1) schema validation is enforced before parameter use, (2) file-system tools enforce path canonicalization, (3) shell-invoking tools use allowlisted arguments.
+
+**Severity:** High if tool parameters are used in shell commands, SQL queries, or file operations without validation.
+
+---
+
+### Step 4d -- MCP Indirect Prompt Injection via Tool Results
+
+Assess whether MCP tool result content is treated as trusted data that can influence agent behavior (indirect prompt injection via supply chain vector).
+
+**Threat model:** The ContextCrush/Context7 vulnerability (March 2026) demonstrated that MCP documentation retrieval tools can return content containing adversarial instructions that alter an LLM agent's behavior. Because MCP tool results are inserted directly into the agent's context window, a compromised or malicious MCP server can inject instructions that override the system prompt or redirect agent actions — without any vulnerability in the agent framework itself.
+
+This is a supply chain attack: the MCP server is the attack vector, not the agent code.
+
+**What to look for:**
+
+- Agent code that passes raw MCP tool results directly into the LLM context without sanitization or trust boundary enforcement.
+- MCP tool results that contain natural-language instructions, system-prompt-like content, or role-switching directives (`"Ignore previous instructions"`, `"You are now..."`).
+- Missing output validation: agent frameworks that do not filter or flag unusual instruction-like patterns in tool results before including them in context.
+- Documentation retrieval tools (Context7-style, RAG-over-docs tools) that return arbitrary external content — highest-risk category.
+
+**Recommended mitigations:**
+
+1. **Treat MCP tool results as untrusted user content**, not as system context. Apply the same scrutiny as HTTP response bodies from external APIs.
+2. **Add injection detection layer**: before inserting tool results into context, scan for instruction-like patterns (role switches, system override phrases).
+3. **Principle of least context**: only include MCP tool result content that is strictly necessary for the task; truncate or summarize large result blobs before context insertion.
+4. **Verify MCP server provenance**: a malicious fork or compromised MCP server is the primary delivery vehicle for this attack class.
+
+**MITRE ATLAS mapping:** AML.T0054 (Prompt Injection) combined with AML.T0010 (ML Supply Chain Compromise).
+
+**OWASP LLM mapping:** LLM07:2025 (System Prompt Leakage) and LLM02:2025 (Sensitive Information Disclosure) as downstream consequences.
+
+---
+
 ### Step 5 -- Model Card Evaluation
 
 Assess the completeness and accuracy of model documentation as a supply chain trust signal.
@@ -422,6 +527,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | MITRE ATLAS | AML.T0010 | ML Supply Chain Compromise -- adversary introduces compromised ML artifacts |
 | MITRE ATLAS | AML.T0020 | Poison Training Data -- adversary manipulates training data to alter model behavior |
 | MITRE ATLAS | AML.T0043 | Craft Adversarial Data -- adversary creates inputs designed to cause misclassification or misbehavior |
+| MITRE ATLAS | AML.T0010.002 | ML Supply Chain Compromise: Package Registry -- attacker substitutes legitimate ML tool packages with modified forks |
 | NIST AI RMF 1.0 | MAP 2.3 | Scientific integrity and data quality in AI system lifecycle |
 | NIST AI RMF 1.0 | GOVERN 1.5 | Ongoing monitoring and periodic review of the risk management process and its outcomes (applied here to third-party AI component risks) |
 
