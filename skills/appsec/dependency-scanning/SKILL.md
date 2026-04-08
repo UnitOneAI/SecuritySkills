@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -181,6 +181,86 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Shift-Left / Pre-Install Scanning
+
+### Why "Scan at Install" Is Too Late
+
+Standard CI-based SCA scanning runs **after** `npm install` or `pip install` completes. This is too late for packages that execute malicious code at install time via `preinstall`/`postinstall` scripts. The **GlassWorm campaign** (2025) demonstrated this: packages exfiltrated environment variables and credentials during `npm install`, before any CI scanner could flag them.
+
+Shift-left scanning means checking packages **before** installation and **before** package resolution resolves version ranges to a concrete version.
+
+### Layered Detection Model
+
+```
+IDE plugin (earliest)
+  └─ Pre-install check (before npm install / pip install runs)
+       └─ Package resolution check (before lockfile update)
+            └─ CI/CD post-install SCA scan (existing)
+                 └─ Deploy-time SBOM attestation (latest)
+```
+
+### Pre-Install Controls
+
+1. **IDE-level enforcement:** Install IDE plugins (socket.dev, Snyk, Dependabot) that flag high-risk packages before the developer runs `npm install`. This is the earliest detection point and catches attacks on developer machines where CI never runs.
+2. **`npm install --ignore-scripts`**: Block install hook execution during resolution. Allows lockfile generation without triggering malicious hooks. Validate scripts explicitly before enabling them.
+3. **`socket.dev` pre-install scan**: `npx @socketregistry/cli analyze package.json` checks for install script presence, unusual network access patterns, and supply chain anomalies before dependencies are fetched.
+4. **Namespace confusion check before resolution**: Run `npm pack --dry-run` or `pip download --no-deps` with version checks to verify publisher identity before writing to the lockfile.
+
+### Vendored Native Library False Negatives
+
+SCA scanners operating on manifests (`package.json`, `requirements.txt`) miss vulnerabilities in bundled or vendored native libraries -- C/C++ dependencies compiled into binary wheels or Go static builds. These are invisible to ecosystem-native scanners.
+
+- For Python wheels: use `trivy fs --scanners vuln` which inspects binary ELFs in wheel packages.
+- For Go: `govulncheck` analyzes the compiled symbol table, not just `go.mod`.
+- For Rust/C: include a binary SCA step (Grype, SBOM-based) to catch vendored native deps.
+
+Source: ArXiv 2603.18693 (Cross-Ecosystem Vulnerability Analysis).
+
+## MCP Server Package Scanning
+
+### MCP Packages as a Dependency Category
+
+MCP (Model Context Protocol) server packages -- distributed via npm scoped packages and PyPI -- represent an emerging dependency category requiring SCA scanning. AI agents and LLM-integrated applications increasingly rely on MCP servers as tool providers, making them a high-value supply chain target.
+
+### Fork Confusion Attacks (Distinct from Typosquatting)
+
+Unlike typosquatting (which uses misspelled package names), fork confusion targets AI agent tool dependencies through legitimate-looking scoped forks:
+
+| Attack Type | Mechanism | Example |
+|---|---|---|
+| Typosquatting | Misspelled name | `@modelcontextprotocl/server-github` |
+| Fork confusion | Legitimate fork, different publisher | `@attacker-org/mcp-server-github` (forked from original) |
+
+Fork confusion is harder to detect because the package name may be identical to the original -- only the scope/publisher differs. The forked package may contain identical code initially, with malicious payloads introduced in later updates.
+
+**Real-world case -- iflow-mcp mass-fork campaign (2025):** An organization systematically forked hundreds of MCP servers and republished them under their own npm/PyPI scopes without disclosure, creating a supply chain attack surface for AI agent developers.
+
+### Detection Approach for MCP Packages
+
+1. **Identify MCP dependencies**: Scan manifests for packages matching `mcp-server-*`, `@*/mcp-*`, or MCP-related PyPI packages.
+2. **Verify publisher identity**: Cross-check the npm scope or PyPI maintainer against the upstream MCP server repository (e.g., `github.com/modelcontextprotocol/servers`).
+3. **Check for exact version pinning**: MCP server packages should use `--save-exact` (npm) or `==` pinning (pip) with integrity hashes.
+4. **Run `npm audit signatures`**: Verify that MCP packages have valid registry signatures and Sigstore attestations.
+5. **Compare package contents**: For critical MCP servers, diff the installed package against the original repository source to detect injected code.
+
+### SLSA v1.0 Alignment for MCP Packages
+
+MCP server packages should meet the same SLSA provenance requirements as other dependencies:
+
+- Verify provenance attestations link the package to its source repository.
+- Ensure the build was performed on a hosted, trusted build platform (not a developer laptop).
+- Pin packages by content hash, not just version number.
+
+### Supply Chain Risk Indicators (MCP-Specific)
+
+Add the following to the standard supply chain risk checklist:
+
+- [ ] MCP server package installed from unverified fork/publisher
+- [ ] MCP server packages without exact version pinning or integrity hashes
+- [ ] No publisher identity verification process for MCP tool dependencies
+
+---
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -251,3 +331,5 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Socket.dev Supply Chain Security](https://socket.dev/)
+- [ArXiv 2603.18693 — Cross-Ecosystem Vulnerability Analysis](https://arxiv.org/abs/2603.18693)

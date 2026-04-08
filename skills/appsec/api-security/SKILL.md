@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -214,6 +214,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Exposing framework management endpoints without authentication.** Spring Boot Actuator endpoints (`/actuator/health`, `/actuator/env`, `/actuator/heapdump`, `/actuator/loggers`, `/actuator/mappings`) are enabled by default in many configurations and expose sensitive runtime state — including environment variables, configuration properties, and heap dumps containing credentials. **Always require authentication on all `/actuator/*` endpoints** and expose only necessary endpoints. Map to API2:2023 (Broken Authentication) + API8:2023 (Security Misconfiguration). CVE-2026-22733 (CVSS 8.2) is a recent auth bypass for misconfigured Actuator deployments.
 
 ---
 

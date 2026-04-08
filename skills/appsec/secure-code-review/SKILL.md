@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -106,6 +106,7 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 
 - [ ] Every point where user input enters the system is identified.
 - [ ] All SQL queries use parameterized statements or a query builder -- no string concatenation.
+- [ ] Type-safe query builders (Kysely, Drizzle, TypeORM) are audited for raw escape hatches: `.raw()`, `sql.raw()`, `sql\`\`` template literals, `.query()` — these bypass type safety and can introduce SQLi (CVE-2026-32763, CVSS 8.2).
 - [ ] HTML output is encoded contextually (HTML body, attribute, JavaScript, URL).
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
@@ -541,6 +542,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Using LLM-only review as a supply-chain gate.** LLMs used for code review exhibit measurable confirmation bias — they favor interpretations consistent with prior context in the conversation. This is an exploitable vulnerability: attackers can craft adversarial supply-chain commits that exploit LLM reviewer tendency to confirm existing safe-looking patterns. **Do not use LLM-only review as a hard gate for supply-chain or CI/CD merge decisions.** Always pair LLM-assisted review with deterministic SAST tools. (Source: Mitropoulos et al., ArXiv 2603.18740 — empirical study demonstrating the failure mode.)
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -563,3 +566,4 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+- **ArXiv 2603.18740 — Measuring and Exploiting Confirmation Bias in LLM-Assisted Security Code Review (Mitropoulos et al.):** https://arxiv.org/abs/2603.18740
