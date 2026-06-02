@@ -57,6 +57,25 @@ If asset context is missing, assume internet-facing and business-critical, and f
 
 ---
 
+## Input Freshness and Affected-Asset Evidence
+
+Before assigning or changing an SLA tier, record source freshness and proof that the finding applies to the runtime asset:
+
+| Evidence Area | Required Fields |
+|---|---|
+| EPSS | Current score date, percentile, model/API date, historical query dates, and unavailable-data reason |
+| CISA KEV | Catalog source date, due date, required action, known-ransomware-campaign flag, and whether the organization is in BOD 22-01 scope |
+| SSVC | Decision version, decision timestamp, exploitation/automatable/technical-impact inputs, and mission/asset-context source |
+| CVSS | Version, vector string, base score source, published/modified date, and environmental override rationale |
+| Scanner | Scanner name, plugin/QID/rule ID, scan date, first-seen date, last-seen date, and deduplication key |
+| Vendor advisory | Advisory URL/ID, fixed version, vendor backport status, distro package status, and source date |
+| Affected asset proof | Installed package/app version, runtime exposure, component loaded/reachable status, owner validation, and environment |
+| SLA clock | First-seen source, reopened/rediscovered status, exception expiration, and SLA start rationale |
+
+Use reason codes such as `stale-epss`, `missing-kev-date`, `missing-ssvc-evidence`, `missing-cvss-vector`, `missing-vendor-advisory`, `backport-unverified`, `runtime-not-affected`, `sla-clock-reset`, or `exception-expired` when evidence is missing or contradictory.
+
+---
+
 ## Process
 
 ### Step 1: Inventory and Classify Pending Vulnerabilities
@@ -77,13 +96,16 @@ Vulnerability Inventory Entry:
 - Asset Criticality:   [Critical | High | Medium | Low]
 - Exposure:            [Internet-facing | Internal | Air-gapped]
 - Scanner Source:      [Scanner name and plugin/QID]
-- CVSS 4.0 Base:       [0.0 - 10.0]
+- CVSS 4.0 Base:       [0.0 - 10.0, vector/source/modified date]
 - EPSS Score:          [0.0 - 1.0] (as of [date])
 - CISA KEV:            [Yes | No]
-- SSVC Decision:       [Immediate | Out-of-Cycle | Scheduled | Defer]
+- KEV Source/Due Date: [catalog date, due date, required action, BOD 22-01 scope]
+- SSVC Decision:       [Immediate | Out-of-Cycle | Scheduled | Defer, version/timestamp/input evidence]
 - Patch Available:     [Yes (version) | No | Workaround Only]
+- Affected Proof:      [scanner plugin/QID, installed version, vendor advisory/backport, runtime exposure]
 - Current SLA:         [Tier and deadline]
 - SLA Status:          [Within SLA | At Risk | Breached]
+- SLA Clock Source:    [first_seen / reopened / exception_expired / manual override]
 ```
 
 ### Step 2: Apply SLA Framework by Severity Tier
@@ -105,7 +127,7 @@ Assign or validate SLA tiers using the following matrix. SLA tiers are derived f
 
 #### Tier Assignment Rules
 
-1. **CISA KEV override:** Any CVE on the CISA KEV catalog is automatically P0 for federal agencies (BOD 22-01) and minimum P1 for private sector
+1. **CISA KEV override:** Any CVE on the CISA KEV catalog is driven by the KEV required action due date for federal agencies in BOD 22-01 scope and minimum P1 for private sector after affected-asset proof
 2. **SSVC primacy:** The SSVC decision outcome is the primary driver; EPSS and CVSS serve as secondary validation
 3. **Upward adjustment only:** If EPSS or KEV status indicates higher urgency than the SSVC decision alone, escalate the tier; never use EPSS to downgrade an SSVC Immediate decision
 4. **Asset criticality modifier:** For non-critical assets (dev, test, sandbox), the SLA tier may be relaxed by one level with documented justification
@@ -133,9 +155,11 @@ Analyze EPSS score trajectory to identify vulnerabilities with increasing exploi
 EPSS Trend Analysis:
 - CVE ID:              [CVE-YYYY-NNNNN]
 - Current EPSS:        [score] ([percentile]th percentile)
+- EPSS Source Date:    [YYYY-MM-DD API/model date]
 - 7-day prior EPSS:    [score]
 - 30-day prior EPSS:   [score]
 - 90-day prior EPSS:   [score]
+- Historical Queries:  [query dates or unavailable-data reason]
 - Trend:               [Surging | Rising | Stable | Declining]
 - Trend Impact:        [Escalate tier | Monitor | Maintain | Supports deferral]
 ```
@@ -153,6 +177,7 @@ For each compensating control claimed, validate:
 3. **Control durability:** Is the control persistent (e.g., network ACL) or ephemeral (e.g., manual process)?
 4. **Control verification:** Can the control's effectiveness be independently verified or tested?
 5. **Residual risk:** What risk remains after the compensating control is applied?
+6. **Asset-by-asset boundary:** Which affected assets are protected, which remain outside the control, and when was each control boundary validated?
 
 #### Compensating Control Evaluation Matrix
 
@@ -171,9 +196,12 @@ Compensating Control Assessment:
 - Control Description: [Specific control details]
 - Effectiveness:       [Full | Partial | Insufficient]
 - Coverage:            [All affected assets | Subset ([N] of [M])]
+- Protected Assets:    [N protected of M affected, asset list or query]
 - Verification:        [Tested on [date] | Unverified]
+- Post-Control Check:  [rescan/test date, PoC test, rule hit, or unavailable reason]
 - Max SLA Extension:   [Days, per matrix above]
 - Residual Risk:       [Description of remaining risk]
+- Extension Applies To:[all affected assets | protected subset only]
 ```
 
 ### Step 5: Patch Window Scheduling
@@ -207,6 +235,7 @@ Patch Schedule Entry:
 - Change Ticket:       [Ticket ID]
 - Rollback Plan:       [Description or "snapshot/restore"]
 - SLA Deadline:        [YYYY-MM-DD]
+- SLA Start Source:    [first seen, reopened finding, exception expiry, manual override]
 - Days Remaining:      [N days]
 ```
 
@@ -251,6 +280,7 @@ Risk Exception Request:
 - Compensating Controls:  [Reference Step 4 assessment]
 - Residual Risk:          [Impact description and likelihood]
 - Review Date:            [YYYY-MM-DD, within maximum exception duration]
+- Revalidation Trigger:    [EPSS surge | KEV listing | exposure change | exception expiry | new exploit]
 - Approver:               [Name, title]
 - Approval Date:          [YYYY-MM-DD]
 - Status:                 [Pending | Approved | Denied | Expired]
@@ -300,6 +330,18 @@ findings requiring immediate action.]
 
 **Patch Posture:** [Critical Backlog | Elevated Risk | On Track | Healthy]
 
+### Input Freshness and Source Evidence
+
+| CVE ID | EPSS Date | KEV Catalog Date | KEV Due Date | SSVC Evidence Date | CVSS Vector/Date | Scanner/Plugin Date | Vendor Advisory Date | Source Gaps |
+|---|---|---|---|---|---|---|---|---|
+| [CVE-ID] | [date] | [date/N/A] | [date/N/A] | [decision date/source] | [vector/date] | [scanner/date] | [date] | [reason codes] |
+
+### Affected Asset Proof
+
+| CVE ID | Asset | Scanner Evidence | Installed/Runtime Version | Vendor Fixed/Backported Status | Runtime Exposure | Owner Validation |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [asset] | [plugin/QID/rule] | [version/reachability] | [advisory/backport] | [exposed/not loaded/internal] | [owner/date] |
+
 ### EPSS Trend Alerts
 [List any CVEs with Surging or Rising EPSS trends and recommended tier adjustments]
 
@@ -319,6 +361,12 @@ findings requiring immediate action.]
 | CVE ID | Control Type | Effectiveness | SLA Extension | Expiration |
 |---|---|---|---|---|
 | [CVE-ID] | [type] | [Full/Partial] | [+N days] | [date] |
+
+### SLA Clock and Exception Aging
+
+| CVE ID | First Seen | Last Seen | SLA Start Source | Reopened? | Exception Expiration | Aging Status |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [date] | [date] | [source] | [yes/no] | [date/N/A] | [within/breached/expired] |
 
 ### Risk Exceptions
 [List all active risk acceptance/exception records]
