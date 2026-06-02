@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -399,6 +399,60 @@ Assess:
 
 ---
 
+### Step 8: Safeguard Evidence and Confidence Matrix
+
+Before assigning a compliance status, record the evidence source, decision type, owner, and freshness for each material standard or implementation specification. This is especially important for addressable specifications: addressable does not mean optional, and the assessment must document whether the specification was implemented, an equivalent alternative was implemented, or why neither was reasonable and appropriate.
+
+#### 8.1 Evidence Confidence Levels
+
+| Confidence | Evidence Standard | Use When |
+|------------|-------------------|----------|
+| **High** | Current policy plus implementation evidence plus owner/test/review evidence | The safeguard is documented, operational, and recently verified. |
+| **Medium** | Policy and partial implementation evidence exist, but testing, owner, or freshness evidence is incomplete | The control likely exists, but one evidence dimension needs follow-up. |
+| **Low** | Narrative, screenshot, stale artifact, or policy-only evidence | The safeguard may exist, but operational proof is weak. |
+| **Not Evaluable** | Required scope, policy, implementation, contract, or test evidence is unavailable | Do not infer compliance; document the missing evidence. |
+
+#### 8.2 Not Evaluable Reason Codes
+
+| Code | Reason |
+|------|--------|
+| `HIPAA-NE-01` | ePHI inventory or data-flow scope is incomplete. |
+| `HIPAA-NE-02` | Risk analysis scope, methodology, or update date is missing. |
+| `HIPAA-NE-03` | Implementation evidence is missing beyond policy language. |
+| `HIPAA-NE-04` | Addressable specification decision, rationale, or alternative measure is undocumented. |
+| `HIPAA-NE-05` | BAA, subcontractor, or satisfactory-assurances evidence is missing or stale. |
+| `HIPAA-NE-06` | Evidence owner, responsible role, or review cadence is missing. |
+| `HIPAA-NE-07` | Test, audit-log review, backup restore, incident exercise, or evaluation evidence is missing. |
+| `HIPAA-NE-08` | Evidence freshness cannot be verified or appears outside the review period. |
+
+#### 8.3 HIPAA Safeguard Evidence Matrix
+
+Create one row per material standard or implementation specification:
+
+| Field | Required Evidence |
+|-------|-------------------|
+| CFR citation | Exact Security Rule citation, such as `164.308(a)(1)(ii)(A)`. |
+| Safeguard category | Administrative, Physical, Technical, Organizational, or Documentation. |
+| Required/addressable type | Required, Addressable, or Standard-level requirement. |
+| Decision type | Implemented, alternative measure implemented, not reasonable and appropriate, partial, missing, or Not Evaluable. |
+| Implementation or alternative | Control implementation, equivalent alternative measure, or documented rationale. |
+| Evidence source | Policy, procedure, admin export, risk analysis, BAA, SOC report, log review, test result, ticket, training record, or audit artifact. |
+| Evidence owner | Security official, compliance owner, system owner, vendor risk owner, privacy office, or BA owner. |
+| Freshness / review date | Creation date, last effective date, last review date, or test/exercise date. |
+| Result | Compliant, partial compliance, non-compliance, critical non-compliance, addressable alternative implemented, or Not Evaluable. |
+| Confidence | High, Medium, Low, or Not Evaluable. |
+| Not Evaluable reason | `HIPAA-NE-*` code plus the exact evidence needed to complete assessment. |
+
+#### 8.4 Evidence-Driven Finding Rules
+
+- Do not treat addressable implementation specifications as optional; require documented assessment, decision, and rationale.
+- Do not mark a safeguard compliant from policy language alone when implementation, owner, or review evidence is missing.
+- Do not accept a BAA inventory without contract status, covered service scope, subcontractor handling where available, and evidence freshness.
+- Do not mark risk analysis complete unless all known ePHI systems, backups, archives, integrations, mobile devices, medical devices, and BA systems are in scope or explicitly documented out of scope.
+- Do not mark backup or contingency controls compliant unless restore tests, emergency mode procedures, and review dates are evidenced.
+
+---
+
 ## Findings Classification
 
 | Classification | Definition | Regulatory Risk |
@@ -434,11 +488,16 @@ Assess:
 
 ### Administrative Safeguards (164.308)
 
-| CFR Citation | Standard / Specification | R/A | Status | Finding | Priority |
-|-------------|-------------------------|-----|--------|---------|----------|
-| 164.308(a)(1)(ii)(A) | Risk Analysis | R | [status] | [finding] | [H/M/L] |
-| 164.308(a)(1)(ii)(B) | Risk Management | R | [status] | [finding] | [H/M/L] |
-| ... | ... | ... | ... | ... | ... |
+| CFR Citation | Standard / Specification | R/A | Decision Type | Status | Evidence Source | Evidence Owner | Freshness | Confidence | Not Evaluable Reason | Finding | Priority |
+|-------------|-------------------------|-----|---------------|--------|-----------------|----------------|-----------|------------|----------------------|---------|----------|
+| 164.308(a)(1)(ii)(A) | Risk Analysis | R | [implemented/partial/missing] | [status] | [artifact] | [owner] | [date] | [H/M/L/NE] | [HIPAA-NE code] | [finding] | [H/M/L] |
+| 164.308(a)(1)(ii)(B) | Risk Management | R | [implemented/partial/missing] | [status] | [artifact] | [owner] | [date] | [H/M/L/NE] | [HIPAA-NE code] | [finding] | [H/M/L] |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |
+
+## HIPAA Safeguard Evidence Matrix
+
+| CFR Citation | Category | R/A | Decision Type | Implementation / Alternative | Evidence Source | Owner | Freshness | Result | Confidence | Not Evaluable Reason |
+|--------------|----------|-----|---------------|------------------------------|-----------------|-------|-----------|--------|------------|----------------------|
 
 ### Physical Safeguards (164.310)
 [same table format]
@@ -571,6 +630,14 @@ Policies, Procedures, and Documentation — 164.316
 
 5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
 
+6. **Treating policy language as implementation evidence.** A policy that says a safeguard exists is not enough by itself. Look for implementation artifacts such as admin exports, logs, tickets, test results, training records, risk treatment records, or owner attestations tied to a recent review period.
+
+7. **Accepting stale BA or vendor evidence.** A Business Associate Agreement, SOC report, security questionnaire, or vendor inventory should be tied to the current service scope and review period. Stale or unsigned vendor evidence should lower confidence or trigger a Not Evaluable reason.
+
+8. **Omitting backups, archives, integrations, and devices from ePHI scope.** Risk analysis and safeguard review must account for ePHI wherever it is created, received, maintained, or transmitted, including backups, disaster recovery environments, mobile devices, medical devices, logs, integrations, and third-party systems.
+
+9. **Failing to document equivalent alternatives for addressable specifications.** If an organization does not implement the named addressable specification, require evidence of the alternative measure and the documented rationale showing why it is reasonable and appropriate.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -592,6 +659,7 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - 45 CFR Part 164, Subpart C — Security Standards for the Protection of Electronic Protected Health Information
 - 45 CFR Part 164, Subpart D — Notification in the Case of Breach of Unsecured Protected Health Information
 - HHS OCR HIPAA Security Rule Guidance Material (hhs.gov/hipaa/for-professionals/security/guidance)
+- HHS OCR FAQ: Difference between addressable and required implementation specifications (hhs.gov/hipaa/for-professionals/faq/2020/what-is-the-difference-between-addressable-and-required-implementation-specifications)
 - HHS OCR HIPAA Audit Protocol (2016 revision)
 - NIST SP 800-66 Rev. 2 — Implementing the Health Insurance Portability and Accountability Act (HIPAA) Security Rule: A Cybersecurity Resource Guide (February 2024)
 - HHS OCR Breach Portal and Resolution Agreements archive
@@ -599,3 +667,10 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - H-ISAC (Health Information Sharing and Analysis Center) — https://h-isac.org/
 - CISA Healthcare and Public Health Sector Guidance — https://www.cisa.gov/topics/critical-infrastructure-security-and-resilience/critical-infrastructure-sectors/healthcare-and-public-health-sector
 - KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026) — https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+
+---
+
+## Changelog
+
+- **1.1.0** -- Added safeguard evidence matrix, confidence levels, Not Evaluable reason codes, addressable decision fields, evidence freshness, and pitfalls for policy-only, stale vendor, and incomplete ePHI scope evidence.
+- **1.0.1** -- Initial HIPAA Security Rule review workflow.
