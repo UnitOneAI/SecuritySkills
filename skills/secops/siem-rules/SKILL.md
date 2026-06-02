@@ -2,14 +2,14 @@
 name: siem-rules
 description: >
   Guides development of SIEM detection rules using KQL (Microsoft Sentinel) and
-  SPL (Splunk) query languages, mapped to MITRE ATT&CK v16 techniques. Auto-invoked
+  SPL (Splunk) query languages, mapped to current MITRE ATT&CK techniques. Auto-invoked
   when the user needs to write SIEM queries, tune alert thresholds, build correlation
   rules, or manage the detection rule lifecycle. Produces production-ready queries
   with detection logic patterns, threshold tuning guidance, and lifecycle management.
 tags: [secops, siem, kql, spl]
 role: [soc-analyst, security-engineer]
 phase: [operate]
-frameworks: [MITRE-ATT&CK-v16]
+frameworks: [MITRE-ATT&CK-current]
 difficulty: intermediate
 time_estimate: "20-40min"
 version: "1.0.0"
@@ -22,7 +22,7 @@ argument-hint: "[technique-ID-or-log-source]"
 
 # SIEM Detection Rule Development
 
-> **Framework:** MITRE ATT&CK v16
+> **Framework:** MITRE ATT&CK current version (verify at run time)
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 20-40 min per rule
 > **Output:** Production-ready KQL or SPL detection query, correlation rule logic, tuning parameters
@@ -52,11 +52,14 @@ Before beginning, gather or confirm:
 
 - [ ] **Target SIEM platform:** Microsoft Sentinel (KQL) or Splunk (SPL).
 - [ ] **Detection objective:** What behavior or threat is being detected? Include ATT&CK technique ID if known.
+- [ ] **ATT&CK source/version:** Current ATT&CK version, technique page URL, and data-source notes used for the mapping.
 - [ ] **Available data tables/indexes:** Which log tables (Sentinel) or indexes (Splunk) contain the relevant data?
+- [ ] **Field mapping source:** Whether the rule uses native fields, a Sigma conversion pipeline, CIM fields, ASIM fields, or local normalized aliases.
 - [ ] **Environment baseline:** Normal volume and patterns for the data source (e.g., average daily failed logon count, typical admin logon hours).
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
-- [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
+- [ ] **Performance constraints:** Query time window, maximum execution time, scheduled frequency, and allowed lookback period.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
+- [ ] **Deployment mode:** Query-only hunting, scheduled alert, correlation rule, saved search, or retired/deprecated rule review.
 
 ---
 
@@ -77,6 +80,18 @@ Select the appropriate detection logic pattern based on the threat being detecte
 | **Correlation** | Multi-table joins, multi-stage attacks | High |
 | **Behavioral baseline** | Deviation from normal, first-seen analysis | High |
 | **Impossible travel** | Geographically implausible authentication | High |
+
+**Evidence confidence levels:**
+
+| Level | Evidence Required | Use in Output |
+|-------|-------------------|---------------|
+| High | Query was tested against representative benign data and a known true-positive sample or replay. | Mark validation as deployable; include TP sample and FP baseline. |
+| Medium | Query was syntactically validated and tested against representative benign data, but no TP replay exists. | Mark validation as pilot-only; include missing TP evidence. |
+| Low | Query is reasoned from field documentation or Sigma conversion only, with no local data test. | Mark validation as draft; require local data validation before alerting. |
+| Not Evaluable | Required tables, indexes, fields, or tenant data are unavailable. | Do not claim production readiness; list missing evidence and owner. |
+
+Do not present a rule as production-ready unless the evidence level is `High` or
+the user explicitly accepts a pilot with documented missing validation evidence.
 
 ### Step 2: Write the Detection Query
 
@@ -424,7 +439,31 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 | table _time, TargetUserName, distinct_hosts, logon_count, target_hosts, source_ips
 ```
 
-### Step 4: Alert Threshold Tuning
+### Step 4: Conversion and Platform Validation
+
+When reviewing Sigma-derived rules or converting between platforms, validate the
+conversion path instead of assuming that the generated query is equivalent.
+
+**Sigma conversion evidence to capture:**
+
+| Evidence | Sentinel/KQL Consideration | Splunk/SPL Consideration |
+|----------|----------------------------|--------------------------|
+| Backend and pipeline | Record backend name, pipeline, and generated KQL target. Confirm table and field names match the tenant connector or ASIM schema. | Record backend name, pipeline, output format, and whether SPL targets raw events or CIM/tstats data models. |
+| Logsource mapping | Confirm Sigma `product`, `service`, and `category` resolve to the intended Sentinel table or parser. | Confirm Sigma logsource maps to the intended `index`, `sourcetype`, data model, or macro. |
+| Field mapping | Verify every translated field exists after normalization; note renamed or dropped fields. | Verify field aliases, CIM acceleration, macro expansion, and lookup dependencies. |
+| Condition semantics | Check list/dictionary AND/OR behavior, negation, modifiers, and case sensitivity. | Check parentheses, implicit ORs, wildcard escaping, and accelerated-data constraints. |
+| Correlation support | Verify the backend supports the correlation pattern or rewrite manually. | Verify correlation output works as a saved search, tstats search, or multi-search pattern. |
+
+**Validation gates:**
+
+1. Confirm generated syntax in the target SIEM query editor or an offline parser.
+2. Run the query over a benign baseline window and record result volume.
+3. Run a true-positive replay, test fixture, or documented sample if available.
+4. Compare source Sigma fields to output fields and list unmapped fields.
+5. Document any required macros, watchlists, lookup tables, saved-search settings,
+   data-model acceleration, or Sentinel analytics-rule settings.
+
+### Step 5: Alert Threshold Tuning
 
 **Tuning methodology:**
 
@@ -456,7 +495,32 @@ Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
 
-### Step 5: Detection Rule Lifecycle Management
+**Sentinel deployment checks:**
+
+- Keep `TimeGenerated` in the query output because scheduled analytics rules use
+  it for lookback-window evaluation.
+- Ensure the lookback period is greater than or equal to the query frequency.
+- Decide whether each query result becomes an alert or whether all results are
+  grouped into one alert.
+- If suppressing duplicates, record the stop-running duration and why it will not
+  hide ongoing activity.
+- Map no more than ten entity mappings per analytics rule, and prefer strong
+  identifiers. Record expected entity volume so the alert does not exceed entity
+  extraction limits.
+
+**Splunk deployment checks:**
+
+- Record whether the rule is a plain SPL search, scheduled alert, correlation
+  search, or savedsearches.conf entry.
+- Expand and document macros before review, especially environment-specific
+  indexes, sourcetypes, and lookup names.
+- If using CIM/tstats, confirm the accelerated data model, object, and field names.
+- Record throttle fields and suppression window so repeat alerts are deduplicated
+  by the right entity, not just globally.
+- Document required lookups, KV-store collections, threat-intel feeds, and their
+  refresh cadence.
+
+### Step 6: Detection Rule Lifecycle Management
 
 **Lifecycle stages:**
 
@@ -489,6 +553,19 @@ Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Comp
 5. Are there new exclusions needed or obsolete exclusions to remove?
 6. Has the threat landscape changed in ways that require rule logic updates?
 
+**Lifecycle register fields:**
+
+| Field | Purpose |
+|-------|---------|
+| Rule ID / source ID | Stable identifier for versioning, deduplication, and change review. |
+| ATT&CK version and technique URL | Prevents stale mapping when ATT&CK versions change. |
+| Platform and data model | Distinguishes raw KQL/SPL rules from Sigma-derived, CIM, ASIM, or tstats rules. |
+| Required data sources | Tables, indexes, parsers, macros, lookups, and enrichment feeds needed by the rule. |
+| Evidence confidence | High/Medium/Low/Not Evaluable, with validation date and sample source. |
+| Baseline and threshold rationale | Records why a threshold is defensible for this environment. |
+| Owner and review date | Ensures stale or noisy rules have an accountable maintainer. |
+| Suppression and exclusions | Includes scope, expiry, ticket, and revalidation trigger for each exclusion. |
+
 ---
 
 ## 4. Findings Classification
@@ -510,7 +587,7 @@ Produce SIEM rule deliverables in this structure:
 ## SIEM Detection Rule: [Rule Name]
 **Date:** [YYYY-MM-DD]
 **Skill:** siem-rules v1.0.0
-**Framework:** MITRE ATT&CK v16
+**Framework:** MITRE ATT&CK [current verified version]
 **Platform:** [Microsoft Sentinel (KQL) | Splunk (SPL)]
 
 ### Rule Metadata
@@ -519,12 +596,23 @@ Produce SIEM rule deliverables in this structure:
 | Rule Name | [Name] |
 | ATT&CK Technique | [T1110.003 -- Brute Force: Password Spraying] |
 | ATT&CK Tactic | [Credential Access (TA0006)] |
+| ATT&CK Source | [Technique URL, version, retrieval date] |
 | Severity | [High / Medium / Low / Informational] |
 | Data Source | [Table/Index name] |
+| Field Mapping | [Native / Sigma pipeline / CIM / ASIM / local aliases] |
 | Status | [Draft / Testing / Active] |
+| Evidence Confidence | [High / Medium / Low / Not Evaluable] |
 
 ### Detection Query
 [Full KQL or SPL query]
+
+### Source and Conversion Evidence
+| Item | Value |
+|------|-------|
+| Source Rule / Hypothesis | [Sigma rule, ATT&CK analytic, incident pattern, or custom hypothesis] |
+| Conversion Backend / Pipeline | [If Sigma-derived, backend, pipeline, output format, and version] |
+| Unmapped Fields | [None / list fields that did not translate] |
+| Required Enrichment | [Watchlists, lookups, macros, threat-intel feeds] |
 
 ### Threshold Configuration
 | Parameter | Value | Rationale |
@@ -533,6 +621,15 @@ Produce SIEM rule deliverables in this structure:
 | Time window | [Xm/h] | [Why this window] |
 | Frequency | [Xm/h] | [How often to run] |
 | Suppression | [Xh] | [Cooldown period] |
+
+### Deployment Settings
+| Setting | Value |
+|---------|-------|
+| Alert grouping | [Group all events / alert per event / Splunk throttle fields] |
+| Incident creation | [Enabled / disabled / correlation-search notable event] |
+| Query performance target | [Max runtime and tested runtime] |
+| Lifecycle owner | [Team or role] |
+| Next review date | [YYYY-MM-DD] |
 
 ### Entity Mapping
 | Entity Type | Source Field |
@@ -548,16 +645,19 @@ Produce SIEM rule deliverables in this structure:
 - [Specific tuning recommendations]
 
 ### Validation
-- [How to test the rule produces a true positive]
+- True-positive test: [Replay/sample/test procedure]
+- Benign baseline: [Time range, result count, expected FP sources]
+- Parser/field validation: [Fields confirmed present]
+- Not Evaluable items: [Missing data source, permission, or sample]
 ```
 
 ---
 
 ## 6. Framework Reference
 
-### MITRE ATT&CK v16
+### MITRE ATT&CK current version
 
-For SIEM rule development, ATT&CK provides the canonical mapping between adversary techniques and the data sources that reveal them. Each technique's "Detection" section describes what to look for and in which log sources.
+For SIEM rule development, ATT&CK provides the canonical mapping between adversary techniques and the data sources that reveal them. Always record the ATT&CK version, technique URL, and retrieval date used for a rule. Do not rely on a hardcoded historical version without checking the live version history.
 
 **Key ATT&CK techniques frequently detected via SIEM rules:**
 
@@ -632,6 +732,26 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
+### Pitfall 6: Blindly Trusting Sigma Conversion Output
+
+Sigma backends and pipelines can translate field names, log sources, and output
+formats, but they cannot prove that the destination tenant has the same parser,
+CIM/ASIM mapping, macro expansion, or correlation support. Treat conversion as a
+draft until field mappings and generated query semantics are validated.
+
+### Pitfall 7: Treating ATT&CK Mappings as Timeless
+
+ATT&CK versions change. A rule mapped to an older tactic, technique, data source,
+or detection note may become stale even if the query still runs. Record the
+version and source URL, and review mappings during lifecycle checks.
+
+### Pitfall 8: Overloading Entity Mapping or Alert Grouping
+
+Mapping too many entities or grouping every result into one alert can hide the
+important investigative pivots. For Sentinel, stay within analytics-rule entity
+mapping limits and expected entity volume. For Splunk, throttle on meaningful
+fields such as user, host, and source IP rather than suppressing globally.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -648,13 +768,15 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 
 ## 9. References
 
-1. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
+1. **MITRE ATT&CK Version History** -- https://attack.mitre.org/resources/versions/
 2. **Microsoft Sentinel KQL Reference** -- https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/
-3. **Microsoft Sentinel Analytics Rules** -- https://learn.microsoft.com/en-us/azure/sentinel/detect-threats-built-in
+3. **Microsoft Sentinel Scheduled Analytics Rules** -- https://learn.microsoft.com/en-us/azure/sentinel/create-analytics-rules
 4. **Splunk SPL Reference** -- https://docs.splunk.com/Documentation/Splunk/latest/SearchReference
-5. **Splunk Security Essentials** -- https://splunkbase.splunk.com/app/3435/
+5. **Sigma Rule Basics** -- https://sigmahq.io/docs/basics/rules.html
 6. **Azure AD Sign-in Error Codes** -- https://learn.microsoft.com/en-us/azure/active-directory/develop/reference-error-codes
 7. **Windows Security Event Log Reference** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
 8. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 9. **Sentinel Entity Mapping** -- https://learn.microsoft.com/en-us/azure/sentinel/map-data-fields-to-entities
 10. **Splunk CIM (Common Information Model)** -- https://docs.splunk.com/Documentation/CIM/latest/User/Overview
+11. **Sigma Backends** -- https://sigmahq.io/docs/digging-deeper/backends.html
+12. **Sigma Processing Pipelines** -- https://sigmahq.io/docs/digging-deeper/pipelines.html
