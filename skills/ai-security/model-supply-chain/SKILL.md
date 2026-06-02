@@ -6,12 +6,12 @@ description: >
   dependency review, and backdoor detection. Auto-invoked when reviewing systems
   that download pre-trained models, fine-tune foundation models, or deploy models
   from third-party sources. Produces a structured assessment mapped to OWASP
-  LLM03:2025, SLSA v1.0 supply chain levels, and MITRE ATLAS poisoning and
+  LLM03:2025, SLSA v1.2 provenance and build-track guidance, and MITRE ATLAS poisoning and
   supply chain techniques.
 tags: [ai-security, supply-chain, model-provenance]
 role: [security-engineer, ml-engineer, appsec-engineer]
 phase: [build, review, operate]
-frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
+frameworks: [OWASP-LLM03-2025, SLSA-v1.2, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
 version: "1.0.0"
@@ -24,7 +24,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Model Supply Chain Security Review
 
-This skill guides a structured security assessment of AI/ML model supply chains. It covers the full lifecycle from model acquisition through training data sourcing, fine-tuning, and inference deployment. The methodology is aligned with **OWASP LLM03:2025 (Supply Chain Vulnerabilities)**, **SLSA v1.0 (Supply-chain Levels for Software Artifacts)**, and **MITRE ATLAS** adversarial techniques for ML systems.
+This skill guides a structured security assessment of AI/ML model supply chains. It covers the full lifecycle from model acquisition through training data sourcing, fine-tuning, and inference deployment. The methodology is aligned with **OWASP LLM03:2025 (Supply Chain Vulnerabilities)**, **SLSA v1.2 provenance and Build Track guidance**, and **MITRE ATLAS** adversarial techniques for ML systems.
 
 ## Prompt Injection Safety Notice
 
@@ -94,7 +94,7 @@ Determine where every model artifact originates and whether its authenticity and
 **What to look for in code and configuration:**
 
 - Model download code that pulls weights from Hugging Face, S3, GCS, or other sources. Check whether SHA256 checksums or cryptographic signatures are verified after download.
-- Use of `from_pretrained()` calls (Hugging Face transformers, diffusers, sentence-transformers) without pinning to a specific commit hash or revision. Model repos on Hugging Face can be updated at any time; unpinned references pull the latest, potentially compromised weights.
+- Use of `from_pretrained()` calls (Hugging Face transformers, diffusers, sentence-transformers) without pinning to a specific immutable commit hash. Model repos on Hugging Face can be updated at any time; unpinned references or mutable branch/tag revisions can pull changed weights or code.`n- Use of `trust_remote_code=True` without a reviewed repository owner and immutable commit-hash `revision`. Custom model code executes locally and should be treated like third-party executable code.
 - Models loaded from shared network drives, team Slack channels, or email attachments with no integrity verification.
 - Absence of SLSA provenance attestations or Sigstore signatures for model artifacts.
 - Models identified only by name ("llama-2-7b") without specifying the exact source organization, revision, or checksum.
@@ -104,7 +104,7 @@ Determine where every model artifact originates and whether its authenticity and
 ```
 # Find model download and loading code
 Grep: "from_pretrained|load_model|torch.load|pickle.load|onnx.load|tf.saved_model" in **/*.{py,ts,js}
-Grep: "huggingface|hf_hub|transformers|diffusers|sentence.transformers" in **/*.{py,toml,cfg,txt,yaml,yml}
+Grep: "huggingface|hf_hub|transformers|diffusers|sentence.transformers" in **/*.{py,toml,cfg,txt,yaml,yml}`nGrep: "trust_remote_code|revision=|snapshot_download|hf_hub_download" in **/*.{py,yaml,yml,json}
 
 # Check for integrity verification
 Grep: "sha256|checksum|hash|verify|digest|signature|sigstore|cosign" in **/*.{py,sh,yaml,yml}
@@ -124,7 +124,7 @@ Glob: **/config.json
 
 | Condition | Severity |
 |---|---|
-| Models loaded via `pickle.load` or `torch.load` without `weights_only=True` | Critical |
+| Models loaded via `pickle.load`, `torch.load(..., weights_only=False)`, or `torch.load(..., pickle_module=...)` from untrusted sources | Critical |`n| PyTorch `<2.6` code uses `torch.load()` without explicit `weights_only=True` on external checkpoints | High |`n| Hugging Face `trust_remote_code=True` without immutable commit-hash `revision` and code-owner review | High |
 | No checksum or signature verification on model download | High |
 | Model source unpinned (no commit hash, revision, or version lock) | High |
 | Model pulled from unverified third-party source (not the original publisher) | High |
@@ -187,7 +187,7 @@ Assess the integrity and access controls of the fine-tuning pipeline from data i
 - Fine-tuning outputs (new weights, adapters) written to shared storage without signing or integrity protection.
 - CI/CD pipelines for model training that do not enforce code review on training configuration changes.
 
-**SLSA v1.0 applicability:** SLSA (Supply-chain Levels for Software Artifacts) defines four levels of supply chain security for build processes. While originally designed for software, the same principles apply directly to model training pipelines:
+**SLSA v1.2 provenance applicability:** SLSA defines tracks and provenance formats for verifiable supply chain properties. While originally designed for software artifacts, the same provenance model can be applied to model training pipelines when model weights are treated as produced artifacts:
 
 | SLSA Level | Model Training Equivalent | What to Check |
 |---|---|---|
@@ -236,7 +236,7 @@ Assess the security of libraries, frameworks, and runtime dependencies used in t
 **What to look for in code and configuration:**
 
 - Outdated versions of ML framework libraries with known CVEs: transformers, LangChain, LlamaIndex, vLLM, TGI, ONNX Runtime, TensorFlow Serving, Triton Inference Server, PyTorch.
-- Use of `pickle`-based deserialization anywhere in the inference path. This includes `torch.load()` without `weights_only=True`, direct `pickle.load()`, and libraries that use pickle internally for model loading.
+- Use of unsafe pickle-based deserialization anywhere in the inference path. This includes direct `pickle.load()`, `torch.load(..., weights_only=False)`, `torch.load(..., pickle_module=...)`, PyTorch `<2.6` callsites without explicit `weights_only=True`, and libraries that use pickle internally for model loading.
 - Custom inference code that uses `eval()`, `exec()`, or `subprocess` with model-derived inputs.
 - Inference containers built from unverified base images or without pinned dependency versions.
 - Model serving endpoints exposed without authentication or rate limiting.
@@ -256,7 +256,7 @@ Glob: **/docker-compose*.{yml,yaml}
 
 # Check for dangerous deserialization
 Grep: "pickle.load|torch.load|joblib.load|dill.load|cloudpickle" in **/*.py
-Grep: "weights_only" in **/*.py
+Grep: "weights_only|pickle_module|safe_globals|add_safe_globals|TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD" in **/*.py **/*.{sh,yaml,yml}
 
 # Check for dynamic execution with model inputs
 Grep: "eval(|exec(|subprocess|os.system|os.popen" in **/*.py
@@ -269,7 +269,7 @@ Grep: "langchain|llamaindex|llama.index|vllm|ray|transformers|onnxruntime" in **
 
 | Condition | Severity |
 |---|---|
-| `pickle.load` or `torch.load` without `weights_only=True` in inference path | Critical |
+| `pickle.load`, `torch.load(..., weights_only=False)`, or `torch.load(..., pickle_module=...)` in inference path for untrusted artifacts | Critical |`n| PyTorch `<2.6` callsite lacks explicit `weights_only=True` for externally sourced checkpoints | High |`n| Broad or unreviewed `safe_globals` / `add_safe_globals` allowlist for checkpoint loading | High |
 | Known CVE in inference dependency with no patch applied | Critical or High (per CVSS) |
 | `eval()` or `exec()` with model-derived inputs | Critical |
 | Inference container built from unverified or unpinned base image | High |
@@ -418,14 +418,14 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Framework | Identifier | Description |
 |---|---|---|
 | OWASP Top 10 for LLMs (2025) | LLM03 | Supply Chain Vulnerabilities -- risks from third-party models, training data, plugins, and deployment dependencies |
-| SLSA v1.0 | Build L0-L3 | Supply-chain Levels for Software Artifacts -- framework for assessing build/training pipeline integrity |
+| SLSA v1.2 | Build Track + provenance | Supply-chain Levels for Software Artifacts -- framework for assessing build/training pipeline integrity and provenance fields |
 | MITRE ATLAS | AML.T0010 | ML Supply Chain Compromise -- adversary introduces compromised ML artifacts |
 | MITRE ATLAS | AML.T0020 | Poison Training Data -- adversary manipulates training data to alter model behavior |
 | MITRE ATLAS | AML.T0043 | Craft Adversarial Data -- adversary creates inputs designed to cause misclassification or misbehavior |
 | NIST AI RMF 1.0 | MAP 2.3 | Scientific integrity and data quality in AI system lifecycle |
 | NIST AI RMF 1.0 | GOVERN 1.5 | Ongoing monitoring and periodic review of the risk management process and its outcomes (applied here to third-party AI component risks) |
 
-**SLSA v1.0 specification:** SLSA defines a graduated set of supply chain security requirements. Version 1.0 (published April 2023) introduced the Build track with levels L0-L3. The framework is maintained by the Open Source Security Foundation (OpenSSF) and is directly applicable to model training pipelines as build processes. Reference: [slsa.dev](https://slsa.dev)
+**SLSA v1.2 specification:** SLSA v1.2 defines tracks and recommended attestation formats, including provenance. For model training pipelines, reviewers should verify provenance fields such as `builder.id`, `buildType`, `externalParameters`, and `resolvedDependencies`, not just assign a level label. Reference: [slsa.dev/spec/v1.2](https://slsa.dev/spec/v1.2/)
 
 ---
 
@@ -446,7 +446,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 ## References
 
 - OWASP Top 10 for LLM Applications (2025), LLM03: Supply Chain Vulnerabilities -- https://genai.owasp.org/llmrisk/llm03-supply-chain-vulnerabilities/ (Note: LLM03 in the 2025 edition covers supply chain; verify current numbering at https://genai.owasp.org)
-- SLSA v1.0 Specification -- https://slsa.dev/spec/v1.0/
+- SLSA v1.2 Specification -- https://slsa.dev/spec/v1.2/`n- SLSA v1.2 Build Provenance -- https://slsa.dev/spec/v1.2/build-provenance`n- PyTorch serialization notes, `torch.load` with `weights_only=True` -- https://docs.pytorch.org/docs/stable/notes/serialization.html#torch-load-with-weights-only-true`n- Hugging Face Transformers custom models and `trust_remote_code` -- https://huggingface.co/docs/transformers/en/models#custom-models
 - MITRE ATLAS -- https://atlas.mitre.org
 - Mithril Security. "PoisonGPT: How We Hid a Lobotomized LLM on Hugging Face to Spread Fake News" (2023) -- https://blog.mithrilsecurity.io/poisongpt-how-we-hid-a-lobotomized-llm-on-hugging-face-to-spread-fake-news/
 - Oligo Security. "ShadowRay: First Known Attack Campaign Targeting Ray AI Framework" (2024) -- https://www.oligo.security/blog/shadowray-attack-ai-workloads-actively-exploited-in-the-wild
