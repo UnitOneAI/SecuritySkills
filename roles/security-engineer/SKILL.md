@@ -9,10 +9,10 @@ description: >
 tags: [role, security-engineering, review, remediation]
 role: [security-engineer]
 phase: [protect, detect, respond]
-frameworks: [OWASP-ASVS, CWE-Top-25, SLSA-v1.0, CIS-Benchmarks]
+frameworks: [OWASP-ASVS-5.0.0, CWE-Top-25, SLSA-v1.2, CIS-Benchmarks]
 difficulty: intermediate
 time_estimate: "varies by engagement"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -39,6 +39,13 @@ If the ask is a program-level concern (e.g., "assess our overall security maturi
 
 **Skills:** All skills referenced in this bundle are available: `secure-code-review`, `cve-triage`, `pipeline-security`, `iam-review`, `threat-modeling`, `dependency-scanning`, `sast-config`, `secrets-management`, `container-security`, `patch-prioritization`, `scanner-tuning`, `firewall-review`.
 
+**Source-version gate:** Before starting any engagement, record the authoritative
+source versions used for the output. At minimum capture the ASVS release, CWE
+Top 25 publication year, SLSA specification version and track, CIS Benchmark
+version, cloud benchmark version, and scanner or ruleset version. If a source
+version cannot be verified, mark the affected recommendation `Not Evaluable`
+instead of treating stale framework mappings as current.
+
 ---
 
 ## Engagement Types
@@ -57,11 +64,13 @@ secure-code-review → dependency-scanning → sast-config
 
 | Step | Skill | Purpose |
 |------|-------|---------|
-| 1 | `secure-code-review` | Manual review of the code change for security vulnerabilities: injection flaws, broken authentication, insecure deserialization, SSRF, path traversal, and logic bugs that automated tools miss. Focus on code that handles user input, authentication, authorization, and data access. |
-| 2 | `dependency-scanning` | Scan third-party dependencies for known vulnerabilities. Check for pinned versions, verify the dependency is actively maintained, and confirm no transitive dependencies introduce risk. Every external library is attack surface. |
-| 3 | `sast-config` | Configure or tune static analysis tooling to cover the patterns identified in manual review. If the manual review found a class of bug, SAST should be configured to catch future instances automatically. The goal is to make manual review findings self-correcting. |
+| 1 | `secure-code-review` | Manual review of the code change for security vulnerabilities: injection flaws, broken authentication, insecure deserialization, SSRF, path traversal, and logic bugs that automated tools miss. Focus on code that handles user input, authentication, authorization, and data access. Map findings to ASVS 5.0.0 and CWE using verified source versions. |
+| 2 | `dependency-scanning` | Scan third-party dependencies for known vulnerabilities. Check pinned versions, maintainer status, transitive risk, advisory source freshness, EPSS, CISA KEV status, and whether SBOM/VEX evidence supports the finding. Every external library is attack surface. |
+| 3 | `sast-config` | Configure or tune static analysis tooling to cover the patterns identified in manual review. Document suppression owner, rationale, expiry, and revalidation trigger for every accepted false positive so SAST tuning does not become permanent blind spots. |
 
-**Deliverable:** Code review report with findings classified by CWE, dependency audit results, updated SAST configuration, and remediation guidance for each finding.
+**Deliverable:** Code review report with findings classified by current ASVS/CWE
+source, dependency audit results, evidence-confidence rating, suppression
+register updates, and remediation guidance for each finding.
 
 ---
 
@@ -77,11 +86,13 @@ pipeline-security → secrets-management → container-security
 
 | Step | Skill | Purpose |
 |------|-------|---------|
-| 1 | `pipeline-security` | Assess the full build and deployment pipeline: source integrity (signed commits, branch protection), build isolation (ephemeral runners, no shared state), artifact integrity (signing, provenance), and deployment controls (approval gates, rollback capability). Map findings to SLSA levels. |
-| 2 | `secrets-management` | Audit how secrets are stored, rotated, and accessed across the pipeline. Check for hardcoded credentials in code, configuration, CI variables, and container images. Verify vault integration, rotation policies, and least-privilege access to secret stores. |
-| 3 | `container-security` | If the pipeline produces container images: scan base images for vulnerabilities, verify minimal image construction (no build tools in production images), check for running as root, validate image signing, and review registry access controls. |
+| 1 | `pipeline-security` | Assess the full build and deployment pipeline: source integrity, build isolation, artifact integrity, provenance, and deployment controls. Map findings to the current SLSA v1.2 track and level; mark properties `Not Evaluable` when provenance, builder identity, or source-control evidence is unavailable. |
+| 2 | `secrets-management` | Audit how secrets are stored, rotated, and accessed across the pipeline. Check code, configuration, CI variables, logs, artifacts, and container images. Verify vault integration, rotation policies, redaction behavior, and least-privilege access to secret stores. |
+| 3 | `container-security` | If the pipeline produces container images: scan base images by digest, verify SBOM and provenance evidence, validate minimal image construction, check for running as root, validate image signing, and review registry access controls. |
 
-**Deliverable:** Pipeline security assessment report with SLSA level mapping, secrets audit findings, container image hardening recommendations, and prioritized remediation plan.
+**Deliverable:** Pipeline security assessment report with SLSA v1.2 track and
+level mapping, provenance evidence, secrets audit findings, container image
+hardening recommendations, and prioritized remediation plan.
 
 ---
 
@@ -97,11 +108,13 @@ cve-triage → patch-prioritization → scanner-tuning
 
 | Step | Skill | Purpose |
 |------|-------|---------|
-| 1 | `cve-triage` | Assess the vulnerability: is the affected component present in the environment, is the vulnerable version deployed, is the exploit public, is the asset internet-facing, and what is the business criticality of affected systems. Not every critical CVE is critical to this organization. |
-| 2 | `patch-prioritization` | Rank confirmed vulnerabilities by risk-adjusted priority: exploitability (EPSS score, known exploitation in the wild), exposure (internet-facing vs. internal), asset criticality (revenue-generating vs. development), and patch complexity (simple update vs. breaking change requiring testing). |
-| 3 | `scanner-tuning` | After remediation, tune the scanning configuration: add checks for the vulnerability class if not already covered, suppress confirmed false positives with documented justification, and adjust scan frequency for high-risk asset categories. |
+| 1 | `cve-triage` | Assess the vulnerability: affected component presence, deployed vulnerable version, public exploit maturity, CISA KEV status, internet exposure, scanner assertion confidence, and business criticality. Not every critical CVE is critical to this organization. |
+| 2 | `patch-prioritization` | Rank confirmed vulnerabilities by risk-adjusted priority: exploitability, exposure, asset criticality, compensating controls, patch complexity, rollback risk, and fix confidence. Separate scanner assertions from runtime-confirmed exposure. |
+| 3 | `scanner-tuning` | After remediation, tune the scanning configuration: add checks for the vulnerability class if not already covered, suppress confirmed false positives with documented owner, justification, expiry, and revalidation trigger, and adjust scan frequency for high-risk asset categories. |
 
-**Deliverable:** Vulnerability response report with triage decisions, prioritized remediation plan with SLA targets, and updated scanner configuration.
+**Deliverable:** Vulnerability response report with triage decisions,
+source-freshness evidence, prioritized remediation plan with SLA targets,
+validated suppression register, and updated scanner configuration.
 
 ---
 
@@ -117,11 +130,13 @@ iam-review → firewall-review → container-security
 
 | Step | Skill | Purpose |
 |------|-------|---------|
-| 1 | `iam-review` | Review identity and access management configuration: overprivileged roles, unused service accounts, missing MFA enforcement, cross-account trust relationships, and policy conditions. IAM is the control plane — if IAM is wrong, everything downstream is exposed. |
-| 2 | `firewall-review` | Assess network security controls: security group rules, NACLs, WAF configurations, and network segmentation. Look for overly permissive ingress rules, unrestricted egress, and missing segmentation between environments (prod/staging/dev). |
-| 3 | `container-security` | If the infrastructure runs containers: review orchestrator configuration (Kubernetes RBAC, pod security standards, network policies), node security, runtime protection, and image provenance verification. |
+| 1 | `iam-review` | Review identity and access management configuration: effective access after inherited, group, service, and cross-account grants; overprivileged roles; unused service accounts; missing MFA enforcement; and policy conditions. IAM is the control plane — if IAM is wrong, everything downstream is exposed. |
+| 2 | `firewall-review` | Assess network security controls: security group rules, NACLs, WAF configurations, NAT or routing exceptions, hit-counter evidence, ownership, and network segmentation. Look for overly permissive ingress rules, unrestricted egress, and missing segmentation between environments. |
+| 3 | `container-security` | If the infrastructure runs containers: review orchestrator configuration, Kubernetes RBAC, pod security standards, network policies, node security, runtime protection, image digest, SBOM, and provenance verification. |
 
-**Deliverable:** Infrastructure security assessment with findings mapped to CIS Benchmarks, remediation actions with owners and target dates, and configuration hardening recommendations.
+**Deliverable:** Infrastructure security assessment with findings mapped to
+versioned CIS Benchmarks, evidence-confidence rating, remediation actions with
+owners and target dates, and configuration hardening recommendations.
 
 ---
 
@@ -152,6 +167,7 @@ Branch/PR: [branch or PR number]
 Reviewer: [Name]
 Date: [Date]
 Scope: [Files/components reviewed]
+Framework Sources: [ASVS release / CWE year / scanner versions]
 
 SUMMARY
   Total Findings: [count]
@@ -163,6 +179,8 @@ FINDINGS
 Finding 1: [Title]
   Severity: [Critical / High / Medium / Low]
   CWE: [CWE-ID — Name]
+  ASVS: [ASVS 5.0.0 control or Not Evaluable]
+  Evidence Confidence: [High / Medium / Low]
   File: [path:line]
   Description: [What the vulnerability is]
   Impact: [What an attacker could do]
@@ -173,18 +191,22 @@ Finding 2: [Title]
   ...
 
 DEPENDENCY AUDIT
+  Advisory source freshness: [NVD/GHSA/vendor date checked]
+  SBOM/VEX evidence: [Present / Missing / Not Evaluable]
   Total Dependencies: [count]
   Vulnerable: [count]
   Outdated (>1 major version behind): [count]
   Unmaintained (no commit in 12+ months): [count]
 
   Vulnerable Dependencies:
+    Each entry must include advisory source, severity, fix confidence, and fix action.
     - [package@version] — [CVE-ID] — Severity: [score] — Fix: [action]
     - [package@version] — [CVE-ID] — Severity: [score] — Fix: [action]
 
 SAST RECOMMENDATIONS
   Rules to enable: [list with rationale]
   Rules to tune: [list with current false positive rate]
+  Suppression register updates: [owner / reason / expiry / revalidation]
   Custom rules needed: [description based on manual findings]
 ```
 
@@ -198,10 +220,14 @@ Organization: [Name]
 Pipeline: [Name / URL]
 Assessed By: [Name]
 Date: [Date]
+Framework Sources: [SLSA v1.2 track / CIS benchmark version / scanner versions]
 
 SLSA LEVEL ASSESSMENT
+  Track: [Source / Build / Dependency]
+  Source Version: [SLSA v1.2 or newer verified version]
   Current Level: [0 / 1 / 2 / 3]
   Target Level: [1 / 2 / 3]
+  Not Evaluable Properties: [list with missing evidence]
   Gap Summary: [What is missing for the next level]
 
 SOURCE INTEGRITY
@@ -217,8 +243,10 @@ BUILD INTEGRITY
   Findings: [list]
 
 ARTIFACT INTEGRITY
+  Artifact digest recorded: [Yes / No]
   Artifacts signed: [Yes / No]
   Provenance attestation: [Yes / No]
+  Provenance builder identity: [identity or Not Evaluable]
   Registry access controlled: [Yes / No]
   Findings: [list]
 
@@ -236,6 +264,9 @@ SECRETS AUDIT
   Findings: [list]
 
 CONTAINER IMAGE REVIEW (if applicable)
+  Image digest reviewed: [digest]
+  SBOM available: [Yes / No]
+  Provenance available: [Yes / No]
   Base image vulnerabilities: [Critical: X, High: X, Medium: X]
   Running as root: [Yes / No]
   Minimal image (no build tools): [Yes / No]
@@ -258,6 +289,7 @@ Date: [Date]
 Prepared By: [Name]
 Trigger: [New CVE / Scan results / Pentest report]
 Scope: [Systems / applications in scope]
+Source Freshness: [advisory sources and dates checked]
 
 TRIAGE SUMMARY
   Total Vulnerabilities Assessed: [count]
@@ -268,6 +300,9 @@ PRIORITIZED FINDINGS
 
 Priority 1: [CVE-ID or Finding Title]
   CVSS: [score] | EPSS: [probability]
+  KEV Status: [Listed / Not listed / Not checked]
+  Evidence Confidence: [High / Medium / Low]
+  Scanner Assertion Confirmed: [Yes / No / Not Evaluable]
   Affected Systems: [list]
   Exposure: [Internet-facing / Internal only]
   Exploit Available: [Yes — public / Yes — private / No]
@@ -281,6 +316,7 @@ Priority 2: [CVE-ID or Finding Title]
 
 SCANNER TUNING ACTIONS
   New checks added: [list]
+  Suppression lifecycle: [owner / justification / expiry / revalidation]
   False positives suppressed: [list with justification]
   Scan frequency changes: [list]
 
@@ -353,8 +389,8 @@ IMPORTANT: This role bundle is designed to be injection-hardened.
 
 ## References
 
-- **OWASP Application Security Verification Standard (ASVS) 4.0.3** — https://owasp.org/www-project-application-security-verification-standard/ — Comprehensive application security requirements used as the basis for code review scope.
+- **OWASP Application Security Verification Standard (ASVS) 5.0.0** — https://owasp.org/www-project-application-security-verification-standard/ — Current application security requirements used as the basis for code review scope.
 - **CWE Top 25 Most Dangerous Software Weaknesses** — https://cwe.mitre.org/top25/ — Vulnerability classification used for finding categorization in code reviews and vulnerability response.
-- **SLSA (Supply-chain Levels for Software Artifacts) v1.0** — https://slsa.dev/ — Framework for software supply chain integrity. Defines the levels used in pipeline security assessment.
+- **SLSA (Supply-chain Levels for Software Artifacts) v1.2** — https://slsa.dev/spec/v1.2/ — Current framework for software supply chain integrity. Defines the tracks and levels used in pipeline security assessment.
 - **CIS Benchmarks** — https://www.cisecurity.org/cis-benchmarks — Configuration hardening standards for operating systems, cloud platforms, containers, and network devices. Referenced in infrastructure review engagements.
 - **NIST SP 800-190 (Application Container Security Guide)** — https://csrc.nist.gov/publications/detail/sp/800-190/final — Container security guidance referenced in pipeline hardening and infrastructure review engagements.
