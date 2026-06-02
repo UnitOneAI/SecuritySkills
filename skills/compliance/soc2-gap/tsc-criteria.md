@@ -4,6 +4,14 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
 
 ---
 
+## Type II Evidence and Sampling Fields
+
+For every high-test control, record observation window, population source, sample size/method, control cadence, exception tracking, evidence retention location, and readiness status (`Design Ready`, `Operating Ready`, `Not Ready`, or `Not Evaluable`).
+
+For subservice organizations and vendor controls, also record carve-out or inclusive method, exact covered service, bridge letter status, complementary user entity controls (CUECs), complementary subservice organization controls (CSOCs), and the internal owner accountable for user-entity responsibilities.
+
+---
+
 ## CC4: Monitoring Activities
 
 **CC4.1 -- COSO Principle 16: The entity selects, develops, and performs ongoing and/or separate evaluations to ascertain whether the components of internal control are present and functioning.**
@@ -31,6 +39,8 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Deficiency tracking system (JIRA tickets, GRC tool entries)
   - Remediation status reports to management
   - Evidence of timely remediation (ticket resolution dates)
+  - Deficiency population export covering the observation period
+  - Exception aging and management sign-off for unresolved items
 - Common gaps:
   - Deficiencies are identified but not formally tracked
   - No escalation path for critical deficiencies
@@ -95,11 +105,15 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Deprovisioning procedures and evidence of timely execution (offboarding checklists)
   - MFA configuration evidence for cloud consoles, VPN, SSO, production systems
   - Quarterly or periodic user access reviews with sign-off records
+  - Population source for in-scope users and systems across the observation period
+  - Sampled access requests, removals, and reviews spanning the Type II period
+  - Exception list with remediation dates and reviewer sign-off
 - Common gaps:
   - MFA is not enforced universally (especially on developer tools or CI/CD)
   - No formal access request/approval workflow
   - Deprovisioning is delayed or inconsistent after employee termination
   - Access reviews are not performed or documented
+  - Evidence is a point-in-time screenshot that does not support operating effectiveness
 
 **CC6.2 -- Prior to issuing system credentials and granting system access, the entity registers and authorizes new users.**
 - Questions to ask:
@@ -139,8 +153,12 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Visitor logs and escort policies
   - Cloud provider SOC 2 reports (AWS, Azure, GCP)
   - Data center access policies (if self-hosted)
+  - CUEC/CSOC mapping for carved-out or inclusive subservice organizations
+  - Bridge letters when vendor SOC 2 reports do not cover the full observation period
 - Common gaps:
   - Reliance on cloud providers without reviewing their SOC 2 reports
+  - Vendor SOC 2 report reviewed but CUECs are not assigned to internal owners
+  - Subservice carve-out/inclusive boundaries do not match the system description
   - No visitor management process for office locations
   - Physical access logs are not reviewed
 
