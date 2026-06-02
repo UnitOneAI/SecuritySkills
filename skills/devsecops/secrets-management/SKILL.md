@@ -165,7 +165,7 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*`/`ASIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*`/`ghs_*`/`ghr_*`/`github_pat_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
@@ -192,10 +192,15 @@ Verify that at least one secret detection tool is configured and integrated:
 - Custom rules cover organization-specific secret formats.
 - Allowlist entries are documented with justification (false positive suppression must not create blind spots).
 
-**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+**Finding classification:** No secret detection tooling in a production repository that stores or references credentials is **High** (Critical only if actual unrotated secrets are present or the repo demonstrably handles high-impact credentials with no scanning). Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
 
 ---
 
+#### 2.4 Scanner Output Redaction
+
+Secret scanners can emit raw matched values in JSON, SARIF, or terminal output. Before including scanner results in reports, issue comments, tickets, or logs, redact the value and keep only the secret type, file path, line number, rule ID, verification status, and a short non-sensitive fingerprint if needed.
+
+Do **not** paste raw scanner `Secret`, `Raw`, `Match`, or equivalent fields into findings.
 ### Step 3: .env File and Git History Exposure (OWASP Secrets Management Cheat Sheet)
 
 #### 3.1 .env File Exposure
@@ -356,8 +361,8 @@ spec:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
+| **Critical** | Committed production secrets in current codebase or git history that remain unrotated; .env with production credentials committed. |`n| **High** | No secret detection tooling in repositories that store/reference credentials; no centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
+
 | **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
@@ -471,5 +476,5 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
-- **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
+- **1.0.2** -- Add AWS temporary credential and modern GitHub token prefixes, scanner-output redaction guidance, and context-aware severity for missing scanner tooling.`n- **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
