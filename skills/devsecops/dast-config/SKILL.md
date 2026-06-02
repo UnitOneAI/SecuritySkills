@@ -60,6 +60,8 @@ Use Glob and Grep to locate DAST tool configurations, scan policies, and CI inte
 **/.zap/
 **/af-plan*.yaml             # ZAP Automation Framework plans
 **/zap.yaml
+**/zap-automation*.yaml
+**/postman*.json             # API collections that may drive ZAP imports
 **/zap-baseline*
 **/zap-full-scan*
 **/zap-api-scan*
@@ -400,6 +402,9 @@ jobs:
 - [ ] Active scanning NEVER targets production.
 - [ ] Scan results are uploaded in SARIF format for centralized tracking.
 - [ ] ZAP action is pinned to a specific version.
+- [ ] Automation Framework plans are validated before gated execution.
+- [ ] Required ZAP add-ons are installed explicitly before API or report jobs run.
+- [ ] `exitStatus` policy is explicit and matches the intended fail/warn thresholds.
 - [ ] `fail_action` is set appropriately (baseline: warn; full: error for high/critical).
 - [ ] Target application is ephemeral or restorable (active scanning may modify data).
 - [ ] Scan duration has a timeout to prevent pipeline stalls.
@@ -474,6 +479,89 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 - Triage workflow assigns findings to owning teams with SLAs.
 
 **Finding classification:** No results triage process is **Medium**. Injection rules set to IGNORE or WARN is **Critical**. No deduplication leading to alert fatigue is **Medium**.
+
+---
+
+### Step 8: ZAP Automation Framework Operational Controls
+
+The ZAP Automation Framework is only a reliable CI gate when the plan is validated, required add-ons are installed before execution, and exit behavior is explicit. Review these runtime controls as part of every DAST configuration assessment, especially when the plan drives API imports or active scans.
+
+#### 8.1 Plan Preflight and Add-on Lifecycle
+
+Run a plan preflight before treating DAST as an enforced gate. A plan that cannot be parsed or that references jobs not supported by the installed ZAP/add-on set should fail before any security signal is trusted.
+
+```bash
+# Validate the plan structure before the gated scan.
+zap.sh -cmd -autocheck /zap/af-plan.yaml
+
+# Install add-ons before running jobs that require them. Keep the list explicit.
+zap.sh -cmd \
+  -addoninstall openapi \
+  -addoninstall graphql \
+  -addoninstall postman \
+  -autorun /zap/af-plan.yaml
+```
+
+**What to verify:**
+
+- [ ] CI validates the Automation Framework plan before the scan is used as a release gate.
+- [ ] Required add-ons are installed explicitly before plan execution (`openapi`, `graphql`, `postman`, SOAP, reports, or other job-specific add-ons).
+- [ ] The plan does not rely on the deprecated `addOns` job for installation.
+- [ ] The ZAP Docker image or action version is pinned and reviewed on a maintenance cadence.
+- [ ] Packaged scan action mode and Automation Framework mode are both reported when they are mixed in the same pipeline.
+
+#### 8.2 Job Ordering and Exit Policy
+
+Order matters. Passive alerts must be drained before reports and exit-status decisions, and accepted-risk filtering must happen before the final status calculation.
+
+```yaml
+jobs:
+  - type: alertFilter
+    parameters:
+      deleteGlobalAlerts: false
+
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 10
+      scanOnlyInScope: true
+
+  - type: spider
+    parameters:
+      maxDuration: 5
+      maxDepth: 10
+      maxChildren: 20
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 10
+
+  - type: activeScan
+    parameters:
+      scanOnlyInScope: true
+      maxScanDurationInMins: 30
+      maxRuleDurationInMins: 5
+
+  - type: report
+    parameters:
+      template: "traditional-json"
+      reportDir: "/zap/reports"
+      reportFile: "zap-report"
+
+  - type: exitStatus
+    parameters:
+      errorLevel: "high"
+      warnLevel: "medium"
+```
+
+**What to verify:**
+
+- [ ] `alertFilter` entries have documented justification and do not suppress injection-class, authentication, authorization, or command-execution findings without explicit risk acceptance.
+- [ ] `passiveScan-wait` runs before `report` and `exitStatus` so queued passive findings are included.
+- [ ] `exitStatus` is explicit and aligned with the pipeline gate policy.
+- [ ] Reports include the same scan scope and severity thresholds used for the exit decision.
+- [ ] CI artifacts preserve both the raw ZAP report and any SARIF/central-dashboard upload.
+
+**Finding classification:** Deprecated `addOns` job reliance is **Medium** because expected API coverage can silently disappear. No plan preflight before CI gating is **Medium**. Missing or unclear `exitStatus` policy is **Medium**; suppressing high-risk alert classes through `alertFilter` without documented risk acceptance is **High** or **Critical** depending on the rule class.
 
 ---
 
