@@ -9,7 +9,7 @@ description: >
 tags: [devsecops, sast, semgrep, codeql]
 role: [security-engineer, appsec-engineer]
 phase: [build]
-frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
+frameworks: [OWASP-ASVS-5.0, OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
 version: "1.0.0"
@@ -22,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # SAST Tool Configuration and Tuning
 
-A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, and CI integration. All findings map to ASVS controls and CWE identifiers.
+A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against current OWASP ASVS guidance, legacy ASVS 4.0.3 mappings where useful, and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, and CI integration. All findings map to ASVS controls and CWE identifiers.
 
 ---
 
@@ -152,6 +152,8 @@ node_modules/
 - Custom rule directory exists and contains organization-specific rules.
 - `.semgrepignore` exclusions are justified (test files are acceptable; production code paths are not).
 - `--error` flag is used in CI to fail the pipeline on findings (not just report).
+- Scan mode is documented: Semgrep AppSec Platform policy mode (`semgrep ci`) or OSS/SARIF mode (`semgrep scan --sarif`).
+- SARIF uploads include `security-events: write` permissions and a checked upload step when using GitHub code scanning.
 
 #### 3.2 Custom Semgrep Rule Authoring (YAML format)
 
@@ -372,7 +374,7 @@ value = request.args.get("id")  # nosemgrep: python.django.security.injection.sq
 
 #### 6.1 CI Pipeline Integration Patterns
 
-**GitHub Actions -- Semgrep:**
+**GitHub Actions -- Semgrep AppSec Platform:**
 
 ```yaml
 name: Semgrep
@@ -391,6 +393,30 @@ jobs:
       - run: semgrep ci              # Uses .semgrep.yml config
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+**GitHub Actions -- Semgrep OSS SARIF upload:**
+
+```yaml
+name: Semgrep SARIF
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --sarif --output semgrep.sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
 ```
 
 **GitHub Actions -- CodeQL:**
@@ -414,12 +440,12 @@ jobs:
         language: [javascript, python, java]
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           config-file: .github/codeql/codeql-config.yml
-      - uses: github/codeql-action/autobuild@v3
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/autobuild@v4
+      - uses: github/codeql-action/analyze@v4
 ```
 
 **What to verify:**
@@ -427,14 +453,24 @@ jobs:
 - SAST runs on every pull request (not just scheduled scans).
 - SAST is a required status check (PR cannot merge if SAST fails).
 - Full repository scan runs on a schedule (weekly minimum) in addition to PR-scoped scans.
-- SAST container/action is pinned to a specific version (not `latest`).
-- Results are uploaded to a central dashboard (Semgrep App, GitHub Security tab, SonarQube).
+- SAST container/action is pinned according to organization policy: first-party maintained major versions may be acceptable, while third-party actions should be reviewed for SHA pinning or an allowlisted publisher policy.
+- Results are uploaded to a central dashboard (Semgrep App, GitHub Security tab, SonarQube), and upload failures are visible as failed CI steps.
 - Scan time is under 10 minutes for PR checks (developer experience matters).
 
 **Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**.
 
 ---
 
+### Scan Mode and Ingestion Review
+
+| Mode | Evidence to Review | Notes |
+|------|--------------------|-------|
+| PR diff-aware scan | Pull request workflow, baseline ref, changed-file behavior | Useful for fast feedback, but not a replacement for full scheduled scans |
+| Scheduled full scan | Cron workflow or platform schedule | Catches cross-file flows and historical findings missed by diff-only scans |
+| Central ingestion | SARIF upload, Semgrep App, GitHub Security tab, SonarQube | Verify permissions, upload step status, and dashboard visibility |
+| Required checks | Branch protection or repository rules | If unavailable from files, report as unknown rather than assumed missing |
+
+---
 ## Findings Classification
 
 | Severity | Definition |
@@ -474,6 +510,9 @@ jobs:
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+| Scan mode | PR diff-aware / full scheduled / both | <workflow evidence> |
+| SARIF upload permissions | Present/Missing/N/A | <permissions block> |
+| Action pinning policy | Major/SHA/Unpinned | <workflow evidence> |
 
 ### Findings
 
@@ -494,7 +533,7 @@ jobs:
 
 ## Framework Reference
 
-### OWASP ASVS 4.0.3 (SAST-Relevant Chapters)
+### OWASP ASVS (SAST-Relevant Chapters)
 
 | Chapter | Title | SAST Coverage |
 |---------|-------|---------------|
@@ -536,6 +575,10 @@ jobs:
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
+6. **Equating a passed SAST job with uploaded results.** A scanner can pass while SARIF upload fails. Check both scanner exit status and central code-scanning ingestion.
+
+7. **Treating default setup as no setup.** Some platforms can run managed/default CodeQL without checked-in workflow files. If branch protection or platform settings are unavailable, mark coverage as unknown instead of absent.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -551,17 +594,21 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## References
 
-- OWASP ASVS 4.0.3: https://owasp.org/www-project-application-security-verification-standard/
+- OWASP ASVS Project: https://owasp.org/www-project-application-security-verification-standard/
 - CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
 - Semgrep Registry: https://semgrep.dev/r
 - CodeQL Documentation: https://codeql.github.com/docs/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
+- GitHub SARIF Upload: https://github.com/github/codeql-action/blob/main/upload-sarif/action.yml
+- GitHub Actions Security Hardening: https://docs.github.com/en/actions/how-tos/security-for-github-actions/security-guides/security-hardening-for-github-actions
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added current ASVS framing, CodeQL v4/SARIF upload examples, Semgrep AppSec Platform vs OSS SARIF scan modes, ingestion checks, and action pinning calibration.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
+
