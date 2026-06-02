@@ -1,12 +1,13 @@
 ---
 name: rbac-design
 description: >
-  Guides the design and assessment of RBAC and ABAC authorization models against
-  the NIST RBAC model (Sandhu et al.) and NIST SP 800-162 (ABAC guide). Auto-invoked
-  when designing role hierarchies, evaluating permission boundaries, implementing
-  ABAC policy patterns, performing role mining, or preventing role explosion.
-  Produces architecture recommendations with framework-grounded rationale.
-tags: [identity, rbac, abac, authorization]
+  Guides the design and assessment of RBAC, ABAC, and ReBAC authorization models
+  against the NIST RBAC model (Sandhu et al.) and NIST SP 800-162 (ABAC guide).
+  Auto-invoked when designing role hierarchies, evaluating permission boundaries,
+  implementing ABAC/ReBAC policy patterns, performing role mining, or preventing
+  role explosion. Produces architecture recommendations with framework-grounded
+  rationale.
+tags: [identity, rbac, abac, rebac, authorization]
 role: [security-engineer, architect]
 phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
@@ -100,14 +101,32 @@ Authorization design is the structural foundation of access control. Poor role d
 
 ## Process
 
+### Step 0: Classify the Authorization Model Before Scoring
+
+**Objective:** Avoid false positives by classifying the authorization model before applying role-health metrics or design findings.
+
+Classify each reviewed system or policy boundary as one or more of:
+
+| Model Class | What It Means | Metric Cautions |
+|---|---|---|
+| **Platform/workforce RBAC** | Roles are managed by the organization for employees, contractors, or internal operators. | Role-to-user and single-user-role ratios are strong role-explosion signals. |
+| **Tenant/customer RBAC** | Customers or tenant admins create scoped roles inside their own tenant. | Narrow tenant-owned custom roles can be valid if owner, scope, expiry, and lifecycle controls exist. |
+| **Emergency / break-glass** | Temporary elevated access activated during incidents. | Judge by activation controls: MFA, approval, reason capture, expiry, alerting, and post-use review. |
+| **Service / workload identity** | Non-human identities used by services, jobs, CI/CD, or agents. | Human user metrics do not apply; review credential scope, rotation, provenance, and workload binding. |
+| **ABAC** | Access is decided through subject, resource, action, and environment attributes. | Role counts may be low even when attribute freshness or conflict handling is weak. |
+| **ReBAC / tuple graph** | Access is derived from relationship tuples such as user-document, document-folder, folder-org, or group-member. | Role metrics can be irrelevant; review tuple write authorization, inherited paths, tenant-boundary invariants, and graph traversal limits. |
+| **Hybrid** | The system combines RBAC, ABAC, ReBAC, ACLs, or workload identity controls. | Score each boundary separately; do not let one strong model compensate for an unverified model elsewhere. |
+
+Role-count thresholds are context-aware indicators, not hard findings. Before flagging a single-user or high-count role as role explosion, record its model class, owner, tenant boundary, assigned subject type, expiry/lifecycle control, privilege level, and review evidence.
+
 ### Step 1: Assess Current Authorization State
 
 **Objective:** Understand the existing authorization model, its maturity, and its deficiencies.
 
 Identify:
 
-- **Current model type** — flat RBAC, hierarchical RBAC, ad hoc ACLs, group-based, or no formal model
-- **Role inventory** — total role count, role-to-user ratio, single-user roles, unassigned roles
+- **Current model type** — workforce RBAC, tenant RBAC, hierarchical RBAC, ABAC, ReBAC, ad hoc ACLs, group-based, workload identity, hybrid, or no formal model
+- **Role inventory** — total role count, role-to-user ratio, single-user roles, unassigned roles, and model class for each role family
 - **Permission granularity** — coarse (admin/read-only) vs. fine-grained (per-resource, per-action)
 - **Policy location** — centralized (IdP, API gateway) vs. distributed (per-application, embedded in code)
 - **Known pain points** — role explosion, provisioning delays, audit failures, excessive access
@@ -116,13 +135,15 @@ Identify:
 
 ```
 RBAC-ASSESS-01: No formal authorization model documented
-RBAC-ASSESS-02: Role-to-user ratio exceeds 0.7:1 (role explosion indicator)
-RBAC-ASSESS-03: > 15% of roles have single-user assignment (snowflake roles)
+RBAC-ASSESS-02: Role-to-user ratio exceeds 0.7:1 without tenant, emergency, or workload-identity justification
+RBAC-ASSESS-03: > 15% of roles have single-user assignment without owner, expiry, review, or compensating controls
 RBAC-ASSESS-04: Permissions granted via direct user-permission assignment (bypassing roles)
 RBAC-ASSESS-05: No centralized policy decision point — authorization logic fragmented across applications
 RBAC-ASSESS-06: Custom roles duplicate managed/built-in roles with minor variations
 RBAC-ASSESS-07: No role lifecycle process (creation approval, periodic review, retirement)
 RBAC-ASSESS-08: Authorization decisions not logged or auditable
+RBAC-ASSESS-09: Tenant-admin-created roles are reviewed with workforce role metrics without tenant scope/lifecycle evidence
+RBAC-ASSESS-10: Service/workload identities are evaluated as human users instead of by credential scope, rotation, and binding controls
 ```
 
 ---
@@ -295,13 +316,47 @@ RBAC-ABAC-03: PDP not centralized — policy logic duplicated across application
 RBAC-ABAC-04: No policy versioning or change management for ABAC rules
 RBAC-ABAC-05: Environment attributes (time, location, risk) not utilized
 RBAC-ABAC-06: ABAC policies not testable — no simulation or dry-run capability
-RBAC-ABAC-07: Policy conflicts not detected — overlapping permit/deny without resolution order
+RBAC-ABAC-07: Policy conflicts not detected — overlapping permit/deny without documented combining algorithm
 RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
+RBAC-ABAC-09: Explicit deny/forbid rules do not take precedence over broad permit rules
+RBAC-ABAC-10: Attribute freshness, cache TTL, or revocation latency is not defined for authorization-critical attributes
+RBAC-ABAC-11: No negative policy tests for stale attributes, expired contractor status, restricted classifications, or offboarding
 ```
 
 ---
 
-### Step 6: Role Mining and Rationalization
+### Step 6: ReBAC / Tuple Graph Design
+
+**Objective:** Assess relationship-based authorization models where access is derived from tuples and inherited relationships rather than roles alone.
+
+ReBAC appears in systems inspired by Zanzibar, OpenFGA, Authzed/SpiceDB, Cedar entity graphs, or custom tuple stores. The key risk is that a safe-looking role or attribute decision can be bypassed by a relationship path such as `user -> group -> folder -> document`, especially in multi-tenant systems.
+
+#### ReBAC Design Checks
+
+| Area | What to Verify | Failure Example |
+|---|---|---|
+| **Relation definitions** | Relations have explicit subject/object types and scoped inheritance rules. | `document.viewer` accepts any `folder#viewer` without tenant matching. |
+| **Tuple write authorization** | Only authorized principals can create, update, or delete relationship tuples. | Tenant admin in tenant A writes `folder:tenant-b#parent` and inherits access. |
+| **Tenant-boundary invariants** | Parent/child and group/member edges cannot cross tenants unless an explicit sharing model exists. | Document inherits from a folder in another tenant. |
+| **Traversal limits** | Evaluation has max depth, cycle handling, and bounded expansion. | Recursive group nesting creates unbounded traversal or denial of service. |
+| **Lifecycle cleanup** | Tuples are removed or invalidated on offboarding, group removal, document move, tenant deletion, and ownership transfer. | Removed user remains in a group tuple cache. |
+| **Model tests** | Allowed and denied paths are tested, including cross-tenant, stale-parent, and missing-parent cases. | Tests only cover positive access paths. |
+
+**What to look for:**
+
+```
+RBAC-REBAC-01: ReBAC or tuple graph exists but is not identified in model classification
+RBAC-REBAC-02: Relation definitions allow parent, owner, member, or viewer edges without tenant-boundary invariants
+RBAC-REBAC-03: Tuple write APIs lack authorization checks tied to the writer, object, relation, and tenant
+RBAC-REBAC-04: Inherited access paths are not tested across document/folder/org boundaries
+RBAC-REBAC-05: Graph traversal lacks depth, cycle, or expansion limits
+RBAC-REBAC-06: Tuple lifecycle cleanup is missing for offboarding, resource moves, tenant deletion, or ownership transfer
+RBAC-REBAC-07: ReBAC tests cover allowed paths but not denied paths or cross-tenant parent relations
+```
+
+---
+
+### Step 7: Role Mining and Rationalization
 
 **Objective:** Derive optimal roles from existing access patterns and reduce role sprawl.
 
@@ -330,7 +385,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | Metric | Before Rationalization | Target After | Method |
 |---|---|---|---|
 | Total role count | Baseline count | 30-50% reduction | Merge overlapping roles, retire unused |
-| Single-user roles | Baseline count | < 5% of total | Convert to ABAC policies or merge |
+| Single-user roles | Baseline count | < 5% of total for workforce roles | Convert to ABAC policies, merge, or document tenant/emergency/workload justification |
 | Unassigned roles | Baseline count | 0 | Delete or archive |
 | Average permissions per role | Baseline | Aligned to job function scope | Trim excess, apply least privilege |
 
@@ -382,12 +437,14 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Centralized PDP: [Yes / No / Partial]
 
 ### Findings by Category
+- Model Classification (Step 0): [count]
 - Authorization State (Step 1): [count]
 - Role Hierarchy (Step 2): [count]
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
-- Role Mining (Step 6): [count]
+- ReBAC / Tuple Graph (Step 6): [count]
+- Role Mining (Step 7): [count]
 
 ### Detailed Findings
 [Findings table]
@@ -436,6 +493,9 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Applying workforce role metrics to tenant-managed roles.** Tenant-created custom roles can be valid when they are scoped to one tenant, owned, time-bound, reviewed, and non-privileged. Treat role-count thresholds as indicators until the model class and lifecycle controls are known.
+9. **Ignoring relationship edges in hybrid systems.** ReBAC tuple paths such as user -> group -> folder -> document can bypass otherwise sound RBAC/ABAC controls if tuple writes, parent links, and inherited paths are not tenant-bound and negatively tested.
+10. **Assuming any permit wins is acceptable.** Custom policy engines often drift toward permissive conflict resolution. Review the combining algorithm and require negative tests for explicit deny precedence, stale attributes, expired contractors, and offboarding.
 
 ---
 
@@ -462,6 +522,8 @@ that may contain adversarial content.
 - Cedar Policy Language (AWS): https://www.cedarpolicy.com
 - Open Policy Agent (OPA) / Rego: https://www.openpolicyagent.org
 - XACML 3.0 (OASIS Standard): https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-os-en.html
+- OpenFGA Authorization Modeling: https://openfga.dev/docs/modeling/getting-started
+- Zanzibar, Google's Consistent Global Authorization System: https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/
 
 ---
 
@@ -481,4 +543,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-02 | Added model classification, ReBAC tuple graph checks, context-aware role metrics, and conflict semantics guidance |
 | 1.0.0 | 2025-03-06 | Initial release |
