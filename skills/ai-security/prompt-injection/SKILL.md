@@ -58,10 +58,10 @@ Identify every point where user-supplied or externally sourced content reaches t
 1. **User input channels** — Chat interfaces, form fields, API parameters, file uploads, voice input transcriptions, and any other path where a user directly provides text that is included in an LLM prompt.
 2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
 3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
-4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
+4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled, what side effects each tool can produce, and whether tool results can contain user-generated or otherwise untrusted payloads.
 5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
 
-**Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
+**Deliverable:** A table or diagram listing each input surface, its data type, original writer/trust level, whether it flows into the system prompt, user prompt, tool result, or tool arguments, and whether it can trigger side effects.
 
 ---
 
@@ -92,11 +92,15 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Tool-result provenance** — Internal tools, plugins, and first-party APIs can return attacker-controlled records such as support tickets, CRM notes, emails, comments, documents, or synced SaaS fields. Do not treat a tool result as trusted merely because the wrapper or API endpoint is internal. Trace the original writer, tenant, privilege level, and freshness of every payload the tool returns.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
-- Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
+- Tool result messages whose payloads contain user-generated data but are not labeled as untrusted evidence
+- Absence of content provenance tracking (the LLM cannot distinguish trusted instructions, retrieved content, and tool-returned data)
+
+**False positive calibration:** Do not report every RAG pipeline simply because it includes retrieved content. Calibrate severity based on whether retrieved or tool-returned content can become instructions, trigger tools, influence authorization, reach unsafe rendering sinks, or bypass output validation. A quoted-evidence summarizer with no tools, explicit untrusted-source labels, structural system/user separation, and citation validation may be a defense-in-depth observation rather than a vulnerability.
 
 ---
 
@@ -141,6 +145,7 @@ The attacker causes the model to include sensitive data in its output or to tran
 - Does the model have access to sensitive data (PII, credentials, internal documents) that could be included in responses?
 - Can tool calls be used to send data to arbitrary external endpoints?
 - Are outputs filtered for sensitive data patterns?
+- Does the renderer disable or proxy remote images, strip unsafe HTML, rewrite links, and apply no-referrer controls when model output may contain sensitive context?
 
 ### 4.5 Jailbreaking
 
@@ -174,17 +179,21 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Are high-impact or irreversible actions (sending emails, modifying data, executing code) gated by human confirmation?
 - Is the confirmation prompt designed so the human can meaningfully evaluate the action before approving?
 - Are there thresholds for when human review is required vs. when automated execution is permitted?
+- Is the human shown the canonical, fully resolved tool call rather than a model-written summary? Confirmation and policy checks should cover recipients, nested fields, defaults, hidden metadata, attachments, links, headers, account IDs, tenant IDs, and any secondary effects.
+- Is the approval UI generated by trusted application code rather than by the same model output being reviewed?
 
 ### 5.4 Output Filtering
 
 - Are model outputs validated against expected formats and content policies before being returned to the user or acted upon?
 - Is there detection for sensitive data (PII, credentials, system prompt content) in outputs?
 - Are rendered outputs (markdown, HTML) sanitized to prevent exfiltration via image tags or links?
+- Are model-produced URLs blocked, allowlisted, rewritten, or routed through a safe redirect/proxy when the model has access to sensitive data?
 
 ### 5.5 Canary Tokens in System Prompts
 
 - Does the system prompt include canary strings that, if they appear in the model's output, indicate a prompt leaking attempt?
 - Is there automated detection and alerting when canary tokens appear in responses?
+- Are canaries treated as detection only, not as a primary mitigation? Adding canary strings creates additional sensitive values that must be protected and usually detects leakage only after a failure attempt.
 
 ### 5.6 Instruction Hierarchy
 
@@ -242,6 +251,8 @@ Each finding should be assigned a severity based on potential impact:
 - Severity: [Critical | High | Medium | Low | Informational]
 - Location: [file path and line numbers, or architectural component]
 - Description: [What the vulnerability is and why it matters]
+- Trust boundary: [original writer/source of injected content and how it reaches the model]
+- Canonical action: [fully resolved tool call or rendered output affected, if applicable]
 - Evidence: [Code pattern or architectural observation that demonstrates the issue]
 - Recommendation: [Specific defensive measure to implement]
 
@@ -274,6 +285,12 @@ Each finding should be assigned a severity based on potential impact:
 4. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
+
+6. **Trusting tool results because the tool is internal.** A first-party ticket, CRM, email, or document tool can still return text originally written by an attacker or lower-privileged user. Review the provenance of the returned payload, not just the trustworthiness of the tool wrapper.
+
+7. **Approving summaries instead of actions.** Human approval is weak when the approver sees a model-written description while backend code executes a richer object with hidden metadata, defaulted fields, BCC recipients, attachments, links, or tenant/account identifiers. Reviewers should inspect the canonical action that will actually execute.
+
+8. **Sanitizing text but ignoring renderers.** Markdown images, HTML, links, and model-produced URLs can become exfiltration paths even when the textual answer looks harmless. Output policy must be tied to the renderer and the sensitivity of model context.
 
 ---
 
