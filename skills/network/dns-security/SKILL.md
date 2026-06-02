@@ -46,6 +46,48 @@ DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2
 
 ---
 
+## DNS Control-Plane Evidence Matrix
+
+Before rating DNSSEC, encrypted DNS, RPZ/protective DNS, or tunneling
+detection findings, map each DNS asset to the evidence source that proves the
+control is effective. Separate configured intent from externally observable
+behavior.
+
+**Evidence confidence levels:**
+
+- **Config:** Zone file, BIND/Unbound/CoreDNS config, DHCP profile, firewall rule, browser policy, or IaC is visible.
+- **Control-plane export:** Registrar, cloud DNS, resolver service, firewall, endpoint management, or protective DNS export confirms active state.
+- **Parent DS query:** Query against the parent zone confirms the DS record and digest match the KSK.
+- **Resolver query result:** `dig +dnssec`, `delv`, DNSViz, or resolver logs confirm validation, NTA behavior, response policy, or transport path.
+- **Egress evidence:** Firewall, proxy, endpoint, or network-flow data confirms direct UDP/TCP 53 and public DoH/DoT bypass paths are blocked or monitored.
+- **Log/SIEM sample:** Resolver query logs, RPZ block logs, exfiltration rules, or SIEM alerts prove detection coverage.
+- **Docs-only:** Architecture docs or runbooks claim a control exists, but no configuration, query, export, or log evidence is available.
+- **Unknown:** Zone, resolver path, parent delegation, egress policy, RPZ feed, or logging evidence cannot be found.
+
+**Control-plane matrix fields:**
+
+| Field | What to Record |
+|---|---|
+| Asset and scope | Zone, resolver, client group, VPC/VNet, Kubernetes cluster, branch office, or cloud account |
+| DNS role | Authoritative, recursive resolver, forwarder, protective DNS, endpoint resolver, registrar, or SIEM/log sink |
+| Control | DNSSEC signing, parent DS, recursive validation, NTA, DoT/DoH, RPZ, egress block, NRD block, exfil detection, or logging |
+| Expected state | Enabled, disabled with exception, enforced, monitored, or not applicable |
+| Verification method | Config review, parent query, resolver query, control-plane export, egress test, log sample, or SIEM rule |
+| Evidence confidence | Config, Control-plane export, Parent DS query, Resolver query result, Egress evidence, Log/SIEM sample, Docs-only, or Unknown |
+| Bypass path | Direct internet DNS, TCP/53, public DoH/DoT, split-horizon mismatch, unmanaged client, or none observed |
+| Owner and freshness | Responsible team plus last observed config/query/log/feed update time |
+
+Use a Not Evaluable reason code when available evidence cannot support a
+reliable decision: `missing-zone-file`, `missing-parent-ds-query`,
+`missing-resolver-path`, `missing-egress-policy`, `missing-doh-policy`,
+`missing-rpz-feed-source`, `missing-query-logs`, or `missing-siem-evidence`.
+
+Treat authoritative zone signing, parent-chain validation, recursive validation,
+client resolver enforcement, and protective DNS filtering as separate controls.
+A pass in one plane does not prove the others.
+
+---
+
 ## Process
 
 ### Step 1: Discovery -- Locate DNS Configurations
@@ -336,6 +378,11 @@ abcdef0123456789.dnscat.example.com TXT
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration snippet>
+- **DNS Role:** <authoritative / recursive / forwarder / protective DNS / endpoint / log sink>
+- **Verification Method:** <config review / parent query / resolver query / egress evidence / log sample>
+- **Evidence Confidence:** Config / Control-plane export / Parent DS query / Resolver query result / Egress evidence / Log/SIEM sample / Docs-only / Unknown
+- **Not Evaluable Reason:** <reason code if applicable>
+- **Bypass Path:** <direct DNS / TCP 53 / public DoH or DoT / unmanaged client / none observed>
 - **Remediation:** <concrete fix>
 
 ### DNS Exfiltration Detection Readiness
@@ -383,6 +430,18 @@ abcdef0123456789.dnscat.example.com TXT
 3. **Relying solely on domain reputation lists for exfiltration detection.** Attackers use attacker-controlled domains that are not yet categorized. Behavioral detection (entropy, volume, query type anomalies) catches novel exfiltration domains that reputation feeds miss.
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
+
+5. **Equating local signing with a valid public chain.** RRSIG and DNSKEY records in a zone file do not prove clients can validate the zone. Query the parent zone for the DS record and verify it matches the KSK.
+
+6. **Testing only from an admin network.** A resolver can validate DNSSEC for administrators while branch offices, VPCs, containers, or unmanaged endpoints bypass it. Capture resolver path evidence for each client population.
+
+7. **Ignoring direct DNS egress.** Protective DNS is ineffective if endpoints can send UDP/TCP 53 directly to internet resolvers. Review firewall, proxy, and flow evidence, not only DHCP resolver settings.
+
+8. **Accepting RPZ configuration without feed freshness.** A response-policy block is only as good as its feed source, update cadence, and logging. Record feed source, last update, block action, and SIEM forwarding evidence.
+
+9. **Treating DoH blocking as complete enforcement.** Blocking public DoH endpoints without managed DoH/DoT or browser policy can degrade privacy and still leave bypass paths. Verify managed resolver policy and endpoint/browser settings.
+
+10. **Missing DNS logging blind spots.** Query logging may be enabled only on recursive resolvers while forwarders, TCP/53, cloud resolvers, or split-horizon zones remain unlogged. Tie exfiltration detection to actual source-IP and query-type visibility.
 
 ---
 
