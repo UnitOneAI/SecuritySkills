@@ -88,10 +88,37 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 11: Qualify Evidence Scope and Confidence
+
+Before marking each CIS recommendation as Pass, Fail, or Not Evaluable, record the
+scope and confidence level of the evidence being used.
+
+**Evidence confidence levels:**
+
+- **IaC-only:** Terraform, Bicep, ARM, or policy files show intended state, but live state is not available.
+- **Live export:** Azure CLI, Azure Resource Graph, Microsoft Graph, Defender for Cloud, or portal export confirms current state.
+- **Policy assignment:** Azure Policy or initiative assignments define expected controls and effects for the covered scope.
+- **Sampled:** A subset of resources, subscriptions, policies, or identities was reviewed.
+- **Unknown:** The evidence source or scope cannot be established from available files.
+
+**Scope checks to record:**
+
+1. Identify whether each control is tenant, management group, subscription, resource group, resource, or policy-assignment scoped.
+2. For Conditional Access controls, record policy state (`enabled`, `reportOnly`, or `disabled`), included and excluded users, groups, applications, conditions, and break-glass exclusions.
+3. For Microsoft Defender for Cloud, record the subscription and `resource_type` covered by each plan. Do not enable paid Defender plans during review; only report observed evidence.
+4. For Azure Policy, record assignment scope, initiative or policy definition, effect, exclusions, and exemptions.
+5. For diagnostic settings, verify the target resource or subscription, enabled log categories, metrics, and sink type such as Log Analytics workspace, storage account, or event hub.
+6. Use a Not Evaluable reason code when the available evidence cannot support a reliable decision: `live-only-control`, `missing-tenant-export`, `missing-subscription-export`, `missing-policy-assignment`, `missing-resource-scope`, or `not-in-scope`.
+
+Do not claim tenant-wide or subscription-wide compliance from sampled, partial, or
+IaC-only evidence. Classify over-broad compliance claims, report-only Conditional
+Access policies, missing policy assignment scope, and unperformed paid Defender
+enablement as findings or Not Evaluable conditions rather than silently passing
+the control.
 
 ---
 
-### Step 11: Compile Assessment Report
+### Step 12: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -152,6 +179,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Evidence Source:** IaC-only / live export / policy assignment / sampled / unknown
+- **Scope Coverage:** <tenant, management group, subscription, resource, or policy scope>
+- **Not Evaluable Reason:** <reason code if applicable>
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -200,6 +230,10 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Conditional Access state and exclusions.** A policy in `reportOnly` mode, disabled state, or with broad exclusions does not provide the same control coverage as an enabled tenant-scoped policy.
+8. **Defender plan spend and scope.** Review evidence for each subscription and resource type without enabling paid plans or assuming one pricing resource covers every Defender workload.
+9. **Azure Policy scope and exemptions.** A policy definition alone is not an assignment. Record assignment scope, effect, initiative membership, exclusions, and exemptions before treating it as enforcement evidence.
+10. **Diagnostic setting categories and sinks.** A diagnostic-setting resource is incomplete evidence unless the expected categories, metrics, target scope, and sink are visible.
 
 ---
 
@@ -222,6 +256,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Microsoft Azure Foundations Benchmark v2.1.0: https://www.cisecurity.org/benchmark/azure
 - Microsoft Defender for Cloud Documentation: https://learn.microsoft.com/en-us/azure/defender-for-cloud/
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
+- Microsoft Entra Conditional Access: https://learn.microsoft.com/en-us/entra/identity/conditional-access/overview
+- Azure Policy Assignment Structure: https://learn.microsoft.com/en-us/azure/governance/policy/concepts/assignment-structure
+- Azure Monitor Diagnostic Settings: https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/diagnostic-settings
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
@@ -231,4 +268,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added evidence confidence, scope coverage, and Not Evaluable guidance for tenant, subscription, policy, Defender, Conditional Access, and diagnostic-setting review.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
