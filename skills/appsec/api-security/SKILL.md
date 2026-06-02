@@ -33,11 +33,11 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 
 1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
 2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
-3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
+3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are intentionally public. For OpenAPI, check global `security` requirements, operation-level overrides, and explicit `security: []` public endpoints before treating missing auth as a finding.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes. For webhook consumers, inventory signature validation, timestamp/replay windows, idempotency keys, and source allowlists.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -45,7 +45,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 
 ## Steps 2-11: OWASP API Security Top 10:2023 Evaluation (API1-API10)
 
-Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
+Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs. For gRPC APIs, include server reflection exposure, method-level authorization interceptors, metadata token validation, mTLS/service identity, streaming limits, and protobuf field-level authorization.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
 
@@ -62,8 +62,8 @@ Each finding produced by this review must include the following fields:
 | **OWASP API Risk** | API1:2023 through API10:2023 identifier |
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
-| **API Style** | REST, GraphQL, gRPC, or General |
-| **Location** | File path and line number(s), or OpenAPI spec path |
+| **API Style** | REST, GraphQL, gRPC, Webhook, or General |
+| **Location** | File path and line number(s), OpenAPI spec path, protobuf service/method, or webhook route |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
 | **Remediation** | Specific fix with code example where possible |
@@ -118,7 +118,7 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|General]
+- **API Style:** [REST|GraphQL|gRPC|Webhook|General]`n- **Auth Context:** [global OpenAPI security, operation override, interceptor, resolver, gateway policy, or intentionally public]
 - **Location:** [file:line or spec path]
 - **Description:** [explanation]
 - **Evidence:**
@@ -213,7 +213,7 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
-6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.`n`n7. **Misreading OpenAPI `security: []`.** An explicit empty security array means intentionally public, not inherited auth. Confirm whether the operation is safe to be public before marking it vulnerable or safe.`n`n8. **Treating gRPC authentication as method authorization.** mTLS or a valid bearer token proves caller identity, but each RPC method still needs role, tenant, object, and field-level authorization checks.`n`n9. **Webhook source IP allowlists are not enough.** IP restrictions can supplement controls, but webhook trust should primarily come from signature verification, replay protection, and strict payload validation.
 
 ---
 
@@ -239,3 +239,9 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added gRPC-specific review guidance, OpenAPI security inheritance checks, GraphQL persisted query guidance, webhook consumer checks, and auth context reporting fields.
