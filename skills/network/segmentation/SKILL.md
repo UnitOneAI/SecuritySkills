@@ -243,6 +243,44 @@ Document or verify the existence of a segmentation testing process:
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
 
+### Step 7: Effective Segmentation Path Matrix
+
+Before marking a boundary as pass or fail, document the effective packet path for each material zone pair. A route, firewall rule, NetworkPolicy, or peering connection is not enough by itself; the review must show whether traffic is both routable and allowed through the intended policy enforcement point.
+
+| Field | What to Record |
+|-------|----------------|
+| Source and destination zone | Business zone names, subnet/VPC/VLAN/namespace, asset class, and PCI CDE or connected-to-system status |
+| Flow | Protocol, port, direction, application, identity/service account, and whether the flow is required |
+| Route path | Route table, transit gateway, peering, local route, overlay, service mesh path, or firewall next hop |
+| Enforcement point | Firewall, security group, NACL, Kubernetes NetworkPolicy, CNI policy, mesh policy, endpoint policy, or none |
+| Effective policy | Permit, deny, default action, rule ID, priority/order, and whether policy is in enforce or audit mode |
+| Bypass checks | Alternate routes, local routes, direct peering, hostNetwork pods, sidecar bypass, management/jump-host paths, and failover path |
+| Test evidence | Flow log, packet test, reachability analyzer result, SIEM event, mesh telemetry, scanner output, timestamp, and source tool |
+| Evidence freshness | Config export time, route/policy inventory time, flow-log window, test timestamp, and topology diagram date |
+| Confidence | High, Medium, Low, or Not Evaluable with rationale |
+
+#### Evidence Confidence Levels
+
+| Confidence | Criteria |
+|------------|----------|
+| **High** | Current route and policy exports are available, the traversed enforcement point is identified, tests or flow logs confirm the expected result, and bypass paths are checked. |
+| **Medium** | The route and policy path is mostly evidenced, but one supporting source is partial, such as stale tests, incomplete flow logs, or missing business-owner confirmation. |
+| **Low** | The conclusion depends on screenshots, diagrams, untested assumptions, partial exports, or narrative statements that cannot prove effective reachability. |
+| **Not Evaluable** | A material evidence source is missing, stale, or out of scope, so the boundary cannot be classified without additional data. |
+
+Use `Not Evaluable` instead of speculative pass/fail when missing evidence could change the conclusion. Common reason codes:
+
+| Code | Reason |
+|------|--------|
+| `NE-ROUTE` | Route table, transit gateway, peering, overlay, or failover path export is missing. |
+| `NE-POLICY` | Firewall, security group, NACL, endpoint, mesh, or NetworkPolicy export is missing or incomplete. |
+| `NE-PEP` | The actual policy enforcement point traversed by traffic cannot be identified. |
+| `NE-CNI` | Kubernetes NetworkPolicy exists, but CNI enforcement mode or plugin support is unknown. |
+| `NE-MESH` | Mesh policy exists, but workload sidecar/enrollment evidence is missing. |
+| `NE-TEST` | Segmentation test result is stale, partial, undated, or does not cover the claimed flow. |
+| `NE-FLOWLOG` | Flow logs, SIEM evidence, or packet-test evidence needed for effective reachability is unavailable. |
+| `NE-PCI-DEPS` | PCI CDE connected-to systems, admin paths, logging, backup, jump-host, or shared-service dependencies are not mapped. |
+
 ---
 
 ## Findings Classification
@@ -278,19 +316,35 @@ Document or verify the existence of a segmentation testing process:
 
 ### Trust Boundary Matrix
 
-| Source Zone | Dest Zone | Enforcement | Status | Finding |
-|-------------|-----------|-------------|--------|---------|
-| DMZ         | App       | Firewall    | Restricted | Pass |
-| App         | Data      | SG only     | Overly permissive | F-002 |
-| User        | Data      | None        | No control | F-001 |
+| Source Zone | Dest Zone | Enforcement | Effective Path Status | Confidence | Finding |
+|-------------|-----------|-------------|-----------------------|------------|---------|
+| DMZ         | App       | Firewall    | Restricted | High | Pass |
+| App         | Data      | SG only     | Overly permissive | Medium | F-002 |
+| User        | Data      | None        | No control | High | F-001 |
+
+### Effective Segmentation Path Matrix
+
+| Source Zone | Dest Zone | Flow | Route Path | PEP Traversed | Effective Policy | Bypass Checks | Test Evidence | Evidence Freshness | Confidence |
+|-------------|-----------|------|------------|---------------|------------------|---------------|---------------|--------------------|------------|
+| <zone> | <zone> | <protocol/port/app> | <route/tgw/mesh/local> | <firewall/SG/CNI/none> | <permit/deny/default> | <alternate paths checked> | <flow/test/source> | <timestamps/window> | <High/Medium/Low/NE-code> |
+
+### Evidence Gaps / Not Evaluable Boundaries
+
+| Boundary | Missing Evidence | Reason Code | Impact | Required Follow-up |
+|----------|------------------|-------------|--------|--------------------|
+| <source -> dest> | <missing source> | <NE-code> | <what cannot be concluded> | <data or test needed> |
 
 ### Findings
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
+- **Confidence:** High / Medium / Low / Not Evaluable
+- **Not Evaluable Reason:** <reason code and missing evidence, if applicable>
 - **Control Reference:** NIST SP 800-207 Section X / CIS 12.X
 - **File:** <path to config file>
 - **Description:** <what was found>
+- **Effective Path Evidence:** <route path, PEP, policy, default action, and test/flow evidence>
+- **Evidence Freshness:** <config export, route/policy inventory, test timestamp, flow-log window>
 - **Remediation:** <concrete fix>
 
 ### Micro-Segmentation Readiness Score
@@ -345,6 +399,16 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Treating routes as effective access.** A route proves a packet can be forwarded toward a destination, not that the flow is authorized through policy. Pair route evidence with security group, firewall, NACL, endpoint, and test evidence.
+
+7. **Trusting policy that traffic never traverses.** A correct firewall deny rule is not a control if route tables, local routes, peering, or overlay paths bypass the firewall. Record the actual PEP traversed by the packet path.
+
+8. **Marking NetworkPolicy as enforced without CNI evidence.** Kubernetes NetworkPolicy resources require a supporting CNI plugin and enforce mode. Treat policy-only evidence as Not Evaluable when CNI enforcement is unknown.
+
+9. **Ignoring mesh enrollment.** Mesh authorization policies apply only to enrolled workloads. Preserve sidecar injection, mTLS, hostNetwork, and egress-bypass evidence before marking micro-segmentation as pass.
+
+10. **Using stale segmentation tests as proof.** A previous pass can be invalidated by route changes, failover, new peering, new namespaces, or firewall policy drift. Record test timestamp, source zone, destination zone, protocol, and tool.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -372,4 +436,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.1.0** -- Added effective segmentation path matrix, evidence confidence levels, Not Evaluable reason codes, and output fields for route/policy/test freshness.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
