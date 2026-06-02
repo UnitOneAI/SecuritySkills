@@ -89,6 +89,53 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 
 ---
 
+## Capability and Action Evidence Register
+
+Before scoring the architecture, build a capability register that maps each
+agent-visible tool to the concrete operations it can perform. Do not rely on
+broad tool names such as `github_tool`, `filesystem_tool`, `email_tool`, or
+`mcp_server` without expanding the actual operations and enforcement points.
+
+**Evidence confidence levels:**
+
+- **Source-code:** Tool schema, broker code, or framework configuration shows the callable operation and parameters.
+- **Config:** IAM, policy, feature flag, or deployment configuration shows the allowed scope.
+- **Runtime export:** Tool registry, MCP server manifest, policy decision log, or audit log confirms active runtime state.
+- **Docs-only:** Architecture or prompt text claims a control exists, but implementation evidence is missing.
+- **Unknown:** The tool, credential, policy, or approval evidence cannot be found.
+
+**Capability register fields:**
+
+| Field | What to Record |
+|---|---|
+| Agent | Agent or sub-agent that can request the action |
+| Tool/operation | Exact callable operation, not only the tool family |
+| Side effect | Read, write, delete, send, deploy, execute, transfer, or identity change |
+| Credential principal | Service account, API key, OAuth client, user token, or broker identity used |
+| Scope | Repository, directory, database table, cloud resource, tenant, channel, or account boundary |
+| Enforcing layer | Prompt, UI, application wrapper, broker policy, cloud IAM, sandbox, or tool implementation |
+| Policy/HITL gate | Deterministic policy and approval requirement before execution |
+| Reversibility | Reversible, partially reversible, irreversible, or unknown |
+| Audit evidence | Event name, parameters captured, actor/correlation IDs, and retention |
+| Rate/cost limit | Token, time, execution, API, budget, or quota limit enforced outside the model |
+
+Treat these as high-risk actions by default until evidence proves otherwise:
+file write/delete, shell/code execution, production deployment, external
+communication, payment or transfer, cloud mutation, identity or role change,
+secret access, data export, workflow dispatch, repository deletion, and runtime
+tool registration.
+
+Use a Not Evaluable reason code when the available evidence cannot support a
+reliable decision: `missing-tool-schema`, `missing-runtime-registry`,
+`missing-credential-map`, `missing-policy-gate`, `missing-hitl-implementation`,
+`missing-audit-log`, `missing-rollback`, or `docs-only-control`.
+
+If approval, rollback, or rate-limit controls appear only in prompts,
+architecture prose, or UI copy, classify the evidence as `Docs-only` until the
+tool execution path proves deterministic enforcement.
+
+---
+
 ## Process
 
 ### Tri-Layered Risk Assessment Lens (FASA Framework)
@@ -492,6 +539,12 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+## Capability and Action Evidence Register
+
+| Agent | Tool/Operation | Side Effect | Principal | Scope | Enforcing Layer | Policy/HITL Gate | Reversibility | Audit Evidence | Evidence Confidence |
+|---|---|---|---|---|---|---|---|---|---|
+| [agent] | [operation] | [read/write/delete/send/deploy/execute/transfer] | [credential principal] | [scope] | [prompt/UI/wrapper/broker/IAM/sandbox/tool] | [gate] | [reversible/partial/irreversible/unknown] | [event/correlation evidence] | [Source-code/Config/Runtime export/Docs-only/Unknown] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
 
@@ -505,6 +558,10 @@ Glob: **/security_architecture*
 - **Location:** [file path, configuration, or architectural component]
 - **Description:** [What the architectural gap is and why it matters]
 - **Evidence:** [Code pattern, configuration, or design observation]
+- **Evidence Confidence:** [Source-code | Config | Runtime export | Docs-only | Unknown]
+- **Not Evaluable Reason:** [reason code if applicable]
+- **Affected Action(s):** [specific tool operation, side effect, principal, and scope]
+- **Enforcing Layer:** [where the policy, approval, sandbox, or IAM control is enforced]
 - **Blast Radius:** [What could go wrong if this gap is exploited]
 - **Recommendation:** [Specific architectural remediation]
 - **Priority:** [P0 / P1 / P2 / P3]
@@ -569,21 +626,33 @@ Glob: **/security_architecture*
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
 
+6. **Reviewing broad tool names instead of concrete operations.** A `github_tool` might only read issues, or it might delete branches, dispatch workflows, and open PRs. Expand each tool into callable operations before assigning severity.
+
+7. **Treating prompt-only approval as deterministic enforcement.** A system prompt that says "ask before destructive actions" is not a security gate unless the tool execution layer blocks the action until approval is recorded.
+
+8. **Hiding actions behind a shared broker identity.** If every tool call uses the same MCP server token or service account, least privilege and incident attribution can fail even when the initiating agents appear separate.
+
+9. **Ignoring runtime tool drift.** Source code may show one tool registry while plugins, MCP manifests, feature flags, or environment-specific configuration expose additional runtime tools.
+
+10. **Logging broker success without policy decisions.** Audit logs should capture the requested action, parameters, actor, policy decision, approval decision, and correlation ID, not only that the broker returned success.
+
 ---
 
 ## References
 
 1. OWASP GenAI Security Project -- Agentic AI Threat Categories -- https://genai.owasp.org
-2. OWASP Top 10 for LLM Applications 2025 -- https://owasp.org/www-project-top-10-for-large-language-model-applications/
-3. NIST AI Risk Management Framework 1.0 (January 2023) -- https://www.nist.gov/aiframework
-4. NIST SP 800-53 Rev. 5 -- Security and Privacy Controls (AC-6: Least Privilege, AU-2: Event Logging, AU-10: Non-repudiation) -- https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
-5. MITRE ATLAS -- Adversarial Threat Landscape for AI Systems -- https://atlas.mitre.org
-6. Rehberger, J. "Prompt Injection: Exfiltrating Data via Tool Calls" (2023) -- https://embracethered.com
-7. Greshake, K. et al. "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection" (2023) -- arXiv:2302.12173
-8. LangChain Arbitrary Code Execution -- CVE-2023-29374
-9. OWASP Application Security Verification Standard (ASVS), V14: Configuration -- https://owasp.org/www-project-application-security-verification-standard/
-10. Leike, J. et al. "Scalable Agent Alignment via Reward Modeling: a Research Direction" (2018) -- arXiv:1811.07871 -- foundational work on agent alignment and oversight mechanisms
-11. FASA Tri-Layered Risk Taxonomy for AI Agent Systems (2026) -- arXiv:2603.13151
-12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
-13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
-14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
+2. OWASP Agentic AI Threats and Mitigations -- https://genai.owasp.org/resource/agentic-ai-threats-and-mitigations/
+3. OWASP Top 10 for LLM Applications 2025 -- https://owasp.org/www-project-top-10-for-large-language-model-applications/
+4. NIST AI Risk Management Framework 1.0 (January 2023) -- https://www.nist.gov/aiframework
+5. NIST AI Risk Management Framework Generative AI Profile -- https://www.nist.gov/itl/ai-risk-management-framework/generative-ai-profile
+6. NIST SP 800-53 Rev. 5 -- Security and Privacy Controls (AC-6: Least Privilege, AU-2: Event Logging, AU-10: Non-repudiation) -- https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+7. MITRE ATLAS -- Adversarial Threat Landscape for AI Systems -- https://atlas.mitre.org
+8. Rehberger, J. "Prompt Injection: Exfiltrating Data via Tool Calls" (2023) -- https://embracethered.com
+9. Greshake, K. et al. "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection" (2023) -- arXiv:2302.12173
+10. LangChain Arbitrary Code Execution -- CVE-2023-29374
+11. OWASP Application Security Verification Standard (ASVS), V14: Configuration -- https://owasp.org/www-project-application-security-verification-standard/
+12. Leike, J. et al. "Scalable Agent Alignment via Reward Modeling: a Research Direction" (2018) -- arXiv:1811.07871 -- foundational work on agent alignment and oversight mechanisms
+13. FASA Tri-Layered Risk Taxonomy for AI Agent Systems (2026) -- arXiv:2603.13151
+14. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
+15. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
+16. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
