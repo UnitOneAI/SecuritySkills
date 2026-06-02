@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -195,6 +195,34 @@ fields:
 | `|base64offset` | Base64 encoded value match | `CommandLine|base64offset|contains: 'IEX'` |
 | `condition` | Boolean logic | `selection_a and selection_b and not filter_main` |
 
+### Step 3A: Validate Backend Conversion and Field Mapping
+
+Before treating a Sigma rule as deployable, prove it converts to the target SIEM backend and matches the environment's telemetry schema.
+
+**Backend validation checklist:**
+
+- [ ] **Target backend selected:** Record the target backend, for example Sentinel/KQL, Splunk/SPL, Elastic/EQL/Lucene, Chronicle/YARA-L, or QRadar/AQL.
+- [ ] **Mapping pipeline identified:** Document the sigma-cli / pySigma pipeline or config file used to map generic Sigma fields to environment fields.
+- [ ] **Conversion succeeds:** Run or document the conversion command and capture whether unsupported modifiers, escaping, or aggregation semantics failed.
+- [ ] **Fields match telemetry:** Compare converted query fields to at least one representative raw event from the target log source.
+- [ ] **True-positive fixture matches:** Run the converted query against a known-bad fixture or synthetic event and confirm the expected match count.
+- [ ] **Benign fixture stays quiet:** Run the converted query against known-good examples for expected admin tools, deployment systems, or baseline activity.
+- [ ] **Performance is acceptable:** Note expected query cost, time window, index scope, and any platform query limits before production deployment.
+- [ ] **Readiness is explicit:** Mark the rule as lint-only, conversion-blocked, fixture-tested, test-mode-ready, or production-ready.
+
+**What to look for:**
+
+```
+DET-CONV-01: Sigma rule passes lint but has not been converted to the target backend
+DET-CONV-02: Backend conversion fails because a modifier or condition is unsupported
+DET-CONV-03: Converted query uses fields that do not exist in deployed telemetry
+DET-CONV-04: True-positive fixture returns zero matches after conversion
+DET-CONV-05: Benign fixture triggers because filters were not validated
+DET-CONV-06: Rule is marked Tested or Operational based only on Sigma lint
+DET-CONV-07: Mapping pipeline/config is not documented, making results non-reproducible
+DET-CONV-08: Converted query is too expensive or broad for the intended production time window
+```
+
 ### Step 4: Build ADS Documentation
 
 Document the detection using the Palantir Alerting and Detection Strategy (ADS) framework. ADS ensures every detection has operational context beyond the rule itself.
@@ -279,7 +307,7 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 |-------|-------|------------|
 | **None** | White | No detection rule exists for this technique |
 | **Theoretical** | Light Yellow | A rule exists but has not been validated or tested |
-| **Tested** | Light Green | Rule has been validated with synthetic test data (e.g., Atomic Red Team) |
+| **Tested** | Light Green | Rule has passed backend conversion and matched true-positive and benign fixtures for the stated mapping pipeline |
 | **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
 | **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
 
@@ -365,7 +393,7 @@ Produce detection engineering deliverables in this structure:
 ```markdown
 ## Detection Engineering Report: [ATT&CK Technique ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** detection-engineering v1.0.0
+**Skill:** detection-engineering v1.0.1
 **Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
 
 ### ATT&CK Technique Summary
@@ -388,6 +416,17 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+
+### Backend Conversion and Fixture Validation
+| Field | Value |
+|-------|-------|
+| Target Backend | [Sentinel / Splunk / Elastic / Chronicle / QRadar] |
+| Mapping Pipeline / Config | [sigma_config file or pySigma pipeline] |
+| Conversion Command | [sigma-cli / pipeline command] |
+| Conversion Result | [Pass / Fail with reason] |
+| True-Positive Fixture | [Fixture name and expected/actual match count] |
+| Benign Fixture | [Fixture name and expected/actual match count] |
+| Deployment Readiness | [Lint-only / Conversion-blocked / Fixture-tested / Test-mode-ready / Production-ready] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -493,6 +532,14 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
+
+### Pitfall 6: Counting Lint-Only Sigma Rules as Tested Coverage
+
+Sigma YAML lint proves the rule is well-formed, not that it works in the target SIEM. A rule should remain Theoretical until it converts successfully with the documented backend pipeline and passes at least one true-positive and one benign fixture.
+
+### Pitfall 7: Ignoring Environment-Specific Field Mapping
+
+The same Sigma field can map to different names across products and deployments, such as `CommandLine`, `ProcessCommandLine`, `winlog.event_data.CommandLine`, or `process.command_line`. Always document the mapping pipeline and compare converted fields against real telemetry samples before claiming deployment readiness.
 
 ---
 
