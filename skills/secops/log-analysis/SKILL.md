@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -279,6 +279,18 @@ Identify deviations from established baselines that may indicate malicious activ
 
 Combine data from multiple log sources to reconstruct attack sequences and increase detection confidence.
 
+Before correlating events, normalize timestamps so timeline conclusions are based on event occurrence rather than collection or ingestion artifacts.
+
+**Timestamp normalization checklist:**
+
+- [ ] **Identify timestamp type:** Label each time field as event time, collection time, SIEM normalized time, ingestion/index time, or analyst export time.
+- [ ] **Preserve raw values:** Keep the original timestamp string, including timezone suffixes, precision, and source field name.
+- [ ] **Normalize to UTC:** Convert comparable event times to UTC and record the timezone or offset used for conversion.
+- [ ] **Check source clock health:** Capture NTP status, known host clock offset, SaaS audit delay expectations, or collector latency when available.
+- [ ] **Separate late arrival from late execution:** Treat delayed ingestion as pipeline behavior unless the event timestamp also supports delayed activity.
+- [ ] **Record confidence:** Mark normalized rows as high, medium, or low confidence based on timezone clarity, clock-skew evidence, and source timestamp semantics.
+- [ ] **Escalate ambiguity explicitly:** If event order depends on missing timezone data, DST assumptions, or unsynchronized hosts, document the uncertainty instead of asserting a definitive sequence.
+
 **Correlation strategies:**
 
 | Strategy | Description | Example |
@@ -313,6 +325,8 @@ Step 4: Pivot on host
 
 Step 5: Build timeline
   -> Combine all findings into a chronological sequence
+  -> Preserve original timestamps and normalized UTC values
+  -> Account for source timezone, ingestion latency, and host clock skew
   -> Map each event to an ATT&CK technique
   -> Identify gaps in visibility (log sources not available)
 ```
@@ -337,7 +351,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -351,6 +365,11 @@ Produce log analysis findings in this structure:
 | Systems | [Hostnames, IPs, or network segments] |
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
+
+### Timestamp Normalization
+| Source | Original Timestamp Field | Timestamp Type | Timezone / Offset | Normalized UTC | Clock / Ingestion Notes | Confidence |
+|--------|--------------------------|----------------|-------------------|----------------|-------------------------|------------|
+| [Source] | [event.time / _time / TimeGenerated / raw field] | [Event / Collection / Ingestion / Export] | [UTC / local / unknown] | [YYYY-MM-DDTHH:MM:SSZ] | [NTP status, clock offset, pipeline delay] | [High / Medium / Low] |
 
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
@@ -370,9 +389,9 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Original Timestamp | Normalized UTC | Timestamp Type | Source | Event | ATT&CK Technique | Assessment | Confidence |
+|--------------------|----------------|----------------|--------|-------|-------------------|------------|------------|
+| [Raw timestamp] | [YYYY-MM-DDTHH:MM:SSZ] | [Event / Collection / Ingestion] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] | [High / Medium / Low] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
@@ -450,6 +469,14 @@ A single Event ID can have very different meanings depending on the context. Eve
 ### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
+
+### Pitfall 6: Sorting Timelines by Ingestion Time
+
+SIEM ingestion or index time shows when the platform received an event, not necessarily when the activity occurred. Cloud audit events, SaaS logs, endpoint telemetry, and proxy records can arrive minutes or hours late. Preserve ingestion time for pipeline-health analysis, but build investigative timelines from normalized event time whenever the source provides it. If only ingestion time is available, label that limitation clearly and lower confidence in event-order conclusions.
+
+### Pitfall 7: Ignoring Timezone Ambiguity and Clock Skew
+
+Local syslog timestamps may omit year or timezone, daylight-saving transitions can duplicate or skip local times, and unsynchronized hosts can make lateral movement appear to happen before authentication. Record source timezone assumptions, known clock offsets, NTP health, and collector latency. When clock evidence is unavailable, treat narrow event-order claims as uncertain rather than definitive.
 
 ---
 
