@@ -99,7 +99,34 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Qualify Evidence Scope and Confidence
+
+Before compiling findings, record how strong the evidence is for each control. AWS posture reviews often combine repository IaC, live AWS CLI exports, delegated administrator accounts, and organization-wide controls. Do not treat partial evidence as full compliance.
+
+**Evidence confidence levels:**
+
+| Level | Meaning | Example |
+|-------|---------|---------|
+| IaC-only | Repository configuration shows intended state, but live deployment is not proven | Terraform defines an `aws_cloudtrail` trail |
+| Live export | AWS CLI, Config, Security Hub, or service export confirms deployed state | `aws cloudtrail describe-trails` shows an all-region trail |
+| Organization-wide | Evidence covers AWS Organizations, delegated admin, or all member accounts | Organization trail with member-account coverage |
+| Sampled | Evidence covers only selected accounts, regions, or modules | One workload account export is available |
+| Unknown | No evidence source proves the control | Contact details are not visible in IaC or exports |
+
+**Scope checks:**
+
+- [ ] Identify whether the review covers one account, multiple accounts, or the full AWS Organization.
+- [ ] For regional controls, list covered regions and mark missing regions as Not Evaluable or Fail based on evidence.
+- [ ] For organization controls, document the management account, delegated administrator, and member-account coverage when visible.
+- [ ] Separate analyzer deployment evidence from IAM policy-validation evidence for IAM Access Analyzer.
+- [ ] Do not require paid Access Analyzer custom policy checks unless the organization already uses them or the user explicitly approves.
+- [ ] Use a Not Evaluable reason code when evidence is insufficient: `live-only-control`, `missing-region-export`, `missing-member-account`, `unsupported-iac-provider`, or `not-in-scope`.
+
+**Finding classification:** Claiming full pass from sampled or IaC-only evidence for CloudTrail, AWS Config, Access Analyzer, or Security Hub is **Medium**. Missing all-region evidence for regional logging/security services is **High** when the control is release-blocking. Treating paid custom checks as mandatory without approval is **Low** for assessment quality and may be a workflow blocker.
+
+---
+
+### Step 8: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -152,6 +179,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Pass / Fail / Not Evaluable
 - **Severity:** Critical / High / Medium / Low
 - **CIS Profile:** Level 1 / Level 2
+- **Evidence Source:** IaC-only / live export / organization-wide / sampled / unknown
+- **Scope Coverage:** <account IDs, organization, regions, or module scope>
+- **Not Evaluable Reason:** <reason code if applicable>
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
@@ -200,6 +230,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Conflating organization trails with complete evidence.** An organization trail can satisfy broad logging intent, but still verify all-region configuration, delegated administrator setup, S3/KMS policy, and CloudWatch integration evidence.
+8. **Conflating Access Analyzer deployment with policy validation.** `aws_accessanalyzer_analyzer` proves analyzer deployment, not that reviewed IAM policies have been validated or that custom checks were run.
+9. **Inferring all-region coverage from one region.** AWS Config, Access Analyzer, Security Hub, and many logging controls are region-sensitive. A single provider alias or CLI export does not prove every region.
 
 ---
 
@@ -222,6 +255,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Amazon Web Services Foundations Benchmark v3.0.0: https://www.cisecurity.org/benchmark/amazon_web_services
 - AWS Security Best Practices: https://docs.aws.amazon.com/security/
 - AWS IAM Best Practices: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
+- AWS IAM Access Analyzer Policy Validation: https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-policy-validation.html
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
