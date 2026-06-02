@@ -88,8 +88,39 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Qualify Evidence Scope and Confidence
 
+Before marking each CIS recommendation as Pass, Fail, or Not Evaluable, record the
+scope and confidence level of the evidence being used.
+
+**Evidence confidence levels:**
+
+- **IaC-only:** Terraform or Deployment Manager files show intended state, but live state is not available.
+- **gcloud export:** `gcloud` or REST API output confirms current project, folder, organization, or resource state.
+- **Cloud Asset Inventory:** Asset or IAM policy export confirms the exported scope and timestamp.
+- **SCC finding:** Security Command Center finding or posture export confirms current state for the activated scope and tier.
+- **Sampled:** A subset of projects, folders, resources, policies, or identities was reviewed.
+- **Unknown:** The evidence source or scope cannot be established from available files.
+
+**Scope checks to record:**
+
+1. Identify whether each control is organization, folder, project, resource, service account, bucket, dataset, or policy scoped.
+2. For IAM controls, distinguish allow policies, IAM deny policies, Principal Access Boundary policies, service account keys, and inherited bindings.
+3. For Organization Policy controls, record the constraint, hierarchy level, inheritance, overrides, exceptions, and effective policy state when available.
+4. For Security Command Center evidence, record Standard, Premium, or Enterprise tier and whether activation is organization, folder, or project scoped. Do not enable paid SCC tiers during review; only report observed evidence.
+5. For Cloud Asset Inventory, record export scope, asset types, timestamp, and whether the export is organization-wide or sampled.
+6. For VPC Flow Logs, verify subnet-level `log_config`, sampling context, aggregation interval, metadata settings, and Cloud Logging sink evidence.
+7. Use a Not Evaluable reason code when the available evidence cannot support a reliable decision: `live-only-control`, `missing-organization-export`, `missing-project-export`, `missing-folder-export`, `missing-resource-scope`, `missing-policy-effective-state`, or `not-in-scope`.
+
+Do not claim organization-wide or project-wide compliance from sampled, partial,
+or IaC-only evidence. Classify over-broad compliance claims, missing effective
+Organization Policy evidence, paid SCC tier enablement that was not performed,
+or subnet-level VPC Flow Logs gaps as findings or Not Evaluable conditions
+rather than silently passing the control.
+
+---
+
+### Step 10: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -148,6 +179,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Evidence Source:** IaC-only / gcloud export / Cloud Asset Inventory / SCC finding / sampled / unknown
+- **Scope Coverage:** <organization, folder, project, resource, service account, bucket, dataset, or policy scope>
+- **Not Evaluable Reason:** <reason code if applicable>
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -194,6 +228,11 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **IAM allow, deny, and Principal Access Boundary policies.** Do not evaluate allow bindings alone when deny policies or Principal Access Boundary policies may restrict the effective permissions.
+8. **Organization Policy inheritance and exceptions.** A constraint definition is not enough; record the hierarchy level, inheritance, project override, and exception state before treating it as enforcement evidence.
+9. **Security Command Center tier and activation scope.** SCC evidence depends on Standard, Premium, or Enterprise tier and activation scope. Do not enable paid SCC tiers during review.
+10. **Cloud Asset Inventory export scope.** Project-level or sampled exports should not be used as organization-wide evidence unless the export scope and timestamp prove that coverage.
+11. **VPC Flow Logs sampling and sink evidence.** A subnet `log_config` should be paired with sampling, aggregation, metadata, and Cloud Logging sink context when judging monitoring coverage.
 
 ---
 
@@ -216,8 +255,13 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Google Cloud Platform Foundation Benchmark v2.0.0: https://www.cisecurity.org/benchmark/google_cloud_computing_platform
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
+- Google Cloud Principal Access Boundary Policies: https://cloud.google.com/iam/docs/principal-access-boundary-policies
+- Google Cloud Organization Policy Constraints: https://cloud.google.com/resource-manager/docs/organization-policy/org-policy-constraints
+- Google Cloud Security Command Center Service Tiers: https://cloud.google.com/security-command-center/docs/service-tiers
+- Google Cloud Asset Inventory: https://cloud.google.com/asset-inventory/docs
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
+- Google Cloud VPC Flow Logs: https://cloud.google.com/vpc/docs/flow-logs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
@@ -225,4 +269,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added evidence confidence, scope coverage, and Not Evaluable guidance for organization, folder, project, IAM, Organization Policy, SCC, Cloud Asset Inventory, and VPC Flow Logs review.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
