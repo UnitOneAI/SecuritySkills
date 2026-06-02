@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -434,6 +434,61 @@ Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,j
 
 For practical validation of OWASP Agentic AI risks against concrete exploits, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs that can be used alongside the theoretical framework in Step 2 to test each AG01-AG10 category against real attack scenarios.
 
+### Step 1.5 - Taxonomy Freshness and Capability Evidence
+
+Before rating AG01-AG10 risks, record the taxonomy source/version and the concrete evidence that proves each agent's reachable capabilities. Agentic AI taxonomies and category names may be revised, so findings must identify the exact OWASP GenAI/Agentic source and date checked. Risk ratings must be based on reachable workflow actions, not just tools that appear somewhere in the registry.
+
+#### 1.5.1 Evidence Confidence Levels
+
+| Confidence | Evidence Standard | Use When |
+|------------|-------------------|----------|
+| **High** | Current taxonomy source plus design, config, runtime trace, approval, and audit evidence | The finding is tied to current framework guidance and observed or strongly evidenced runtime behavior. |
+| **Medium** | Current taxonomy source plus partial design/config evidence, but runtime, approval, or audit evidence is incomplete | The risk likely exists, but one evidence dimension needs follow-up. |
+| **Low** | Outdated docs, screenshots, narrative, or registry-only evidence | The risk may exist, but reachable action, identity, or approval evidence is weak. |
+| **Not Evaluable** | Required taxonomy, inventory, tool, identity, memory, approval, runtime, or audit evidence is missing | Do not infer a category rating; document the missing evidence. |
+
+#### 1.5.2 Not Evaluable Reason Codes
+
+| Code | Reason |
+|------|--------|
+| `AGENTIC-NE-01` | OWASP Agentic taxonomy source, release/version label, or date checked is missing. |
+| `AGENTIC-NE-02` | Agent inventory or workflow boundary is incomplete. |
+| `AGENTIC-NE-03` | Tool registry, schema, or reachable action list is unavailable. |
+| `AGENTIC-NE-04` | Agent identity, credential source, permission boundary, or service account evidence is missing. |
+| `AGENTIC-NE-05` | Memory, context, vector store, scratchpad, or persistence boundary evidence is missing. |
+| `AGENTIC-NE-06` | Inter-agent message authentication, authorization, integrity, or sender attribution evidence is missing. |
+| `AGENTIC-NE-07` | Human approval, escalation, rollback, or emergency stop evidence is missing. |
+| `AGENTIC-NE-08` | Runtime trace, tool-call log, test, red-team, or audit evidence is missing. |
+| `AGENTIC-NE-09` | Deployment version, framework version, or environment evidence is stale or not reproducible. |
+
+#### 1.5.3 Capability / Action Evidence Matrix
+
+Create one row per material agent workflow and high-risk action:
+
+| Field | Required Evidence |
+|-------|-------------------|
+| Taxonomy source | OWASP Agentic/GenAI source URL, release/version label, and date checked. |
+| Agent / workflow | Agent name, role, workflow, and trust boundary. |
+| Category mapping | Current category ID/name used for the finding and any legacy ID if the skill's labels differ. |
+| Capability / action | Concrete action the agent can take, such as read, write, delete, send, purchase, deploy, approve, or delegate. |
+| Registered tool | Tool/function/API name, schema, parameters, and validation evidence. |
+| Reachability | Whether the action is reachable in the reviewed workflow, blocked by policy, approval-only, or Not Evaluable. |
+| Identity / permission | Service identity, credential source, scopes, IAM role, and permission boundary evidence. |
+| Memory / context boundary | Memory store, context source, write path, poisoning controls, and retention boundary. |
+| Inter-agent boundary | Sender identity, message integrity, authorization, and delegation evidence. |
+| Approval / rollback | Human approval gate, cumulative context shown to reviewer, rollback, kill switch, and emergency stop evidence. |
+| Runtime / audit evidence | Tool-call trace, policy decision log, audit log, test result, red-team result, or incident record. |
+| Confidence | High, Medium, Low, or Not Evaluable. |
+| Not Evaluable reason | `AGENTIC-NE-*` code plus exact evidence needed. |
+
+#### 1.5.4 Evidence-Driven Finding Rules
+
+- Do not rate a finding from category ID alone; record the taxonomy source and date checked.
+- Do not treat registered tools as reachable capabilities unless workflow policy, runtime trace, or code evidence shows reachability.
+- Do not treat human approval as effective unless the approval request includes the full action chain, risk context, and rollback path.
+- Do not rate memory or multi-agent risks without evidence of write boundaries, sender identity, message integrity, and audit attribution.
+- Do not mark identity controls sufficient when several agents share one credential or audit identity.
+
 ### Step 2 — Threat Assessment
 
 For each of the 10 categories, assess the system and assign a risk rating:
@@ -494,6 +549,14 @@ Structure the final report as follows:
 - Memory stores: [types]
 - Human approval gates: [present/absent, description]
 - Multi-agent communication: [method]
+- OWASP Agentic taxonomy source/version: [URL, release/version label, date checked]
+- Evidence confidence summary: [High/Medium/Low/Not Evaluable counts]
+
+## Capability / Action Evidence Matrix
+
+| Agent / Workflow | Category Mapping | Capability / Action | Registered Tool | Reachability | Identity / Permission Evidence | Memory / Context Boundary | Approval / Rollback Evidence | Runtime / Audit Evidence | Confidence | Not Evaluable Reason |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [agent] | [AGxx / current category name] | [action] | [tool/schema] | [reachable/blocked/approval-only/NE] | [identity/scope] | [memory/context controls] | [approval/rollback] | [trace/log/test] | [H/M/L/NE] | [AGENTIC-NE code] |
 
 ## Findings by Threat Category
 
@@ -501,6 +564,9 @@ Structure the final report as follows:
 - **Rating:** [rating]
 - **Finding:** [description]
 - **Evidence:** [file path, code reference]
+- **Taxonomy Source:** [source URL/date checked/category name]
+- **Evidence Confidence:** [High/Medium/Low/Not Evaluable]
+- **Not Evaluable Reason:** [AGENTIC-NE code if applicable]
 - **Impact:** [what could go wrong]
 - **Remediation:** [specific action]
 - **Priority:** [P0/P1/P2/P3]
@@ -509,10 +575,10 @@ Structure the final report as follows:
 
 ## Risk Summary Matrix
 
-| Category | Rating | Key Finding | Priority |
-|---|---|---|---|
-| AG01 | [rating] | [one-line summary] | [priority] |
-| ... | ... | ... | ... |
+| Category | Rating | Confidence | Key Finding | Not Evaluable Reason | Priority |
+|---|---|---|---|---|---|
+| AG01 | [rating] | [H/M/L/NE] | [one-line summary] | [AGENTIC-NE code or none] | [priority] |
+| ... | ... | ... | ... | ... | ... |
 
 ## Recommendations
 1. [Highest priority recommendation]
@@ -586,6 +652,22 @@ Persistent agent memory is a high-value target because it persists across sessio
 
 A tool functioning correctly is not the same as a tool being used correctly. The agent controls what parameters it passes, what sequence it calls tools in, and how it interprets results. A legitimate database query tool becomes an exfiltration vector when the agent is manipulated into querying sensitive tables and sending the results to an external webhook. Secure the tool invocation, not just the tool implementation.
 
+### 6. Freezing OWASP Agentic Category IDs Without a Source
+
+The OWASP GenAI project can revise category names, numbering, and scopes. A finding that only says "AG03" without the source URL, release/version label, date checked, and category name is hard to validate and may become stale.
+
+### 7. Confusing Registered Tools With Reachable Actions
+
+Tool registries often include administrative or emergency tools that are not reachable in a specific workflow. Rate risk from reachable action evidence, scoped identity, runtime policy, approval gates, and logs, not from registry presence alone.
+
+### 8. Treating Human Approval as Effective Without Context
+
+Approval gates fail when they hide the action chain, batch many actions together, omit rollback, or lack reviewer context. Verify what the reviewer sees, what can be approved, and what emergency stop or rollback exists.
+
+### 9. Missing Audit Attribution for Agent Identity
+
+If several agents share one credential, service identity, or audit label, incident response cannot separate legitimate agent activity from compromised behavior. Require per-agent or per-session attribution where possible.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -607,6 +689,7 @@ This skill is designed to be resilient against prompt injection. The following r
 ## References
 
 1. OWASP GenAI Security Project — [genai.owasp.org](https://genai.owasp.org)
+   - OWASP GenAI Top 10 for Agentic Applications release note: https://genai.owasp.org/2025/12/09/owasp-genai-security-project-releases-top-10-risks-and-mitigations-for-agentic-ai-security/
 2. OWASP Top 10 for LLM Applications 2025 — [owasp.org/www-project-top-10-for-large-language-model-applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 3. MITRE ATLAS — [atlas.mitre.org](https://atlas.mitre.org)
 4. NIST AI Risk Management Framework 1.0 — [nist.gov/aiframework](https://www.nist.gov/aiframework)
@@ -617,3 +700,10 @@ This skill is designed to be resilient against prompt injection. The following r
 9. LangChain Arbitrary Code Execution — CVE-2023-29374
 10. NIST SP 800-53 Rev. 5, Security and Privacy Controls — [nist.gov](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)
 11. fabraix/playground — Open-source AI agent red-team exploit library with PoCs for OWASP Agentic AI Top 10 risks — https://github.com/fabraix/playground
+
+---
+
+## Changelog
+
+- **1.1.0** -- Added taxonomy freshness fields, evidence confidence levels, Not Evaluable reason codes, capability/action evidence matrix, and pitfalls for stale category IDs, registered-vs-reachable tools, shallow approval gates, and missing audit attribution.
+- **1.0.1** -- Initial agentic AI Top 10 review workflow.
