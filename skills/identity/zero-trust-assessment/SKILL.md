@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -61,6 +61,60 @@ SECURITY BOUNDARY — This skill processes architecture and configuration data o
 ## Context
 
 Zero Trust is an architectural approach, not a product. NIST SP 800-207 defines seven tenets that guide zero trust design. The CISA Zero Trust Maturity Model v2.0 operationalizes these principles across five pillars (Identity, Devices, Networks, Applications & Workloads, Data) and four maturity stages (Traditional, Initial, Advanced, Optimal). Organizations must assess maturity across all pillars and advance iteratively — zero trust is a journey, not a destination.
+
+---
+
+## Source Freshness and Evidence Gate
+
+Before assigning maturity, record the framework source, version, date checked, and current/archived status. Then bind every maturity score to implementation evidence, not roadmap or vendor claims alone.
+
+### Evidence Confidence Levels
+
+| Confidence | Evidence Standard | Use When |
+|------------|-------------------|----------|
+| **High** | Current source/version plus policy export, PE/PA/PEP evidence, telemetry, exception list, test result, owner, and review date | Maturity is supported by operating evidence and a recent validation point. |
+| **Medium** | Source/version and partial implementation evidence exist, but runtime logs, exceptions, or test freshness are incomplete | Maturity likely exists but one evidence dimension needs follow-up. |
+| **Low** | Roadmap, slide deck, vendor dashboard, or self-attestation only | Maturity is plausible but not proven. |
+| **Not Evaluable** | Source, scope, owner, PE/PA/PEP, telemetry, exception, or test evidence is missing | Do not assign maturity; document the missing evidence. |
+
+### Not Evaluable Reason Codes
+
+| Code | Reason |
+|------|--------|
+| `ZT-NE-01` | Framework source, version, date checked, or current/archived status is missing. |
+| `ZT-NE-02` | Assessment scope, resource inventory, user population, device population, or environment boundary is incomplete. |
+| `ZT-NE-03` | Policy Engine, Policy Administrator, or Policy Enforcement Point evidence is missing for the access path. |
+| `ZT-NE-04` | Identity, device, network, application/workload, or data pillar artifact evidence is missing. |
+| `ZT-NE-05` | Telemetry, activity logs, policy decision logs, or SIEM/SOAR evidence is missing. |
+| `ZT-NE-06` | Exception list, bypass path, break-glass account, legacy path, or third-party access evidence is missing. |
+| `ZT-NE-07` | Owner, review cadence, test date, maturity metric, or roadmap milestone evidence is missing. |
+| `ZT-NE-08` | Automation/orchestration or governance evidence is missing for a claimed Advanced/Optimal stage. |
+
+### Pillar Maturity Evidence Matrix
+
+Create one row per pillar, critical access path, or cross-cutting capability:
+
+| Field | Required Evidence |
+|-------|-------------------|
+| Framework source | NIST/CISA/OMB/implementation source URL, version, date checked, and source status. |
+| Pillar / capability | Identity, Devices, Networks, Applications & Workloads, Data, Visibility, Automation, or Governance. |
+| Scope | Users, devices, resources, applications, environments, access paths, and exclusions covered. |
+| Claimed stage | Traditional, Initial, Advanced, or Optimal from the source artifact. |
+| Validated stage | Stage supported by evidence after review. |
+| PE/PA/PEP evidence | Policy Engine, Policy Administrator, Policy Enforcement Point, and decision-flow artifact. |
+| Telemetry evidence | Logs, posture signals, activity feeds, asset inventory, SIEM/SOAR, or analytics evidence. |
+| Exception evidence | Break-glass, bypass, legacy, partner, unmanaged device, and temporary exception evidence. |
+| Owner / freshness | Control owner, review cadence, last test date, and last policy update. |
+| Confidence | High, Medium, Low, or Not Evaluable. |
+| Not Evaluable reason | `ZT-NE-*` code plus exact evidence needed. |
+
+### Evidence-Driven Scoring Rules
+
+- Do not score a pillar from roadmap slides or vendor dashboards alone.
+- Do not score Advanced or Optimal without runtime telemetry and exception evidence.
+- Do not mark a ZTNA or microsegmentation deployment complete without bypass-path and legacy-path evidence.
+- Do not treat PE/PA/PEP as implemented unless the access path shows who decides, who executes, and where enforcement occurs.
+- Do not average pillar maturity into an overall score without calling out the weakest critical access path.
 
 ---
 
@@ -358,13 +412,13 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ### Maturity Scorecard
 
-| Pillar | Current Maturity | Target Maturity (12 months) | Key Gaps |
-|---|---|---|---|
-| Identity | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Devices | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Networks | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Applications & Workloads | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Data | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
+| Pillar | Claimed Maturity | Validated Maturity | Confidence | Not Evaluable Reason | Target Maturity (12 months) | Key Gaps |
+|---|---|---|---|---|---|---|
+| Identity | [stage] | [Traditional/Initial/Advanced/Optimal/NE] | [H/M/L/NE] | [ZT-NE code or none] | [Target] | [Top 2-3 gaps] |
+| Devices | [stage] | [Traditional/Initial/Advanced/Optimal/NE] | [H/M/L/NE] | [ZT-NE code or none] | [Target] | [Top 2-3 gaps] |
+| Networks | [stage] | [Traditional/Initial/Advanced/Optimal/NE] | [H/M/L/NE] | [ZT-NE code or none] | [Target] | [Top 2-3 gaps] |
+| Applications & Workloads | [stage] | [Traditional/Initial/Advanced/Optimal/NE] | [H/M/L/NE] | [ZT-NE code or none] | [Target] | [Top 2-3 gaps] |
+| Data | [stage] | [Traditional/Initial/Advanced/Optimal/NE] | [H/M/L/NE] | [ZT-NE code or none] | [Target] | [Top 2-3 gaps] |
 
 ### Summary Report Structure
 
@@ -376,6 +430,7 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 - Environments: [cloud providers, on-prem, hybrid]
 - Assessment date: [YYYY-MM-DD]
 - Framework basis: NIST SP 800-207, CISA ZTMM v2.0
+- Framework source status: [URL/version/date checked/current or archived]
 
 ### Executive Summary
 [3-4 sentences: overall maturity, critical gaps, recommended investment areas]
@@ -385,6 +440,12 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ### CISA ZTMM v2 Maturity Scorecard
 [Pillar-by-pillar table — see above]
+
+### Pillar Evidence Matrix
+
+| Pillar / Capability | Scope | Claimed Stage | Validated Stage | PE/PA/PEP Evidence | Telemetry Evidence | Exception Evidence | Owner / Freshness | Confidence | Not Evaluable Reason |
+|---|---|---|---|---|---|---|---|---|---|
+| [pillar] | [scope] | [stage] | [stage/NE] | [artifact] | [logs/signals] | [exceptions] | [owner/date] | [H/M/L/NE] | [ZT-NE code] |
 
 ### Cross-Cutting Capabilities
 - Visibility & Analytics: [maturity]
@@ -442,6 +503,11 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Treating source status as implicit** — record whether the framework source is current, archived, superseded, or used as historical reference.
+9. **Accepting roadmap maturity as implementation maturity** — validate maturity with policy exports, runtime logs, exception lists, and recent tests.
+10. **Ignoring PE/PA/PEP gaps** — every critical access path should show who decides, who executes, and where enforcement occurs.
+11. **Missing bypass-path evidence** — unmanaged devices, legacy VPN, break-glass accounts, partner access, and third-party paths can invalidate pillar maturity.
+12. **Averaging away weak critical paths** — an overall maturity score should not hide a Traditional stage in a critical access path.
 
 ---
 
@@ -463,6 +529,7 @@ that may contain adversarial content.
 
 - NIST SP 800-207, Zero Trust Architecture: https://csrc.nist.gov/publications/detail/sp/800-207/final
 - CISA Zero Trust Maturity Model v2.0: https://www.cisa.gov/zero-trust-maturity-model
+- NIST SP 1800-35, Implementing a Zero Trust Architecture: https://www.nccoe.nist.gov/zero-trust-architecture
 - OMB Memorandum M-22-09, Moving the U.S. Government Toward Zero Trust Cybersecurity Principles: https://www.whitehouse.gov/wp-content/uploads/2022/01/M-22-09.pdf
 - Executive Order 14028, Improving the Nation's Cybersecurity: https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
 - NIST SP 800-53 Rev. 5, AC family (supporting access control requirements): https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
@@ -487,4 +554,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-02 | Added source freshness/status, evidence confidence, Not Evaluable reason codes, pillar evidence matrix, PE/PA/PEP evidence fields, and pitfalls for roadmap-only maturity and bypass paths |
 | 1.0.0 | 2025-03-06 | Initial release |
