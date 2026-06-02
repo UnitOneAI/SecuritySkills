@@ -53,6 +53,9 @@ Before beginning the threat model, gather the following. Mark each item as obtai
 - [ ] **Existing security controls** — WAF, IDS/IPS, SIEM, secret management (Vault, AWS Secrets Manager), encryption at rest and in transit.
 - [ ] **Deployment environment** — Cloud provider (AWS, GCP, Azure), Kubernetes, serverless, on-premises, hybrid.
 
+- [ ] **Security objectives and acceptance criteria** - Requirements the design must satisfy before launch, including compliance controls, test evidence, and release blockers.
+- [ ] **Assumptions and change triggers** - Architecture assumptions that would invalidate the model if they change, such as public exposure, new data classes, new identity flows, or third-party dependency changes.
+
 ## 3. Process
 
 ### Step 1: Identify Assets and Entry Points
@@ -377,6 +380,40 @@ Rank mitigations using the following prioritization criteria:
 | Corrective | Incident response playbooks, automated rollback, secret rotation, patch management |
 | Compensating | WAF rules, rate limiting, network segmentation, runtime application self-protection |
 
+### Step 10: Create Requirement Traceability and Residual-Risk Decisions
+
+Convert each material threat into a trackable security requirement and an explicit risk decision. A threat model is incomplete when it only lists mitigations without an owner, verification evidence, and residual-risk treatment.
+
+**Requirement traceability:**
+
+| Field | What to Capture | Example |
+|-------|-----------------|---------|
+| Requirement ID | Stable ID linked to the threat | `SR-TM-001` |
+| Security requirement | Testable statement of the required control | Service tokens expire within 15 minutes and are bound to mTLS client identity |
+| Verification evidence | How the control will be proven | Integration test rejects replay with a mismatched client certificate |
+| Residual risk | Risk remaining after the control is implemented | Low likelihood, medium impact |
+| Decision | Remediate, mitigate, transfer, accept, or avoid | Mitigate |
+| Decision owner | Person or team accountable for the decision | Platform Security |
+| Review date | Date when the decision must be revisited | 2026-07-15 |
+
+**What to verify:**
+
+- [ ] Every Critical and High threat has a security requirement, owner, and verification evidence.
+- [ ] Accepted or transferred risks include an approver, rationale, and review date.
+- [ ] Mitigations are linked to concrete tests, config evidence, monitoring evidence, or manual review evidence.
+- [ ] Residual risk is recalculated after the mitigation is applied, not copied from the original rating.
+- [ ] Assumptions are documented with triggers that require the model to be reopened.
+
+**Assumption and trigger ledger:**
+
+| Assumption | Invalidation Trigger | Required Action |
+|------------|---------------------|-----------------|
+| Redis is reachable only inside the private VPC | Peering, public endpoint, or cross-account access is added | Re-run trust-boundary and information-disclosure analysis |
+| Admin API is only available behind SSO and VPN | New public route, bypass token, or service-account path is introduced | Re-run spoofing, authorization, and repudiation analysis |
+| Payment provider handles card data directly | Application stores or proxies cardholder data | Re-run data classification, PCI scope, and logging analysis |
+
+**Finding classification:** Critical or High threat without owner/evidence is **High**. Accepted risk without approver or review date is **Medium**. Missing assumption/change-trigger tracking is **Medium** for launch threat models and **Low** for exploratory design reviews.
+
 ## 4. Findings Classification
 
 | Severity | Label | Definition | SLA |
@@ -390,6 +427,16 @@ Rank mitigations using the following prioritization criteria:
 ## 5. Output Format — Threat Register
 
 Produce the threat register as a structured table. Each row represents one identified threat.
+
+For launch-grade threat models, include closure traceability fields alongside the base table:
+
+| Additional Field | Purpose |
+|------------------|---------|
+| Requirement ID | Links the threat to a testable security requirement |
+| Verification Evidence | Names the test, config proof, monitoring signal, or manual review evidence needed to close the threat |
+| Residual Risk | Shows the risk remaining after mitigation |
+| Decision Owner | Names the accountable person or team for remediation or acceptance |
+| Review Date | Prevents accepted/transferred risk from becoming permanent |
 
 | Threat ID | STRIDE Category | Description | Affected Component | ATT&CK TTP | Likelihood | Impact | Severity | Mitigation | Owner | Status |
 |-----------|----------------|-------------|-------------------|-------------|------------|--------|----------|------------|-------|--------|
