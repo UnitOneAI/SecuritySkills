@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -26,7 +26,7 @@ argument-hint: "[CVE-ID-or-alert-ID]"
 > **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 > **Role:** SOC Analyst
 > **Time:** 10-20 min per alert
-> **Output:** Alert disposition (TP/BTP/FP), priority assignment (P1-P4), escalation decision
+> **Output:** Alert disposition (TP/BTP/FP/NE), priority assignment (P1-P4), evidence quality, escalation decision
 
 ---
 
@@ -57,8 +57,11 @@ Before beginning triage, gather or confirm:
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
+- [ ] **Telemetry freshness:** Are the required SIEM, EDR, identity, DNS, proxy, firewall, and cloud audit sources current for the alert window?
+- [ ] **Sensor health:** Were the relevant endpoint sensors, log connectors, and cloud integrations healthy before, during, and after the alert?
+- [ ] **Known ingestion delay:** Do any required sources have normal or abnormal latency that could make the current correlation incomplete?
 
-If some context is unavailable, proceed with available information and note gaps as assumptions.
+If some context is unavailable, proceed with available information and record the gap explicitly. Do not treat missing telemetry as benign evidence.
 
 ---
 
@@ -79,8 +82,31 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
+| **Source health** | Connector status, sensor heartbeat, last event time, ingestion delay | SIEM data health, EDR console, cloud connector status |
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
+
+#### 1.1 Evidence Quality Gate
+
+Before moving from collection to classification, rate whether the available evidence is complete enough to support a disposition.
+
+| Evidence Quality | Definition | Triage Action |
+|---|---|---|
+| **Complete** | Required sources are present, current, and cover the alert window. Missing sources are not material to the decision. | Continue to correlation and classification. |
+| **Partial** | One or more useful sources are missing or delayed, but enough independent evidence remains to assign a cautious disposition. | Continue, lower confidence, and document missing sources. |
+| **Insufficient** | Missing, stale, or delayed sources could materially change TP/BTP/FP classification. | Use `NE` and define a revisit condition or escalation path. |
+
+Record these fields before classification:
+
+```
+Evidence Quality:
+- Required Sources:       [SIEM, EDR, DNS, proxy, identity, cloud audit, etc.]
+- Missing Sources:        [Source names or "None"]
+- Stale/Delayed Sources:  [Source, last event time, expected delay]
+- Sensor Health:          [Healthy / Degraded / Offline / Unknown]
+- Confidence Impact:      [Why gaps do or do not affect disposition]
+- Revisit Condition:      [When to re-query or who must provide missing evidence]
+```
 
 ### Phase 2: Correlate
 
@@ -115,6 +141,7 @@ Assign a disposition and priority based on collected and correlated data.
 | **True Positive (TP)** | TP | The alert correctly identifies malicious or unauthorized activity that poses a real threat. | Escalate to incident response. Create an incident ticket. |
 | **Benign True Positive (BTP)** | BTP | The alert correctly identified the activity described in the rule, but the activity is authorized, expected, or part of legitimate operations. | Document the legitimate reason. If recurring, request a rule tuning (filter/exclusion). Close alert. |
 | **False Positive (FP)** | FP | The alert fired incorrectly -- the underlying activity does not match what the rule intended to detect (rule logic error, data quality issue). | Document the false positive cause. Submit a tuning request to detection engineering. Close alert. |
+| **Not Evaluable / Needs More Evidence (NE)** | NE | Available evidence is materially incomplete, stale, delayed, or internally contradictory, so TP/BTP/FP would be premature. | Keep open, escalate for missing telemetry if risk warrants, and define a revisit time or evidence owner. |
 
 #### Priority Matrix
 
@@ -136,6 +163,7 @@ Assign a priority level based on the combination of asset criticality, threat se
 | Threat intel match | IOCs match active campaign | No TI matches, known benign scanner |
 | Kill chain stage | Late-stage (exfiltration, impact) | Early-stage (reconnaissance) |
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
+| Evidence quality | Complete, fresh, independent telemetry | Missing or delayed sources, degraded sensors |
 | Business context | During M&A, audit, or incident response | Normal operations |
 
 ### Phase 4: Escalate
@@ -184,6 +212,7 @@ Escalation Notice:
 | P2 | High | High-confidence true positive on production asset. Exploitation detected but full impact not yet assessed. | Escalate within 1 hour. Investigation begins within 30 minutes. |
 | P3 | Medium | Moderate-confidence alert requiring further investigation. Suspicious activity without confirmed malicious intent. | Investigate within 4 hours. Escalate if confirmed TP. |
 | P4 | Low | Low-confidence or informational alert. Policy violation, reconnaissance from known scanners, or single low-fidelity signal. | Investigate within 24 hours. |
+| NE | Not Evaluable | Evidence is materially incomplete or stale. A TP/BTP/FP decision would rely on assumptions rather than verified telemetry. | Keep open or escalate for evidence recovery; revisit after sources are healthy or delayed logs arrive. |
 
 ---
 
@@ -194,7 +223,7 @@ Produce the triage decision as a structured report:
 ```markdown
 ## Alert Triage Report
 **Date:** [YYYY-MM-DD HH:MM UTC]
-**Skill:** alert-triage v1.0.0
+**Skill:** alert-triage v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 **Analyst:** [Name or AI-assisted]
 
@@ -218,9 +247,12 @@ Produce the triage decision as a structured report:
 ### Triage Decision
 | Field | Value |
 |-------|-------|
-| **Disposition** | **[True Positive / Benign True Positive / False Positive]** |
-| **Priority** | **[P1 Critical / P2 High / P3 Medium / P4 Low]** |
+| **Disposition** | **[True Positive / Benign True Positive / False Positive / Not Evaluable]** |
+| **Priority** | **[P1 Critical / P2 High / P3 Medium / P4 Low / NE]** |
 | **Confidence** | [High / Medium / Low] |
+| **Evidence Quality** | [Complete / Partial / Insufficient] |
+| **Missing or Delayed Sources** | [None / source list with expected availability] |
+| **Sensor Health** | [Healthy / Degraded / Offline / Unknown] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
 
 ### Evidence Summary
@@ -234,6 +266,13 @@ Produce the triage decision as a structured report:
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
 
+### Evidence Quality
+- **Required Sources Checked:** [SIEM / EDR / DNS / proxy / firewall / identity / cloud audit]
+- **Unavailable Sources:** [Source and why unavailable]
+- **Stale or Delayed Sources:** [Source, last event time, expected delay]
+- **Confidence Impact:** [How evidence gaps affect the disposition]
+- **Revisit Condition:** [When to re-query, escalate, or close]
+
 ### Recommended Actions
 - [ ] [Action 1 -- e.g., isolate host, disable account, block IP]
 - [ ] [Action 2 -- e.g., collect forensic artifacts, memory dump]
@@ -243,6 +282,10 @@ Produce the triage decision as a structured report:
 [If disposition is BTP or FP, describe the recommended rule tuning
 to prevent recurrence -- e.g., add filter for specific parent process,
 exclude known-good IP range, adjust threshold.]
+
+### Evidence Recovery Recommendation (if NE)
+[If disposition is NE, identify the missing evidence owner, data source, expected
+arrival time, and fallback escalation path.]
 ```
 
 ---
@@ -319,6 +362,14 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Treating Missing Telemetry as Benign Evidence
+
+No correlated events is meaningful only when the relevant data sources were healthy, fresh, and in scope for the alert window. If EDR stopped reporting, DNS logs are unavailable, cloud audit logs are delayed, or the SIEM connector is degraded, the correct outcome may be `NE` rather than FP or BTP. Record the missing source, its expected delay or owner, and the revisit condition before closing the alert.
+
+### Pitfall 7: Using Threat Intelligence Without Freshness or Coverage Context
+
+A negative IOC lookup is weak evidence when the feed update time, provider coverage, and lookup timestamp are not recorded. Treat stale, narrow, or unknown threat-intelligence results as confidence modifiers, not as proof that an indicator is benign.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -344,3 +395,10 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+
+---
+
+## 10. Version History
+
+- **v1.0.1** -- Added evidence quality gate, sensor-health and source-latency checks, `NE` disposition, and output fields for missing telemetry and revisit conditions.
+- **v1.0.0** -- Initial alert triage methodology with collect, correlate, classify, and escalate phases.
