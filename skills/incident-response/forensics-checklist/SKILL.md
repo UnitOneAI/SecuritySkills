@@ -6,7 +6,8 @@ description: >
   forensic evidence, preserve chain of custody, capture volatile data, create
   disk images, or handle cloud forensics. Produces an evidence collection plan
   with volatility-prioritized acquisition steps, integrity verification, and
-  chain-of-custody documentation.
+  chain-of-custody documentation, including authorization gates, tool provenance,
+  time-source evidence, and cloud/SaaS acquisition provenance.
 tags: [incident-response, forensics, evidence]
 role: [soc-analyst, security-engineer]
 phase: [respond]
@@ -57,8 +58,10 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Current system state** -- Powered on (running), powered off, suspended (VM), or unknown.
 - [ ] **Legal hold status** -- Has legal counsel issued a preservation directive? Are there litigation or regulatory holds in effect?
 - [ ] **Authorization** -- Written authorization from system owner or legal authority to perform forensic acquisition.
+- [ ] **Privacy and collection limits** -- Scope restrictions for employee data, customer data, regulated records, or third-party tenant data.
 - [ ] **Evidence storage** -- Write-protected storage media available (forensic drives, NAS, S3 bucket with object lock).
 - [ ] **Forensic tools available** -- Memory capture (WinPmem, LiME, DumpIt), disk imaging (dc3dd, FTK Imager, ewfacquire), network capture (tcpdump, Wireshark).
+- [ ] **Tool provenance** -- Tool version, source, hash/signature validation, trusted media ID, and operator command log.
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
@@ -67,7 +70,21 @@ Before beginning evidence collection, gather or confirm:
 
 ## 3. Process
 
-### Step 1: Establish Chain of Custody
+### Step 1: Establish Authorization and Acquisition Decision Gate
+
+Before touching any system, decide whether collection is authorized and safe to perform.
+
+| Gate | Required Evidence | Allowed Status |
+|------|-------------------|----------------|
+| Legal / policy authority | Written approval, legal hold, case ID, scope owner | `authorized`, `restricted`, `deferred`, `do-not-collect` |
+| Privacy scope | Data classes in scope, excluded users/tenants, retention limits | `in-scope`, `restricted`, `requires-counsel` |
+| System state | Running, powered off, suspended VM, encrypted, cloud/SaaS-only | `volatile-available`, `offline-only`, `cloud-api-only`, `unavailable` |
+| Collection impact | Expected file writes, timestamps changed, service disruption, containment tradeoff | `acceptable`, `requires-approval`, `unsafe` |
+| Evidence storage | Write-protected media, object lock, restricted access, retention period | `ready`, `not-ready` |
+
+If authorization is missing, privacy scope is unresolved, or collection impact is unsafe, produce a preservation and escalation plan instead of acquisition commands.
+
+### Step 2: Establish Chain of Custody
 
 Before touching any evidence, initialize the chain-of-custody record. Every transfer, access, or modification of evidence must be documented.
 
@@ -85,6 +102,10 @@ Collected By:        [Name, Title, Organization]
 Collection Method:   [Tool name and version]
 Storage Location:    [Physical location or secure storage path]
 Hash (SHA-256):      [Hash value computed at time of collection]
+Tool / Version:      [Acquisition tool and version]
+Tool Source / Hash:  [Trusted media path or package source, SHA-256/signature]
+Command Executed:    [Exact command or API query]
+Expected Impact:     [Files written, timestamps changed, network state changed]
 
 CUSTODY LOG:
 | Date/Time (UTC) | Released By | Received By | Purpose | Location |
@@ -99,7 +120,7 @@ CUSTODY LOG:
 - Compute and record cryptographic hashes (SHA-256 minimum) at collection time and verify at each transfer
 - Maintain a continuous, unbroken record from collection through final disposition
 
-### Step 2: Collect Evidence in Order of Volatility (RFC 3227)
+### Step 3: Collect Evidence in Order of Volatility (RFC 3227)
 
 RFC 3227 Section 2.1 defines the order of volatility -- evidence sources ranked from most volatile (shortest lifespan) to least volatile. Collect in this order to minimize evidence loss.
 
@@ -115,7 +136,7 @@ RFC 3227 Section 2.1 defines the order of volatility -- evidence sources ranked 
 | 6 | **Physical configuration, network topology** | Stable | Changes with infrastructure modifications | Network diagrams, switch/router configs, CMDB |
 | 7 | **Archival media** | Long-term | Stable unless damaged or degaussed | Tape backups, offline backups, cold storage |
 
-### Step 3: Volatile Data Capture
+### Step 4: Volatile Data Capture
 
 Capture volatile data BEFORE any containment action that would alter system state (network isolation may be acceptable; reboot, shutdown, or reimaging destroys volatile evidence).
 
@@ -217,7 +238,7 @@ ls -latr /tmp /var/tmp /dev/shm
 # Linux: Identify swap partitions with 'swapon --show' and image them
 ```
 
-### Step 4: Non-Volatile Data Capture (Disk Imaging)
+### Step 5: Non-Volatile Data Capture (Disk Imaging)
 
 Create a forensically sound disk image -- a bit-for-bit copy that preserves all data including deleted files, slack space, and unallocated areas.
 
@@ -263,7 +284,7 @@ Evidence Integrity Record:
 - Imaging End Time:     [YYYY-MM-DD HH:MM UTC]
 ```
 
-### Step 5: Log Preservation
+### Step 6: Log Preservation
 
 Preserve logs before rotation policies destroy them. Export and hash logs from each source.
 
@@ -289,7 +310,7 @@ Preserve logs before rotation policies destroy them. Export and hash logs from e
 4. Store alongside disk and memory evidence in the case folder
 ```
 
-### Step 6: Cloud Forensics
+### Step 7: Cloud, SaaS, and Container Forensics
 
 Cloud environments require different acquisition techniques because direct hardware access is not available.
 
@@ -338,6 +359,22 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- Record account/project/subscription, region, resource ID, snapshot/export ID, KMS/encryption state, retention or object-lock status, API query parameters, pagination tokens, collector identity, and provider request IDs.
+- For Kubernetes and containers, preserve pod specs, events, image digests, node assignment, runtime logs, ephemeral volume status, admission/audit logs, and registry provenance.
+- For SaaS and EDR exports, preserve export job ID, query filters, API version, page count, timezone, normalization/enrichment settings, and hash each exported file or chunk.
+
+### Step 8: Time Source and Clock-Skew Evidence
+
+Normalize all forensic timestamps before building timelines.
+
+| Source | Timezone / Format | NTP or Provider Time Source | Observed Offset | Confidence | Notes |
+|--------|-------------------|-----------------------------|-----------------|------------|-------|
+| Endpoint | [UTC/local] | [NTP status] | [+/- seconds] | [high/medium/low] | [notes] |
+| Cloud control plane | [UTC] | [provider] | [offset if known] | [high/medium/low] | [notes] |
+| SIEM / EDR | [format] | [source] | [offset] | [high/medium/low] | [normalization notes] |
+| Examiner workstation | [UTC/local] | [NTP status] | [offset] | [high/medium/low] | [notes] |
+
+If clock state is unknown, mark timeline conclusions as lower confidence and document the missing source.
 
 ---
 
@@ -368,12 +405,21 @@ Produce the evidence collection report with these exact sections:
 [3-5 sentences. State what evidence was collected, from which systems,
 the order of collection, and any evidence that could not be obtained.]
 
+### Authorization and Acquisition Decision
+| Gate | Status | Evidence | Restriction / Escalation |
+|---|---|---|---|
+| Legal / policy authority | [authorized/restricted/deferred/do-not-collect] | [approval/legal hold/case ID] | [limits] |
+| Privacy scope | [in-scope/restricted/requires-counsel] | [data classes and excluded data] | [limits] |
+| System state | [volatile-available/offline-only/cloud-api-only/unavailable] | [state evidence] | [impact] |
+| Collection impact | [acceptable/requires-approval/unsafe] | [expected changes] | [approval needed] |
+| Evidence storage | [ready/not-ready] | [write blocker/object lock/access control] | [gap] |
+
 ### Evidence Inventory
-| Evidence ID | Type | Source System | Collection Time (UTC) | SHA-256 Hash | Examiner | Storage Location |
-|---|---|---|---|---|---|---|
-| EVD-0001 | Memory dump | [hostname] | [timestamp] | [hash] | [name] | [location] |
-| EVD-0002 | Disk image (E01) | [hostname] | [timestamp] | [hash] | [name] | [location] |
-| EVD-0003 | Log export | [source] | [timestamp] | [hash] | [name] | [location] |
+| Evidence ID | Type | Source System | Collection Time (UTC) | SHA-256 Hash | Tool / Version | Tool Source / Hash | Examiner | Storage Location |
+|---|---|---|---|---|---|---|---|---|
+| EVD-0001 | Memory dump | [hostname] | [timestamp] | [hash] | [tool/version] | [trusted media hash] | [name] | [location] |
+| EVD-0002 | Disk image (E01) | [hostname] | [timestamp] | [hash] | [tool/version] | [trusted media hash] | [name] | [location] |
+| EVD-0003 | Log export | [source] | [timestamp] | [hash] | [tool/API version] | [export job/request ID] | [name] | [location] |
 
 ### Volatility Order Compliance
 | RFC 3227 Priority | Evidence Source | Collected | Notes |
@@ -394,13 +440,20 @@ the order of collection, and any evidence that could not be obtained.]
 |---|---|---|---|
 | EVD-0001 | [hash] | [hash] | [YES/NO] |
 
-### Evidence Gaps
-[List any evidence that could not be collected and the reason]
+### Time Source and Clock-Skew Evidence
+| Source | Timezone / Format | Time Source | Observed Offset | Confidence | Notes |
+|---|---|---|---|---|---|
+| [endpoint/cloud/SIEM/examiner] | [UTC/local] | [NTP/provider/API] | [+/- seconds] | [high/medium/low] | [notes] |
 
-### Cloud Evidence (if applicable)
-| Cloud Provider | Resource | Evidence Type | Collected | Notes |
-|---|---|---|---|---|
-| [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+### Evidence Gaps
+| Evidence | Reason Code | Impact | Follow-up |
+|---|---|---|---|
+| [item] | [missing-authorization/log-retention-expired/logging-disabled/missing-key/missing-permission/unsafe-acquisition/powered-off] | [timeline/root-cause/legal impact] | [next action] |
+
+### Cloud / SaaS / Container Evidence (if applicable)
+| Platform | Account / Project / Region | Resource | Evidence Type | Snapshot / Export ID | Encryption / KMS | Retention / Object Lock | API Query / Pagination | Collected | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [AWS/Azure/GCP/SaaS/K8s] | [account/project/region] | [resource ID] | [snapshot/log/config/export] | [id] | [key/status] | [retention] | [query/pages] | [Yes/No] | [Notes] |
 ```
 
 ---
