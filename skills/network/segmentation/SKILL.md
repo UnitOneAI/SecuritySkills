@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -245,6 +245,65 @@ Document or verify the existence of a segmentation testing process:
 
 ---
 
+### Step 7: Effective Path Evidence Matrix
+
+Before assigning pass/fail status to a boundary, build an effective path matrix. Segmentation is only meaningful when route, policy, enforcement, and test evidence agree.
+
+#### 7.1 Evidence Confidence Levels
+
+Assign each zone pair and finding one of the following confidence levels:
+
+| Confidence | Evidence Standard | Use When |
+|------------|-------------------|----------|
+| **High** | Route/source-of-truth export plus policy export plus current flow or segmentation test evidence | The route path, policy enforcement point, default action, and observed/tested traffic are all evidenced. |
+| **Medium** | Route and policy evidence exist, but flow logs or segmentation tests are partial or stale | Effective control is likely, but one runtime evidence source is incomplete. |
+| **Low** | Architecture diagrams, screenshots, or narrative evidence only | A likely segmentation issue exists, but the source-of-truth and test evidence are not complete. |
+| **Not Evaluable** | Required route, policy, enforcement, or test evidence is unavailable | Do not infer pass/fail; document what evidence is missing. |
+
+#### 7.2 Not Evaluable Reason Codes
+
+Use these codes when a boundary or segmentation claim cannot be fully assessed:
+
+| Code | Reason |
+|------|--------|
+| `SEG-NE-01` | Route table, peering, transit gateway, or routing export is missing. |
+| `SEG-NE-02` | Firewall, security group, NetworkPolicy, mesh, or ACL export is missing. |
+| `SEG-NE-03` | Policy enforcement point traversal cannot be confirmed. |
+| `SEG-NE-04` | Kubernetes CNI or service mesh enforcement mode is unknown. |
+| `SEG-NE-05` | Flow logs, packet captures, or segmentation test results are missing or stale. |
+| `SEG-NE-06` | PCI CDE connected-to systems, shared services, or dependency edges are incomplete. |
+| `SEG-NE-07` | Cloud service endpoint, private link, or managed-service policy path is incomplete. |
+| `SEG-NE-08` | Zone ownership, business purpose, or data classification evidence is missing. |
+
+#### 7.3 Effective Segmentation Path Matrix
+
+Create one row per material source/destination zone pair, including in-scope cloud endpoints, Kubernetes namespaces, mesh-enrolled services, PCI CDE dependencies, and management-plane paths.
+
+| Field | Required Evidence |
+|-------|-------------------|
+| Source zone | Zone name, CIDR/subnet, workload group, namespace, or service identity. |
+| Destination zone | Zone name, CIDR/subnet, workload group, namespace, or service identity. |
+| Intended flow | Business-approved protocol, port, application, and justification. |
+| Route path | Route tables, peering, transit gateway, service endpoint, or local routing path. |
+| PEP traversed | Firewall, security group, ACL, NetworkPolicy, mesh policy, proxy, or gateway that enforces the boundary. |
+| Policy source | IaC file, exported device config, firewall manager export, Kubernetes manifest, mesh config, or cloud API export. |
+| Default action | Allow, deny, audit-only, monitor-only, or unknown. |
+| Observed/test evidence | Flow log, SIEM query, packet capture, `nmap`, `nc`, synthetic test, or segmentation test report. |
+| Result | Pass, fail, partial, or Not Evaluable. |
+| Confidence | High, Medium, Low, or Not Evaluable. |
+| Not Evaluable reason | `SEG-NE-*` code plus the exact evidence needed to complete assessment. |
+
+#### 7.4 Evidence-Driven Finding Rules
+
+- Do not treat a route as an allowed flow unless a policy permits traffic on the tested protocol/port.
+- Do not treat a firewall or NetworkPolicy as effective unless the traffic path actually traverses that enforcement point.
+- Do not mark Kubernetes NetworkPolicy as enforcing unless a supporting CNI is deployed and policy enforcement mode is known.
+- Do not claim mesh segmentation coverage for workloads that are not sidecar-injected, enrolled, or otherwise forced through the mesh policy layer.
+- For PCI CDE scope, include connected-to systems, shared services, backups, logging, admin paths, and jump hosts as dependency edges.
+- Record test time and source for every segmentation test; stale or partial tests should lower confidence or use `SEG-NE-05`.
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
@@ -278,19 +337,27 @@ Document or verify the existence of a segmentation testing process:
 
 ### Trust Boundary Matrix
 
-| Source Zone | Dest Zone | Enforcement | Status | Finding |
-|-------------|-----------|-------------|--------|---------|
-| DMZ         | App       | Firewall    | Restricted | Pass |
-| App         | Data      | SG only     | Overly permissive | F-002 |
-| User        | Data      | None        | No control | F-001 |
+| Source Zone | Dest Zone | Enforcement | Status | Evidence | Confidence | Not Evaluable Reason | Finding |
+|-------------|-----------|-------------|--------|----------|------------|----------------------|---------|
+| DMZ         | App       | Firewall    | Restricted | <route + policy + test reference> | High | - | Pass |
+| App         | Data      | SG only     | Overly permissive | <policy reference> | Medium | - | F-002 |
+| User        | Data      | None        | No control | <route reference> | High | - | F-001 |
+
+### Effective Segmentation Path Matrix
+
+| Source Zone | Dest Zone | Intended Flow | Route Path | PEP Traversed | Policy Source | Default Action | Observed/Test Evidence | Result | Confidence | Not Evaluable Reason |
+|-------------|-----------|---------------|------------|---------------|---------------|----------------|------------------------|--------|------------|----------------------|
 
 ### Findings
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
 - **Control Reference:** NIST SP 800-207 Section X / CIS 12.X
+- **Evidence Confidence:** High / Medium / Low / Not Evaluable
 - **File:** <path to config file>
 - **Description:** <what was found>
+- **Evidence:** <route, policy, flow log, or test evidence>
+- **Not Evaluable Reason:** <SEG-NE code, if applicable>
 - **Remediation:** <concrete fix>
 
 ### Micro-Segmentation Readiness Score
@@ -300,6 +367,8 @@ Document or verify the existence of a segmentation testing process:
 - Enforcement Mode: <Ready / Partial / Not Ready>
 - Automation: <Ready / Partial / Not Ready>
 - **Overall Readiness:** <Ready / Partial / Not Ready>
+- **Confidence:** <High / Medium / Low / Not Evaluable>
+- **Evidence Gaps:** <SEG-NE codes, if applicable>
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -345,6 +414,14 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Equating a route with allowed access.** A route table can make a destination reachable at Layer 3 while security groups, firewall policy, NACLs, mesh policy, or endpoint policy still block the flow. Record both route and policy evidence.
+
+7. **Counting a policy that traffic does not traverse.** A firewall rule or NetworkPolicy is irrelevant if the route, peering, local subnet path, or sidecar bypass avoids that enforcement point.
+
+8. **Marking Kubernetes NetworkPolicy as effective without CNI evidence.** NetworkPolicy resources require a policy-enforcing CNI. If the CNI or enforcement mode is unknown, mark the boundary `SEG-NE-04`.
+
+9. **Relying on stale segmentation test results.** Network paths drift as routes, peering, endpoints, and policy engines change. Record the test timestamp and lower confidence or mark `SEG-NE-05` when tests are stale.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -372,4 +449,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.1.0** -- Added effective path evidence matrix, confidence levels, Not Evaluable reason codes, and output fields for route, policy, PEP traversal, test evidence, CNI/mesh enforcement, and PCI dependency gaps.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
