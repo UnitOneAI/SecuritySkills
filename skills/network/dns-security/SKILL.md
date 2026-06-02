@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -194,11 +194,126 @@ forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
 
 ---
 
-### Step 4: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
+### Step 4: DNS Infrastructure Hardening (NIST SP 800-81 Rev 2, Section 6)
+
+Evaluate authoritative and recursive DNS servers for infrastructure hardening controls beyond DNSSEC signing and validation. DNSSEC validates signed data, but it does not prevent exposed zone transfers, open recursion, or unauthorized control-plane updates from publishing bad records.
+
+#### 4.1 Zone Transfer Controls (AXFR/IXFR)
+
+For each authoritative zone, verify that full and incremental zone transfers are restricted to authorized secondary DNS servers.
+
+**Patterns to check:**
+
+```conf
+# BIND -- BAD: public zone transfer
+zone "example.com" {
+    type primary;
+    file "/etc/bind/zones/example.com";
+    allow-transfer { any; };
+};
+
+# BIND -- GOOD: TSIG-protected secondary transfer
+key "xfr-secondary" {
+    algorithm hmac-sha256;
+    secret "[redacted]";
+};
+
+acl "authorized-secondaries" {
+    192.0.2.53;
+    2001:db8::53;
+};
+
+zone "example.com" {
+    type primary;
+    file "/etc/bind/zones/example.com.signed";
+    allow-transfer { key "xfr-secondary"; authorized-secondaries; };
+};
+```
+
+**What to verify:**
+
+- `allow-transfer` does not include `any` or broad public CIDR ranges.
+- Zone transfers use TSIG keys or provider-managed authenticated transfer controls.
+- Managed DNS provider settings restrict secondary transfer targets and expose audit logs for transfer configuration changes.
+- Split-horizon zones have separate internal and external transfer policies.
+
+#### 4.2 Recursion Exposure
+
+For each resolver or public DNS server, verify that recursion is disabled on authoritative-only servers and restricted on recursive resolvers.
+
+**Patterns to check:**
+
+```conf
+# BAD: internet-facing open recursion
+options {
+    recursion yes;
+    allow-recursion { any; };
+};
+
+# GOOD: recursion restricted to trusted networks
+acl "trusted-clients" {
+    10.0.0.0/8;
+    192.168.0.0/16;
+};
+
+options {
+    recursion yes;
+    allow-recursion { trusted-clients; };
+};
+```
+
+**What to verify:**
+
+- Public authoritative DNS servers have `recursion no` or equivalent provider enforcement.
+- Recursive resolvers limit clients to trusted networks, VPNs, or authenticated resolver paths.
+- Firewall policy covers both UDP/53 and TCP/53 egress and ingress paths.
+
+#### 4.3 Dynamic Update and Control-Plane Authorization
+
+For RFC 2136 dynamic updates, infrastructure automation, or cloud DNS APIs, verify that record changes require scoped credentials and are audited.
+
+**Patterns to check:**
+
+```conf
+# BAD: unauthenticated dynamic updates
+zone "example.com" {
+    type primary;
+    allow-update { any; };
+};
+
+# GOOD: scoped update policy
+zone "example.com" {
+    type primary;
+    update-policy {
+        grant ddns-updater zonesub A AAAA TXT;
+    };
+};
+```
+
+**What to verify:**
+
+- `allow-update` is not open to `any` or broad networks.
+- `update-policy` grants only required record types and names.
+- TSIG keys, cloud DNS service accounts, and Terraform/API credentials are scoped, rotated, and logged.
+- DNSSEC-signed zones do not treat signing as a substitute for update authorization; signed malicious records still validate if the update path is compromised.
+
+#### 4.4 Amplification and Information Disclosure Controls
+
+Verify basic service hardening:
+
+- Response rate limiting (RRL) or provider equivalent is enabled for authoritative servers that support it.
+- `version.bind`, `hostname.bind`, and similar CHAOS-class disclosure responses are disabled or generic.
+- TCP/53 is monitored as well as UDP/53 because TCP supports zone transfers and some tunneling tools prefer it.
+
+**Finding classification:** Public AXFR on internet-facing zones is **High**. Unauthenticated dynamic updates on public or production zones are **Critical**. Open recursion on internet-facing resolvers is **High**. Missing RRL on high-volume authoritative servers is **Medium**. Version disclosure is **Low** unless paired with exploitable outdated software.
+
+---
+
+### Step 5: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
 
 CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (Response Policy Zones, defined by ISC) is the standard mechanism for DNS-based filtering on recursive resolvers.
 
-#### 4.1 RPZ Configuration
+#### 5.1 RPZ Configuration
 
 **Verify RPZ is deployed and configured:**
 
@@ -223,7 +338,7 @@ rpz:
 - Update frequency is at least daily.
 - Logging of RPZ-blocked queries is enabled for incident detection.
 
-#### 4.2 Protective DNS Service Evaluation
+#### 5.2 Protective DNS Service Evaluation
 
 If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gateway, Quad9, CISA Protective DNS), verify:
 
@@ -237,11 +352,11 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ---
 
-### Step 5: DNS Exfiltration and Tunneling Detection Patterns
+### Step 6: DNS Exfiltration and Tunneling Detection Patterns
 
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
-#### 5.1 Exfiltration Indicators
+#### 6.1 Exfiltration Indicators
 
 | Indicator | Normal | Suspicious | Detection Method |
 |-----------|--------|-----------|-----------------|
@@ -252,7 +367,7 @@ DNS tunneling encodes data in DNS query names or TXT record responses to create 
 | **Query volume per domain** | < 100/hr to a single domain | > 1000/hr to single obscure domain | Volumetric per-domain threshold |
 | **Response size** | < 512 bytes | TXT responses > 512 bytes, multiple TXT records | Monitor response payload sizes |
 
-#### 5.2 Tunneling Tool Signatures
+#### 6.2 Tunneling Tool Signatures
 
 Common DNS tunneling tools produce distinctive query patterns:
 
@@ -270,7 +385,7 @@ abcdef0123456789.dnscat.example.com TXT
 0001.<encoded>.d.example.com KEY
 ```
 
-#### 5.3 Detection Configuration
+#### 6.3 Detection Configuration
 
 **Where to implement detection:**
 
@@ -299,8 +414,8 @@ abcdef0123456789.dnscat.example.com TXT
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; public AXFR exposure; open recursion on internet-facing resolvers; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; missing RRL on high-volume authoritative servers. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -327,6 +442,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### DNS Infrastructure Hardening
+
+| Server/Zone | Role | External Reachability | Zone Transfer Policy | Recursion Policy | Dynamic Update Policy | TSIG / IAM Evidence | Rate Limiting | Status |
+|-------------|------|-----------------------|----------------------|------------------|-----------------------|---------------------|---------------|--------|
+| example.com | Authoritative | Public | Restricted to secondaries | Disabled | TSIG-scoped | Yes | RRL enabled | Pass/Fail |
 
 ### Findings
 
@@ -413,4 +534,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Add DNS infrastructure hardening checks for AXFR/IXFR exposure, open recursion, dynamic update authorization, TSIG/provider IAM, response rate limiting, and version disclosure.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
