@@ -114,11 +114,14 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 **API Keys and Tokens:**
 
 ```regex
-# AWS Access Key ID (starts with AKIA)
-(?:AKIA)[0-9A-Z]{16}
+# AWS Access Key ID (long-term AKIA or temporary STS ASIA)
+(?:AKIA|ASIA)[0-9A-Z]{16}
 
 # AWS Secret Access Key (40 chars, base64-like)
 (?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
+
+# AWS STS Session Token paired with temporary ASIA credentials
+(?:aws_session_token|AWS_SESSION_TOKEN)\s*[= :]\s*[A-Za-z0-9/+=]{100,}
 
 # GitHub Personal Access Token
 (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,255}
