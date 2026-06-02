@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -366,6 +366,62 @@ IAM-ZT-10: Implicit trust for internal service-to-service communication
 
 ---
 
+### Step 8: Evidence Confidence and Effective Privilege Matrix
+
+Before assigning severity, record the evidence source and effective privilege context for each material identity, role, policy, or access path. IAM findings are often wrong when they rely only on attached policies and ignore permission boundaries, SCPs, IAM Conditions, deny policies, JIT/PIM state, or log-retention limits.
+
+#### 8.1 Evidence Confidence Levels
+
+| Confidence | Evidence Standard | Use When |
+|---|---|---|
+| **High** | Complete inventory plus policy export plus current activity/audit evidence plus owner or lifecycle evidence | Identity state, effective privilege, MFA/JIT status, and activity can all be traced to reliable sources. |
+| **Medium** | Inventory and policy evidence exist, but activity logs, owner evidence, or effective privilege modifiers are partial | The identity or grant is real, but one context dimension is incomplete. |
+| **Low** | Screenshot, narrative evidence, stale export, or partial policy snippet only | A likely IAM issue exists, but source-of-truth or runtime evidence is incomplete. |
+| **Not Evaluable** | Required inventory, policy, enforcement, or activity evidence is unavailable | Do not infer pass/fail; document the missing evidence. |
+
+#### 8.2 Not Evaluable Reason Codes
+
+| Code | Reason |
+|---|---|
+| `IAM-NE-01` | Identity inventory is incomplete or excludes a provider, tenant, account, project, or identity type. |
+| `IAM-NE-02` | Activity logs, sign-in logs, credential reports, or audit-log retention evidence are missing. |
+| `IAM-NE-03` | MFA, conditional access, PIM/JIT, or policy enforcement mode is unknown or report-only. |
+| `IAM-NE-04` | Groups, roles, nested groups, app roles, or inherited grants were not expanded. |
+| `IAM-NE-05` | Permission boundaries, SCPs, deny policies, IAM Conditions, or other effective-privilege modifiers are missing. |
+| `IAM-NE-06` | Identity owner, business purpose, or lifecycle state is missing. |
+| `IAM-NE-07` | Break-glass monitoring, alerting, or test-cadence evidence is missing. |
+| `IAM-NE-08` | External guest, vendor, federation, or cross-account trust context is incomplete. |
+
+#### 8.3 IAM Evidence Matrix
+
+Create one row per material identity or access grant:
+
+| Field | Required Evidence |
+|---|---|
+| Identity / principal | User, group, role, service account, app registration, managed identity, workload identity, API key, or external guest. |
+| Provider and scope | AWS account, Azure tenant/subscription, GCP organization/folder/project, SaaS tenant, or hybrid IdP. |
+| Identity type | Human, service, machine, workload, API key, break-glass, external guest, vendor, or shared account. |
+| Owner and lifecycle | Owner, department/application, employment/vendor status, created date, expiration, and deprovisioning state. |
+| Assigned privilege | Attached policy, role assignment, group membership, app role, custom role, or direct grant. |
+| Effective privilege modifiers | Permission boundary, SCP, deny policy, IAM Condition, PIM/JIT state, session duration, external ID, or conditional access grant. |
+| Authentication state | MFA type, phishing-resistant status, conditional access state, recovery bypass, or service credential type. |
+| Activity source | Credential report, sign-in logs, audit logs, Access Analyzer, IAM Recommender, Policy Analyzer, or provider export. |
+| Last activity and retention | Last sign-in, last API use, last key use, log-retention window, and whether `N/A` means no data or no activity. |
+| Result | Pass, fail, partial, or Not Evaluable. |
+| Confidence | High, Medium, Low, or Not Evaluable. |
+| Not Evaluable reason | `IAM-NE-*` code plus the exact evidence needed to finish assessment. |
+
+#### 8.4 Evidence-Driven Finding Rules
+
+- Do not assign final severity from an attached policy alone; evaluate boundaries, SCPs, deny policies, IAM Conditions, JIT/PIM, and session duration where available.
+- Do not treat `N/A`, blank, or unavailable last-used fields as proof of inactivity without confirming provider semantics and log-retention coverage.
+- Do not count report-only conditional access, monitor-only PIM, or unenforced policies as active control enforcement.
+- Do not mark service accounts safe because they have no interactive login; evaluate key age, credential type, workload identity federation, owner, and usage logs.
+- Break-glass accounts may intentionally bypass some controls, but must have owner, monitoring, alerting, access test cadence, and limited use evidence.
+- For external guests, vendors, and cross-account roles, record sponsor/owner, external ID or federation constraints, expiration/review cadence, and last activity.
+
+---
+
 ## Output Format
 
 ### Findings Table
@@ -380,6 +436,8 @@ For each finding, produce a row with:
 | **Framework Ref** | NIST SP 800-63B section, NIST SP 800-207 tenet, or CIS Control ID |
 | **Affected Scope** | Accounts, roles, policies, or platforms impacted |
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
+| **Evidence Confidence** | High / Medium / Low / Not Evaluable |
+| **Not Evaluable Reason** | `IAM-NE-*` code, if applicable |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -410,6 +468,10 @@ For each finding, produce a row with:
 - Stale Accounts (Step 5): [count]
 - JIT Access (Step 6): [count]
 - Zero Trust (Step 7): [count]
+- Evidence Gaps / Not Evaluable (Step 8): [count]
+
+### IAM Evidence Matrix
+[Matrix rows: identity, provider/scope, type, owner, assigned privilege, effective privilege modifiers, authentication state, activity source, last activity, log retention, result, confidence, IAM-NE code]
 
 ### Detailed Findings
 [Findings table — see above]
@@ -431,6 +493,20 @@ For each finding, produce a row with:
 | **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, no stale account process |
 | **P2 — Important** | 31-90 days | No phishing-resistant MFA, incomplete identity inventory, no access review cadence |
 | **P3 — Planned** | 91-180 days | Zero trust maturity gaps, device trust integration, continuous access evaluation |
+
+---
+
+## Common Pitfalls
+
+1. **Treating attached policy as effective privilege.** Permission boundaries, SCPs, deny policies, IAM Conditions, session duration, and JIT/PIM can materially change real access. Record both assigned and effective privilege context.
+
+2. **Treating missing activity as inactivity.** Provider last-used fields can be unavailable because logging was disabled, retention expired, the credential type is not covered, or the field reports only one activity channel. Confirm source and retention before stale-account findings.
+
+3. **Counting report-only controls as enforcement.** Conditional Access, PIM, access reviews, and policy engines can be in report-only, audit, monitor, or eligible-only states. Findings must record enforcement mode.
+
+4. **Ignoring nested and inherited grants.** Group nesting, inherited project/folder/org roles, app roles, and enterprise application assignments can hide real privilege. Expand grants or mark `IAM-NE-04`.
+
+5. **Treating break-glass exceptions as unreviewable.** Emergency accounts need owner, alerting, monitoring, test cadence, and access-use evidence. Missing evidence should be recorded, not ignored.
 
 ---
 
@@ -508,4 +584,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-02 | Added IAM evidence matrix, confidence levels, Not Evaluable reason codes, effective privilege modifiers, enforcement-mode checks, and activity-source caveats |
 | 1.0.0 | 2025-03-06 | Initial release |
