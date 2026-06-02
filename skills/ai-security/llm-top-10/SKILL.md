@@ -56,6 +56,46 @@ Before beginning the review, collect the following:
 
 ---
 
+## 2.1 LLM Data-Flow and Trust-Boundary Evidence Matrix
+
+Before scoring LLM01-LLM10, trace the application data flow from each source to
+each downstream sink. Do not classify a category from prompt text alone when the
+actual risk depends on retrieval authorization, runtime model configuration,
+output parsing, tool execution, or rendering behavior.
+
+**Evidence confidence levels:**
+
+- **Source-code:** SDK calls, prompt assembly, retriever code, output parser, or sink code is visible.
+- **Config:** Model, gateway, vector store, IAM, filter, quota, or deployment configuration is visible.
+- **Runtime export:** Logs, traces, provider settings, tool registry, or gateway export confirms active state.
+- **Test evidence:** Unit, integration, red-team, or policy tests exercise the relevant path.
+- **Docs-only:** README, diagram, or prompt prose claims the control exists, but implementation evidence is missing.
+- **Unknown:** The source, transformation, model config, sink, or enforcement evidence cannot be found.
+
+**Data-flow matrix fields:**
+
+| Field | What to Record |
+|---|---|
+| Source | User input, retrieved chunk, tool output, memory, file, image, PDF, audio transcript, API, or training data |
+| Trust boundary | Authenticated user, tenant, document ACL, third-party content, internal system, or public internet |
+| Transformation | Sanitization, chunking, embedding, retrieval filter, prompt template, parser, redaction, or moderation |
+| Model/runtime config | Provider, model ID, temperature, max tokens, tool mode, system prompt location, and streaming mode |
+| Downstream sink | UI text, HTML/Markdown, SQL, shell, code, file, database, tool call, external API, publish/send flow, or log |
+| Enforcing layer | Application code, gateway, IAM, vector ACL, output filter, tool broker, CSP, rate limiter, or HITL gate |
+| Evidence confidence | Source-code, Config, Runtime export, Test evidence, Docs-only, or Unknown |
+
+Use a Not Evaluable reason code when available evidence cannot support a reliable
+decision: `missing-model-config`, `missing-prompt-flow`, `missing-rag-acl`,
+`missing-sink-mapping`, `missing-tool-policy`, `missing-output-filter`,
+`missing-runtime-export`, or `docs-only-control`.
+
+Streaming responses, tool outputs that re-enter the prompt, multimodal inputs,
+conversation memory, cached prompts, and retrieved chunks are separate data
+sources. Treat each as untrusted until the evidence matrix shows an enforcing
+layer and sink-specific controls.
+
+---
+
 ## 3. Process
 
 Review the application against each of the ten OWASP LLM risk categories below. For each category, examine the codebase for the specified patterns, apply the detection methods, and recommend the listed mitigations where gaps are found.
@@ -423,6 +463,10 @@ Structure the findings report as follows:
 - **Location:** [file path, function, configuration]
 - **Description:** [What was found]
 - **Evidence:** [Code snippet, configuration excerpt, or architectural observation]
+- **Evidence Confidence:** Source-code | Config | Runtime export | Test evidence | Docs-only | Unknown
+- **Not Evaluable Reason:** [reason code if applicable]
+- **Data Flow:** [source -> transformation/model -> sink]
+- **Enforcing Layer:** [code/gateway/IAM/vector ACL/output filter/tool broker/HITL/rate limiter]
 - **Impact:** [What an attacker could achieve]
 - **Remediation:** [Specific, actionable fix with code example if applicable]
 - **Priority:** P1 | P2 | P3 | P4
@@ -475,6 +519,16 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Missing streaming output bypasses.** A final response filter does not protect streamed tokens if unsafe content is sent to the client before moderation or redaction runs.
+
+7. **Treating tool output as trusted context.** Tool results, web pages, emails, logs, and retrieved documents can contain indirect prompt injection and should be marked as untrusted sources when they re-enter the model context.
+
+8. **Skipping multimodal injection paths.** Images, PDFs, OCR text, audio transcripts, screenshots, and file attachments can carry instructions that affect prompt assembly even when plain text input is filtered.
+
+9. **Assuming RAG ACL metadata is fresh.** Document ACLs can drift after chunks are embedded. Verify chunk-level authorization, source document permissions, and re-index behavior before treating retrieval as access-controlled.
+
+10. **Accepting docs-only usage limits.** README claims about low temperature, quotas, or budget controls should be marked `Docs-only` unless SDK calls, gateway config, provider settings, or tests prove active enforcement.
 
 ---
 
