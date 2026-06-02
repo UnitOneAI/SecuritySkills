@@ -51,6 +51,20 @@ Simon Willison's prompt injection taxonomy further refines these categories by d
 
 ---
 
+## Assessment Modes and Evidence Boundaries
+
+This skill currently grants only `Read`, `Grep`, and `Glob`, so the default workflow is a **static review**. Static review can identify architecture and code patterns, but it must not claim runtime exploitability or runtime resistance unless those behaviors were actually exercised by a separate authorized test run.
+
+Use these modes explicitly in the final report:
+
+| Mode | Permitted Evidence | Do Not Claim |
+|---|---|---|
+| Static review | Source code, prompt templates, tool definitions, renderer configuration, authorization gates, checked-in tests | That a payload executed, a canary alert fired, a renderer fetched a URL, or a model resisted a benchmark |
+| Dynamic red-team test | Recorded test inputs, application responses, tool calls, renderer behavior, logs/alerts, benchmark results | Broad safety conclusions beyond the tested model, tools, and configuration |
+
+If dynamic testing was not performed, mark runtime behavior as **unverified** and recommend a follow-up test plan with concrete fixtures.
+
+---
 ## Step 1: Map the LLM Interaction Surface
 
 Identify every point where user-supplied or externally sourced content reaches the language model. Produce a complete interaction map covering:
@@ -59,6 +73,7 @@ Identify every point where user-supplied or externally sourced content reaches t
 2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
 3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
 4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
+5. **Tool-output feedback loops** — Whether output from one tool (web pages, API responses, emails, documents, command output) is reinserted into model context and can influence a later state-changing tool call. Track this as a separate hop from initial prompt construction.
 5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
 
 **Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
@@ -92,6 +107,7 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Tool-output chaining** — Search results, browser output, command output, retrieved documents, or plugin responses that are fed back to the model before a second tool call can turn indirect injection into privilege escalation or data exfiltration.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
@@ -151,6 +167,16 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 - Are those constraints enforced only through prompt instructions or also through output validation?
 - Does the application handle edge cases where the model might produce disallowed content?
 
+### 4.6 Tool-Output-To-Tool-Call Injection
+
+Untrusted content returned by one tool can steer the model into invoking another tool with unsafe arguments. This is distinct from simple RAG poisoning because the malicious instruction crosses a tool boundary and then affects an action with side effects.
+
+**What to evaluate:**
+- Which tool outputs are reinserted into the model context?
+- Can those outputs influence tool selection or tool arguments in a later step?
+- Are proposed tool arguments validated by code after the model generates them?
+- Do state-changing tools enforce server-side authorization independent of the model's reasoning?
+
 ---
 
 ## Step 5: Defense Evaluation
@@ -180,6 +206,8 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Are model outputs validated against expected formats and content policies before being returned to the user or acted upon?
 - Is there detection for sensitive data (PII, credentials, system prompt content) in outputs?
 - Are rendered outputs (markdown, HTML) sanitized to prevent exfiltration via image tags or links?
+- Does the actual renderer allow remote images, SVG/image attributes, link previews, embeds, cards, attachments, or HTML attributes that can trigger external requests?
+- Are outbound URLs, preview fetches, and remote media loads blocked or proxied when model output may contain sensitive context?
 
 ### 5.5 Canary Tokens in System Prompts
 
@@ -229,6 +257,8 @@ Each finding should be assigned a severity based on potential impact:
 - Application: [name]
 - Assessment date: [date]
 - Scope: [what was tested]
+- Evidence mode: [Static review / Dynamic red-team test / Both]
+- Runtime behaviors not verified: [list anything inferred from code only]
 - Overall risk: [Critical / High / Medium / Low]
 
 ### Interaction Surface Map
@@ -274,6 +304,8 @@ Each finding should be assigned a severity based on potential impact:
 4. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
+
+6. **Overclaiming dynamic validation from static review.** Source inspection can show that a prompt path is risky, but it cannot prove that a payload executes, a canary alert fires, or a renderer fetches an exfiltration URL. Reports should label these as unverified unless a dynamic test was actually run.
 
 ---
 
