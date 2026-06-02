@@ -53,12 +53,41 @@ Before beginning the review, collect the following:
 - [ ] **Rate limiting and quota configuration** — per-user and per-session limits on model invocations.
 - [ ] **Data classification** — what sensitivity level of data flows into or out of the model (PII, PHI, financial, credentials).
 - [ ] **Deployment topology** — self-hosted vs. third-party API, data residency, network boundaries.
+- [ ] **Evidence confidence** — classify each claim as source-code, config, runtime export, test evidence, docs-only, unknown, or not evaluable.
 
 ---
 
 ## 3. Process
 
-Review the application against each of the ten OWASP LLM risk categories below. For each category, examine the codebase for the specified patterns, apply the detection methods, and recommend the listed mitigations where gaps are found.
+Before reviewing the ten OWASP LLM risk categories, complete the source-to-sink evidence matrix below. Do not assign final severity until the matrix identifies the data source, trust boundary, transformation, model/runtime configuration, sink, enforcing control, and evidence confidence for the affected flow.
+
+### Mandatory Data-Flow Evidence Matrix
+
+Use one row per distinct LLM flow. Split flows when the same model output reaches different sinks, because escaped UI text, sanitized Markdown, JSON tool calls, SQL, shell, file writes, and external API calls have different risk profiles.
+
+| Field | What to Record | Strong Evidence | Weak Evidence |
+|-------|----------------|-----------------|---------------|
+| Source | User prompt, retrieved chunk, tool output, memory, cache, fine-tuning data, file upload, OCR/audio transcript, or external API response. | Code path, schema, ingestion handler, retrieval query, or test fixture. | Architecture diagram or README claim only. |
+| Trust boundary | Where data crosses between user, tenant, model, tool, service, database, or third party. | Auth middleware, tenant filter, ACL check, policy decision, or network boundary config. | Statement that "the user is authenticated" without the actual enforcement point. |
+| Transformation/parser | Prompt assembly, chunking, Markdown rendering, JSON parsing, function-call schema validation, sanitizer, redactor, or output parser. | Source-code call site with validation/sanitization configuration. | Parser/sanitizer listed in dependencies but not tied to the flow. |
+| Model/runtime config | Provider, model ID, temperature, max tokens, tool/function list, rate/cost limits, streaming mode, and moderation/filter settings. | SDK call, gateway config, deployed config export, or test assertion. | Documentation saying limits are enabled. |
+| RAG authorization | Document ACL, chunk ACL, tenant filter, source-document permission, and stale-metadata handling. | Query filter plus tests proving unauthorized chunks are excluded. | Tenant ID filter without proof chunk ACLs are inherited and current. |
+| Output sink | UI text, sanitized Markdown/HTML, SQL, shell, code eval, filesystem, database write, tool call, email/send flow, publish flow, or external API call. | Code-level sink and calling function. | Generic statement that output is "shown to the user." |
+| Enforcing layer | Deterministic code, schema validator, sanitizer, IAM policy, broker policy, approval gate, quota middleware, or human review workflow. | Enforcement at the execution layer that cannot be bypassed by alternate code paths. | Prompt-only instruction or UI copy. |
+| Evidence confidence | source-code, config, runtime export, test evidence, docs-only, unknown, or not evaluable. | Direct artifact inspected during review. | Assumption or undocumented maintainer statement. |
+| Related OWASP categories | LLM01-LLM10 categories implicated by this flow. | Categories mapped to concrete source, sink, and control evidence. | Category selected only because the application uses an LLM. |
+
+If a field cannot be verified, mark the related category **Not Evaluable** instead of downgrading it to Low or Informational. Use these reason codes:
+
+- `NE-MODEL-CONFIG`: Provider, model ID, temperature, max token, streaming, or tool configuration is missing.
+- `NE-PROMPT-FLOW`: Prompt assembly or message-role separation cannot be traced.
+- `NE-RAG-ACL`: Retrieval authorization is not proven at both document and chunk scope.
+- `NE-SINK-MAP`: Model output sink cannot be identified or is described only generically.
+- `NE-TOOL-POLICY`: Tool/function permissions or execution gate cannot be tied to deterministic enforcement.
+- `NE-OUTPUT-FILTER`: Sanitization, redaction, or moderation is described but not tied to the output flow.
+- `NE-RUNTIME-EVIDENCE`: The claim depends only on documentation or intended configuration with no code, config, runtime export, or test evidence.
+
+Then review the application against each of the ten OWASP LLM risk categories below. For each category, examine the codebase for the specified patterns, apply the detection methods, tie findings back to the matrix row, and recommend the listed mitigations where gaps are found.
 
 ---
 
@@ -413,6 +442,18 @@ Structure the findings report as follows:
 
 [2-3 sentences: overall risk posture, critical findings count, top recommendation]
 
+## Data-Flow Evidence Matrix
+
+| Flow ID | Source | Trust Boundary | Transformation / Parser | Model / Runtime Config | RAG Authorization | Output Sink | Enforcing Layer | Evidence Confidence | OWASP Categories |
+|---------|--------|----------------|--------------------------|------------------------|-------------------|-------------|-----------------|---------------------|------------------|
+| FLOW-001 | [user prompt / retrieved chunk / tool output / memory / upload] | [user -> app -> model -> tool / tenant boundary] | [prompt assembly / parser / sanitizer] | [provider, model, temperature, max tokens, tools, streaming] | [document ACL, chunk ACL, tenant filter, or N/A] | [UI / Markdown / SQL / shell / filesystem / tool / API] | [deterministic validator / policy / approval / quota] | [source-code / config / runtime export / test evidence / docs-only / unknown] | [LLM0X list] |
+
+## Not Evaluable Items
+
+| Area | Reason Code | Missing Evidence | Risk if Assumed |
+|------|-------------|------------------|-----------------|
+| [Prompt flow / RAG ACL / sink map / tool policy / runtime config] | [NE-*] | [specific artifact not available] | [how severity could be understated or overstated] |
+
 ## Findings
 
 ### [FINDING-001] [Title]
@@ -420,6 +461,8 @@ Structure the findings report as follows:
 - **OWASP Category:** LLM0X:2025 — [Category Name]
 - **Severity:** Critical | High | Medium | Low | Informational
 - **CWE:** CWE-XXX
+- **Flow ID:** FLOW-XXX
+- **Evidence Confidence:** source-code | config | runtime export | test evidence | docs-only | unknown
 - **Location:** [file path, function, configuration]
 - **Description:** [What was found]
 - **Evidence:** [Code snippet, configuration excerpt, or architectural observation]
@@ -475,6 +518,12 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Treating docs-only controls as implemented controls.** README statements such as "temperature is low," "tenant filtering is enabled," or "output is sanitized" are weak evidence until tied to SDK calls, gateway configuration, runtime exports, source-code enforcement, or tests.
+
+7. **Missing output paths that re-enter the model or bypass final filters.** Tool output, retrieved snippets, cached prompts, conversation memory, streaming chunks, OCR text, PDF text, and audio transcripts can all become new untrusted inputs. If streaming moderation or redaction only runs after completion, chunks may reach the user before the final filter executes.
+
+8. **Assuming tenant filters prove RAG authorization.** A tenant filter is not enough if source documents and chunks have mixed, stale, or missing ACL metadata. Verify document-level and chunk-level access decisions, and record `NE-RAG-ACL` when either layer is not inspectable.
 
 ---
 
