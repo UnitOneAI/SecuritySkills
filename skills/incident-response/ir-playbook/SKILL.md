@@ -1,19 +1,20 @@
 ---
 name: ir-playbook
 description: >
-  Executes a structured incident response workflow based on NIST SP 800-61 Rev 2
-  and the SANS Incident Handler's Handbook. Auto-invoked when the user reports a
-  security incident, asks how to respond to a breach, or needs help with incident
-  classification, containment decisions, stakeholder notification, or evidence
-  preservation. Produces an incident response plan with severity determination,
-  containment decision tree, communication templates, and escalation criteria.
+  Executes a structured incident response workflow based on NIST SP 800-61 Rev 3,
+  NIST CSF 2.0 response outcomes, and the SANS Incident Handler's Handbook.
+  Auto-invoked when the user reports a security incident, asks how to respond to a
+  breach, or needs help with incident classification, containment decisions,
+  stakeholder notification, or evidence preservation. Produces an incident
+  response plan with severity determination, containment decision tree,
+  communication templates, decision log, and escalation criteria.
 tags: [incident-response, ir, playbook]
 role: [soc-analyst, security-engineer, vciso]
 phase: [respond, recover]
-frameworks: [NIST-SP-800-61r2, SANS-IH]
+frameworks: [NIST-SP-800-61r3, NIST-CSF-2.0, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,12 +23,12 @@ injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
 
-# Incident Response Playbook -- NIST SP 800-61 Rev 2 / SANS Incident Handler's Handbook
+# Incident Response Playbook -- NIST SP 800-61 Rev 3 / SANS Incident Handler's Handbook
 
-> **Frameworks:** NIST SP 800-61 Rev 2 (Computer Security Incident Handling Guide), SANS Incident Handler's Handbook
+> **Frameworks:** NIST SP 800-61 Rev 3 (Cybersecurity Incident Response Recommendations and Considerations), NIST CSF 2.0, SANS Incident Handler's Handbook
 > **Role:** SOC Analyst, Security Engineer, vCISO
 > **Time:** 30-60 min
-> **Output:** Incident response plan with severity classification, containment decision tree, communication templates, escalation criteria, and post-incident handoff checklist
+> **Output:** Incident response plan with severity classification, containment decision tree, communication templates, escalation criteria, decision log, and post-incident handoff checklist
 
 ---
 
@@ -60,17 +61,28 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Business context** -- What business functions do the affected systems support? Revenue impact, customer impact, regulatory exposure.
 - [ ] **Current state** -- Is the attack ongoing, contained, or resolved? What actions have already been taken?
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
+- [ ] **Incident command authority** -- Who is the incident commander, who can approve disruptive containment, and who is the backup approver?
+- [ ] **Communication channel status** -- Which collaboration, email, phone, bridge, or secure messaging channels are confirmed uncompromised for response coordination?
+- [ ] **Evidence ownership** -- Who owns chain-of-custody, volatile data capture, forensic images, log export, and evidence storage access?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
+- [ ] **Notification and materiality clocks** -- When did awareness/discovery begin, and who owns legal, privacy, cyber insurance, regulator, and materiality determinations?
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
+- [ ] **External coordination readiness** -- Pre-approved contacts for CISA, FBI IC3, sector ISAC, cloud provider support, and critical vendors.
 
 ---
 
 ## 3. Process
 
-This process follows the NIST SP 800-61 Rev 2 four-phase lifecycle, cross-referenced with the SANS six-step process where the models diverge.
+This process uses NIST SP 800-61 Rev 3 as the current primary reference for incident response recommendations, with the legacy NIST Rev 2 four-phase model and SANS six-step process retained for teams that still organize runbooks around those operational phases.
 
 ```
-NIST SP 800-61 Rev 2 Phases:
+Current NIST SP 800-61 Rev 3 Response Focus:
+  1. Prepare and govern the response capability
+  2. Detect, analyze, validate, and prioritize incidents
+  3. Coordinate containment, eradication, and recovery decisions
+  4. Communicate, document, preserve evidence, and improve after the incident
+
+Legacy NIST SP 800-61 Rev 2 Phases:
   1. Preparation
   2. Detection & Analysis
   3. Containment, Eradication & Recovery
@@ -85,10 +97,11 @@ SANS Incident Handler's Handbook Steps:
   6. Lessons Learned
 
 Mapping:
-  NIST Phase 1 = SANS Step 1
-  NIST Phase 2 = SANS Step 2
-  NIST Phase 3 = SANS Steps 3 + 4 + 5
-  NIST Phase 4 = SANS Step 6
+  NIST Rev 3 governance and communication recommendations apply across all phases
+  Legacy NIST Phase 1 = SANS Step 1
+  Legacy NIST Phase 2 = SANS Step 2
+  Legacy NIST Phase 3 = SANS Steps 3 + 4 + 5
+  Legacy NIST Phase 4 = SANS Step 6
 ```
 
 ### Phase 1: Preparation (NIST) / Preparation (SANS)
@@ -99,16 +112,49 @@ Verify that the foundational elements for incident response are in place. If gap
 
 | Element | Status | Notes |
 |---------|--------|-------|
-| Designated IR team with roles and contact info | [ ] | NIST 800-61 Section 2.4.1 |
+| Incident commander assigned with backup decision authority | [ ] | Required before disruptive containment |
+| Designated IR team with roles and contact info | [ ] | Include legal, privacy, communications, IT, and business owners |
 | Documented IR plan reviewed within last 12 months | [ ] | |
 | Communication channels (out-of-band, not dependent on compromised infrastructure) | [ ] | Secure messaging, bridge lines |
+| Communication channels tested and classified as trusted/untrusted | [ ] | Avoid attacker-monitored channels |
 | Forensic toolkit available (disk imaging, memory capture, network capture) | [ ] | |
 | Log sources centralized and accessible (SIEM, cloud trail, EDR console) | [ ] | |
 | Legal counsel identified and reachable | [ ] | Internal or external |
 | Cyber insurance policy and carrier contact | [ ] | Notification within 24-72h typical |
+| Notification clock owner assigned | [ ] | Legal/privacy/materiality deadlines start before root cause is complete |
 | External IR retainer (if applicable) | [ ] | |
 | Regulatory notification requirements documented | [ ] | GDPR, HIPAA, state laws, SEC |
-| Evidence storage with chain-of-custody procedures | [ ] | |
+| Evidence owner and chain-of-custody procedures assigned | [ ] | Evidence storage access and retention |
+
+#### Response Governance and Decision Log
+
+Establish governance before taking disruptive or irreversible response actions. If the organization cannot identify an approver, document the gap and escalate immediately.
+
+**Decision authority checklist:**
+
+- **Incident Commander:** Owns response coordination, priorities, handoffs, and update cadence.
+- **Disruptive Action Approver:** Approves shutdowns, network isolation, account lockouts, backup disconnects, and production-impacting changes.
+- **Evidence Owner:** Confirms chain-of-custody, volatile data priority, imaging requirements, and evidence storage.
+- **Legal/Privacy Owner:** Tracks breach notification, regulator, law enforcement, customer, contractual, and privilege considerations.
+- **Materiality Owner:** Coordinates executive and disclosure decisions for incidents that may affect investors, customers, or critical operations.
+- **Communications Owner:** Controls which internal and external channels are trusted, monitored, or prohibited.
+
+**Decision log format:**
+
+```
+Decision Record:
+- Timestamp (UTC):
+- Decision:
+- Options Considered:
+- Business Impact:
+- Security Impact:
+- Evidence Impact:
+- Legal/Regulatory Impact:
+- Approved By:
+- Review Time:
+```
+
+Record every high-impact containment, eradication, public communication, law enforcement, insurer, customer, and regulator decision in this format.
 
 ### Phase 2: Detection and Analysis (NIST) / Identification (SANS)
 
@@ -237,7 +283,7 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 **Immediate actions (first 30 minutes):**
 
 1. **Isolate aggressively** -- Disconnect affected segments at switch/firewall level. Wipers propagate via SMB, WMI, or GPO. Do not wait for forensic imaging.
-2. **Preemptively shut down unaffected systems** if propagation vector is unknown. A wiper that has not triggered is stopped by cold shutdown.
+2. **Preemptively isolate or shut down at-risk systems only with incident-command approval** when the propagation vector is unknown. Log the business impact, evidence tradeoff, and approving authority before broad shutdowns unless delay would cause irreversible data destruction.
 3. **Verify backup integrity** -- Wipers target Volume Shadow Copies, backup agents, and NAS/SAN. Confirm offline/immutable backups exist before recovery planning.
 4. **Preserve one affected system** (powered off, disk intact) for forensics and attribution.
 
@@ -250,7 +296,7 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 | **Containment urgency** | High | Critical -- every second is permanent data loss |
 | **Attribution** | Lower priority (criminal) | Higher priority (often nation-state; FBI/CISA/ISAC engagement) |
 
-**Nation-state context:** State-sponsored actors (Iranian, Russian, North Korean) increasingly deploy wipers against healthcare and defense supply chains. The 2026 Stryker medtech wiper attack demonstrates ePHI custodians are active targets. IR teams must account for pre-positioned backdoors beyond the wiper payload, potential prior data exfiltration, and the need for FBI/CISA/H-ISAC notification.
+**Nation-state context:** State-sponsored actors and destructive criminal crews may deploy wipers against healthcare, defense, energy, government, and critical infrastructure targets. IR teams must account for pre-positioned backdoors beyond the wiper payload, potential prior data exfiltration, and the need for FBI/CISA/sector-ISAC notification. Do not base escalation or attribution on unverified public claims; preserve evidence and coordinate with legal counsel before external attribution statements.
 
 #### Step 3.2: Eradication
 
@@ -293,6 +339,8 @@ Data Impact: [Type and estimated volume of data affected, if applicable]
 Current Actions: [What the IR team is doing now]
 Next Update: [Scheduled time for next update]
 Incident Commander: [Name and contact]
+Trusted Response Channel: [Out-of-band channel and bridge/contact method]
+Decision Authority: [Name and contact]
 ```
 
 **Legal/Regulatory Notification:**
@@ -305,6 +353,8 @@ Data Types Involved: [PII | PHI | Financial | Credentials | None confirmed]
 Estimated Records Affected: [Number or "under investigation"]
 Jurisdictions: [States/countries where affected individuals reside]
 Applicable Regulations: [GDPR | HIPAA | State breach laws | SEC | PCI DSS]
+Awareness/Discovery Time: [Timestamp that may start notification clocks]
+Materiality Owner: [Name and role]
 Notification Deadlines:
   - GDPR: 72 hours from awareness (Article 33)
   - HIPAA: 60 days from discovery (45 CFR 164.408)
@@ -367,9 +417,13 @@ Produce the incident response report with these exact sections:
 ```markdown
 ## Incident Response Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** ir-playbook v1.0.0
-**Frameworks:** NIST SP 800-61 Rev 2, SANS Incident Handler's Handbook
+**Skill:** ir-playbook v1.0.2
+**Frameworks:** NIST SP 800-61 Rev 3, NIST CSF 2.0, SANS Incident Handler's Handbook
 **Incident Commander:** [Name or "Unassigned -- assign immediately"]
+**Decision Authority:** [Name or "Unassigned -- assign immediately"]
+**Trusted Response Channel:** [Channel or "Unconfirmed -- do not use production collaboration tools for SEV-1/SEV-2"]
+**Evidence Owner:** [Name or "Unassigned -- assign immediately"]
+**Legal/Privacy Owner:** [Name or "Unassigned -- assign immediately"]
 
 ### Executive Summary
 [3-5 sentences. State the incident type, severity, current status, business impact,
@@ -385,6 +439,8 @@ and recommended immediate actions. Lead with the most critical fact.]
 | Information Impact | [None / Privacy Breach / Proprietary Breach / Integrity Loss] |
 | Recoverability | [Regular / Supplemented / Extended / Not Recoverable] |
 | Status | [Detected / Analyzing / Contained / Eradicated / Recovered / Closed] |
+| Awareness/Discovery Time | [Timestamp that may start notification clocks] |
+| Materiality Review Required | [Yes / No / Unknown] |
 
 ### Timeline
 | Timestamp (UTC) | Event | Source |
@@ -412,6 +468,11 @@ and recommended immediate actions. Lead with the most critical fact.]
 |---|---|---|---|
 | [Executive / Legal / Regulator / Customer / Insurance] | [Yes / No / Pending] | [timestamp] | [Email / Phone / Portal] |
 
+### Decision Log
+| Timestamp (UTC) | Decision | Options Considered | Evidence Impact | Approved By | Review Time |
+|---|---|---|---|---|---|
+| [YYYY-MM-DD HH:MM] | [Action/communication/escalation decision] | [Alternatives] | [Preserved/Reduced/Unknown] | [Name/role] | [timestamp] |
+
 ### Escalation Decisions
 [Document any escalation triggers hit and actions taken]
 
@@ -428,9 +489,17 @@ and recommended immediate actions. Lead with the most critical fact.]
 
 ## 6. Framework Reference
 
-### NIST SP 800-61 Rev 2 -- Computer Security Incident Handling Guide
+### NIST SP 800-61 Rev 3 -- Cybersecurity Incident Response Recommendations and Considerations
+
+NIST SP 800-61 Rev 3 (April 2025) supersedes Rev 2 and updates federal incident response guidance around preparation, coordination, communication, evidence handling, external parties, and continuous improvement. Use Rev 3 as the primary source for current incident response recommendations. If a legacy runbook still uses the Rev 2 four-phase lifecycle, keep the phase labels as operational scaffolding while applying Rev 3 governance and communication expectations across every phase.
+
+### Legacy NIST SP 800-61 Rev 2 -- Computer Security Incident Handling Guide
 
 NIST SP 800-61 Rev 2 (August 2012) defines a four-phase IR lifecycle: (1) Preparation, (2) Detection and Analysis, (3) Containment/Eradication/Recovery (iterative), and (4) Post-Incident Activity. Key principles: response is iterative, documentation is continuous from detection through closure, and coordination with external parties (law enforcement, CERT, sector ISACs) follows pre-established protocols.
+
+### NIST CSF 2.0 -- Respond and Recover Outcomes
+
+Map incident work to CSF 2.0 Respond and Recover outcomes so post-incident improvements can be tracked beyond the immediate IR team. Use this mapping to connect containment, communication, analysis, mitigation, recovery, and improvement actions to enterprise risk governance.
 
 ### SANS Incident Handler's Handbook
 
@@ -468,6 +537,18 @@ Reconnecting systems to the network before thoroughly removing all persistence m
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
 
+### Pitfall 6: Treating Rev 2 as the Current Primary Standard
+
+Legacy playbooks often cite NIST SP 800-61 Rev 2 as if it is still the current federal incident response guide. This can miss newer governance, coordination, communication, and evidence-handling expectations from Rev 3. If an organization still uses Rev 2 phase labels, explicitly mark them as legacy operational scaffolding and apply Rev 3 recommendations across the response.
+
+### Pitfall 7: Using Compromised Collaboration Channels
+
+Attackers with identity, email, or endpoint access may be able to read the same chat, email, ticket, and conference systems used by the response team. Do not assume normal collaboration tools are safe during SEV-1/SEV-2 incidents. Classify response channels as trusted, untrusted, or unknown, and move sensitive coordination to approved out-of-band channels until access is assessed.
+
+### Pitfall 8: Making Attribution Decisions from Unverified Public Claims
+
+Public reporting, social media, leak sites, and threat actor claims can be wrong, misleading, or intentionally manipulative. Use them as leads, not conclusions. Attribution, law enforcement, customer communications, and insurer notifications should be based on preserved evidence, verified telemetry, legal review, and trusted government or sector coordination channels.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -484,16 +565,17 @@ This skill processes incident data that may include attacker-controlled content 
 
 ## 9. References
 
-1. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
-2. **SANS Incident Handler's Handbook** -- https://www.sans.org/white-papers/33901/
-3. **MITRE ATT&CK Enterprise Matrix** -- https://attack.mitre.org/matrices/enterprise/
-4. **CISA Incident Reporting** -- https://www.cisa.gov/report
-5. **NIST Cybersecurity Framework (CSF) -- Respond Function** -- https://www.nist.gov/cyberframework
-6. **GDPR Article 33** -- Notification of a personal data breach to the supervisory authority -- https://gdpr-info.eu/art-33-gdpr/
-7. **HIPAA Breach Notification Rule** -- 45 CFR 164.400-414 -- https://www.hhs.gov/hipaa/for-professionals/breach-notification/
-8. **SEC Cybersecurity Incident Disclosure (Item 1.05 Form 8-K)** -- https://www.sec.gov/rules/final/2023/33-11216.pdf
-9. **FBI Internet Crime Complaint Center (IC3)** -- https://www.ic3.gov/
-10. **FIRST CSIRT Framework** -- https://www.first.org/education/csirt
-11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
-12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
-13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+1. **NIST SP 800-61 Rev 3** -- Cybersecurity Incident Response Recommendations and Considerations -- https://csrc.nist.gov/pubs/sp/800/61/r3/final
+2. **NIST SP 800-61 Rev 2** -- Legacy Computer Security Incident Handling Guide -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+3. **SANS Incident Handler's Handbook** -- https://www.sans.org/white-papers/33901/
+4. **MITRE ATT&CK Enterprise Matrix** -- https://attack.mitre.org/matrices/enterprise/
+5. **CISA Incident Reporting** -- https://www.cisa.gov/report
+6. **NIST Cybersecurity Framework (CSF) 2.0** -- https://www.nist.gov/cyberframework
+7. **GDPR Article 33** -- Notification of a personal data breach to the supervisory authority -- https://gdpr-info.eu/art-33-gdpr/
+8. **HIPAA Breach Notification Rule** -- 45 CFR 164.400-414 -- https://www.hhs.gov/hipaa/for-professionals/breach-notification/
+9. **SEC Cybersecurity Incident Disclosure (Item 1.05 Form 8-K)** -- https://www.sec.gov/rules/final/2023/33-11216.pdf
+10. **FBI Internet Crime Complaint Center (IC3)** -- https://www.ic3.gov/
+11. **FIRST CSIRT Framework** -- https://www.first.org/education/csirt
+12. **CISA #StopRansomware Guide** -- https://www.cisa.gov/stopransomware/ransomware-guide
+13. **CISA Handling Destructive Malware** -- https://www.cisa.gov/news-events/news/handling-destructive-malware
+14. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
