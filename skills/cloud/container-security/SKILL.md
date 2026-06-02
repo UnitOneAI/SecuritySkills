@@ -6,7 +6,7 @@ description: >
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
   hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
+  management, namespace-level Pod Security Admission, and image provenance evidence. Produces a prioritized findings report with remediation guidance.
 tags: [cloud, containers, kubernetes, docker]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
@@ -109,7 +109,7 @@ Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kusto
 
 ### Step 2 through Step 6: CIS Benchmark and NIST SP 800-190 Evaluation
 
-Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
+Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, Pod Security Admission namespace labels, RBAC, Network Policies, Secrets Management, Control Plane configuration, Image Provenance, and Container Runtime Hardening. Treat PodSecurityPolicy manifests as legacy compatibility evidence: Kubernetes removed PodSecurityPolicy in v1.25, so modern enforcement should come from Pod Security Admission labels or policy engines such as Kyverno/Gatekeeper.
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
@@ -157,7 +157,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Domain | Framework | Critical | High | Medium | Low | Pass |
 |--------|-----------|----------|------|--------|-----|------|
 | Dockerfile Security | CIS Docker 4.x | X | X | X | X | X |
-| Pod Security | CIS K8s 5.2.x | X | X | X | X | X |
+| Pod Security | CIS K8s 5.2.x | X | X | X | X | X |`n| Namespace / PSA Enforcement | CIS K8s 5.2.1 | X | X | X | X | X |
 | RBAC | CIS K8s 5.1.x | X | X | X | X | X |
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
@@ -169,7 +169,7 @@ Produce the final report using the structure defined in the Output Format sectio
 #### [CIS-DOCKER 4.X / CIS-K8S 5.X.X / NIST-190-CMX] <Finding Title>
 - **Status:** Fail
 - **Severity:** Critical / High / Medium / Low
-- **Pod Security Standard Impact:** Violates Restricted / Violates Baseline / Compliant
+- **Pod Security Standard Impact:** Violates Restricted / Violates Baseline / Compliant`n- **Namespace / PSA Labels:** enforce=<level>, audit=<level>, warn=<level>, version=<if set>
 - **File:** <path>
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
@@ -232,11 +232,11 @@ Produce the final report using the structure defined in the Output Format sectio
 | Container Risks | Runtime privilege escalation, unbounded resources, writable filesystems | Non-root, capabilities, resource limits, read-only FS |
 | Host OS Risks | Shared kernel, large attack surface, unpatched hosts | Minimal host OS, regular patching, immutable infrastructure |
 
-### Pod Security Standards Quick Reference
+### Modern Kubernetes Policy Notes`n`n- PodSecurityPolicy (`policy/v1beta1`) was removed in Kubernetes v1.25. Flag PSP-only enforcement as legacy on modern clusters unless the target explicitly runs an older supported version.`n- Review Namespace objects for `pod-security.kubernetes.io/enforce`, `audit`, and `warn` labels. Report the three modes separately because `audit`/`warn` do not block workload creation.`n- Treat `enforce: privileged` as Critical/High for application namespaces, but as context-dependent for trusted system namespaces such as CNI/storage operators when justified and paired with stricter audit/warn labels.`n`n### Image Provenance and Build Secret Checks`n`n| Control | Preferred Evidence | Finding Guidance |`n|---------|--------------------|------------------|`n| Image references | `image@sha256:<digest>` or tag plus digest | `latest` or implicit latest is High; specific mutable tags are Medium unless backed by digest/signature policy |`n| Signing | Cosign/Sigstore policy, admission controller, or registry attestation | Missing signing is Medium by default, High for regulated or internet-facing production workloads |`n| SBOM/provenance | SPDX/CycloneDX SBOM, SLSA provenance, or registry attestations | Missing evidence is Medium; stale or unverifiable attestations should be called out separately |`n| Build secrets | BuildKit `RUN --mount=type=secret` or external secret injection | `ARG`/`ENV` secrets and copied credential files remain High/Critical depending on exposure |`n`n### Pod Security Standards Quick Reference
 
 | Control | Baseline | Restricted |
 |---------|----------|------------|
-| Privileged | Must be false | Must be false |
+| Namespace PSA labels | `enforce: baseline` or stronger for app namespaces | `enforce: restricted`, with `audit`/`warn` also set to restricted |`n| Privileged | Must be false | Must be false |
 | hostPID/hostIPC | Must be false | Must be false |
 | hostNetwork | Must be false | Must be false |
 | hostPorts | Limited range or none | None |
@@ -256,7 +256,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Base64 encoding is not encryption.** Kubernetes Secrets store data as base64, which is trivially decodable. Secrets committed to version control in manifests are effectively plaintext.
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
-7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.`n8. **PodSecurityPolicy may be dead configuration.** On Kubernetes v1.25+, PSP resources are removed; do not count PSP YAML as active enforcement unless the target cluster version still supports it.`n9. **Audit and warn PSA labels do not enforce.** A namespace with only `pod-security.kubernetes.io/audit` or `warn` can still admit violating pods. Report enforce/audit/warn separately.`n10. **Digest pinning is stronger than tag pinning.** A versioned tag is better than `latest`, but tags are mutable. Prefer digest-pinned images plus signature/SBOM/provenance evidence for production workloads.
 
 ---
 
@@ -293,4 +293,4 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
+- **1.0.1** -- Added modern Kubernetes policy notes for legacy PodSecurityPolicy, namespace-level Pod Security Admission labels, image digest/signature/SBOM/provenance checks, and BuildKit secret guidance.`n- **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
