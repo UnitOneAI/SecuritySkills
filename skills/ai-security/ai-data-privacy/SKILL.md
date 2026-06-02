@@ -76,9 +76,14 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Data processing agreements (DPAs) | Legal/compliance documentation | Establishes legal basis for data processing |
 | Privacy policy | Public-facing policy documents | Defines commitments to users about data handling |
 | Data retention policies | Internal governance docs, code configs | Determines how long AI-processed data persists |
+| LLM endpoint and feature inventory | Code, SDK calls, provider admin console, architecture docs | Separates stateless calls from files, threads, vector stores, prompt caches, evals, batch jobs, and fine-tuning |
+| Provider retention and training controls | Provider docs, admin exports, project settings, API flags | Distinguishes "not used for training" from retention, abuse monitoring, and application state |
+| Provider evidence package | DPA/BAA/SCC, data residency terms, admin screenshots, runtime config | Establishes the confidence level for vendor privacy claims |
+| Subprocessor and tool chain inventory | MCP/plugin configs, API proxy configs, external tool manifests | Identifies additional processors that may receive prompts, completions, files, or retrieved context |
 | Logging configuration | Application code, infrastructure configs | Reveals what prompt/completion data is captured |
 | Training/fine-tuning data documentation | Data pipeline docs, dataset cards | Identifies personal data in training corpus |
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
+| DSAR/deletion propagation evidence | Deletion workflows, vector-store cleanup jobs, backup policy, audit logs | Shows whether erasure requests reach AI-specific stores and downstream processors |
 | Data classification scheme | Governance documentation | Defines sensitivity levels applied to AI data flows |
 | Regulatory requirements | Compliance documentation, legal counsel input | Identifies applicable data protection obligations |
 
@@ -184,11 +189,17 @@ Grep: "metadata_filter|access_control|permission|authorization|tenant" in **/*.{
 
 Assess whether AI-specific data stores have appropriate retention policies, deletion mechanisms, and lifecycle management.
 
+Do not treat a provider statement such as "customer data is not used to train foundation models" as proof of zero retention. Training use, abuse-monitoring retention, application state, project-level storage settings, data residency, and feature-specific stores are separate questions. Review each provider endpoint and AI data store independently before clearing privacy risk.
+
 **What to look for in code and configuration:**
 
 - Conversation logs (prompt/completion pairs) stored without defined retention periods or TTLs.
 - Vector stores (embeddings databases) that accumulate data indefinitely without purging or lifecycle policies.
 - Fine-tuning datasets retained after training completion without justification or retention policy.
+- Prompt caches, stored completions, hosted threads, file uploads, vector stores, evals, batch jobs, and fine-tuning files that have retention behavior different from ordinary completion calls.
+- API flags or project settings such as storage, logging, training opt-in/out, zero-data-retention eligibility, data residency, or abuse-monitoring controls that are assumed but not evidenced.
+- Provider contracts, DPAs, BAAs, SCCs, admin-console exports, or runtime config that contradict public provider documentation.
+- Third-party tools, MCP servers, plugins, API proxies, web search/fetch tools, or observability pipelines that receive AI payloads but are missing from the processor/subprocessor inventory.
 - Model checkpoints and intermediate training artifacts persisted without cleanup automation.
 - User session data (conversation history, context) persisted beyond the session without user consent or retention policy.
 - Backup systems that retain AI data beyond the primary store's retention period, undermining deletion compliance.
@@ -210,10 +221,57 @@ Grep: "ttl|retention|expire" in **/*embed*.{py,yaml,yml}
 # Check for conversation/prompt logging
 Grep: "log_prompt|log_completion|log_conversation|log_message|prompt_log|chat_log" in **/*.{py,ts,js,yaml,yml}
 
+# Check provider feature flags and stateful AI stores
+Grep: "store|stored|zero.data|data_retention|retention|training|opt.out|opt_in|cache|prompt_cache" in **/*.{py,ts,js,yaml,yml,json,toml,env}
+Grep: "thread|assistant|file|vector_store|embedding|batch|eval|fine.tun|tool_call|mcp|plugin|proxy" in **/*.{py,ts,js,yaml,yml,json,toml}
+
 # Check backup configurations
 Glob: **/backup*.{py,sh,yaml,yml}
 Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 ```
+
+**Provider and AI data-store evidence matrix:**
+
+Complete one row for each provider, endpoint, hosted feature, internal AI store, tool, and proxy that can receive prompts, completions, files, embeddings, retrieved context, logs, feedback, or evaluation data.
+
+| Field | Evidence Required |
+|---|---|
+| Component / data flow | The concrete code path or architecture path where AI data is sent, stored, logged, retrieved, or deleted |
+| Processor or subprocessor | Provider, cloud service, API proxy, MCP server, plugin, observability vendor, or internal owner |
+| Endpoint / feature | Chat/completions, responses, embeddings, files, vector stores, hosted tools, prompt cache, batch, evals, fine-tuning, logging, feedback |
+| Data classes | Prompts, completions, embeddings, source documents, metadata, files, tool inputs/outputs, traces, eval sets, fine-tuning records |
+| Training-use evidence | Contract term, provider policy, admin setting, project setting, or API flag showing whether data can train provider models |
+| Retention evidence | Feature-specific retention period, abuse-monitoring retention, application-state retention, backup retention, and purge trigger |
+| Runtime/config evidence | Code, config, API request fields, environment variables, admin export, or deployment settings proving the expected controls are active |
+| Region and residency | Processing region, storage region, cross-border transfer mechanism, and whether regional routing is contractual or best-effort |
+| Deletion / DSR path | How deletion propagates to prompts, completions, embeddings, files, vector metadata, traces, evals, fine-tuning data, backups, and subprocessors |
+| Evidence confidence | Confidence level from the table below; docs-only evidence is not enough to clear high-risk or regulated data flows |
+| Gaps / Not Evaluable code | Explicit code from the Not Evaluable table when evidence is missing |
+
+**Evidence confidence levels:**
+
+| Level | Evidence Type | Use in Findings |
+|---|---|---|
+| C1 | Signed DPA/BAA/SCC, order form, or contract addendum that names retention, training use, region, and subprocessors | Strong evidence if the deployed feature matches the contract |
+| C2 | Provider admin export, organization/project setting, or compliance attestation tied to the reviewed environment | Strong evidence for active settings; still verify runtime code paths |
+| C3 | Runtime API request, SDK config, environment variable, infrastructure policy, or deletion job evidence | Strong evidence for implementation; still verify provider terms |
+| C4 | Current provider documentation for the exact endpoint or feature | Supporting evidence only; do not use alone to clear sensitive data flows |
+| C5 | Internal design doc, runbook, ticket, or verbal owner statement | Weak evidence; requires corroboration before clearing risk |
+| C6 | Unknown, missing, stale, or contradictory evidence | Not evaluable or finding depending on data sensitivity and exposure |
+
+**Not Evaluable reason codes:**
+
+| Code | Use When |
+|---|---|
+| NE-PROVIDER-CONTRACT | DPA/BAA/SCC, privacy terms, or subprocessor terms are unavailable for a third-party provider |
+| NE-ENDPOINT-RETENTION | Retention is documented at provider level but not for the exact endpoint or hosted feature in use |
+| NE-ADMIN-SETTING | Organization/project training, storage, region, or zero-retention settings are claimed but no admin export or equivalent evidence is available |
+| NE-RUNTIME-FLAGS | Code/config evidence for `store`, logging, cache, file, vector, batch, eval, or fine-tuning behavior is unavailable |
+| NE-AI-STORE-INVENTORY | Prompts, completions, embeddings, files, traces, evals, fine-tuning data, or vector metadata are not inventoried by store |
+| NE-DSR-PROPAGATION | Deletion or DSAR propagation is not proven across AI stores, backups, and subprocessors |
+| NE-SUBPROCESSOR | MCP servers, plugins, web fetch/search, API proxies, observability tools, or hosted tools are not listed as processors/subprocessors |
+| NE-REGION | Processing/storage region, data residency, or cross-border transfer basis is not evidenced |
+| NE-REGULATED-FEATURE | HIPAA, financial, child, biometric, or high-risk AI workload eligibility is claimed but not evidenced for the specific feature |
 
 **AI-specific retention considerations:**
 
@@ -225,6 +283,8 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 | Model checkpoints | Encode training data in weights; large storage footprint | Retain only production and rollback versions; delete intermediate checkpoints |
 | RAG source documents | Original documents with full content including PII | Align retention with document source system; propagate deletions to vector store |
 | Evaluation/test datasets | May contain real user data used for testing | Anonymize or use synthetic data; apply same retention as production data |
+| Prompt caches / stored completions / hosted threads | Can create provider-side or application state separate from ordinary inference retention | Verify feature-specific retention and deletion support before enabling for personal data |
+| Tool calls, MCP servers, plugins, and API proxies | May send prompts, retrieved documents, or tool outputs to additional subprocessors | Inventory each recipient and require provider terms, retention, region, and deletion evidence |
 
 **What constitutes a finding:**
 
@@ -233,6 +293,11 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 | No retention policy defined for conversation logs containing PII | High |
 | Vector store accumulates data indefinitely with no lifecycle management | High |
 | Deletion requests cannot be propagated to vector stores (embeddings persist after source deletion) | High |
+| Training opt-out is used as the only evidence for retention, abuse monitoring, or application-state deletion | High |
+| Stateful AI features are enabled without feature-specific retention and deletion evidence | High |
+| Third-party tool, MCP, plugin, API proxy, or observability subprocessor receives AI payloads without documented retention/training terms | High |
+| Regulated data is sent to a provider feature whose HIPAA, data residency, or high-risk workload eligibility is not evidenced | High |
+| Provider privacy review relies only on generic public docs despite sensitive data or contradictory runtime settings | Medium |
 | Fine-tuning datasets with PII retained without justification or retention period | Medium |
 | Backup systems retain AI data beyond primary retention period | Medium |
 | No automated purge mechanism for expired AI data | Medium |
@@ -402,11 +467,18 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 - Applicable regulations: [GDPR, CCPA/CPRA, HIPAA, EU AI Act, etc.]
 - Data sensitivity: [classification of data processed by AI components]
 - Overall privacy risk: [Critical / High / Medium / Low]
+- Evidence status: [Complete / Partial / Not Evaluable with reason codes]
 - Total findings: [count by severity]
 
 ## Data Flow Map
 [Description or reference to diagram showing personal data flows through AI components:
 user input -> prompt assembly -> LLM API -> completion -> output -> logging/storage]
+
+## Provider and AI Data-Store Evidence Matrix
+
+| Component | Processor/Subprocessor | Endpoint/Feature | Data Classes | Training-Use Evidence | Retention Evidence | Runtime/Config Evidence | Region/Residency | Deletion/DSR Path | Confidence | Gaps/NE Codes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [component] | [provider/tool/store] | [feature] | [prompts/completions/files/etc.] | [C1-C6 evidence] | [feature-specific retention] | [code/config/admin export] | [region/transfer basis] | [propagation path] | [C1-C6] | [NE-* or none] |
 
 ## Findings
 
@@ -417,8 +489,15 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
 - **Regulatory Reference:** [GDPR Article X | CCPA Section X | EU AI Act Article X | HIPAA X]
 - **Location:** [file path, configuration, or architectural component]
+- **Processor/Subprocessor:** [provider, API proxy, MCP server, plugin, observability vendor, internal service]
+- **Endpoint/Feature:** [chat/completions, responses, embeddings, files, vector stores, hosted tools, prompt cache, batch, evals, fine-tuning, logging]
+- **Evidence Confidence:** [C1-C6]
+- **Not Evaluable Reason:** [NE-* code, if applicable]
 - **Description:** [What the privacy risk is and why it matters]
 - **Evidence:** [Code pattern, configuration, or architectural observation]
+- **Training-Use Evidence:** [provider docs, contract, admin setting, API flag, or gap]
+- **Retention Evidence:** [feature-specific retention period, abuse-monitoring retention, application-state retention, backup retention, or gap]
+- **Deletion/DSR Path:** [how erasure propagates to AI stores, backups, and subprocessors]
 - **Impact:** [What personal data is at risk and for how many data subjects]
 - **Recommendation:** [Specific remediation with regulatory alignment]
 - **Priority:** [P0 / P1 / P2 / P3]
@@ -430,6 +509,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
+| Provider and AI data-store evidence | [Yes/Partial/No/Not Evaluable] | [missing evidence codes and impacted features] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
@@ -464,13 +544,21 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 1. **Treating the LLM API as a black box for privacy.** When user data is sent to a third-party LLM API, it crosses a trust boundary. The provider's data handling terms, retention policies, and training data practices directly impact your privacy obligations. Review the provider's DPA, data usage policy, and API configuration options (e.g., OpenAI's zero-data-retention option for eligible endpoints, Azure OpenAI's data processing commitments). Failure to configure these options means user data may be retained by the provider and potentially used for model training.
 
-2. **Assuming embeddings are anonymous.** Vector embeddings are not anonymized representations. Research has demonstrated partial inversion of text embeddings to recover source text. Treat embeddings as personal data if the source text contains personal data. Apply the same access controls, retention policies, and deletion mechanisms to embeddings as to the source documents.
+2. **Equating "not used for training" with zero retention.** Training-use controls do not automatically cover abuse-monitoring logs, hosted files, vector stores, prompt caches, stored completions, traces, eval datasets, fine-tuning data, backups, or application state. Require endpoint-level evidence before clearing a retention risk.
 
-3. **Implementing PII redaction only on inputs, not outputs.** Model completions can contain PII from three sources: (a) PII in the current prompt context that the model echoes or reformulates, (b) PII from retrieved RAG documents that bleeds into responses to unrelated queries, and (c) PII memorized from training data that the model reproduces. Output-side PII scanning is required to address all three vectors.
+3. **Reviewing a provider brand instead of the deployed feature.** A provider may have different terms and retention behavior for chat, responses, embeddings, files, vector stores, prompt caching, hosted tools, batch jobs, evals, and fine-tuning. Record the exact endpoint or feature in the evidence matrix.
 
-4. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
+4. **Trusting docs-only evidence for sensitive flows.** Public provider documentation can be useful, but it is weaker than a signed DPA/BAA, admin export, project setting, or runtime API evidence tied to the reviewed environment. Sensitive and regulated data flows need stronger evidence before they can be cleared.
 
-5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
+5. **Assuming embeddings are anonymous.** Vector embeddings are not anonymized representations. Research has demonstrated partial inversion of text embeddings to recover source text. Treat embeddings as personal data if the source text contains personal data. Apply the same access controls, retention policies, and deletion mechanisms to embeddings as to the source documents.
+
+6. **Implementing PII redaction only on inputs, not outputs.** Model completions can contain PII from three sources: (a) PII in the current prompt context that the model echoes or reformulates, (b) PII from retrieved RAG documents that bleeds into responses to unrelated queries, and (c) PII memorized from training data that the model reproduces. Output-side PII scanning is required to address all three vectors.
+
+7. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
+
+8. **Skipping subprocessors introduced by tools and proxies.** MCP servers, plugins, hosted tools, web search/fetch, API gateways, tracing vendors, and evaluation platforms can all receive prompts or retrieved context. Treat each recipient as a processor/subprocessor with its own retention, training-use, region, and deletion evidence.
+
+9. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
 ---
 
@@ -481,6 +569,9 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - EU AI Act, Regulation (EU) 2024/1689 -- https://eur-lex.europa.eu/eli/reg/2024/1689
 - GDPR, Regulation (EU) 2016/679 -- https://eur-lex.europa.eu/eli/reg/2016/679
 - CCPA/CPRA, California Civil Code Sec. 1798.100-199 -- https://leginfo.legislature.ca.gov/
+- OpenAI API data controls -- https://developers.openai.com/api/docs/guides/your-data
+- Anthropic API and data retention -- https://platform.claude.com/docs/en/manage-claude/api-and-data-retention
+- Microsoft Foundry/Azure data privacy and security -- https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy
 - Carlini, N. et al. (2021). "Extracting Training Data from Large Language Models." USENIX Security Symposium. arXiv:2012.07805
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
 - Ippolito, D. et al. (2023). "Preventing Verbatim Memorization in Language Models Gives a False Sense of Privacy." arXiv:2210.17546
