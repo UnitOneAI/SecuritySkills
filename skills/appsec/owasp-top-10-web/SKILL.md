@@ -1,7 +1,9 @@
 ---
 name: owasp-top-10-web
 description: >
-  Reviews web applications against the OWASP Top 10:2021 vulnerability categories.
+  Reviews web applications against the current OWASP Top 10 web application
+  vulnerability categories, defaulting to OWASP Top 10:2025 with legacy
+  OWASP Top 10:2021 mapping when required.
   Auto-invoked when reviewing web application code, server configurations, or
   when a user asks for a general security review of a web application. Produces
   structured findings mapped to A01-A10 with CWE references, severity ratings,
@@ -9,10 +11,10 @@ description: >
 tags: [appsec, web, owasp]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
-frameworks: [OWASP-Top-10-2021]
+frameworks: [OWASP-Top-10-2025, OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -20,7 +22,7 @@ injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
 
-# OWASP Top 10:2021 — Web Application Security Review
+# OWASP Top 10 Web Application Security Review
 
 ## When to Use
 
@@ -38,9 +40,36 @@ Do **not** use this skill for mobile-only, IoT firmware, or non-web API reviews 
 
 ## Context
 
-The OWASP Top 10:2021 is the authoritative awareness document for web application security. It represents broad consensus on the most critical security risks to web applications, derived from CWE data mapped across hundreds of organizations. Each category aggregates multiple CWEs under a unifying risk theme.
+The OWASP Top 10 is the authoritative awareness document for web application security. The current released taxonomy is OWASP Top 10:2025; use it by default unless the user, client, or audit artifact explicitly requires OWASP Top 10:2021. Each category aggregates multiple CWEs under a unifying risk theme.
 
 This skill operationalizes all ten categories into a repeatable, structured review process suitable for AI-assisted code analysis. Findings are mapped to specific CWEs, rated by severity, and paired with actionable remediation steps.
+
+## Taxonomy Version Mode
+
+Record the taxonomy mode before reporting findings:
+
+| Mode | Use When | Required Output |
+|------|----------|-----------------|
+| **Current** | No explicit legacy requirement exists | Use OWASP Top 10:2025 as the primary category and record source/date checked. |
+| **Legacy 2021** | Contract, policy, or user request explicitly requires 2021 | Use A01:2021-A10:2021 and record why legacy mode was selected. |
+| **Dual Mapping** | Report readers need both current and legacy labels | Use 2025 as primary and include the closest 2021 mapping plus rationale. |
+
+### OWASP Top 10:2025 to 2021 Mapping
+
+| 2025 ID | 2025 Category | Closest 2021 Mapping | Notes |
+|---------|---------------|----------------------|-------|
+| A01:2025 | Broken Access Control | A01:2021 plus A10:2021 SSRF where applicable | SSRF is rolled into Broken Access Control in 2025. |
+| A02:2025 | Security Misconfiguration | A05:2021 | Misconfiguration moved up in priority. |
+| A03:2025 | Software Supply Chain Failures | A06:2021 and A08:2021 | Expanded beyond vulnerable components into build and distribution infrastructure. |
+| A04:2025 | Cryptographic Failures | A02:2021 | Category retained with different ordering. |
+| A05:2025 | Injection | A03:2021 | Category retained with different ordering. |
+| A06:2025 | Insecure Design | A04:2021 | Category retained with different ordering. |
+| A07:2025 | Authentication Failures | A07:2021 | Name shortened from Identification and Authentication Failures. |
+| A08:2025 | Software or Data Integrity Failures | A08:2021 | Category retained with clarified name. |
+| A09:2025 | Security Logging and Alerting Failures | A09:2021 | Name updated to emphasize alerting. |
+| A10:2025 | Mishandling of Exceptional Conditions | No direct 2021 equivalent | New category covering abnormal-condition and error-handling failures. |
+
+When a finding can fit multiple categories, choose the primary category by root cause and explain the mapping rationale.
 
 ## Process
 
@@ -50,6 +79,7 @@ This skill operationalizes all ten categories into a repeatable, structured revi
 2. Identify the technology stack: language, framework, template engine, ORM, authentication library, and deployment target.
 3. Catalog entry points: routes, controllers, API endpoints, middleware chains, and static asset serving.
 4. Note dependency manifests (`package.json`, `requirements.txt`, `pom.xml`, `Gemfile.lock`, `go.sum`, etc.) for component analysis.
+5. Record OWASP taxonomy mode, source URL, date checked, primary category version, legacy category version if needed, and mapping rationale.
 
 ### Step 2 — Category-by-Category Analysis
 
@@ -625,12 +655,16 @@ Present findings in this structure:
 **Stack:** [language / framework / notable libraries]
 **Review Date:** [date]
 **Scope:** [files/modules reviewed]
+**OWASP Taxonomy Mode:** [Current 2025 / Legacy 2021 / Dual Mapping]
+**Taxonomy Source:** [URL and date checked]
 
 ### Findings
 
 #### [SEVERITY] — [Short Title]
 
-- **OWASP Category:** [A0X:2021 — Category Name]
+- **Primary OWASP Category:** [A0X:2025 - Category Name]
+- **Legacy OWASP Category:** [A0X:2021 - Category Name, if needed]
+- **Mapping Rationale:** [why this category is primary]
 - **CWE:** [CWE-XXX — CWE Name]
 - **Location:** [file:line or file:function]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
@@ -642,11 +676,11 @@ Present findings in this structure:
 
 ### Summary Table
 
-| # | Severity | OWASP Category | CWE | Location | Title |
-|---|----------|---------------|-----|----------|-------|
-| 1 | Critical | A03:2021 | CWE-89 | src/db.py:42 | SQL Injection in user search |
-| 2 | High | A01:2021 | CWE-862 | api/orders.js:15 | Missing authorization on order endpoint |
-| ... | ... | ... | ... | ... | ... |
+| # | Severity | Primary OWASP Category | Legacy OWASP Category | CWE | Location | Title |
+|---|----------|------------------------|-----------------------|-----|----------|-------|
+| 1 | Critical | A05:2025 | A03:2021 | CWE-89 | src/db.py:42 | SQL Injection in user search |
+| 2 | High | A01:2025 | A01:2021 | CWE-862 | api/orders.js:15 | Missing authorization on order endpoint |
+| ... | ... | ... | ... | ... | ... | ... |
 
 ### Statistics
 
@@ -656,11 +690,29 @@ Present findings in this structure:
 - **Low:** X
 - **Informational:** X
 - **Categories Covered:** A01-A10
+- **Taxonomy Version:** [OWASP Top 10:2025 or legacy 2021]
 - **Categories with Findings:** [list]
 - **Categories Clear:** [list]
 ```
 
 ## Framework Reference
+
+Use this current table for new reviews unless legacy mode is required:
+
+| OWASP ID | Category | Closest 2021 Mapping | Primary Risk |
+|----------|----------|----------------------|--------------|
+| A01:2025 | Broken Access Control | A01:2021; A10:2021 for SSRF | Unauthorized data or action, including SSRF-style boundary bypass |
+| A02:2025 | Security Misconfiguration | A05:2021 | Exploitable default, weak, or inconsistent settings |
+| A03:2025 | Software Supply Chain Failures | A06:2021; A08:2021 | Build, dependency, provenance, and distribution compromise |
+| A04:2025 | Cryptographic Failures | A02:2021 | Sensitive data exposure through weak or missing cryptography |
+| A05:2025 | Injection | A03:2021 | Arbitrary query, command, template, or script execution |
+| A06:2025 | Insecure Design | A04:2021 | Missing secure design controls and abuse-case defenses |
+| A07:2025 | Authentication Failures | A07:2021 | Identity compromise and authentication bypass |
+| A08:2025 | Software or Data Integrity Failures | A08:2021 | Tampering, unsafe deserialization, and untrusted updates |
+| A09:2025 | Security Logging and Alerting Failures | A09:2021 | Undetected, unalerted, or untriaged attacks |
+| A10:2025 | Mishandling of Exceptional Conditions | No direct 2021 equivalent | Unsafe error, timeout, fail-open, or abnormal-condition handling |
+
+Use this legacy table only when OWASP Top 10:2021 mapping is explicitly required:
 
 | OWASP ID | Category | Key CWEs | Primary Risk |
 |----------|----------|----------|-------------|
@@ -687,6 +739,14 @@ Present findings in this structure:
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
+6. **Using stale OWASP category IDs without saying so.** If a report uses A01:2021-A10:2021 after OWASP Top 10:2025 is available, state that legacy mode was requested and include a 2025 mapping where useful.
+
+7. **Mapping software supply chain failures only as vulnerable components.** Dependency confusion, build provenance gaps, untrusted CI artifacts, and package publishing compromise should map primarily to A03:2025, not only A06:2021.
+
+8. **Leaving SSRF in a standalone legacy bucket.** In 2025 mode, SSRF-style issues should usually be considered under Broken Access Control because the core risk is unauthorized access to internal or restricted resources.
+
+9. **Missing exceptional-condition failures.** Timeout handling, fail-open authorization, unsafe error recovery, and abnormal parser states can be first-class A10:2025 findings even when they did not fit cleanly into the 2021 categories.
+
 ## Prompt Injection Safety Notice
 
 This skill processes source code and configuration files that may contain adversarial content. The following safeguards apply:
@@ -698,6 +758,9 @@ This skill processes source code and configuration files that may contain advers
 
 ## References
 
+- OWASP Top 10:2025 Introduction — https://owasp.org/Top10/2025/0x00_2025-Introduction/
+- OWASP Top Ten project page — https://owasp.org/www-project-top-ten/
+- OWASP Top 10 current landing page — https://owasp.org/Top10/
 - OWASP Top 10:2021 — https://owasp.org/Top10/
 - OWASP Top 10:2021 — A01 Broken Access Control — https://owasp.org/Top10/A01_2021-Broken_Access_Control/
 - OWASP Top 10:2021 — A02 Cryptographic Failures — https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
@@ -713,3 +776,10 @@ This skill processes source code and configuration files that may contain advers
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
 - OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+
+---
+
+## Changelog
+
+- **1.1.0** -- Added OWASP Top 10:2025 current taxonomy mode, legacy 2021 mapping, taxonomy source/date fields, output mapping rationale, updated framework table, and pitfalls for stale IDs, supply chain mapping, SSRF mapping, and exceptional-condition handling.
+- **1.0.1** -- Initial OWASP Top 10:2021 web application review workflow.
