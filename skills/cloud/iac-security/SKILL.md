@@ -10,7 +10,7 @@ description: >
 tags: [cloud, iac, terraform, cloudformation]
 role: [cloud-security-engineer, security-engineer, devsecops]
 phase: [build, review]
-frameworks: [OWASP-IaC-Security, SLSA-v1.0, CIS-Benchmarks]
+frameworks: [OWASP-IaC-Security, SLSA-v1.2, CIS-Benchmarks]
 difficulty: intermediate
 time_estimate: "45-90min"
 version: "1.0.0"
@@ -25,7 +25,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security review of Infrastructure as Code (IaC) templates covering Terraform, CloudFormation, Pulumi, and Bicep. It identifies security anti-patterns, misconfigurations, and policy violations by applying checks equivalent to those performed by static analysis tools (Checkov, tfsec, KICS, cfn-nag) while grounding findings in established frameworks: the OWASP Infrastructure as Code Security Cheat Sheet, SLSA v1.0 supply chain integrity requirements, and relevant CIS Benchmarks.
+This skill performs a structured security review of Infrastructure as Code (IaC) templates covering Terraform, CloudFormation, Pulumi, and Bicep. It identifies security anti-patterns, misconfigurations, and policy violations by applying checks equivalent to those performed by static analysis tools (Checkov, tfsec, KICS, cfn-nag) while grounding findings in established frameworks: the OWASP Infrastructure as Code Security Cheat Sheet, current SLSA supply chain integrity requirements, and relevant CIS Benchmarks.
 
 The review covers eight security domains: secrets management, public exposure, encryption, IAM and access control, logging, network security, supply chain integrity, and resource hardening. Each finding is mapped to a specific policy rule equivalent from Checkov, tfsec, or KICS.
 
@@ -92,7 +92,7 @@ Classify the IaC stack(s) in use. Record the total file count and frameworks det
 
 ### Step 2 through Step 9: Security Domain Evaluation
 
-Evaluate all IaC configurations across eight security domains: Hardcoded Secrets Detection, Public Exposure Analysis, Encryption Gap Analysis, IAM and Access Control Review, Logging and Monitoring Gaps, Network Security Review, Supply Chain Integrity (SLSA Alignment), and Resource Hardening.
+Evaluate all IaC configurations across eight security domains: Hardcoded Secrets Detection, Public Exposure Analysis, Encryption Gap Analysis, IAM and Access Control Review, Logging and Monitoring Gaps, Network Security Review, Supply Chain Integrity (SLSA Alignment), State Security Posture, and Resource Hardening.
 
 For detailed tool-specific rule sets, detection patterns, vulnerable code examples, and remediation guidance for Checkov, tfsec, and KICS equivalents across all eight domains, see [tool-rules.md](tool-rules.md) in this skill directory.
 
@@ -128,7 +128,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Repository: <identifier>
 - Date: <assessment date>
 - IaC Frameworks: <Terraform / CloudFormation / Pulumi / Bicep>
-- Frameworks Applied: OWASP IaC Security Cheat Sheet, SLSA v1.0, CIS Benchmarks
+- Frameworks Applied: OWASP IaC Security Cheat Sheet, SLSA latest/v1.2, CIS Benchmarks
 - Files reviewed: <N files>
 - Cloud providers: <AWS / Azure / GCP>
 
@@ -157,6 +157,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Fail
 - **Severity:** Critical / High / Medium / Low
 - **Equivalent Rule:** Checkov CKV_XXX_NN / tfsec xxx-xxx / KICS xxxxxxxx
+- **Context:** public exposure scope, provider default, state backend, module source, or accepted-risk evidence
 - **File:** <path>
 - **Line(s):** <line numbers>
 - **Description:** <what was found>
@@ -221,15 +222,34 @@ This skill applies checks equivalent to the following high-impact rules:
 
 ---
 
+### Modern Terraform/OpenTofu Supply Chain Checks
+
+| Evidence | What to Check | Severity Guidance |
+|----------|---------------|-------------------|
+| `.terraform.lock.hcl` or OpenTofu lock file | Provider versions and checksums are committed and reviewed | Missing lock file is Medium by default, High for production or regulated stacks |
+| Provider constraints | Exact or narrow constraints instead of broad ranges | Broad ranges are Medium unless CI pins and verifies lock files |
+| Module sources | Registry versions, git tags, or immutable commit SHAs | Mutable branches are High for production modules; commit SHAs are preferred for git sources |
+| SLSA/provenance | Plan/apply generated in CI with auditable provenance | Manual applies or unknown provenance are Medium/High depending on environment |
+
+### Severity Calibration Notes
+
+- Do not flag `password = var.secret` as a hardcoded secret by itself. Move the finding to state/backend exposure if state is local, committed, unencrypted, or broadly accessible.
+- Treat `0.0.0.0/0:22`, public databases, and wildcard IAM as High/Critical. Internet-facing `0.0.0.0/0:443` on a load balancer may be expected and should be assessed with TLS, WAF, auth, and logging context.
+- Provider-managed default encryption is a control, not an automatic failure. Escalate to High when policy requires customer-managed keys, separation of duties, or regulated data protection.
+- Scanner suppression comments such as `checkov:skip` or `tfsec:ignore` should be reported with the suppressing reason and compensating controls, not blindly honored.
+
+---
 ## Common Pitfalls
 
 1. **False positives on variable references.** A `password = var.db_password` is not a hardcoded secret. Only flag literal string values, not variable references or data source lookups.
 2. **Missing tfvars analysis.** Secrets may be hardcoded in `.tfvars` files rather than the main `.tf` files. Always scan both.
-3. **Module abstraction hiding misconfigurations.** A module call may look clean, but the module source may contain insecure defaults. When possible, trace into module source code.
+3. **Module abstraction hiding misconfigurations.** A module call may look clean, but the module source may contain insecure defaults. When possible, trace into module source code and verify the module source is pinned to an immutable version or commit.
 4. **CloudFormation parameters with NoEcho.** Parameters marked `NoEcho: true` are not necessarily secure -- the default value is still in plaintext in the template.
 5. **Confusing `aws_s3_bucket_acl` with `aws_s3_bucket_public_access_block`.** The public access block overrides ACLs. Check both, but the access block is the stronger control.
 6. **Terraform state file secrets.** Even when variables are marked `sensitive`, they may appear in plaintext in the state file. Verify state encryption and access controls.
 7. **Provider-specific encryption defaults.** Some providers encrypt by default (e.g., AWS S3 since January 2023). Know the defaults before flagging missing explicit encryption configuration.
+8. **Sensitive variables still enter state.** Terraform/OpenTofu `sensitive = true` hides CLI output but does not automatically remove values from state. Review backend encryption, access controls, and committed state files.
+9. **A version constraint is not the same as a lock file.** Provider constraints allow ranges; committed lock files record selected versions and checksums.
 
 ---
 
@@ -252,17 +272,20 @@ This skill applies checks equivalent to the following high-impact rules:
 ## References
 
 - OWASP Infrastructure as Code Security Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Infrastructure_as_Code_Security_Cheat_Sheet.html
-- SLSA v1.0 Specification: https://slsa.dev/spec/v1.0/
+- SLSA Specification latest: https://slsa.dev/spec/latest/
 - CIS Benchmarks: https://www.cisecurity.org/cis-benchmarks
 - Checkov Policy Index: https://www.checkov.io/5.Policy%20Index/
 - tfsec Documentation: https://aquasecurity.github.io/tfsec/
 - KICS (Keeping Infrastructure as Code Secure): https://docs.kics.io/
 - cfn-nag Rules: https://github.com/stelligent/cfn_nag
 - Terraform Security Best Practices: https://developer.hashicorp.com/terraform/cloud-docs/recommended-practices
+- Terraform Dependency Lock File: https://developer.hashicorp.com/terraform/language/files/dependency-lock
+- Terraform Sensitive Variables: https://developer.hashicorp.com/terraform/tutorials/configuration-language/sensitive-variables
 - AWS Security Best Practices in IAM: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added Terraform/OpenTofu lock-file checks, current SLSA wording, state security posture reporting, and severity calibration for provider defaults and public exposure.
 - **1.0.0** -- Initial release. Coverage of eight security domains across Terraform, CloudFormation, Pulumi, and Bicep with Checkov/tfsec/KICS rule equivalents.
