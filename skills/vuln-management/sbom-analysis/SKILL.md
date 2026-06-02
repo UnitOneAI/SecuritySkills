@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -170,6 +170,33 @@ VEX Assessment:
 - Under Investigation: [N] (monitor for updates)
 ```
 
+### Step 3A: Bind VEX Claims to SBOM Component Identity and Build Provenance
+
+Before accepting a VEX status as evidence, prove that the VEX statement applies to the exact SBOM component and artifact under review.
+
+**VEX-to-component binding checks:**
+
+- [ ] **Component identity:** Match on `bom-ref`, purl, CPE, SPDXID, version range, package URL qualifiers, or another exact identifier.
+- [ ] **Package ecosystem:** Confirm that similarly named components from different ecosystems are not collapsed into one decision.
+- [ ] **Dependency scope:** Record whether the component is runtime, optional, test, build, or development-only.
+- [ ] **Dependency path:** Preserve the path from top-level product to the affected component when available.
+- [ ] **VEX product scope:** Confirm the VEX product/version matches the software artifact being reviewed, not only a related product family.
+- [ ] **Artifact provenance:** Link the SBOM to the reviewed release, container digest, binary hash, SLSA provenance, or signed attestation.
+- [ ] **Freshness:** Compare SBOM timestamp and VEX timestamp to the build/release date and flag stale evidence.
+
+**What to look for:**
+
+```
+SBOM-BIND-01: VEX status is matched by component display name only
+SBOM-BIND-02: VEX statement lacks bom-ref, purl, CPE, SPDXID, or version range binding
+SBOM-BIND-03: Duplicate component names from different ecosystems are collapsed into one decision
+SBOM-BIND-04: VEX product/version does not match the reviewed artifact
+SBOM-BIND-05: SBOM timestamp predates the release/build under review
+SBOM-BIND-06: SBOM is complete but not linked to artifact digest, release tag, or provenance
+SBOM-BIND-07: Runtime and build/test dependencies are not separated before exploitability decisions
+SBOM-BIND-08: Dependency path is missing for a transitive component with a high-risk CVE
+```
+
 ### Step 4: Transitive Dependency Analysis
 
 Analyze the dependency tree to identify risk concentration in transitive (indirect) dependencies.
@@ -259,7 +286,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## SBOM Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** sbom-analysis v1.0.0
+**Skill:** sbom-analysis v1.0.1
 **Frameworks:** CycloneDX 1.5, SPDX 2.3, VEX (CSAF), NTIA Minimum Elements
 **Reviewer:** AI-assisted (human review required for license conflicts and risk decisions)
 
@@ -296,9 +323,19 @@ conflicts), and overall classification.]
 ### VEX Status Summary
 [If VEX documents are provided]
 
-| CVE ID | Component | VEX Status | Justification | Action |
-|---|---|---|---|---|
-| [CVE-ID] | [component] | [Not Affected/Affected/Fixed/Under Investigation] | [justification if Not Affected] | [action] |
+| CVE ID | Component | bom-ref / SPDXID | purl / CPE | Version Range | Scope | Dependency Path | VEX Status | Justification | Binding Confidence | Action |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [CVE-ID] | [component] | [identifier] | [purl/CPE] | [range] | [runtime/build/test] | [top-level -> component] | [Not Affected/Affected/Fixed/Under Investigation] | [justification] | [High/Medium/Low] | [action] |
+
+### Artifact and Provenance Linkage
+| Field | Value |
+|---|---|
+| Reviewed Artifact | [release tag / binary / container image] |
+| Artifact Digest / Hash | [sha256 or hash] |
+| SBOM Subject / Serial | [bom serial, subject digest, SPDX document namespace] |
+| Build Provenance | [SLSA attestation / signature / release evidence] |
+| SBOM Timestamp vs Release | [Fresh / Stale / Unknown with dates] |
+| VEX Timestamp vs Release | [Fresh / Stale / Unknown with dates] |
 
 ### Transitive Dependency Risk
 
@@ -380,6 +417,10 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 4. **Overlooking license implications in SaaS deployments.** AGPL-3.0 triggers copyleft obligations for network use (SaaS), unlike GPL which only triggers on distribution. Organizations running AGPL-licensed components in SaaS products may have unrecognized compliance obligations. Always flag AGPL components regardless of distribution model.
 
 5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
+
+6. **Applying generic VEX claims by component name only.** Component names collide across ecosystems and package types. A VEX status should be bound to bom-ref, purl, CPE, SPDXID, version range, product scope, or equivalent evidence before it clears or escalates a component.
+
+7. **Trusting complete SBOMs without artifact provenance.** NTIA completeness means the SBOM has required fields; it does not prove the SBOM describes the artifact deployed or reviewed. Link SBOMs to release tags, container digests, binary hashes, SLSA provenance, or signed attestations.
 
 ---
 
