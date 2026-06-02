@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -114,11 +114,14 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 **API Keys and Tokens:**
 
 ```regex
-# AWS Access Key ID (starts with AKIA)
-(?:AKIA)[0-9A-Z]{16}
+# AWS Access Key ID (long-lived AKIA or temporary STS ASIA)
+(?:A[KS]IA)[0-9A-Z]{16}
 
 # AWS Secret Access Key (40 chars, base64-like)
 (?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
+
+# AWS temporary session token (STS/OIDC federation; usually long and base64-like)
+(?:aws_session_token|AWS_SESSION_TOKEN|AWS_SECURITY_TOKEN)\s*[=:]\s*[A-Za-z0-9/+=]{80,}
 
 # GitHub Personal Access Token
 (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
@@ -165,7 +168,7 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` or `ASIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
@@ -173,7 +176,38 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
-#### 2.3 Detection Tool Configuration Review
+#### 2.3 AWS Temporary Credential Triage
+
+AWS temporary credentials use the `ASIA` access-key prefix and require a session token in addition to the access key ID and secret access key. Treat real STS/OIDC-federated credential material as a secret exposure even when it is short-lived.
+
+**Reportable examples:**
+
+```text
+AWS_ACCESS_KEY_ID=ASIA****************
+AWS_SECRET_ACCESS_KEY=<40-character high-entropy value>
+AWS_SESSION_TOKEN=<long base64-like session token>
+```
+
+```text
+aws_session_token=<long base64-like session token captured in a CI log>
+```
+
+**Non-findings / examples only:**
+
+```yaml
+env:
+  AWS_ACCESS_KEY_ID: "ASIA<temporary-access-key-placeholder>"
+  AWS_SECRET_ACCESS_KEY: "<redacted-temporary-secret>"
+  AWS_SESSION_TOKEN: "<redacted-session-token>"
+```
+
+**Triage guidance:**
+
+- If any part of an STS tuple is present, inspect adjacent environment output, CI logs, build artifacts, support bundles, and crash dumps for the matching access key ID, secret access key, and session token without reproducing the values.
+- Do not dismiss temporary credentials just because they expire. Verify token lifetime, IAM role scope, whether the session was revoked or allowed to expire, and whether retained logs/artifacts exposed the values while they were valid.
+- Preserve the existing placeholder and entropy checks: redacted, bracketed, non-random, or documentation-only `ASIA` examples are not findings.
+
+#### 2.4 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
@@ -471,5 +505,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Add AWS STS temporary credential coverage: `ASIA` access-key IDs, AWS session token names, and triage guidance that distinguishes real temporary credential leaks from redacted placeholders.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
