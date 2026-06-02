@@ -121,7 +121,7 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 (?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
 
 # GitHub Personal Access Token
-(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
+(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,255}
 
 # GitLab Personal Access Token
 glpat-[A-Za-z0-9\-_]{20,}
@@ -361,7 +361,8 @@ spec:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed production secrets in current codebase or git history that remain unrotated; .env with production credentials committed. |`n| **High** | No secret detection tooling in repositories that store/reference credentials; no centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
+| **Critical** | Committed production secrets in current codebase or git history that remain unrotated; .env with production credentials committed. |
+| **High** | No secret detection tooling in repositories that store/reference credentials; no centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
 
 | **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
