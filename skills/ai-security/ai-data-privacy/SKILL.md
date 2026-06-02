@@ -84,6 +84,51 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 
 ---
 
+## Provider and AI Data-Store Evidence Matrix
+
+Before classifying privacy findings, inventory every AI provider, feature, and
+data store that receives personal data. Treat "not used for model training" as a
+separate claim from retention, application state, deletion, subprocessor, and
+regulated-workload eligibility.
+
+**Evidence confidence levels:**
+
+- **Contract/DPA/BAA:** Signed contract, data processing addendum, business associate agreement, or negotiated retention terms.
+- **Provider docs:** Current vendor documentation for the exact endpoint, feature, region, and retention mode.
+- **Admin config:** Organization, project, tenant, workspace, or account settings export proves active data controls.
+- **Code/config:** SDK calls, `store` flags, retention settings, lifecycle rules, or infrastructure configuration is visible.
+- **Runtime/API export:** API responses, logs, traces, object metadata, deletion proof, or provider exports confirm active behavior.
+- **Docs-only:** README, architecture diagram, or privacy policy claims a control exists, but implementation evidence is missing.
+- **Unknown:** Provider, endpoint, retention mode, training use, deletion path, or subprocessor evidence cannot be found.
+
+**Provider/data-store matrix fields:**
+
+| Field | What to Record |
+|---|---|
+| Data category | Prompt, completion, embedding, file, image, audio, conversation state, vector, fine-tuning data, eval data, log, feedback, prompt cache, tool call, or third-party result |
+| Processor/subprocessor | First-party app, LLM provider, cloud tenant, vector DB, logging vendor, tool/MCP server, proxy, or analytics platform |
+| Endpoint or feature | Chat/completions, responses, assistants/threads, files, vector stores, batches, evals, fine-tuning, web search, hosted tools, or custom integration |
+| Training-use evidence | Whether customer content is used for provider training, and the evidence source for that claim |
+| Abuse/safety retention | Safety, abuse-monitoring, moderation, legal-hold, or incident-retention period and eligibility |
+| Application state retention | Whether data is stored until deleted, for a fixed TTL, indefinitely, or not at all |
+| Data residency/region | Region, tenant boundary, residency commitment, and cross-border transfer basis |
+| Deletion/DSR path | How subject deletion, source deletion, vector deletion, file deletion, backups, and caches are propagated |
+| Regulated workload eligibility | HIPAA/BAA, EU AI Act high-risk documentation, PCI/PHI exclusions, or unsupported feature flags |
+| Evidence confidence | Contract/DPA/BAA, Provider docs, Admin config, Code/config, Runtime/API export, Docs-only, or Unknown |
+
+Use a Not Evaluable reason code when evidence cannot support a reliable privacy
+decision: `missing-provider-contract`, `missing-endpoint-retention`,
+`missing-admin-data-controls`, `missing-store-flag`, `missing-vector-delete-path`,
+`missing-third-party-subprocessor`, `missing-dsr-propagation`, or
+`docs-only-privacy-claim`.
+
+When reviewing third-party LLM APIs, hosted tools, MCP servers, plugins, web
+fetch/search, API proxies, or analytics pipelines, record them as subprocessors
+unless evidence proves the data remains inside the reviewed organization's
+controlled boundary.
+
+---
+
 ## Process
 
 ### Step 1 -- Training Data Privacy Assessment
@@ -419,6 +464,12 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - **Location:** [file path, configuration, or architectural component]
 - **Description:** [What the privacy risk is and why it matters]
 - **Evidence:** [Code pattern, configuration, or architectural observation]
+- **Processor/Subprocessor:** [provider, tool, vector DB, log sink, or first-party store]
+- **Retention Evidence:** [abuse/safety retention, application state retention, TTL, or Unknown]
+- **Training-Use Evidence:** [training allowed/disabled/not applicable and evidence source]
+- **Deletion/DSR Path:** [source deletion -> derived stores -> backups/caches, or Not Evaluable]
+- **Evidence Confidence:** Contract/DPA/BAA | Provider docs | Admin config | Code/config | Runtime/API export | Docs-only | Unknown
+- **Not Evaluable Reason:** [reason code if applicable]
 - **Impact:** [What personal data is at risk and for how many data subjects]
 - **Recommendation:** [Specific remediation with regulatory alignment]
 - **Priority:** [P0 / P1 / P2 / P3]
@@ -430,6 +481,9 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
+| Provider/application-state retention | [Yes/Partial/No] | [description] | [severity] |
+| Deletion/DSR propagation | [Yes/Partial/No] | [description] | [severity] |
+| Third-party subprocessors | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
@@ -471,6 +525,16 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 4. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
+
+6. **Confusing training opt-out with zero retention.** A provider statement that prompts are not used for model training does not prove there is no abuse-monitoring retention, application state, prompt cache, stored completion, file, vector-store, eval, fine-tuning, or batch-job retention. Record training use and retention separately.
+
+7. **Overlooking feature-level application state.** Stateless completion endpoints, threads, files, vector stores, hosted tools, batches, evals, and fine-tuning jobs can have different storage behavior. Review the exact endpoint and feature actually used by the application.
+
+8. **Trusting admin settings without runtime evidence.** Organization-level data controls may be overridden or unsupported at project, tenant, endpoint, model, or feature level. Validate settings through code/config, provider exports, API metadata, or deletion tests where possible.
+
+9. **Missing third-party subprocessors.** Tool calls, MCP servers, browser/search providers, logging pipelines, analytics SDKs, RAG connectors, and API proxies may receive prompt or completion data. Add them to the processor inventory and verify their training, retention, and deletion terms.
+
+10. **Failing to test deletion propagation.** A source document deletion is incomplete if embeddings, vector metadata, files, caches, fine-tuning datasets, eval samples, logs, analytics copies, or backups continue to retain personal data without a justified retention basis.
 
 ---
 
