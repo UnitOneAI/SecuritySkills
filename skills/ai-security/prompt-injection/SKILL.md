@@ -59,9 +59,11 @@ Identify every point where user-supplied or externally sourced content reaches t
 2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
 3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
 4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
-5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
+5. **Tool-result feedback loops** — Any tool, internal API, RAG retriever, browser, email connector, or plugin result that is reinserted into model context and can influence later model output or tool calls.
+6. **Action sinks and renderers** — Email sending, refunds, ticket updates, file writes, webhooks, markdown/HTML rendering, link previews, remote images, and any other output path that can create side effects or exfiltrate data.
+7. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
 
-**Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
+**Deliverable:** A table or diagram listing each input surface, its original writer, data type, trust level, whether it flows into the system prompt, user prompt, tool result, tool arguments, renderer, or action sink, and whether provenance is preserved across agent handoffs.
 
 ---
 
@@ -92,11 +94,29 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Internal tool results with user-generated payloads** — CRM tickets, support comments, synced SaaS records, webhook payloads, email bodies, and document chunks returned by trusted internal tools are still untrusted if lower-privileged users or external parties can write the underlying content.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
 - Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
+
+### 3.1 Tool-Result Provenance Register
+
+For every tool result or internal API response that reaches model context, record the original source of the payload rather than only the tool name. A trusted tool can return untrusted content.
+
+| Field | What to Record |
+|---|---|
+| Tool / response source | Tool name, API endpoint, retriever, connector, browser, plugin, or MCP server returning the content |
+| Original writer | User, customer, external sender, synced SaaS account, imported document owner, website, internal service, or system operator |
+| Trust level | Trusted instruction, trusted system data, authenticated user content, external content, mixed/unknown |
+| Payload fields | Comments, markdown, HTML, file text, email body, ticket fields, metadata, attachments, links, tool output, or command output |
+| Model placement | System message, user message, tool message, RAG context, memory summary, agent handoff, or hidden context |
+| Downstream influence | Whether the payload can affect tool selection, tool arguments, rendered output, policy decisions, memory, or another agent |
+| Provenance preservation | Whether the trust label and source ID survive summarization, chunking, reranking, memory writes, and multi-agent handoffs |
+| Enforcement | Code-level policy, schema validation, authorization check, renderer policy, or human confirmation that consumes the provenance |
+
+Do not classify a RAG or summarization flow as high severity merely because retrieved untrusted content exists. Calibrate severity based on whether that content can be interpreted as instructions, influence side-effecting tools, bypass authorization, reach a dangerous renderer, or exfiltrate sensitive data. A quoted-evidence summarizer with tool access disabled, typed untrusted source blocks, output schema validation, and no sensitive renderer is usually a lower-severity defense-in-depth issue unless another path lets the content trigger side effects.
 
 ---
 
@@ -131,6 +151,8 @@ The attacker causes the model to invoke tools or perform actions that should not
 - Are tool invocations gated by authorization checks independent of the LLM's decision?
 - Can the model be instructed to call a tool with parameters the user should not be able to specify?
 - Is there separation between the LLM's permissions and the end user's permissions?
+- Are downstream tool calls validated against the original tool-result provenance, not just the apparent role of the latest message?
+- Are policy checks applied to the fully resolved canonical action, including defaulted, nested, hidden, and derived parameters?
 
 ### 4.4 Data Exfiltration
 
@@ -141,6 +163,7 @@ The attacker causes the model to include sensitive data in its output or to tran
 - Does the model have access to sensitive data (PII, credentials, internal documents) that could be included in responses?
 - Can tool calls be used to send data to arbitrary external endpoints?
 - Are outputs filtered for sensitive data patterns?
+- Does the renderer block or safely rewrite remote images, link previews, HTML, iframes, scripts, data URLs, redirects, and model-produced URLs when sensitive context was available?
 
 ### 4.5 Jailbreaking
 
@@ -168,6 +191,8 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Does the LLM operate with least-privilege access to tools and data?
 - Are sensitive operations handled by separate, constrained components rather than the LLM itself?
 - Is there an authorization layer between the LLM and backend systems that enforces the end user's actual permissions?
+- Does the authorization layer evaluate the canonical tool call after defaults, aliases, templates, and server-side derived values are resolved?
+- Does the authorization layer reject action parameters that were influenced by untrusted tool results unless the specific action policy allows that provenance?
 
 ### 5.3 Human-in-the-Loop
 
@@ -175,11 +200,21 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Is the confirmation prompt designed so the human can meaningfully evaluate the action before approving?
 - Are there thresholds for when human review is required vs. when automated execution is permitted?
 
+Human confirmation is only meaningful when the reviewer sees the complete canonical action, not a model-written summary of it. Confirmations for side-effecting tools should display and validate:
+
+- Resolved recipients, accounts, resource IDs, tenant IDs, scopes, roles, amounts, destinations, and URLs.
+- Nested fields, hidden metadata, server defaults, inferred values, attachments, headers, tracking parameters, and link targets.
+- The source/provenance of fields influenced by tool results or retrieved content.
+- The enforcing policy decision and any fields that were redacted, blocked, or rewritten.
+- A confirmation UI generated from the canonical server-side action object, not from model text that can be prompt-injected.
+
 ### 5.4 Output Filtering
 
 - Are model outputs validated against expected formats and content policies before being returned to the user or acted upon?
 - Is there detection for sensitive data (PII, credentials, system prompt content) in outputs?
 - Are rendered outputs (markdown, HTML) sanitized to prevent exfiltration via image tags or links?
+
+Renderer and output-sink policy should explicitly cover remote image loading, link previews, HTML sanitization, URL rewriting/proxying, `rel="noreferrer noopener"`, referrer policy, attachment rendering, and whether model-produced URLs are allowed when the model had access to sensitive data. Treat renderer behavior as a security control; document whether it is enforced by code/config or only assumed.
 
 ### 5.5 Canary Tokens in System Prompts
 
@@ -220,6 +255,8 @@ Each finding should be assigned a severity based on potential impact:
 | **Low** | Minor deviations from intended behavior with limited security impact. The model can be coaxed into slightly off-topic responses but cannot be made to perform harmful actions. |
 | **Informational** | Defense-in-depth recommendations. No demonstrated vulnerability but an identified gap in defensive layering. |
 
+Severity should reflect the full source-to-sink path. Untrusted RAG or tool-result content by itself is not automatically High; raise severity when that content can affect privileged actions, hidden tool parameters, authorization decisions, memory, another agent, or a renderer/output sink that can leak data. Lower severity is appropriate when untrusted content is preserved as quoted evidence, tools are disabled or independently gated, provenance survives to enforcement, and output rendering is constrained.
+
 ### Output Format
 
 ```
@@ -234,6 +271,21 @@ Each finding should be assigned a severity based on potential impact:
 ### Interaction Surface Map
 [Table from Step 1]
 
+### Tool-Result Provenance Register
+| Tool/Source | Original Writer | Trust Level | Payload Fields | Model Placement | Downstream Influence | Provenance Preserved? | Enforcement |
+|---|---|---|---|---|---|---|---|
+| [tool or API] | [writer] | [trusted/untrusted/mixed] | [fields] | [message/context] | [tool/action/renderer/memory] | [yes/no/partial] | [policy/check] |
+
+### Canonical Action Review
+| Action Sink | Fully Resolved Object Reviewed? | Hidden/Nested/Default Fields Covered? | Provenance Used In Policy? | Human UI Source | Gaps |
+|---|---|---|---|---|---|
+| [tool/action] | [yes/no] | [yes/no] | [yes/no] | [server canonical object/model summary] | [missing controls] |
+
+### Renderer / Output-Sink Policy
+| Sink | Remote Images | Links/Redirects | HTML/Markdown | Referrer Policy | Sensitive-Context Rule | Enforcement Evidence |
+|---|---|---|---|---|---|---|
+| [renderer] | [blocked/proxied/allowed] | [rewritten/proxied/allowed] | [sanitized/raw] | [policy] | [rule] | [code/config] |
+
 ### Findings
 
 #### Finding [N]: [Title]
@@ -241,8 +293,12 @@ Each finding should be assigned a severity based on potential impact:
 - Vector: [Direct | Indirect]
 - Severity: [Critical | High | Medium | Low | Informational]
 - Location: [file path and line numbers, or architectural component]
+- Source Provenance: [original writer, trust level, and whether provenance survives handoff]
+- Canonical Action: [fully resolved tool/action object, if applicable]
+- Renderer/Output Sink: [markdown, HTML, link preview, email, webhook, etc., if applicable]
 - Description: [What the vulnerability is and why it matters]
 - Evidence: [Code pattern or architectural observation that demonstrates the issue]
+- Severity Rationale: [why the source-to-sink path supports this severity]
 - Recommendation: [Specific defensive measure to implement]
 
 ### Defense Posture Summary
@@ -274,6 +330,16 @@ Each finding should be assigned a severity based on potential impact:
 4. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
+
+6. **Trusting tool results because the tool is internal.** Internal tools often return customer comments, email bodies, synced SaaS records, imported documents, or webhook payloads. The trust boundary is the original writer of the payload, not the tool process that returned it.
+
+7. **Approving a model summary instead of the canonical action.** Human approval screens and policy checks can miss hidden side effects when they show only a natural-language summary. Review the fully resolved tool call, including nested fields, defaults, hidden metadata, attachments, links, headers, and derived recipients.
+
+8. **Letting provenance disappear during summarization or agent handoff.** Multi-agent systems can launder instructions when Agent A summarizes untrusted content and Agent B receives the summary without a source label but has tool access. Preserve source IDs and trust labels across summarization, memory writes, and handoffs.
+
+9. **Treating renderer behavior as presentation only.** Markdown, HTML, link previews, remote images, redirects, and model-produced URLs can be exfiltration sinks. Renderer policy is part of the prompt-injection defense boundary when the model had sensitive context.
+
+10. **Overstating RAG risk when content is only quoted evidence.** Retrieved untrusted content deserves review, but severity should account for tools, output sinks, instruction hierarchy, validation, and side effects. A no-tool summarizer with typed source blocks and constrained rendering is materially different from an agent that can act on retrieved instructions.
 
 ---
 
