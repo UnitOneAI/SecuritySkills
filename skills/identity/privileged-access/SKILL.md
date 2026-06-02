@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -223,6 +223,45 @@ PAM-JIT-10: No escalation path when JIT approver is unavailable
 
 ---
 
+### Step 3A: JIT Evidence Chain Validation
+
+**Objective:** Verify sampled privileged sessions prove end-to-end control operation, not just the existence of a request workflow.
+
+For each sampled privileged session, collect evidence that links the access request, approval, activation, credential checkout or brokered session, session recording, expiry/revocation, and SIEM or immutable-log forwarding.
+
+**Evidence chain fields to capture:**
+
+| Field | Evidence to collect | Why it matters |
+|---|---|---|
+| **Request / ticket ID** | Change, incident, access request, or PAM request identifier | Proves the access had a business reason and reviewable context |
+| **Requester and approver** | Named user, approver, approval time, approval policy | Proves attribution and separation of duties |
+| **Scope and duration** | Role, target system, credential, requested duration, approved expiry | Proves least-privilege and time-bound intent |
+| **Activation / checkout** | PIM activation, STS session, vault checkout, brokered connection ID | Proves the access actually used the controlled path |
+| **Session recording** | Recording ID, protocol, target, start/end time, linked checkout/request | Proves privileged activity can be reviewed and attributed |
+| **Expiry / revocation** | Deactivation, revoke, check-in, credential rotation, lease expiry event | Proves JIT access ended when expected |
+| **Monitoring evidence** | SIEM event IDs, immutable storage location, alert rule, retention policy | Proves the audit trail is complete and tamper-resistant |
+
+**What to look for:**
+
+```
+PAM-CHAIN-01: JIT approval exists but no activation or checkout event is available
+PAM-CHAIN-02: Privileged role remains active after approved expiry window
+PAM-CHAIN-03: Session recording cannot be linked to request, checkout, or named user
+PAM-CHAIN-04: SIEM receives checkout events but not session-end, revoke, or rotation events
+PAM-CHAIN-05: Break-glass access bypasses JIT without post-use rotation and review evidence
+PAM-CHAIN-06: Service account or CI/CD privileged access has no equivalent lease or token-expiry evidence
+PAM-CHAIN-07: Screenshots or manual attestations are used instead of system-generated audit events
+PAM-CHAIN-08: Approval and requester are the same person or peer approval is not policy-compliant
+```
+
+**Sampling guidance:**
+
+- Sample high-risk roles first: cloud owner/global admin, domain admin, database superuser, CI/CD production deployer.
+- Include at least one human admin, one service/automation identity, and one break-glass or emergency access path when in scope.
+- Treat approval-only evidence as low confidence until expiry/revocation and monitoring events are verified.
+
+---
+
 ### Step 4: Break-Glass Procedures
 
 **Objective:** Assess emergency access procedures for completeness, security, and testability.
@@ -392,6 +431,11 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
 
+### Sampled JIT Evidence Chains
+| Request / Ticket | Requester | Approver | Scope / Role | Activation or Checkout | Session Recording | Expiry / Revocation | SIEM / Immutable Log Evidence | Confidence |
+|---|---|---|---|---|---|---|---|---|
+| [CHG/INC/PAM request ID] | [User/service identity] | [Approver] | [Role, target, duration] | [Activation/checkout/broker ID] | [Recording ID and link status] | [Revoke/check-in/rotation event] | [Forwarded event IDs / storage] | [High/Medium/Low] |
+
 ### Findings by Severity
 - Critical: [count]
 - High: [count]
@@ -457,6 +501,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+9. **Approval-only JIT evidence** — an approved access request does not prove time-bound control unless activation, checkout, expiry, and revocation events are linked.
+10. **Unlinked session recordings** — recordings without request, checkout, user, and target identifiers are weak audit evidence because investigators cannot prove which approved access produced the session.
 
 ---
 
@@ -502,4 +548,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-02 | Add JIT evidence-chain validation, revocation proof, and sampled session output fields |
 | 1.0.0 | 2025-03-06 | Initial release |
