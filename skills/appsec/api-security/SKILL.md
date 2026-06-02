@@ -118,7 +118,8 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|Webhook|General]`n- **Auth Context:** [global OpenAPI security, operation override, interceptor, resolver, gateway policy, or intentionally public]
+- **API Style:** [REST|GraphQL|gRPC|Webhook|General]
+- **Auth Context:** [global OpenAPI security, operation override, interceptor, resolver, gateway policy, or intentionally public]
 - **Location:** [file:line or spec path]
 - **Description:** [explanation]
 - **Evidence:**
@@ -201,6 +202,71 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 ---
 
+## GraphQL Persisted Queries and Operation Safelisting
+
+For production GraphQL APIs that expose sensitive mutations or expensive reads, check whether arbitrary client-supplied operations are allowed. Persisted queries or operation safelisting can reduce abuse by allowing only approved operation shapes while still requiring normal authorization checks.
+
+**Review checks:**
+
+- Sensitive mutations use safelisted operations or persisted query hashes when feasible.
+- Depth, complexity, alias, and batch limits still apply to persisted operations.
+- Authorization is enforced in resolvers; safelisting is not treated as an authorization substitute.
+- Subscriptions re-check authorization when data is emitted, not only at connection setup.
+
+---
+
+## gRPC-Specific Considerations
+
+gRPC APIs share the OWASP API risks but expose different evidence. Review `.proto` files, generated service bindings, interceptors/middleware, gateway mappings, and deployment configuration.
+
+### Reflection Exposure
+
+Server reflection can expose service and method inventory. Flag public production reflection as API9/API8 unless it is restricted to trusted tooling or internal networks.
+
+### Method-Level Authorization
+
+Every RPC method that returns sensitive data or performs privileged actions should have authorization enforced by an interceptor, middleware, or explicit handler check. Do not assume service-level authentication covers every method.
+
+### Metadata Tokens and mTLS
+
+Validate bearer tokens or API keys from metadata with issuer, audience, expiry, and scope checks. For service-to-service gRPC, prefer mTLS or signed workload identity over network-location trust.
+
+### Streaming Limits
+
+Client-streaming, server-streaming, and bidirectional streaming methods need message size, rate, duration, and concurrency limits to avoid API4 resource-consumption findings.
+
+### Protobuf Field Authorization
+
+Sensitive response fields and privileged request fields should be filtered or validated explicitly. Treat mass assignment and excessive data exposure as API3 even when the transport is gRPC rather than JSON/REST.
+
+---
+
+## OpenAPI Security Inheritance Checks
+
+OpenAPI global `security` requirements apply unless an operation overrides them. An explicit empty array (`security: []`) means the operation is public. Classify public operations before raising missing-auth findings.
+
+**Review checks:**
+
+- Global security schemes are defined and referenced consistently.
+- Operation-level `security: []` is limited to intentionally public routes such as health checks or login endpoints.
+- Public endpoints return no sensitive data, have appropriate rate limits, and are documented as public.
+- Admin, export, billing, user-data, and mutation endpoints do not accidentally override global auth.
+
+---
+
+## Webhook Consumer Checks
+
+Webhook endpoints are API surfaces under API10 and API2/API4. Review signature verification, timestamp tolerance, replay protection, idempotency, and payload validation.
+
+**Review checks:**
+
+- HMAC/signature verification uses a constant-time comparison and the raw request body.
+- Timestamp or nonce replay windows are enforced.
+- Duplicate event delivery is idempotent.
+- Webhook payloads are schema-validated before use.
+- Source IP allowlists are defense-in-depth only, not the sole trust control.
+
+---
 ## Common Pitfalls
 
 1. **Confusing authentication with authorization.** An API that verifies the user's identity (authentication) but does not verify the user's permission to access the specific resource or function (authorization) is vulnerable to both BOLA (API1) and BFLA (API5). These are distinct checks that must both be present.
@@ -213,7 +279,13 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
-6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.`n`n7. **Misreading OpenAPI `security: []`.** An explicit empty security array means intentionally public, not inherited auth. Confirm whether the operation is safe to be public before marking it vulnerable or safe.`n`n8. **Treating gRPC authentication as method authorization.** mTLS or a valid bearer token proves caller identity, but each RPC method still needs role, tenant, object, and field-level authorization checks.`n`n9. **Webhook source IP allowlists are not enough.** IP restrictions can supplement controls, but webhook trust should primarily come from signature verification, replay protection, and strict payload validation.
+6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Misreading OpenAPI `security: []`.** An explicit empty security array means intentionally public, not inherited auth. Confirm whether the operation is safe to be public before marking it vulnerable or safe.
+
+8. **Treating gRPC authentication as method authorization.** mTLS or a valid bearer token proves caller identity, but each RPC method still needs role, tenant, object, and field-level authorization checks.
+
+9. **Webhook source IP allowlists are not enough.** IP restrictions can supplement controls, but webhook trust should primarily come from signature verification, replay protection, and strict payload validation.
 
 ---
 
@@ -238,6 +310,8 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
+- **gRPC Authentication:** https://grpc.io/docs/guides/auth/
+- **OpenAPI Authentication:** https://swagger.io/docs/specification/authentication/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
 
 ---
