@@ -2,14 +2,14 @@
 name: containment
 description: >
   Provides structured incident containment strategies mapped to NIST SP 800-61
-  Rev 2 and MITRE ATT&CK techniques. Auto-invoked when a confirmed incident
+  Rev 3 and MITRE ATT&CK techniques. Auto-invoked when a confirmed incident
   requires isolation decisions, credential revocation, network segmentation,
   or DNS sinkholing. Produces a containment plan with short-term and long-term
   actions, business impact assessment, and ATT&CK-mapped countermeasures.
 tags: [incident-response, containment, isolation]
 role: [soc-analyst, security-engineer]
 phase: [respond]
-frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
+frameworks: [NIST-SP-800-61r3, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
 version: "1.0.1"
@@ -20,9 +20,9 @@ injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
 
-# Incident Containment Strategies -- NIST SP 800-61 Rev 2 / MITRE ATT&CK
+# Incident Containment Strategies -- NIST SP 800-61 Rev 3 / MITRE ATT&CK
 
-> **Frameworks:** NIST SP 800-61 Rev 2 (Containment, Eradication, and Recovery), MITRE ATT&CK Enterprise Matrix
+> **Frameworks:** NIST SP 800-61 Rev 3 (Cybersecurity Incident Response Recommendations), MITRE ATT&CK Enterprise Matrix
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 15-30 min
 > **Output:** Containment plan with short-term and long-term actions, business impact trade-off analysis, ATT&CK-mapped countermeasures, and rollback criteria
@@ -57,6 +57,10 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
+- [ ] **Containment authority** -- Who can approve disruptive or irreversible actions such as power-off, account disablement, route changes, or domain-wide credential resets?
+- [ ] **Communication channel** -- Which out-of-band bridge or secure channel will coordinate containment if the attacker may monitor normal corporate communications?
+- [ ] **Backup and recovery posture** -- Are offline/immutable backups isolated, validated, and protected from the containment action?
+- [ ] **Legal, privacy, and regulatory constraints** -- Are law enforcement, regulator, customer, insurer, or evidence-retention obligations affected by the action?
 
 ---
 
@@ -64,7 +68,10 @@ Before selecting a containment strategy, gather or confirm:
 
 ### Step 1: Containment Decision Criteria
 
-NIST SP 800-61 Rev 2 (Section 3.3.1) identifies the following criteria for containment strategy selection. Evaluate each factor before choosing a containment approach:
+Use NIST SP 800-61 Rev 3 as the current incident response reference. Rev 3
+supersedes Rev 2 and frames incident response as a NIST CSF Community Profile;
+the Rev 2 containment decision criteria remain useful as legacy operational
+decision factors. Evaluate each factor before choosing a containment approach:
 
 | Criterion | Question | Impact on Decision |
 |-----------|----------|-------------------|
@@ -94,6 +101,19 @@ NIST SP 800-61 Rev 2 (Section 3.3.1) identifies the following criteria for conta
               +-----------+     | response  |
                                 +-----------+
 ```
+
+**Pre-execution authorization gates:**
+
+| Gate | Required Evidence | Why It Matters |
+|------|-------------------|----------------|
+| Legal authority | Incident commander or delegated owner approves the action; legal/privacy consulted when evidence, customer data, or regulator timelines may be affected. | Avoids unauthorized disruption, spoliation, or notification mistakes. |
+| Business owner | Service owner accepts downtime or confirms a surgical alternative. | Prevents containment from causing greater harm than the incident. |
+| Evidence state | Volatile evidence captured, or decision log explains why immediate containment overrides collection. | Preserves forensic value while allowing urgent response. |
+| Blast radius | Target scope, rollback owner, expected affected users, and dependencies are known. | Reduces accidental outage from overly broad blocks or disables. |
+| Recovery path | Clean backup, golden image, credential reset plan, or rollback procedure is available. | Ensures containment does not strand the business without recovery options. |
+
+Do not recommend executing a disruptive containment action unless these gates are
+filled or explicitly marked as emergency override by the incident commander.
 
 ### Step 2: Short-Term Containment
 
@@ -183,7 +203,7 @@ Wiper and destructive malware require a distinct containment approach from ranso
 **Containment priorities (in order):**
 
 1. **Immediate network segmentation** -- Disconnect affected segments at the switch/router level. Wiper propagation via SMB (T1021.002), WMI (T1047), or Group Policy (T1484.001) must be severed before forensic triage.
-2. **Preemptive shutdown of unaffected systems** -- If the wiper propagation vector is unknown, power off systems that have not yet been hit. A wiper that has not triggered yet is stopped by a cold shutdown. This is the opposite of ransomware guidance (where you keep systems on for memory forensics).
+2. **Preemptive shutdown of at-risk unaffected systems** -- If the propagation vector is unknown and data destruction is imminent, power off systems that have not yet been hit after incident-command approval. Record why immediate preservation of remaining systems overrides normal live-forensic collection.
 3. **Protect backup infrastructure** -- Verify offline/immutable/air-gapped backups are intact. Disconnect backup agents and NAS/SAN replication from the network. Wipers frequently target backup systems (Volume Shadow Copies, vCenter, backup catalogs).
 4. **Block propagation protocols** -- Emergency firewall rules to block SMB (445), WMI (135/5985/5986), RDP (3389), and PsExec/admin shares between all endpoints. Allow only from designated jump servers.
 5. **Disable compromised service accounts** -- Wiper deployment often uses compromised domain admin or service accounts. Disable all accounts showing anomalous activity; reset krbtgt if domain compromise is suspected.
@@ -199,7 +219,7 @@ Wiper and destructive malware require a distinct containment approach from ranso
 | T1047 -- WMI | Remote execution of wiper payload via WMI | Block WMI ports (135, 5985, 5986); disable WinRM on endpoints |
 | T1484.001 -- Domain Policy Modification: GPO | Deploy wiper via Group Policy push | Disconnect domain controllers from network if GPO deployment confirmed |
 
-**Key difference from ransomware containment:** Do not attempt to "monitor and observe" a wiper in progress. Every second of observation is data permanently destroyed. Aggressive, immediate containment is always the correct posture for confirmed wiper activity.
+**Key difference from ransomware containment:** Do not attempt to "monitor and observe" a confirmed wiper in progress without explicit incident-command, legal, and business approval. Every second of observation can mean permanent data destruction, so aggressive containment is usually justified, but the decision still needs an authorization and evidence log.
 
 ### Step 5: Containment Validation
 
@@ -215,6 +235,9 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+| Control-plane change applied | Verify firewall, EDR, IAM, DNS, cloud, or identity control state from the management plane and one affected endpoint | Intended control is active in the right scope |
+| Sessions and tokens revoked | Check identity provider sign-in/session logs after revocation | Compromised sessions cannot continue operating |
+| Backup path protected | Confirm backups are offline/immutable or isolated from affected credentials and networks | Recovery source remains trustworthy |
 
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
@@ -257,27 +280,38 @@ Produce the containment plan with these exact sections:
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
 **Skill:** containment v1.0.0
-**Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
+**Frameworks:** NIST SP 800-61 Rev 3, MITRE ATT&CK
 **Incident Commander:** [Name]
+**Containment Authority:** [Person/role approving disruptive actions]
+**Communication Channel:** [Out-of-band bridge / secure channel]
 
 ### Containment Summary
 [2-3 sentences. State the containment strategy selected, rationale based on
 threat severity and business criticality, and expected impact on operations.]
 
 ### Decision Criteria Assessment
-| Criterion | Assessment | Weight |
-|---|---|---|
-| Potential damage if uncontained | [Assessment] | [High/Medium/Low] |
-| Evidence preservation impact | [Assessment] | [High/Medium/Low] |
-| Service availability impact | [Assessment] | [High/Medium/Low] |
-| Resource requirements | [Assessment] | [High/Medium/Low] |
-| Expected containment duration | [Assessment] | [Hours/Days/Weeks] |
-| Containment effectiveness | [Assessment] | [High/Medium/Low] |
+| Criterion | Assessment | Weight | Evidence |
+|---|---|---|---|
+| Potential damage if uncontained | [Assessment] | [High/Medium/Low] | [Evidence/source] |
+| Evidence preservation impact | [Assessment] | [High/Medium/Low] | [Evidence state] |
+| Service availability impact | [Assessment] | [High/Medium/Low] | [Service owner input] |
+| Resource requirements | [Assessment] | [High/Medium/Low] | [Team/tool availability] |
+| Expected containment duration | [Assessment] | [Hours/Days/Weeks] | [Rationale] |
+| Containment effectiveness | [Assessment] | [High/Medium/Low] | [Validation method] |
+
+### Authorization and Evidence Gates
+| Gate | Status | Approver / Evidence | Emergency Override? |
+|---|---|---|---|
+| Legal/privacy consulted where needed | [Done/Pending/N/A] | [Name/evidence] | [Yes/No] |
+| Business owner accepts impact | [Done/Pending/N/A] | [Name/evidence] | [Yes/No] |
+| Evidence preservation decision logged | [Done/Pending/N/A] | [Hash/image/memory/override] | [Yes/No] |
+| Blast radius documented | [Done/Pending/N/A] | [Scope/dependencies] | [Yes/No] |
+| Recovery path confirmed | [Done/Pending/N/A] | [Backup/golden image/rollback] | [Yes/No] |
 
 ### Short-Term Containment Actions
-| Action | Target | ATT&CK Technique Countered | Status | Owner | ETA |
-|---|---|---|---|---|---|
-| [Action] | [System/Account/Network] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] |
+| Action | Target | ATT&CK Technique Countered | Status | Owner | ETA | Rollback |
+|---|---|---|---|---|---|---|
+| [Action] | [System/Account/Network] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] | [Rollback owner/condition] |
 
 ### Long-Term Containment Actions
 | Action | Target | Duration | Status | Owner |
@@ -290,9 +324,14 @@ threat severity and business criticality, and expected impact on operations.]
 | [Service] | [Description of disruption] | [Workaround if any] | [Yes/No -- requires escalation] |
 
 ### Containment Validation Checklist
-| Check | Result | Timestamp |
-|---|---|---|
-| [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+| Check | Result | Timestamp | Evidence |
+|---|---|---|---|
+| [Validation item] | [Pass/Fail/Pending] | [timestamp] | [Log/control-plane/source] |
+
+### Decision Log
+| Timestamp | Decision | Approver | Rationale | Evidence Trade-off |
+|---|---|---|---|---|
+| [timestamp] | [Action/override] | [Name/role] | [Why] | [Evidence preserved or sacrificed] |
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
@@ -305,9 +344,13 @@ threat severity and business criticality, and expected impact on operations.]
 
 ## 6. Framework Reference
 
-### NIST SP 800-61 Rev 2 -- Containment, Eradication, and Recovery
+### NIST SP 800-61 Rev 3 -- Cybersecurity Incident Response Recommendations
 
-NIST SP 800-61 Rev 2 Section 3.3 defines containment as the first priority after an incident is detected and analyzed. Key principles:
+NIST SP 800-61 Rev 3 supersedes Rev 2 and reframes incident response as a
+Cybersecurity Framework (CSF) Community Profile. Use Rev 3 for current response
+program alignment, roles, coordination, communications, and response capability
+recommendations. Retain the Rev 2 containment decision factors only as legacy
+operational criteria when they help choose a specific containment action.
 
 - **Containment strategy depends on incident type.** Different categories of incidents (malware, unauthorized access, DoS) require fundamentally different containment approaches. A strategy that works for network-based attacks (firewall rules) may be ineffective against insider threats (credential-based attacks).
 
@@ -348,6 +391,28 @@ Disconnecting a business-critical production system from the network stops the a
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
 
+### Pitfall 5: Using Obsolete Framework Guidance Without Version Context
+
+NIST SP 800-61 Rev 3 supersedes Rev 2. If an organization still uses Rev 2
+phase language internally, map it to Rev 3/CSF response outcomes and state the
+version explicitly. Otherwise the plan may look current while relying on stale
+program guidance.
+
+### Pitfall 6: Taking Irreversible Actions Without an Authorization Log
+
+Actions such as power-off, domain-wide credential resets, route removal, and
+quarantine of production systems can destroy evidence or interrupt critical
+services. Record the approver, rationale, business owner, evidence trade-off,
+and rollback owner before execution, or mark the decision as an emergency
+override by the incident commander.
+
+### Pitfall 7: Citing Unverified Incident Claims as Operational Basis
+
+Containment playbooks should cite official frameworks, vendor guidance, or
+validated internal incident data. Do not base operational recommendations on
+unverified public incident claims or non-authoritative news links without
+separating them from normative guidance.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -364,15 +429,14 @@ This skill processes incident data including attacker-controlled indicators (IP 
 
 ## 9. References
 
-1. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide (Section 3.3: Containment, Eradication, and Recovery) -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+1. **NIST SP 800-61 Rev 3** -- Cybersecurity Incident Response Recommendations -- https://csrc.nist.gov/pubs/sp/800/61/r3/final
 2. **MITRE ATT&CK Enterprise Matrix** -- https://attack.mitre.org/matrices/enterprise/
 3. **MITRE ATT&CK Lateral Movement Tactics** -- https://attack.mitre.org/tactics/TA0008/
 4. **MITRE ATT&CK Command and Control Tactics** -- https://attack.mitre.org/tactics/TA0011/
-5. **CISA Analysis and Containment Guidance** -- https://www.cisa.gov/news-events/directives
+5. **CISA #StopRansomware Guide** -- https://www.cisa.gov/stopransomware/ransomware-guide
 6. **SANS Incident Handler's Handbook** -- Containment Phase -- https://www.sans.org/white-papers/33901/
 7. **Microsoft Incident Response Containment Guidance** -- https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-compromised-malicious-app
 8. **NIST SP 800-83** -- Guide to Malware Incident Prevention and Handling for Desktops and Laptops -- https://csrc.nist.gov/publications/detail/sp/800-83/rev-1/final
 9. **MITRE ATT&CK -- Data Destruction (T1485)** -- https://attack.mitre.org/techniques/T1485/
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
-11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
-12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+11. **CISA Handling Destructive Malware** -- https://www.cisa.gov/news-events/alerts/2015/01/12/destructive-malware
