@@ -145,6 +145,7 @@ public string RunDiagnostic(string host)
 
 **ASVS Control:** V12.3.2
 
+**Vulnerable:**
 ```csharp
 // VULNERABLE: Path.Combine does not prevent traversal sequences
 public IActionResult DownloadFile(string filename)
@@ -154,24 +155,64 @@ public IActionResult DownloadFile(string filename)
 }
 ```
 
-Remediation: Resolve the full path and verify it stays within the allowed base directory.
+Remediation: Resolve the full path, normalize it with a trailing separator to prevent sibling-directory escape bypasses (e.g. `uploads-sibling` escaping `uploads`), use a trusted absolute base path to avoid current-directory dependence, and apply explicit, platform-appropriate string comparison.
 
 ```csharp
-// SECURE: canonicalize and validate the resolved path
+// SECURE: Hardened path traversal protection
 public IActionResult DownloadFile(string filename)
 {
-    var basePath = Path.GetFullPath(_uploadDir);
-    var fullPath = Path.GetFullPath(Path.Combine(_uploadDir, filename));
+    if (string.IsNullOrWhiteSpace(filename))
+        return BadRequest("Filename is required.");
 
-    if (!fullPath.StartsWith(basePath + Path.DirectorySeparatorChar))
-        return BadRequest("Invalid file path.");
+    // 1. Resolve absolute trusted base directory and ensure trailing separator
+    string absoluteBase = Path.GetFullPath(_uploadDir);
+    if (!absoluteBase.EndsWith(Path.DirectorySeparatorChar.ToString()))
+    {
+        absoluteBase += Path.DirectorySeparatorChar;
+    }
 
-    if (!System.IO.File.Exists(fullPath))
+    // 2. Resolve target path against the trusted base
+    string absoluteTarget = Path.GetFullPath(Path.Combine(absoluteBase, filename));
+
+    // 3. String containment check with platform-aware comparison
+    // Use OrdinalIgnoreCase for Windows/macOS, Ordinal for case-sensitive Linux
+    var comparison = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        ? StringComparison.OrdinalIgnoreCase
+        : StringComparison.Ordinal;
+
+    if (!absoluteTarget.StartsWith(absoluteBase, comparison))
+    {
+        return BadRequest("Access denied: path escape detected.");
+    }
+
+    // 4. Link & Reparse Point Audit (prevent escaping via symlinks/junctions)
+    var fileInfo = new FileInfo(absoluteTarget);
+    if (fileInfo.Exists && (fileInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+    {
+        return BadRequest("Access denied: symlinks are not allowed.");
+    }
+
+    if (!fileInfo.Exists)
         return NotFound();
 
-    return PhysicalFile(fullPath, "application/octet-stream");
+    // 5. Serve or open immediately after validation to prevent TOCTOU races
+    return PhysicalFile(absoluteTarget, "application/octet-stream");
 }
 ```
+
+Reviewers MUST verify and compile the following evidence:
+- **Absolute base resolution**: Proof that the base path is resolved as an absolute, normalized path.
+- **Trailing separator enforcement**: Ensuring the base path string ends with `Path.DirectorySeparatorChar` before calling `StartsWith` (to prevent sibling directory path traversal).
+- **String comparison semantics**: Proof of explicit case-sensitive (`StringComparison.Ordinal`) or case-insensitive (`StringComparison.OrdinalIgnoreCase`) comparison selected to match the target OS/file system.
+- **Link/reparse-point policy**: Evidence of handling symlinks/junctions/reparse points (denying them or verifying target destinations) to prevent path bypasses on systems that support links.
+- **TOCTOU mitigation**: Verifying that the target file is opened or served immediately after validation (such as passing the validated path directly to the filesystem API) to mitigate race conditions.
+
+#### Evaluation Gaps (Not Evaluable Reasons)
+If path resolution or serving is analyzed, the review is **Not Evaluable** if any of the following details are missing:
+- `unknown_deployment_os`: The target operating system and file system case-sensitivity are unevidenced.
+- `unknown_link_policy`: No evidence of how the application handles files that are symlinks or reparse points.
+- `unreviewed_archive_extraction`: Path validation checks on archive extraction (like Zip Slip checks) are unevidenced.
+
 
 ---
 
@@ -817,8 +858,9 @@ var obj = JsonConvert.DeserializeObject<OrderDto>(json, settings);
 
 **ASVS Control:** V12.1.1, V12.3.1, V12.4.1
 
+**Vulnerable:**
 ```csharp
-// VULNERABLE: no file type or size validation on IFormFile
+// VULNERABLE: no file type or size validation on IFormFile; trusts client FileName
 [HttpPost("upload")]
 public async Task<IActionResult> Upload(IFormFile file)
 {
@@ -829,29 +871,67 @@ public async Task<IActionResult> Upload(IFormFile file)
 }
 ```
 
-Remediation: Validate file type, enforce size limits, generate a safe filename, and store outside the webroot.
+Remediation: Never use the client-supplied filename (`file.FileName`) for server-side storage. Validate the file extension against a strict allowlist, perform content-type and file signature (magic bytes) verification to verify the actual file type, enforce size limits, and store uploaded files outside the web root directory.
 
 ```csharp
-// SECURE: validated, renamed, stored outside webroot
+// SECURE: Renamed, validated size/signature, stored outside webroot
 private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     { ".jpg", ".jpeg", ".png", ".pdf" };
 
+// Map extensions to expected magic byte signatures
+private static readonly Dictionary<string, List<byte[]>> FileSignatures = new()
+{
+    { ".jpeg", new() { new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }, new byte[] { 0xFF, 0xD8, 0xFF, 0xE1 } } },
+    { ".jpg", new() { new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }, new byte[] { 0xFF, 0xD8, 0xFF, 0xE1 } } },
+    { ".png", new() { new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A } } },
+    { ".pdf", new() { new byte[] { 0x25, 0x50, 0x44, 0x46 } } }
+};
+
 [HttpPost("upload")]
-[RequestSizeLimit(5_000_000)] // 5 MB
+[RequestSizeLimit(5_000_000)] // 5 MB size limit
 public async Task<IActionResult> Upload(IFormFile file)
 {
-    var ext = Path.GetExtension(file.FileName);
-    if (!AllowedExtensions.Contains(ext))
-        return BadRequest("File type not allowed.");
+    if (file == null || file.Length == 0)
+        return BadRequest("No file uploaded.");
 
+    // 1. Validate file extension (ignore user-supplied pathing)
+    var clientFileName = Path.GetFileName(file.FileName); // Strip directories if present
+    var ext = Path.GetExtension(clientFileName);
+    if (string.IsNullOrEmpty(ext) || !AllowedExtensions.Contains(ext))
+        return BadRequest("File type extension not allowed.");
+
+    // 2. Validate file signature / magic bytes (do not trust Content-Type header alone)
+    using var reader = new BinaryReader(file.OpenReadStream());
+    var signatures = FileSignatures[ext];
+    var maxSignatureLength = signatures.Max(sig => sig.Length);
+    var headerBytes = reader.ReadBytes(maxSignatureLength);
+
+    bool signatureMatches = signatures.Any(sig => headerBytes.Take(sig.Length).SequenceEqual(sig));
+    if (!signatureMatches)
+        return BadRequest("File content signature mismatch.");
+
+    // 3. Generate random server-side filename for storage
     var safeFileName = $"{Guid.NewGuid()}{ext}";
-    var storagePath = Path.Combine(_uploadsDir, safeFileName); // outside wwwroot
+    var storagePath = Path.Combine(_uploadsDir, safeFileName); // Directory located outside web root (wwwroot)
 
+    // 4. Write stream to secure storage location
     using var stream = System.IO.File.Create(storagePath);
     await file.CopyToAsync(stream);
     return Ok(new { fileId = safeFileName });
 }
 ```
+
+Reviewers MUST verify and compile the following evidence:
+- **Storage location**: Proof that files are stored outside the web root (`wwwroot`) to prevent direct execution of uploaded scripts.
+- **Randomized filename**: Proof that the server generates random/uuid-based filenames instead of using the client-supplied `FileName` for storage.
+- **Extension validation**: Proof that extensions are validated against a strict, case-insensitive allowlist.
+- **Content/Signature validation**: Evidence of verifying file contents (such as validating magic bytes) to ensure the uploaded file matches the extension (e.g., verifying that a `.png` file has a valid PNG signature).
+- **Size constraint**: Proof that request or file size limits are enforced on the upload endpoint.
+
+#### Evaluation Gaps (Not Evaluable Reasons)
+If file uploads are audited, the review is **Not Evaluable** if any of the following details are missing:
+- `missing_upload_storage_location`: The target directory for file storage is unevidenced or its relation to the web root is unknown.
+- `missing_content_signature_validation`: No signature or magic byte verification is implemented for sensitive file types.
 
 ---
 
