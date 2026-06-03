@@ -4,7 +4,8 @@ description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
   GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  SSRF, and webhook/event-source trust boundaries. Produces findings mapped
+  to API1-API10 with remediation guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
@@ -38,6 +39,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **Identify inbound event sources** -- Public webhook receivers, queue consumers fed by webhooks, provider callback endpoints, and signed event APIs. Record the provider, verification method, raw-body handling, replay controls, event type allowlist, and tenant/account binding evidence.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -66,6 +68,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
+| **Trust Boundary Evidence** | For webhooks or third-party events: provider verification method, raw-body handling, timestamp tolerance, replay/idempotency key, account/tenant binding, event type allowlist, and confidence or Not Evaluable reason |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -78,6 +81,8 @@ Each finding produced by this review must include the following fields:
 | **Medium** | Requires specific conditions, chained vulnerabilities, or elevated access to exploit. Partial data exposure or limited business impact. CVSS 4.0-6.9 equivalent. |
 | **Low** | Minor security weakness with limited real-world exploitability. Defense-in-depth gap. CVSS 0.1-3.9 equivalent. |
 | **Informational** | Best-practice deviation or hardening recommendation. Not directly exploitable. |
+
+For webhook findings, calibrate severity by business impact and event authority. Forged or replayed payment, account, privilege, security, or provisioning events are usually High or Critical. Missing idempotency on non-sensitive notifications may be Medium or Low. Intentionally public webhook endpoints that correctly verify provider authenticity, freshness, idempotency, and account/tenant binding should not be reported as ordinary missing-authentication findings.
 
 ---
 
@@ -125,6 +130,7 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Trust Boundary Evidence:** [provider verification method, raw-body handling, timestamp tolerance, replay/idempotency key, account/tenant binding, event allowlist, evidence confidence or Not Evaluable reason]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
@@ -146,7 +152,7 @@ The final review output must be structured as follows:
 | API7:2023 | Server Side Request Forgery | CWE-918 | Fetching user-supplied URLs without validation |
 | API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, XXE |
 | API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, deprecated versions, missing documentation |
-| API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
+| API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295, CWE-345, CWE-294 | Trusting upstream API data, webhook events, or provider callbacks without validation, authenticity, freshness, and binding checks |
 
 ---
 
@@ -215,6 +221,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Treating signed webhooks as normal unauthenticated routes.** Webhook endpoints are often intentionally public, so the question is not whether a browser user is authenticated. The review must prove provider authenticity, raw payload verification semantics, timestamp freshness, replay/idempotency handling, event allowlisting, and account or tenant binding.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -238,4 +246,7 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
+- **Stripe Webhook Signatures:** https://docs.stripe.com/webhooks/signature
+- **Stripe Webhook Best Practices:** https://docs.stripe.com/webhooks
+- **Slack Request Signing:** https://api.slack.com/authentication/verifying-requests-from-slack
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final

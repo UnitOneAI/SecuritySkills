@@ -520,7 +520,7 @@ Document doc = builder.parse(request.getInputStream());
 
 ## API10:2023 -- Unsafe Consumption of APIs
 
-**CWE:** CWE-20 (Improper Input Validation), CWE-295 (Improper Certificate Validation), CWE-319 (Cleartext Transmission of Sensitive Information)
+**CWE:** CWE-20 (Improper Input Validation), CWE-295 (Improper Certificate Validation), CWE-319 (Cleartext Transmission of Sensitive Information), CWE-345 (Insufficient Verification of Data Authenticity), CWE-294 (Authentication Bypass by Capture-replay)
 **Severity:** High to Medium
 
 ### Vulnerable Patterns
@@ -544,6 +544,82 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```javascript
+// VULNERABLE: Inbound webhook trusts caller-controlled JSON as authoritative
+app.post('/webhooks/payment', express.json(), async (req, res) => {
+  if (req.body.type === 'payment.succeeded') {
+    await markInvoicePaid(req.body.data.invoiceId);
+  }
+  res.json({ received: true });
+});
+```
+
+```javascript
+// VULNERABLE: Signature is verified over re-serialized JSON, not provider-signed bytes
+app.use(express.json());
+
+app.post('/webhooks/stripe', (req, res) => {
+  const reconstructedBody = JSON.stringify(req.body);
+  verifyWebhookSignature(reconstructedBody, req.headers['stripe-signature']);
+  processEvent(req.body);
+  res.sendStatus(204);
+});
+```
+
+```text
+# VULNERABLE: Valid signed event can be replayed or cross-boundary processed
+Provider event id: evt_123
+Signature timestamp: not checked
+Provider account: connected-account-B
+Application tenant: tenant-A
+Handler side effect: tenant-A subscription is credited twice
+```
+
+### Webhook and Event Source Authenticity
+
+Public webhook receivers should not be reported as missing normal end-user authentication when they intentionally receive provider-to-application callbacks. Review them under API10 using the provider event trust model instead:
+
+- Verify the provider's documented authenticity mechanism before any side effect: HMAC signature, asymmetric signature, signed JWT, mTLS, or equivalent.
+- Preserve the exact raw request body until verification completes when the provider signs raw bytes.
+- Enforce timestamp tolerance or nonce freshness where the provider includes replay-resistant metadata.
+- Process provider event IDs or idempotency keys exactly once for side effects, while still allowing legitimate provider retries after transient failures.
+- Bind authentic events to the expected provider account, environment, tenant/customer/object owner, and allowed event types.
+- Isolate test and production webhook secrets, events, queues, and handlers.
+- Record secret provenance and rotation status; do not accept shared or unknown webhook secrets for production flows.
+
+Secure pattern:
+
+```javascript
+// SECURE: Raw-body verification, timestamp tolerance, event allowlist, and idempotency
+app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  const event = stripe.webhooks.constructEvent(
+    req.body,
+    req.header('stripe-signature'),
+    process.env.STRIPE_WEBHOOK_SECRET
+  );
+
+  assertAllowedEventType(event.type, ['invoice.payment_succeeded']);
+  assertProviderAccount(event.account, expectedConnectedAccountFor(event.data.object.customer));
+  assertTenantBinding(event.data.object.customer, event.data.object.metadata.tenant_id);
+
+  const firstProcessing = await idempotencyStore.markStarted(event.id);
+  if (!firstProcessing) {
+    return res.sendStatus(204);
+  }
+
+  await markInvoicePaidOnce(event.data.object.id, event.id);
+  res.sendStatus(204);
+});
+```
+
+Webhook evidence table:
+
+| Provider | Verification method | Raw body preserved? | Timestamp tolerance | Replay/idempotency key | Allowed event types | Provider account binding | Tenant/customer binding | Environment | Secret rotation | Evidence confidence |
+|----------|---------------------|---------------------|---------------------|------------------------|---------------------|--------------------------|-------------------------|-------------|-----------------|---------------------|
+| Stripe | HMAC over raw body | Yes | 5 min | `event.id` | `invoice.payment_succeeded` | `event.account` checked | Customer mapped to tenant | prod only | documented | High |
+
+If provider documentation, webhook secret provenance, or event-to-tenant mapping is unavailable, mark the result as **Not Evaluable** rather than assuming the endpoint is safe or unsafe.
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
@@ -552,6 +628,9 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
+- For inbound webhooks, verify the provider signature or equivalent authenticity proof over the correct bytes before parsing side effects.
+- Enforce timestamp freshness and idempotent processing for signed events to prevent replay and duplicate delivery abuse.
+- Bind webhook events to the expected provider account, environment, tenant/customer, object ownership, and event type allowlist.
 
 ### Review Checklist
 
@@ -560,3 +639,8 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+- [ ] Public webhook receivers verify provider authenticity using the provider's documented method before enqueueing or applying side effects.
+- [ ] Webhook signature verification preserves raw request bytes when required by the provider.
+- [ ] Webhook handlers enforce timestamp tolerance, replay/idempotency protection, and duplicate-delivery-safe side effects.
+- [ ] Authentic webhook events are bound to the expected account, environment, tenant/customer, object owner, and event type allowlist.
+- [ ] Test-mode and production webhook secrets/events cannot cross environments, and secret rotation evidence is available.
