@@ -56,13 +56,41 @@ Before beginning analysis, gather or confirm:
 - [ ] **Time window:** The specific time range to analyze.
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
+- [ ] **Required log sources by hypothesis:** Which sources are required to support or refute the investigation objective? Mark each as present, partial, missing, delayed, or untrusted.
+- [ ] **Telemetry integrity evidence:** Are source heartbeats, last successful ingestion times, parser/filter status, queue drops, and output errors available for the relevant log pipelines?
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
+- [ ] **Known visibility exceptions:** Are there maintenance windows, change tickets, sampling policies, retention limits, SIEM permission limits, or expected zero-event periods that explain log gaps?
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
 
 ---
 
 ## 3. Process
+
+### Step 0: Telemetry Integrity Pre-Check
+
+Before interpreting missing or negative evidence, verify that the relevant telemetry was collected, delivered, parsed, and searchable for the full analysis window.
+
+| Integrity Gate | Evidence to Collect | Failure Mode Prevented |
+|----------------|---------------------|------------------------|
+| Source inventory | Required sources for each hypothesis; collection enabled status; retention window | Treating "not collected" as "not observed" |
+| Source heartbeat | Last event time, last successful ingestion time, sensor/agent health, host clock health | Missing outages, disabled agents, or clock skew |
+| Pipeline configuration | Collector version, filter rules, parser configuration, routing/index rules, recent changes | Upstream suppression before data reaches the SIEM |
+| Loss counters | Queue drops, parser failures, output retries, throttling, dead-letter queues | Silent ingestion loss or class-specific event loss |
+| Search boundary | SIEM index permissions, tenant/namespace scope, query time range, sampling/truncation settings | False "no results" caused by hidden indexes or sampled data |
+| Timeline integrity | Event time, ingest time, stable event ID, deduplication key, replay/backfill batch | Duplicate, delayed, or replayed logs distorting sequence and baselines |
+
+Classify each required source before finalizing findings:
+
+| Status | Meaning | Reporting Requirement |
+|--------|---------|----------------------|
+| Present | Available, searchable, in retention, and pipeline health is verified | Findings may rely on this source normally |
+| Partial | Available but sampled, truncated, filtered, or missing some event classes | State the limitation and lower confidence for affected hypotheses |
+| Missing | Required source is not collected or outside retention | Do not make high-confidence negative claims for hypotheses requiring it |
+| Delayed | Events may still be arriving due to backlog, buffering, or cloud audit latency | Schedule a re-query window and mark timeline conclusions provisional |
+| Untrusted | Pipeline integrity cannot be verified or tampering is suspected | Treat absence of evidence as unreliable and escalate collection review |
+
+Treat deliberate suppression or unexplained loss of authentication, EDR, cloud audit, DNS, proxy, or firewall logs as a security finding, not just a visibility gap. Planned maintenance windows and documented parser deployments should still be recorded, but they should not be escalated as compromise without corroborating evidence.
 
 ### Step 1: Log Source Taxonomy
 
@@ -313,6 +341,9 @@ Step 4: Pivot on host
 
 Step 5: Build timeline
   -> Combine all findings into a chronological sequence
+  -> Track event occurrence time separately from SIEM ingestion time
+  -> Deduplicate replayed or backfilled events using event IDs, sequence numbers, hashes, or batch IDs
+  -> Re-query delayed sources after known cloud, agent, or pipeline backlog windows
   -> Map each event to an ATT&CK technique
   -> Identify gaps in visibility (log sources not available)
 ```
@@ -327,6 +358,13 @@ Step 5: Build timeline
 | P2 | High | Log analysis reveals high-confidence anomalies consistent with an intrusion: unusual privileged logons, new persistence mechanisms, or C2 communication patterns. | Escalate within 1 hour. |
 | P3 | Medium | Log analysis identifies suspicious patterns requiring further investigation: behavioral anomalies, first-seen activity, or partial kill chain indicators. | Investigate within 4 hours. |
 | P4 | Low | Log analysis reveals informational findings: minor policy deviations, logging gaps, or baseline drift without immediate threat indication. | Document and review within 24 hours. |
+
+**Telemetry integrity severity guidance:**
+
+- **P1 Critical:** Multiple high-value sources are suppressed, delayed, or untrusted and there is evidence of adversary access to collectors, SIEM ingestion rules, cloud logging controls, or endpoint sensor configuration.
+- **P2 High:** Authentication, EDR, cloud audit, DNS, proxy, or firewall telemetry is deliberately filtered, disabled, or dropped for a scoped asset or event class, even if some corroborating sources remain available.
+- **P3 Medium:** Material ingestion loss, parser failure, permission boundary, or replay/backfill issue affects confidence in an active investigation but has a plausible operational cause.
+- **P4 Low:** Documented maintenance, approved sampling, retention limits, or baseline drift create a known visibility limitation without evidence of tampering.
 
 ---
 
@@ -352,17 +390,25 @@ Produce log analysis findings in this structure:
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
 
+### Telemetry Integrity
+| Source | Required For | Status | Heartbeat / Last Ingest | Loss / Error Evidence | Pipeline / Search Boundary |
+|--------|--------------|--------|--------------------------|-----------------------|----------------------------|
+| [Source] | [Hypothesis or finding] | [Present / Partial / Missing / Delayed / Untrusted] | [Timestamp or health signal] | [Drops, parser errors, output retries, or none observed] | [Filters, index permissions, tenant scope, sampling, retention] |
+
+**Overall confidence:** [High / Medium / Low] -- [Reason tied to source status and integrity evidence]
+
 ### Findings Summary
-| # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
-|---|---------|----------|-------------------|------------|----------|
-| 1 | [Description] | [P1-P4] | [T1078 or N/A] | [Source] | [Key event reference] |
-| 2 | [Description] | [P1-P4] | [T1078 or N/A] | [Source] | [Key event reference] |
+| # | Finding | Severity | Confidence | ATT&CK Technique | Log Source Coverage | Evidence |
+|---|---------|----------|------------|-------------------|---------------------|----------|
+| 1 | [Description] | [P1-P4] | [High/Medium/Low] | [T1078 or N/A] | [Present/Partial/Missing/Delayed/Untrusted] | [Key event reference] |
+| 2 | [Description] | [P1-P4] | [High/Medium/Low] | [T1078 or N/A] | [Present/Partial/Missing/Delayed/Untrusted] | [Key event reference] |
 
 ### Detailed Findings
 #### Finding 1: [Title]
 **Severity:** [P1-P4]
 **ATT&CK Mapping:** [Technique ID -- Name]
 **Log Source:** [Source]
+**Source Coverage:** [Required sources and status]
 **Evidence:**
 [Relevant log entries, timestamps, and entity details]
 
@@ -370,15 +416,15 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Event Time (UTC) | Ingest Time (UTC) | Source | Dedup / Batch Key | Event | ATT&CK Technique | Arrival Status | Assessment |
+|------------------|-------------------|--------|-------------------|-------|-------------------|----------------|------------|
+| [HH:MM:SS] | [HH:MM:SS or unknown] | [Source] | [Event ID/hash/batch ID] | [Description] | [T-ID] | [On-time / Delayed / Replayed / Unknown] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
 
 ### Visibility Gaps
-[Log sources that were not available but would have provided relevant data]
+[Log sources that were not available, delayed, partial, or untrusted, including the hypotheses affected and whether a re-query or collection review is required]
 
 ### Recommendations
 - [ ] [Action 1]
