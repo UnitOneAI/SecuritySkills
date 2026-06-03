@@ -154,16 +154,23 @@ public IActionResult DownloadFile(string filename)
 }
 ```
 
-Remediation: Resolve the full path and verify it stays within the allowed base directory.
+Remediation: Resolve the full path from a trusted absolute base directory, compare with explicit path semantics, and verify the final file-open or file-serve behavior cannot escape through links, reparse points, or a replace-after-check race.
 
 ```csharp
-// SECURE: canonicalize and validate the resolved path
+// SECURE: deterministic base, explicit comparison, and boundary-aware containment
 public IActionResult DownloadFile(string filename)
 {
-    var basePath = Path.GetFullPath(_uploadDir);
-    var fullPath = Path.GetFullPath(Path.Combine(_uploadDir, filename));
+    var basePath = Path.GetFullPath(_uploadDir, _appContentRoot);
+    var basePathWithSeparator = Path.EndsInDirectorySeparator(basePath)
+        ? basePath
+        : basePath + Path.DirectorySeparatorChar;
 
-    if (!fullPath.StartsWith(basePath + Path.DirectorySeparatorChar))
+    var fullPath = Path.GetFullPath(filename, basePathWithSeparator);
+    var comparison = OperatingSystem.IsWindows()
+        ? StringComparison.OrdinalIgnoreCase
+        : StringComparison.Ordinal;
+
+    if (!fullPath.StartsWith(basePathWithSeparator, comparison))
         return BadRequest("Invalid file path.");
 
     if (!System.IO.File.Exists(fullPath))
@@ -172,6 +179,17 @@ public IActionResult DownloadFile(string filename)
     return PhysicalFile(fullPath, "application/octet-stream");
 }
 ```
+
+**Path-containment evidence checklist:**
+
+- [ ] Base directory is trusted, absolute, and not resolved from the process current directory.
+- [ ] The check uses `Path.GetFullPath(path, basePath)` or equivalent deterministic base-path resolution.
+- [ ] The base-directory boundary is explicit; sibling prefixes such as `/var/app/uploads2` do not pass for `/var/app/uploads`.
+- [ ] `StartsWith` or equivalent path comparison uses explicit `StringComparison` selected for the deployment file system.
+- [ ] Tests cover sibling-prefix bypass, case variants, encoded separators, rooted paths, drive-relative paths, UNC paths, and extended-length paths where applicable.
+- [ ] Link policy is documented for symlinks, junctions, reparse points, bind mounts, and archive-created links.
+- [ ] The code opens or serves the file immediately after validation, or uses a provider scoped to the intended base directory.
+- [ ] Zip/archive extraction has separate Zip Slip checks for entry names, absolute paths, traversal segments, and link entries.
 
 ---
 
@@ -829,7 +847,7 @@ public async Task<IActionResult> Upload(IFormFile file)
 }
 ```
 
-Remediation: Validate file type, enforce size limits, generate a safe filename, and store outside the webroot.
+Remediation: Treat `IFormFile.FileName` as untrusted display metadata, validate file type and size, generate a server-side storage name, and store outside the webroot.
 
 ```csharp
 // SECURE: validated, renamed, stored outside webroot
@@ -844,6 +862,9 @@ public async Task<IActionResult> Upload(IFormFile file)
     if (!AllowedExtensions.Contains(ext))
         return BadRequest("File type not allowed.");
 
+    if (!await ContentSignatureMatchesAsync(file, ext))
+        return BadRequest("File content does not match extension.");
+
     var safeFileName = $"{Guid.NewGuid()}{ext}";
     var storagePath = Path.Combine(_uploadsDir, safeFileName); // outside wwwroot
 
@@ -852,6 +873,15 @@ public async Task<IActionResult> Upload(IFormFile file)
     return Ok(new { fileId = safeFileName });
 }
 ```
+
+**File-upload evidence checklist:**
+
+- [ ] Client-supplied filenames are never used for storage paths and are HTML-encoded if displayed or logged.
+- [ ] Extension allowlists are paired with content-type or file-signature validation where file type matters.
+- [ ] Size limits are enforced before or during streaming, not only after the full file is buffered.
+- [ ] Storage is outside the webroot or behind an authorization-checked download handler.
+- [ ] Double extensions, encoded separators, path separators, reserved device names, and empty extensions are handled explicitly.
+- [ ] Malware scanning or quarantine exists for workflows where uploaded files are shared, executed, indexed, or sent to other users.
 
 ---
 
@@ -927,6 +957,10 @@ Use these regex patterns to locate potential vulnerabilities in C# source files.
 | XSS (Blazor) | `MarkupString\)` |
 | OS Command Injection | `Process\.Start\s*\(.*[\+\$]` |
 | Path Traversal | `Path\.Combine\s*\(.*Request` |
+| Path Traversal (default comparison) | `StartsWith\s*\([^,)]*Path\.DirectorySeparatorChar[^,)]*\)` |
+| Path Traversal (current-directory-dependent) | `Path\.GetFullPath\s*\(\s*["'][^"']+["']\s*\)` |
+| File Upload (client filename storage) | `Path\.Combine\s*\([^)]*IFormFile\.FileName|Path\.Combine\s*\([^)]*file\.FileName` |
+| File Upload (direct webroot storage) | `wwwroot[/\\]uploads|WebRootPath.*uploads` |
 | XXE | `XmlResolver\s*=\s*new\s+XmlUrlResolver` |
 | XXE (DTD) | `DtdProcessing\s*=\s*DtdProcessing\.Parse` |
 | LDAP Injection | `DirectorySearcher.*Filter\s*=.*[\+\$]` |
