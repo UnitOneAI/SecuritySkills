@@ -413,7 +413,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
+    frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C, HIPAA-Security-Rule-NPRM]
     difficulty: intermediate
     time_estimate: "60-120min"
     file: skills/compliance/hipaa-review/SKILL.md
