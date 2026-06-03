@@ -560,7 +560,7 @@ skills:
     role: [security-engineer, appsec-engineer]
     phase: [build, deploy]
     activity: [configure, test]
-    frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
+    frameworks: [OWASP-Top-10-2025, OWASP-Testing-Guide-v4.2]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/devsecops/dast-config/SKILL.md

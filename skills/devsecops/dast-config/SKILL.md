@@ -1,7 +1,7 @@
 ---
 name: dast-config
 description: >
-  Reviews DAST tool configurations against OWASP Top 10:2021 and OWASP Testing
+  Reviews DAST tool configurations against OWASP Top 10:2025 and OWASP Testing
   Guide v4.2. Auto-invoked when reviewing OWASP ZAP configurations, DAST CI/CD
   integration, scan policies, or authenticated scanning setups. Produces a DAST
   maturity assessment covering scan policy configuration, active vs passive
@@ -9,10 +9,10 @@ description: >
 tags: [devsecops, dast, zap, burp]
 role: [security-engineer, appsec-engineer]
 phase: [build, deploy]
-frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
+frameworks: [OWASP-Top-10-2025, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "2.0.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DAST Tool Configuration
 
-A structured, repeatable process for reviewing Dynamic Application Security Testing (DAST) tool configurations against OWASP Top 10:2021 and the OWASP Testing Guide v4.2 (WSTG). This skill covers OWASP ZAP configuration, scan policy tuning, active vs. passive scanning, API scanning with OpenAPI import, authenticated scanning, CI/CD integration, scope management, and results deduplication. All findings map to OWASP Top 10 categories and WSTG test IDs.
+A structured, repeatable process for reviewing Dynamic Application Security Testing (DAST) tool configurations against OWASP Top 10:2025 and the OWASP Testing Guide v4.2 (WSTG). This skill covers OWASP ZAP configuration, scan policy tuning, active vs. passive scanning, API scanning with OpenAPI import, authenticated scanning, CI/CD integration, scope management, exceptional-condition testing, and results deduplication. All findings map to OWASP Top 10 categories and WSTG test IDs with coverage status recorded.
 
 ---
 
@@ -41,7 +41,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-DAST tools test running applications by sending crafted HTTP requests and analyzing responses for vulnerability indicators. Unlike SAST, DAST finds runtime issues: misconfigured headers, authentication flaws, and injection vulnerabilities that survive to deployment. OWASP Testing Guide v4.2 (WSTG) defines 91 test cases across 11 categories -- DAST tools automate a subset of these. OWASP Top 10:2021 provides the risk-based prioritization framework. The challenge is configuration: an unconfigured DAST scan produces noise (thousands of informational findings), misses authenticated surfaces, and may destabilize target environments. Proper tuning transforms DAST from a checkbox exercise into a meaningful security gate.
+DAST tools test running applications by sending crafted HTTP requests and analyzing responses for vulnerability indicators. Unlike SAST, DAST finds runtime issues: misconfigured headers, authentication flaws, and injection vulnerabilities that survive to deployment. OWASP Testing Guide v4.2 (WSTG) defines 91 test cases across 11 categories -- DAST tools automate a subset of these. OWASP Top 10:2025 provides the current risk-based prioritization framework. The challenge is configuration: an unconfigured DAST scan produces noise (thousands of informational findings), misses authenticated surfaces, overstates DAST-only coverage for supply-chain and logging categories, and may destabilize target environments. Proper tuning transforms DAST from a checkbox exercise into a meaningful security gate.
 
 ---
 
@@ -86,6 +86,24 @@ Categorize by:
 - **Tool:** ZAP, Burp Suite Enterprise, Nuclei, HCL AppScan, Invicti.
 - **Scan type:** Baseline (passive only), full scan (active + passive), API scan.
 - **Integration:** CI/CD pipeline, scheduled, manual.
+
+---
+
+### Step 1.5: Framework Version and Coverage Preflight
+
+Record the assessment baseline before judging coverage. Do not treat OWASP Top 10:2021 mappings as current unless the engagement explicitly requests legacy output.
+
+| Field | Required Evidence |
+|-------|-------------------|
+| OWASP Top 10 version | `2025` by default |
+| OWASP source URL/date | `https://owasp.org/Top10/2025/0x00_2025-Introduction/` and retrieval date |
+| Legacy baseline | `None`, or `OWASP Top 10:2021` with requester and rationale |
+| WSTG version | `v4.2` or explicit alternative |
+| DAST tool/version | ZAP/Burp/Nuclei version or action/container tag |
+| Scan environment | PR ephemeral app, staging, production passive-only, or other |
+| Coverage status values | `DAST Covered`, `Partially Covered`, `Cross-Tool Evidence Required`, `Manual Evidence Required`, `Not Evaluated` |
+
+**Finding classification:** A report generated after OWASP Top 10:2025 that emits Top 10:2021 as current without a legacy scope is **High**. Claiming complete Top 10:2025 coverage from a generic active scan is **High** because several 2025 categories require evidence beyond DAST.
 
 ---
 
@@ -190,35 +208,49 @@ jobs:
 
 | ZAP Rule ID | Rule Name | OWASP Top 10 | WSTG Reference |
 |-------------|-----------|-------------|----------------|
-| 10010 | Cookie No HttpOnly Flag | A05:2021 | WSTG-SESS-02 |
-| 10011 | Cookie Without Secure Flag | A05:2021 | WSTG-SESS-02 |
-| 10015 | Incomplete or No Cache-control Header | A05:2021 | WSTG-CONF-06 |
-| 10017 | Cross-Domain JavaScript Source | A05:2021 | WSTG-CLNT-01 |
-| 10020 | X-Frame-Options Header | A05:2021 | WSTG-CLNT-09 |
-| 10021 | X-Content-Type-Options Header | A05:2021 | WSTG-CONF-06 |
-| 10023 | Information Disclosure - Debug Errors | A05:2021 | WSTG-ERRH-01 |
-| 10035 | Strict-Transport-Security Header | A05:2021 | WSTG-CONF-07 |
-| 10036 | Server Leaks Version Information | A05:2021 | WSTG-INFO-02 |
-| 10038 | Content Security Policy Header | A05:2021 | WSTG-CONF-12 |
-| 10063 | Permissions Policy Header | A05:2021 | WSTG-CONF-06 |
-| 90004 | Insufficient Site Isolation Against Spectre | A05:2021 | N/A |
+| 10010 | Cookie No HttpOnly Flag | A02:2025 Security Misconfiguration | WSTG-SESS-02 |
+| 10011 | Cookie Without Secure Flag | A02:2025 Security Misconfiguration | WSTG-SESS-02 |
+| 10015 | Incomplete or No Cache-control Header | A02:2025 Security Misconfiguration | WSTG-CONF-06 |
+| 10017 | Cross-Domain JavaScript Source | A02:2025 Security Misconfiguration | WSTG-CLNT-01 |
+| 10020 | X-Frame-Options Header | A02:2025 Security Misconfiguration | WSTG-CLNT-09 |
+| 10021 | X-Content-Type-Options Header | A02:2025 Security Misconfiguration | WSTG-CONF-06 |
+| 10023 | Information Disclosure - Debug Errors | A10:2025 Mishandling of Exceptional Conditions | WSTG-ERRH-01 |
+| 10035 | Strict-Transport-Security Header | A04:2025 Cryptographic Failures | WSTG-CONF-07 |
+| 10036 | Server Leaks Version Information | A02:2025 Security Misconfiguration | WSTG-INFO-02 |
+| 10038 | Content Security Policy Header | A02:2025 Security Misconfiguration | WSTG-CONF-12 |
+| 10063 | Permissions Policy Header | A02:2025 Security Misconfiguration | WSTG-CONF-06 |
+| 90004 | Insufficient Site Isolation Against Spectre | A02:2025 Security Misconfiguration | N/A |
 
 **Active scan rules to verify for OWASP Top 10 coverage:**
 
 | OWASP Top 10 | ZAP Active Scanner | WSTG Reference |
 |-------------|-------------------|----------------|
-| A01:2021 Broken Access Control | Path Traversal (6), Remote File Inclusion (7) | WSTG-ATHZ-01 |
-| A02:2021 Cryptographic Failures | Passive rules + TLS config check | WSTG-CRYP-01 |
-| A03:2021 Injection | SQL Injection (40018, 40019, 40020, 40021, 40022), XSS Reflected (40012, 40014), XSS Persistent (40016, 40017), OS Command Injection (90020), SSTI (90035) | WSTG-INPV-05, WSTG-INPV-01 |
-| A04:2021 Insecure Design | Limited DAST coverage -- manual testing required | WSTG-BUSL-* |
-| A05:2021 Security Misconfiguration | Directory Browsing (0), Backup File Disclosure (10095) | WSTG-CONF-04, WSTG-CONF-03 |
-| A06:2021 Vulnerable Components | Passive technology fingerprinting + Retire.js | WSTG-INFO-02 |
-| A07:2021 Auth Failures | Brute Force (not default), Session Fixation (40013) | WSTG-ATHN-*, WSTG-SESS-* |
-| A08:2021 Software/Data Integrity | Limited DAST coverage | N/A |
-| A09:2021 Logging Failures | Not DAST-testable | N/A |
-| A10:2021 SSRF | SSRF (40046) | WSTG-INPV-19 |
+| A01:2025 Broken Access Control | Path Traversal (6), Remote File Inclusion (7), authenticated IDOR checks where configured | WSTG-ATHZ-01 |
+| A02:2025 Security Misconfiguration | Directory Browsing (0), Backup File Disclosure (10095), passive header/config rules | WSTG-CONF-04, WSTG-CONF-03 |
+| A03:2025 Software Supply Chain Failures | Partial only: passive technology fingerprinting + Retire.js | WSTG-INFO-02 |
+| A04:2025 Cryptographic Failures | Passive TLS/cleartext checks, HSTS checks | WSTG-CRYP-01 |
+| A05:2025 Injection | SQL Injection (40018, 40019, 40020, 40021, 40022), XSS Reflected (40012, 40014), XSS Persistent (40016, 40017), OS Command Injection (90020), SSTI (90035), SSRF (40046) where safe | WSTG-INPV-05, WSTG-INPV-01, WSTG-INPV-19 |
+| A06:2025 Insecure Design | Limited DAST coverage -- manual design and abuse-case testing required | WSTG-BUSL-* |
+| A07:2025 Authentication Failures | Brute Force (not default), Session Fixation (40013), authenticated scan verification | WSTG-ATHN-*, WSTG-SESS-* |
+| A08:2025 Software or Data Integrity Failures | Partial: SRI/CSP/runtime integrity signals only | WSTG-CLNT-*, WSTG-CONF-* |
+| A09:2025 Security Logging & Alerting Failures | Not directly DAST-testable; requires alerting/log evidence for staged findings | N/A |
+| A10:2025 Mishandling of Exceptional Conditions | Negative-path and malformed request tests; error handling; retry/timeout/fail-open behavior in staging | WSTG-ERRH-01, WSTG-BUSL-* |
 
-**Finding classification:** Active scanning disabled entirely is **High**. OWASP Top 10 A03 (Injection) scan rules disabled is **Critical**. Missing passive scan rules for security headers is **Medium**.
+**Finding classification:** Active scanning disabled entirely is **High**. OWASP Top 10 A05:2025 Injection scan rules disabled is **Critical**. Missing passive scan rules for security headers is **Medium**. Claiming A03:2025 Software Supply Chain Failures as fully covered by DAST runtime fingerprinting is **High**. No explicit A10:2025 exceptional-condition test plan is **High** for applications with stateful workflows, authentication, payments, healthcare, or other high-impact business logic.
+
+#### 2.3 A10:2025 Exceptional-Condition Test Planning
+
+A10:2025 requires tests for abnormal paths, not only standard attack payloads. These tests should run in staging or an ephemeral environment when they could change state or trigger alerts.
+
+| Test Class | Evidence to Request | Safe Handling |
+|------------|--------------------|---------------|
+| Malformed state transitions | Requests that skip required steps, replay stale state, or submit impossible state combinations | Use seeded test accounts and resettable data |
+| Fail-open authn/authz | Expired sessions, invalid tokens, missing claims, downgraded roles, interrupted identity provider callbacks | Use non-production identities |
+| Error-path access control | Triggered 4xx/5xx flows, alternate handlers, debug routes, exception pages | Assert no sensitive data or elevated access |
+| Timeout/retry/rate-limit exceptions | Retries, partial writes, duplicate submissions, race-like boundary conditions | Rate-limit and isolate target environment |
+| Dependency and downstream failures | Mocked unavailable services, payment/provider timeouts, queue failures | Prefer test doubles or staging dependencies |
+
+Record excluded A10 tests as `Not Evaluated in Production; planned/tested in staging` rather than `Pass`.
 
 ---
 
@@ -481,8 +513,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
+| **Critical** | No authenticated scanning; active scanning targeting production; A05:2025 injection scan rules disabled; no scope restrictions. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; stale 2021 mapping emitted as current; A03:2025 claimed fully covered by DAST-only evidence; no A10:2025 exceptional-condition plan for high-impact workflows. |
 | **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
@@ -498,16 +530,26 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 - DAST tool(s): <ZAP, Burp Suite Enterprise, Nuclei, etc.>
 - Configuration files analyzed: <list of file paths>
 - Date: <assessment date>
-- Frameworks applied: OWASP Top 10:2021, OWASP Testing Guide v4.2
+- Frameworks applied: OWASP Top 10:2025, OWASP Testing Guide v4.2
+- OWASP Top 10 source URL / retrieval date: <url>, <date>
+- Legacy baseline: <None, or OWASP Top 10:2021 with rationale>
+- DAST tool/version: <tool version or action/container tag>
+- Scan environment: <PR ephemeral app / staging / production passive-only>
 
 ### OWASP Top 10 DAST Coverage
 
-| OWASP Category | Scan Rules Active | Passive | Active | Gap |
-|---------------|-------------------|---------|--------|-----|
-| A01 Broken Access Control | 2 | Yes | Yes | None |
-| A03 Injection | 8 | No | Yes | None |
-| A05 Security Misconfiguration | 12 | Yes | Yes | None |
-| A07 Auth Failures | 0 | No | No | GAP |
+| OWASP Category | DAST Coverage Status | DAST Evidence | Cross-Tool / Manual Evidence Required | Gap |
+|---------------|----------------------|---------------|--------------------------------------|-----|
+| A01:2025 Broken Access Control | DAST Covered / Partial | <authenticated path traversal, IDOR checks> | Manual authorization review for complex logic | <gap> |
+| A02:2025 Security Misconfiguration | DAST Covered | <headers, directory listing, backup file checks> | Config review for non-HTTP controls | <gap> |
+| A03:2025 Software Supply Chain Failures | Partially Covered | <runtime component fingerprinting only> | SBOM, SCA, provenance, CI/CD integrity evidence | <gap> |
+| A04:2025 Cryptographic Failures | Partially Covered | <TLS/HSTS/cleartext checks> | Crypto design and key-management evidence | <gap> |
+| A05:2025 Injection | DAST Covered | <SQLi, XSS, command injection, SSTI, SSRF rules> | Manual validation of high findings | <gap> |
+| A06:2025 Insecure Design | Manual Evidence Required | <limited business-logic DAST only> | Threat model, abuse cases, design review | <gap> |
+| A07:2025 Authentication Failures | Partially Covered | <session fixation, brute-force, auth verification> | MFA/session policy evidence | <gap> |
+| A08:2025 Software or Data Integrity Failures | Cross-Tool Evidence Required | <SRI/CSP/runtime integrity signals> | Build provenance, artifact signing, update integrity | <gap> |
+| A09:2025 Security Logging & Alerting Failures | Cross-Tool Evidence Required | <staged DAST finding generated> | Alert/log proof and incident workflow evidence | <gap> |
+| A10:2025 Mishandling of Exceptional Conditions | Partially Covered / Not Evaluated | <negative-path staging tests> | Manual fail-open and abnormal state review | <gap> |
 
 ### Scan Configuration Status
 
@@ -524,7 +566,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
-- **Control Reference:** OWASP Top 10 AXX / WSTG-XXXX-XX
+- **Control Reference:** OWASP Top 10:2025 AXX / WSTG-XXXX-XX
+- **Coverage Status:** DAST Covered / Partially Covered / Cross-Tool Evidence Required / Manual Evidence Required / Not Evaluated
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Remediation:** <concrete fix with example>
@@ -539,20 +582,24 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 ## Framework Reference
 
-### OWASP Top 10:2021
+### OWASP Top 10:2025
 
 | Category | Name | DAST Testability |
 |----------|------|-----------------|
-| A01 | Broken Access Control | Moderate -- path traversal, IDOR (with authenticated scanning) |
-| A02 | Cryptographic Failures | Limited -- TLS config, cleartext transmission |
-| A03 | Injection | Strong -- SQLi, XSS, Command Injection, SSTI, SSRF |
-| A04 | Insecure Design | Minimal -- business logic flaws require manual testing |
-| A05 | Security Misconfiguration | Strong -- headers, directory listing, default pages, error handling |
-| A06 | Vulnerable Components | Moderate -- technology fingerprinting, Retire.js |
-| A07 | Identification and Authentication Failures | Moderate -- session fixation, weak session IDs |
-| A08 | Software and Data Integrity Failures | Minimal -- SRI checks, limited CSP analysis |
-| A09 | Security Logging and Monitoring Failures | Not testable via DAST |
-| A10 | Server-Side Request Forgery | Moderate -- SSRF active scanner |
+| A01 | Broken Access Control | Moderate -- path traversal, IDOR, authorization bypass symptoms with authenticated scanning |
+| A02 | Security Misconfiguration | Strong -- headers, directory listing, default pages, backup disclosure, debug errors |
+| A03 | Software Supply Chain Failures | Partial -- runtime component fingerprinting only; requires SBOM/SCA/provenance evidence |
+| A04 | Cryptographic Failures | Limited -- TLS config, HSTS, cleartext transmission symptoms |
+| A05 | Injection | Strong -- SQLi, XSS, command injection, SSTI, SSRF where safe |
+| A06 | Insecure Design | Minimal -- business logic flaws require manual abuse-case testing |
+| A07 | Authentication Failures | Moderate -- session fixation, weak session flows, brute-force where safe |
+| A08 | Software or Data Integrity Failures | Minimal -- SRI/CSP/runtime integrity signals; requires build/update integrity evidence |
+| A09 | Security Logging & Alerting Failures | Cross-tool -- staged DAST findings can test alerting, but logs/alerts must be verified outside DAST |
+| A10 | Mishandling of Exceptional Conditions | Partial -- malformed request, fail-open, timeout/retry, error-path tests in staging |
+
+### Legacy OWASP Top 10:2021 Mode
+
+Use Top 10:2021 only when the assessment explicitly requires a legacy audit baseline. Record the requester, reason, source date, and a statement that 2021 output is not the current OWASP Top 10 default.
 
 ### OWASP Testing Guide v4.2 (WSTG) -- DAST-Relevant Categories
 
@@ -584,6 +631,10 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
+6. **Claiming complete OWASP Top 10:2025 coverage from DAST alone.** DAST is strong for runtime injection and HTTP misconfiguration, but A03 supply chain, A06 design, A08 integrity, and A09 logging/alerting need SBOM, SCA, provenance, threat-modeling, logging, and alert evidence.
+
+7. **Skipping A10:2025 because old A10 was SSRF.** OWASP Top 10:2025 replaced A10 with Mishandling of Exceptional Conditions. Scan plans need safe negative-path and fail-open tests, usually in staging.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -600,7 +651,8 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## References
 
-- OWASP Top 10:2021: https://owasp.org/Top10/
+- OWASP Top 10:2025 Introduction: https://owasp.org/Top10/2025/0x00_2025-Introduction/
+- OWASP Top 10 Project: https://owasp.org/Top10/
 - OWASP Web Security Testing Guide v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
 - OWASP ZAP Documentation: https://www.zaproxy.org/docs/
 - ZAP Automation Framework: https://www.zaproxy.org/docs/automate/automation-framework/
@@ -614,4 +666,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **2.0.0** -- Refresh default mapping from OWASP Top 10:2021 to OWASP Top 10:2025. Add framework-version preflight, legacy-baseline handling, per-category coverage status, A03 supply-chain cross-evidence guidance, A10 exceptional-condition test planning, updated output schema, and 2025 references.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
