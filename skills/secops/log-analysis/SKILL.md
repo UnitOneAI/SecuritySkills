@@ -6,11 +6,11 @@ description: >
   about suspicious events, needs help interpreting Windows Event IDs or Linux auth
   logs, or is establishing baselines for anomaly detection. Produces log source
   taxonomy, anomaly identification, baseline recommendations, and correlation
-  findings mapped to MITRE ATT&CK v16 techniques.
+  findings mapped to current MITRE ATT&CK techniques and defensive evidence.
 tags: [secops, logging, anomaly-detection]
 role: [soc-analyst, security-engineer]
 phase: [operate]
-frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
+frameworks: [MITRE-ATT&CK-v19.1, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
 version: "1.0.0"
@@ -23,7 +23,7 @@ argument-hint: "[technique-ID-or-log-source]"
 
 # Security Log Analysis
 
-> **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92 (Guide to Computer Security Log Management)
+> **Frameworks:** MITRE ATT&CK v19.1, NIST SP 800-92 (Guide to Computer Security Log Management)
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 20-40 min per analysis
 > **Output:** Log analysis findings, anomaly identification, baseline recommendations, ATT&CK-mapped observations
@@ -59,6 +59,7 @@ Before beginning analysis, gather or confirm:
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
+- [ ] **ATT&CK mapping version:** Which ATT&CK version is required for the report? Default to the current ATT&CK version unless the investigation scope explicitly requires a legacy mapping.
 
 ---
 
@@ -66,7 +67,7 @@ Before beginning analysis, gather or confirm:
 
 ### Step 1: Log Source Taxonomy
 
-Understand what each log source provides and which ATT&CK data sources it maps to.
+Understand what each log source provides. Treat raw telemetry availability separately from ATT&CK detection coverage: a log source proves collection, while detection coverage requires the relevant technique mapping, detection strategy or analytic, data component, normalized fields, and tested alert logic.
 
 #### Authentication Logs
 
@@ -120,6 +121,23 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | Azure Activity Log | Azure | Resource operations -- create, delete, modify at the control plane | Cloud Service (DS0025) |
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
+
+### Step 1A: ATT&CK Defensive Evidence Gate
+
+Before claiming ATT&CK coverage or confidence for a finding, record the defensive evidence behind the mapping.
+
+| Evidence Field | Required Question |
+|----------------|-------------------|
+| ATT&CK version | Is the mapping current, or is this a legacy/pinned report? |
+| Technique | Which technique or sub-technique does the evidence support? |
+| Detection strategy or analytic | What analytic, rule, hunt query, or strategy turns telemetry into detection coverage? |
+| Data component | Which current ATT&CK data component or equivalent normalized field set is required? |
+| Required fields | Are fields such as command line, parent process, user identity, process GUID, source IP, and host role present? |
+| Telemetry status | Is the relevant log source collected, parsed, normalized, and retained for the investigation window? |
+| Validation status | Has the analytic been tested with known-good and known-bad examples, or is coverage telemetry-only? |
+| Confidence | High, Medium, Low, or Not validated, with a short reason. |
+
+Legacy `DS####` data source identifiers may be included for backwards compatibility, but do not treat a legacy data source mapping as proof of current detection coverage. Mark findings as `telemetry-only` when logs exist but no tested analytic or strategy is available.
 
 ### Step 2: Critical Windows Event IDs
 
@@ -338,8 +356,9 @@ Produce log analysis findings in this structure:
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
 **Skill:** log-analysis v1.0.0
-**Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
+**Frameworks:** MITRE ATT&CK v19.1, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
+**ATT&CK Mapping Mode:** [Current v19.1 | Legacy pinned version with rationale]
 
 ### Analysis Objective
 [1-2 sentences describing what question this analysis is answering]
@@ -353,15 +372,19 @@ Produce log analysis findings in this structure:
 | Log Sources | [List of log sources analyzed] |
 
 ### Findings Summary
-| # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
-|---|---------|----------|-------------------|------------|----------|
-| 1 | [Description] | [P1-P4] | [T1078 or N/A] | [Source] | [Key event reference] |
-| 2 | [Description] | [P1-P4] | [T1078 or N/A] | [Source] | [Key event reference] |
+| # | Finding | Severity | ATT&CK Technique | Detection Evidence | Log Source | Evidence |
+|---|---------|----------|-------------------|--------------------|------------|----------|
+| 1 | [Description] | [P1-P4] | [T1078 or N/A] | [Analytic-tested / Telemetry-only / Not validated] | [Source] | [Key event reference] |
+| 2 | [Description] | [P1-P4] | [T1078 or N/A] | [Analytic-tested / Telemetry-only / Not validated] | [Source] | [Key event reference] |
 
 ### Detailed Findings
 #### Finding 1: [Title]
 **Severity:** [P1-P4]
 **ATT&CK Mapping:** [Technique ID -- Name]
+**Detection Strategy / Analytic:** [Name, ID, query, or "telemetry-only"]
+**Data Component / Required Fields:** [Component and fields required for confidence]
+**Telemetry Completeness:** [Collected / Parsed / Normalized / Retained / Missing fields]
+**Confidence:** [High / Medium / Low / Not validated]
 **Log Source:** [Source]
 **Evidence:**
 [Relevant log entries, timestamps, and entity details]
@@ -380,6 +403,11 @@ Produce log analysis findings in this structure:
 ### Visibility Gaps
 [Log sources that were not available but would have provided relevant data]
 
+### Defensive Evidence Matrix
+| Technique | Detection Strategy / Analytic | Data Component | Required Fields Present | Validation Status | Confidence |
+|-----------|-------------------------------|----------------|-------------------------|-------------------|------------|
+| [T-ID] | [Rule/query/strategy] | [Component] | [Yes/No/Partial] | [Tested/Telemetry-only/Not validated] | [High/Medium/Low] |
+
 ### Recommendations
 - [ ] [Action 1]
 - [ ] [Action 2]
@@ -389,11 +417,13 @@ Produce log analysis findings in this structure:
 
 ## 6. Framework Reference
 
-### MITRE ATT&CK v16
+### MITRE ATT&CK v19.1
 
-For log analysis, ATT&CK provides the mapping between adversary techniques and the data sources that reveal them. The ATT&CK "Data Sources" knowledge base (https://attack.mitre.org/datasources/) defines 40+ data sources with specific data components, enabling analysts to understand exactly which logs provide visibility into which techniques.
+For log analysis, ATT&CK provides the mapping between adversary techniques and defender-side evidence. Current ATT&CK releases include defensive objects such as Detection Strategies, Analytics, and Data Components. Use these to separate raw telemetry collection from validated detection coverage.
 
-**Key ATT&CK Data Sources for log analysis:**
+ATT&CK Data Sources (`DS####`) are retained as legacy reference points, but MITRE deprecated Data Sources in the v18 release. Use legacy data source identifiers only for historical compatibility or when a reporting program explicitly pins an older ATT&CK version.
+
+**Key legacy ATT&CK Data Sources for log analysis:**
 
 | Data Source | ID | Key Components |
 |-------------|-----|----------------|
@@ -468,13 +498,15 @@ This skill processes user-supplied content that may include raw log data, event 
 ## 9. References
 
 1. **NIST SP 800-92 -- Guide to Computer Security Log Management** -- https://csrc.nist.gov/publications/detail/sp/800-92/final
-2. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
+2. **MITRE ATT&CK Enterprise Matrix** -- https://attack.mitre.org/matrices/enterprise/
 3. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
-4. **Windows Security Event Log Reference** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
-5. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
-6. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
-7. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
-8. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
-9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
-10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
-11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+4. **MITRE ATT&CK Version History** -- https://attack.mitre.org/resources/versions/
+5. **MITRE ATT&CK v18 Release Notes** -- https://attack.mitre.org/resources/updates/updates-october-2025/
+6. **Windows Security Event Log Reference** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
+7. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
+8. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+9. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
+10. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
+11. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
+12. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
+13. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final

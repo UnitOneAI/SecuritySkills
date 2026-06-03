@@ -389,7 +389,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md
@@ -474,7 +474,7 @@ skills:
     role: [soc-analyst, security-engineer]
     phase: [operate]
     activity: [investigate, monitor]
-    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
+    frameworks: [MITRE-ATT&CK-v19.1, NIST-SP-800-92]
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/secops/log-analysis/SKILL.md
