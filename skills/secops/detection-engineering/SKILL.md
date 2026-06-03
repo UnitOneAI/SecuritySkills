@@ -3,14 +3,15 @@ name: detection-engineering
 description: >
   Guides creation of detection rules using Sigma rule specification and the
   Palantir Alerting and Detection Strategy (ADS) framework, mapped to MITRE
-  ATT&CK v16 techniques. Auto-invoked when the user discusses detection logic,
-  Sigma rules, ATT&CK coverage gaps, or asks "how do I detect this technique?"
-  Produces Sigma-formatted detection rules, ADS documentation, and coverage
-  heatmap methodology for systematic detection program management.
+  ATT&CK techniques, Detection Strategies, Analytics, Log Sources, and legacy
+  Data Sources where required. Auto-invoked when the user discusses detection
+  logic, Sigma rules, ATT&CK coverage gaps, or asks "how do I detect this
+  technique?" Produces Sigma-formatted detection rules, ADS documentation, and
+  coverage heatmap methodology for systematic detection program management.
 tags: [secops, detection, sigma, mitre-attack]
 role: [soc-analyst, security-engineer]
 phase: [operate]
-frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
+frameworks: [MITRE-ATT&CK-current, MITRE-ATT&CK-v16-legacy, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
 version: "1.0.0"
@@ -23,7 +24,7 @@ argument-hint: "[technique-ID-or-log-source]"
 
 # Detection Engineering & Sigma Rules
 
-> **Frameworks:** MITRE ATT&CK v16, Sigma Rule Specification (sigmahq.io), Palantir Alerting and Detection Strategy (ADS)
+> **Frameworks:** MITRE ATT&CK current detections model, MITRE ATT&CK v16 legacy mode, Sigma Rule Specification (sigmahq.io), Palantir Alerting and Detection Strategy (ADS)
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 30-60 min per detection
 > **Output:** Sigma detection rule, ADS documentation, ATT&CK coverage mapping
@@ -52,6 +53,7 @@ Invoke this skill when any of the following conditions are met:
 Before beginning, gather or confirm:
 
 - [ ] **Target ATT&CK technique(s):** The specific technique or sub-technique IDs to detect (e.g., T1059.001 -- PowerShell).
+- [ ] **ATT&CK version checked:** Current ATT&CK release by default; use legacy v16 only when an existing reporting program explicitly requires it.
 - [ ] **Available log sources:** What telemetry is collected? (Windows Event Logs, Sysmon, EDR, cloud audit logs, proxy logs, DNS logs, firewall logs).
 - [ ] **SIEM platform(s):** Target SIEM for rule deployment (Microsoft Sentinel, Splunk, Elastic, Chronicle, QRadar) -- determines Sigma backend conversion target.
 - [ ] **Environment context:** Operating systems, domain structure, cloud providers, key applications in the environment.
@@ -71,19 +73,29 @@ Decompose the target ATT&CK technique to understand what must be detected.
 
 1. Identify the tactic(s) the technique serves (e.g., T1059.001 serves Execution -- TA0002)
 2. Review the technique's procedure examples to understand real-world usage patterns
-3. Identify the data sources and data components ATT&CK maps to this technique (e.g., Process Creation, Command Execution, Script Execution)
-4. Determine which log sources in the environment provide the required data components
-5. Identify sub-techniques and determine if the detection should cover the parent technique broadly or target a specific sub-technique
+3. Record the ATT&CK version or release date used for mapping. Default to the current ATT&CK detections model; use ATT&CK v16 data-source mapping only as an explicit legacy mode.
+4. Identify the current Detection Strategy and Analytic objects when ATT&CK provides them. Map the analytic to concrete log sources, data components, and platform-specific telemetry.
+5. Preserve legacy Data Source / Data Component names only as supporting context; do not treat a legacy data-source label as proof that a deployable analytic exists.
+6. Determine which log sources in the environment provide the required telemetry and whether that telemetry is actually collected, normalized, and queryable.
+7. Identify sub-techniques and determine if the detection should cover the parent technique broadly or target a specific sub-technique.
+8. Check whether the technique, tactic, data-source metadata, strategy, or analytic has changed, been revoked, merged, deprecated, or remapped since the last review.
 
 ```
 ATT&CK Technique Analysis:
-- Technique ID:       [T1059.001]
-- Technique Name:     [Command and Scripting Interpreter: PowerShell]
-- Tactic(s):          [Execution (TA0002)]
-- Data Sources:       [Process (Process Creation), Command (Command Execution), Script (Script Execution)]
-- Required Log Sources: [Sysmon EventID 1, Windows Security 4688, PowerShell 4104/4103]
-- Sub-techniques:     [.001 PowerShell, .002 AppleScript, .003 Windows Command Shell, ...]
-- Detection Scope:    [Sub-technique specific | Parent technique broad]
+- ATT&CK Version:          [current release date or v16 legacy]
+- Technique ID:            [T1059.001]
+- Technique Name:          [Command and Scripting Interpreter: PowerShell]
+- Tactic(s):               [Execution (TA0002)]
+- Detection Strategy:      [strategy ID/name if available]
+- Analytic:                [analytic ID/name if available]
+- Platform:                [Windows]
+- Log Sources:             [Sysmon EventID 1, Windows Security 4688, PowerShell 4104/4103]
+- Data Components:         [Process Creation, Command Execution, Script Execution]
+- Legacy Data Sources:     [Process, Command, Script]
+- Mapping Confidence:      [High | Medium | Low]
+- Remap Required:          [Yes | No -- reason]
+- Sub-techniques:          [.001 PowerShell, .002 AppleScript, .003 Windows Command Shell, ...]
+- Detection Scope:         [Sub-technique specific | Parent technique broad]
 ```
 
 ### Step 2: Detection Logic Design
@@ -273,7 +285,18 @@ Define the analyst response procedure when this alert fires.
 
 Map detection coverage against the ATT&CK matrix to identify gaps.
 
-**Coverage levels:**
+Coverage must distinguish **telemetry availability** from **analytic coverage**. A log source alone is not a detection. Do not mark a technique as Operational or Robust unless a deployable analytic exists, has been converted to the target backend, has validation evidence, and is deployed with analyst response guidance.
+
+**Telemetry coverage levels:**
+
+| Level | Color | Definition |
+|-------|-------|------------|
+| **No Telemetry** | White | Required log sources or data components are not collected |
+| **Telemetry Planned** | Gray | Collection is planned but not available for detection development |
+| **Telemetry Available** | Yellow | Required logs exist and are queryable, but no analytic exists |
+| **Telemetry Validated** | Light Green | Required logs have been validated against known technique activity |
+
+**Analytic coverage levels:**
 
 | Level | Color | Definition |
 |-------|-------|------------|
@@ -283,14 +306,22 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
 | **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
 
+**Coverage evidence table:**
+
+| ATT&CK Version | Technique | Detection Strategy | Analytic | Platform | Log Source | Data Components | Legacy Data Sources | Sigma Rule / Query | Validation Method | Deployment State | Mapping Confidence | Remap Required? |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| [current or v16 legacy] | [T1059.001] | [strategy] | [analytic] | [Windows] | [Sysmon 1] | [Process Creation] | [Process] | [rule/query] | [Atomic test/manual] | [Not deployed/Test/Production] | [High/Medium/Low] | [Yes/No] |
+
 **Heatmap construction process:**
 
 1. Export the current ATT&CK matrix for the relevant platform (Enterprise, Cloud, ICS) from the ATT&CK Navigator (https://mitre-attack.github.io/attack-navigator/)
-2. For each technique, assess the current detection coverage level based on deployed rules
-3. Assign a coverage score (0-4) corresponding to the levels above
-4. Prioritize gap closure using threat intelligence: techniques used by threat actors relevant to your industry should be addressed first
-5. Use the ATT&CK Navigator layer file format (JSON) to visualize coverage as a heatmap
-6. Review and update the heatmap quarterly or after major detection engineering sprints
+2. Record the ATT&CK version checked and whether the entry uses the current Detection Strategy / Analytics model or explicit v16 legacy mapping.
+3. For each technique, assess telemetry coverage separately from analytic coverage.
+4. Assign analytic coverage scores only from deployable rules or queries, not from log-source inventory alone.
+5. Add a remap flag when the technique was changed, revoked, merged, deprecated, or has detection metadata that moved between ATT&CK releases.
+6. Prioritize gap closure using threat intelligence: techniques used by threat actors relevant to your industry should be addressed first.
+7. Use the ATT&CK Navigator layer file format (JSON) to visualize coverage as a heatmap, and include comments that show telemetry state, analytic state, validation evidence, and remap status.
+8. Review and update the heatmap quarterly or after major detection engineering sprints.
 
 **Gap prioritization factors:**
 
@@ -301,6 +332,7 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | Attack chain position | Medium | Early-stage techniques (Initial Access, Execution) catch attacks sooner |
 | Ease of detection | Medium | Some techniques have clear observable artifacts; prioritize those first |
 | Compliance requirements | Medium | Regulatory frameworks may mandate detection of specific techniques |
+| Remap required | Medium | ATT&CK version drift can invalidate old coverage claims |
 
 ### Step 6: Detection-as-Code Practices
 
@@ -366,7 +398,8 @@ Produce detection engineering deliverables in this structure:
 ## Detection Engineering Report: [ATT&CK Technique ID]
 **Date:** [YYYY-MM-DD]
 **Skill:** detection-engineering v1.0.0
-**Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
+**Frameworks:** MITRE ATT&CK current detections model, Sigma, Palantir ADS
+**ATT&CK Version Checked:** [current release date or v16 legacy]
 
 ### ATT&CK Technique Summary
 | Field | Value |
@@ -374,7 +407,14 @@ Produce detection engineering deliverables in this structure:
 | Technique ID | [T1059.001] |
 | Technique Name | [Name] |
 | Tactic(s) | [Execution (TA0002)] |
-| Data Sources | [Process Creation, Command Execution] |
+| Detection Strategy | [strategy ID/name if available] |
+| Analytic | [analytic ID/name if available] |
+| Platform | [Windows / Linux / macOS / AWS / Azure / GCP / SaaS] |
+| Log Source | [Sysmon Event ID 1 / CloudTrail / Activity Log / ...] |
+| Data Components | [Process Creation, Command Execution] |
+| Legacy Data Sources | [Process, Command] |
+| Mapping Confidence | [High / Medium / Low] |
+| Remap Required? | [Yes / No -- reason] |
 
 ### Sigma Rule
 [Full Sigma YAML rule]
@@ -383,11 +423,19 @@ Produce detection engineering deliverables in this structure:
 [Complete ADS framework documentation per Step 4]
 
 ### Coverage Assessment
-| Level | Status |
+| Dimension | Status |
 |-------|--------|
-| Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
-| Target Coverage | [Operational / Robust] |
+| Telemetry Coverage | [No Telemetry / Telemetry Planned / Telemetry Available / Telemetry Validated] |
+| Analytic Coverage | [None / Theoretical / Tested / Operational / Robust] |
+| Target Analytic Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+| Deployment State | [Not deployed / Test / Production] |
+| Analyst Response Ready? | [Yes / No] |
+
+### ATT&CK Mapping Evidence
+| ATT&CK Version | Technique | Detection Strategy | Analytic | Platform | Log Source | Data Components | Legacy Data Sources | Sigma Rule / Query | Validation Method | Deployment State | Mapping Confidence | Remap Required? |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| [version] | [technique] | [strategy] | [analytic] | [platform] | [log source] | [components] | [legacy] | [rule/query] | [validation] | [state] | [confidence] | [yes/no] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -400,11 +448,13 @@ Produce detection engineering deliverables in this structure:
 
 ## 6. Framework Reference
 
-### MITRE ATT&CK v16
+### MITRE ATT&CK Current Detections Model
 
-MITRE ATT&CK (Adversarial Tactics, Techniques, and Common Knowledge) is a knowledge base of adversary behavior based on real-world observations. Version 16 of the Enterprise matrix contains 14 tactics, over 200 techniques, and over 400 sub-techniques. For detection engineering, ATT&CK provides:
+MITRE ATT&CK (Adversarial Tactics, Techniques, and Common Knowledge) is a knowledge base of adversary behavior based on real-world observations. Current ATT&CK detection engineering work should record the ATT&CK version or release date checked and use Detection Strategies / Analytics where ATT&CK provides them. Legacy v16 Data Source mapping is still useful for existing reporting programs, but it should be marked as legacy mode and should not be treated as proof of deployable coverage.
 
-- **Technique-to-data-source mapping:** Each technique lists the data sources and data components required for detection (e.g., T1059.001 maps to Process Creation, Command Execution, Script Execution).
+- **Detection Strategies and Analytics:** Current detection objects describe how to detect adversary behavior and which analytics/log sources support the strategy.
+- **Log Sources and Data Components:** These describe required telemetry, but telemetry availability is not the same as validated analytic coverage.
+- **Legacy Data Source mapping:** Older v16-style technique-to-data-source mapping remains useful as context, but must be tied to current strategy/analytic evidence or explicitly marked legacy.
 - **Procedure examples:** Real-world usage of techniques by named threat groups, providing concrete patterns to detect.
 - **Mitigations:** Preventive controls that complement detective controls.
 
@@ -494,6 +544,10 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
+### Pitfall 6: Treating Telemetry Inventory as Detection Coverage
+
+Log-source availability is only a prerequisite. A heatmap that marks a technique as covered because Sysmon, CloudTrail, or another data source is present overstates detection maturity if there is no strategy/analytic mapping, deployable rule, backend conversion, validation event, production deployment, and analyst response path. Track telemetry coverage and analytic coverage separately.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -510,15 +564,18 @@ This skill processes user-supplied content that may include log samples, detecti
 
 ## 9. References
 
-1. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
+1. **MITRE ATT&CK Enterprise Matrix** -- https://attack.mitre.org/matrices/enterprise/
 2. **MITRE ATT&CK Techniques** -- https://attack.mitre.org/techniques/enterprise/
-3. **MITRE ATT&CK Navigator** -- https://mitre-attack.github.io/attack-navigator/
-4. **Sigma Rule Specification** -- https://sigmahq.io/docs/guide/getting-started.html
-5. **SigmaHQ Rule Repository** -- https://github.com/SigmaHQ/sigma
-6. **sigma-cli Conversion Tool** -- https://github.com/SigmaHQ/sigma-cli
-7. **pySigma Documentation** -- https://sigmahq-pysigma.readthedocs.io/
-8. **Palantir Alerting and Detection Strategy Framework** -- https://blog.palantir.com/alerting-and-detection-strategy-framework-52dc33722f68
-9. **Atomic Red Team** -- https://github.com/redcanaryco/atomic-red-team
-10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
-11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
-12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+3. **MITRE ATT&CK Detection Data Model** -- https://mitre-attack.github.io/attack-data-model/docs/principles/attack-detections/
+4. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
+5. **MITRE ATT&CK Data Components** -- https://attack.mitre.org/datacomponents/
+6. **MITRE ATT&CK Navigator** -- https://mitre-attack.github.io/attack-navigator/
+7. **Sigma Rule Specification** -- https://sigmahq.io/docs/guide/getting-started.html
+8. **SigmaHQ Rule Repository** -- https://github.com/SigmaHQ/sigma
+9. **sigma-cli Conversion Tool** -- https://github.com/SigmaHQ/sigma-cli
+10. **pySigma Documentation** -- https://sigmahq-pysigma.readthedocs.io/
+11. **Palantir Alerting and Detection Strategy Framework** -- https://blog.palantir.com/alerting-and-detection-strategy-framework-52dc33722f68
+12. **Atomic Red Team** -- https://github.com/redcanaryco/atomic-red-team
+13. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
+14. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
+15. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
