@@ -62,6 +62,49 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 ---
 
+### Step 0: Source-to-Sink Data-Flow and Trust-Boundary Inventory
+
+Before assigning findings or scoring the OWASP LLM Top 10 categories, the reviewer MUST document the application's trust boundaries and trace all data flows from source to sink. This baseline inventory is critical because the same LLM output represents vastly different risks depending on its downstream execution environment (e.g., rendering text in a browser vs. executing commands or database queries).
+
+#### 1. Trust Boundary Mapping
+Identify where data crosses boundaries of differing trust or privilege. Common LLM-related trust boundaries include:
+- **Client to Application Server:** Untrusted user inputs.
+- **Application Server to LLM API (or local model serving):** Semi-trusted prompt template combined with untrusted user inputs.
+- **External Data Sources to Application Server/Vector Store:** Untrusted or semi-trusted data (web pages, third-party APIs, raw document uploads).
+- **Vector Store to LLM Context:** Document/chunk retrieval boundary (requires authorization checks at document/chunk scope).
+- **LLM API to Application Server (Model Output):** Untrusted model completions.
+- **Application Server to Sinks:** Actions taken on untrusted model outputs (databases, CLI, web frontends, downstream APIs).
+
+#### 2. Source-to-Sink Data-Flow Matrix
+Construct a mapping of every LLM-related data path. For each flow, document:
+1. **Flow ID:** (e.g., DF-01, DF-02)
+2. **Input Source:** Where the data originates (e.g., user-facing chat input, PDF document upload, external tool response).
+3. **Trust Boundary Crossed:** The trust boundaries traversed during this step.
+4. **Intermediate Processing & Filters:** Transformations, sanitizers, template wrapping, or routing (e.g., HTML escaping, PII scrubbing, system prompt instructions, vector query filters).
+5. **LLM Invocations:** The specific model and API call where prompt and context are processed.
+6. **Downstream Sink:** Where the model output is finally consumed (e.g., browser UI via `dangerouslySetInnerHTML`, execution via `eval()`, database write, tool API call).
+7. **Evidence Location:** File paths and code lines identifying the source, model call, and sink.
+
+#### 3. Evidence Confidence Classification
+For each finding and checklist item, classify the confidence of the gathered evidence using one of the following levels:
+- **`source-code`:** Direct implementation verified in the source code files.
+- **`config`:** Settings confirmed in configuration files (e.g., environment variables, deployment specs, package files).
+- **`runtime export`:** Logs, API payloads, or live environment variable exports confirming active settings.
+- **`test evidence`:** Assertions verified via unit tests, integration tests, or security test suites.
+- **`docs-only`:** Stated in documentation (e.g., README or architectural docs) but not verified in code or configuration.
+- **`unknown`:** No evidence is available to evaluate the control or finding.
+
+#### 4. Not Evaluable Reason Codes
+If a particular category or flow cannot be reviewed because necessary codebase components or documentation are missing, mark it as **Not Evaluable** and specify the appropriate reason code:
+- **`missing model config`:** API parameters, temperature settings, or model configuration settings are unavailable.
+- **`missing prompt flow`:** The logic for compiling prompt templates or building chat messages is not visible.
+- **`missing RAG ACLs`:** Access control rules, user mappings, or document metadata for retrieval filtering are not provided.
+- **`missing sink mapping`:** Downstream output parsers, renderers, or tool execution layers are not visible.
+- **`missing tool policy`:** The definition, permissions, or validation gates of registered tools are missing.
+- **`missing output filter`:** Guardrails, prompt firewalls, or PII redaction settings cannot be inspected.
+
+---
+
 ### LLM01:2025 — Prompt Injection
 
 **What it is:** An attacker crafts input that overrides the system prompt or injects instructions the model follows, causing unintended behavior. This includes direct injection (user-supplied malicious prompts) and indirect injection (malicious content embedded in retrieved documents, emails, or web pages that the model processes).
@@ -385,6 +428,17 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 ---
 
+### Edge Cases in LLM Security Reviews
+
+When conducting the review, pay special attention to the following complex scenarios and edge cases:
+- **Multimodal Input Vectors:** Untrusted data can enter the model not just via text, but through images, scanned PDFs, audio recordings, or OCR outputs. Check if multimodal models are used and if input validation extends to media assets.
+- **Tool-Output Re-entry:** Outputs returned by a tool or function call may contain untrusted data that re-enters the model's chat history as a "tool" role message. Treat tool responses as untrusted sources that can trigger prompt injection (indirect injection).
+- **Streaming Filter Bypasses:** Applications using streaming responses (e.g., SSE) must apply moderation and redaction filters dynamically or buffer output. If output filtering only runs on the complete text after streaming is finished, the client receives raw, unsafe chunks before the filter triggers.
+- **Cached Context and Conversation Memory:** Prompt caches, sliding context windows, and conversation history variables can retain sensitive data or outdated user access levels. Verify that session state and context boundaries are properly cleared or re-evaluated when authorization changes.
+- **Pipeline Provenance Verification:** Dataset collection, data labeling, fine-tuning scripts, and embedding pipelines require integrity and provenance tracking separate from the inference-time code. Verify that data ingestion pipelines are auditable.
+
+---
+
 ## 4. Findings Classification
 
 | Severity | Criteria | Example |
@@ -413,6 +467,12 @@ Structure the findings report as follows:
 
 [2-3 sentences: overall risk posture, critical findings count, top recommendation]
 
+## LLM Data-Flow and Trust-Boundary Inventory
+
+| Flow ID | Input Source | Trust Boundary Crossed | Intermediate Processing / Filters | LLM Invocations | Downstream Sink | Evidence Location |
+|---------|--------------|------------------------|-----------------------------------|-----------------|-----------------|-------------------|
+| DF-01   | [e.g., User Chat] | [e.g., Client -> Server] | [e.g., PII Redaction, delimiters] | [e.g., GPT-4]   | [e.g., HTML UI] | [e.g., `src/chat.js:35`] |
+
 ## Findings
 
 ### [FINDING-001] [Title]
@@ -421,6 +481,13 @@ Structure the findings report as follows:
 - **Severity:** Critical | High | Medium | Low | Informational
 - **CWE:** CWE-XXX
 - **Location:** [file path, function, configuration]
+- **Trust Boundary Crossed:** [e.g., Client -> Server, Server -> LLM, LLM -> Downstream DB]
+- **Data-Flow Source:** [e.g., User chat prompt input, RAG document source, tool execution response]
+- **Data-Flow Sink:** [e.g., Raw HTML rendering, SQL database write, CLI subcommand execution]
+- **Intermediate Transformation/Enforcing Layer:** [e.g., Input validation, DOMPurify, RAG ACL filter, none]
+- **Model/Runtime Configuration:** [e.g., model ID, temperature, max_tokens, rate limits]
+- **Evidence Confidence:** source-code | config | runtime export | test evidence | docs-only | unknown
+- **Not Evaluable Reason:** [Reason code if applicable, else N/A: missing model config | missing prompt flow | missing RAG ACLs | missing sink mapping | missing tool policy | missing output filter]
 - **Description:** [What was found]
 - **Evidence:** [Code snippet, configuration excerpt, or architectural observation]
 - **Impact:** [What an attacker could achieve]
@@ -464,7 +531,7 @@ Key differences from the 2023 edition:
 
 ## 7. Common Pitfalls
 
-These are the five most frequent mistakes agents make when performing LLM security reviews:
+These are the nine most frequent mistakes agents make when performing LLM security reviews:
 
 1. **Reviewing only the prompt, not the data flow.** The prompt is one attack surface. The full data flow — from user input through retrieval, prompt assembly, model inference, output parsing, tool execution, and response rendering — must be traced end to end. Findings missed in output handling (LLM05) and excessive agency (LLM06) are the most common gaps.
 
@@ -475,6 +542,14 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Bypassing validation on streaming filters.** Reviewers often assume that if a content filter is configured, streaming responses are secure. However, streaming endpoints (e.g., server-sent events) send chunks as they are generated. If moderation, PII scrubbing, or safety classification is only performed on the final concatenated string, the end user receives raw, unsafe chunks before the filter triggers. Filter logic must analyze content dynamically or buffer sufficiently.
+
+7. **Assuming tool outputs are safe and authenticated.** When reviewing tool integrations, developers and reviewers focus on verifying inputs sent *to* the tool. They fail to recognize that the output returned by the tool (which might retrieve data from third-party systems or external resources) is ingested directly back into the LLM context. This output is untrusted and can trigger indirect prompt injection, or execute malicious payloads when rendered or processed.
+
+8. **Overlooking RAG Access Control List (ACL) evidence.** Reviewers frequently accept simple tenant filters (e.g., querying vector databases with a `tenant_id`) as sufficient protection for LLM02 and LLM08. However, they fail to look for evidence that retrieval checks permissions at the document or chunk level. If the vector store contains mixed-access documents, a tenant-wide filter allows low-privilege users to retrieve high-privilege context, leading to sensitive information exposure.
+
+9. **Relying on docs-only usage/cost limits.** Accepting README statements, comments, or documentation claiming "low temperature, rate limiting, and quotas are enforced" as evidence for LLM09 and LLM10 is a major pitfall. A secure review must require configuration-level or code-level evidence (SDK settings, gateway configuration, or active environment configs) rather than relying on documentation alone.
 
 ---
 
