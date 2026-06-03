@@ -3,17 +3,17 @@ name: alert-triage
 description: >
   Guides structured triage of security alerts using a four-phase methodology
   (collect, correlate, classify, escalate) mapped to MITRE ATT&CK v16 and
-  aligned with NIST SP 800-61 Rev 2 incident handling guidelines. Auto-invoked
-  when the user discusses alert investigation, asks "is this a true positive?",
-  or shares alert data requiring disposition. Produces a triage decision with
-  priority assignment, disposition category, and escalation recommendation.
+  aligned with NIST SP 800-61 Rev 3 and NIST CSF 2.0 incident handling guidelines.
+  Auto-invoked when the user discusses alert investigation, asks "is this a true
+  positive?", or shares alert data requiring disposition. Produces a triage
+  decision with priority assignment, disposition category, and escalation recommendation.
 tags: [secops, triage, soc]
 role: [soc-analyst]
 phase: [operate, respond]
-frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
+frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev3, NIST-CSF-2.0]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,10 +23,10 @@ argument-hint: "[CVE-ID-or-alert-ID]"
 
 # Alert Triage Playbook
 
-> **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
+> **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 3, NIST CSF 2.0
 > **Role:** SOC Analyst
 > **Time:** 10-20 min per alert
-> **Output:** Alert disposition (TP/BTP/FP), priority assignment (P1-P4), escalation decision
+> **Output:** Alert disposition (TP/BTP/FP), priority assignment (P1-P4), incident declaration criteria, escalation decision, and CSF 2.0 outcome mapping
 
 ---
 
@@ -80,7 +80,7 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
 
-**NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
+**NIST SP 800-61 alignment:** This phase corresponds to Section 3.1 "Detection and Analysis" in NIST SP 800-61 Rev. 3 -- specifically validation of the alert before classification and alignment with CSF 2.0 Detect (DE.AE) category.
 
 ### Phase 2: Correlate
 
@@ -138,9 +138,35 @@ Assign a priority level based on the combination of asset criticality, threat se
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
 | Business context | During M&A, audit, or incident response | Normal operations |
 
+#### CSF 2.0 Triage Outcome Mapping
+NIST SP 800-61 Rev. 3 is aligned to the NIST Cybersecurity Framework (CSF) 2.0. In this default mode, reviewers must map triage evidence to the following outcomes:
+
+- **Detect / Adverse Event Analysis (DE.AE)**: Verify that the alert logs, host telemetry, and threat intelligence have been analyzed to confirm an adverse security event.
+- **Respond / Incident Management (RS.MA)**: Verify that incident management workflows are ready and playbooks are triggered in response to confirmed malicious findings.
+- **Respond / Root-Cause & Scope Analysis (RS.AN)**: Verify that EDR process trees, lateral network logs, and registry entries are analyzed to determine the attack path and blast radius.
+- **Respond / Communication (RS.CO)**: Determine if the alert triggers communication thresholds (e.g. notifications to the privacy officer, compliance teams, legal counsel, or external entities).
+- **Recover / Recovery Planning (RC.RP)**: Determine if the confirmed impact requires triggering recovery actions (e.g., system restores, credential resets, or configuration cleanups).
+
+#### Triage Mode & Legacy Policy
+- **Default Mode (NIST SP 800-61 Rev. 3)**: Use this mode by default. Triage priority is tied directly to incident declaration criteria, communication plans, and recovery triggers under CSF 2.0.
+- **Legacy Mode (NIST SP 800-61 Rev. 2)**: Use only when the target organization's internal playbooks explicitly mandate legacy Rev. 2 alignment. In this mode, document the specific reasoning (e.g., "Legacy playbook alignment mandated by org policy").
+
+#### Evidence Confidence & Not Evaluable Reason Codes
+The quality of a triage decision depends on telemetry availability. Analysts must assign a confidence rating and note gaps:
+
+- **Evidence Confidence Levels**:
+  - *High*: Telemetry contains corroborated data (e.g., EDR process trees, host memory dumps, network PCAP, and verified threat intelligence).
+  - *Medium*: Telemetry matches behavioral rules, but some contextual logs (e.g., command lines or proxy entries) are missing or incomplete.
+  - *Low*: Single, uncorroborated log signal or basic signature match without process context or host verification.
+- **Not Evaluable (NE) Reason Codes**: If gaps prevent proper verification of any CSF 2.0 triage outcome, mark it as Not Evaluable using one of these reasons:
+  - `missing logs`: Core endpoint or network telemetry is disabled or unretrievable.
+  - `missing correlation context`: Historical, lateral, or temporal lookups cannot be performed.
+  - `missing asset info`: Criticality tier, business role, or ownership of the host is undocumented.
+  - `unknown user role`: Privilege levels or normal baseline behaviors of the associated account are missing.
+
 ### Phase 4: Escalate
 
-Determine whether the alert requires escalation and to whom.
+Determine whether the alert requires escalation, incident declaration, and stakeholders notification.
 
 **Escalation criteria:**
 
@@ -154,15 +180,22 @@ Determine whether the alert requires escalation and to whom.
 | Alert matches a known active threat campaign | Threat intelligence team + IR team |
 | Multiple correlated alerts suggest a coordinated attack | IR team lead for incident declaration |
 
-**NIST SP 800-61 alignment:** This phase corresponds to Section 3.2.6 "Incident Notification" and Section 3.2.7 "Escalation." NIST recommends predefined escalation procedures with clear criteria and contact information.
+**NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Incident Handling" and Section 3.3 "Incident Coordination" in NIST SP 800-61 Rev. 3. It emphasizes structured escalation, notification matrices, and separating alert triage from formal incident declaration.
 
 **Escalation documentation (minimum required):**
 
 ```
 Escalation Notice:
 - Alert ID:           [SIEM alert ID or ticket number]
+- NIST Source Version:[NIST SP 800-61 Rev 3 / Rev 2 Legacy]
+- Legacy Mode Reason: [N/A or justification details]
 - Disposition:        [TP / BTP / FP]
 - Priority:           [P1 / P2 / P3 / P4]
+- Incident Declared:  [Yes / No / Pending Investigation]
+- Communication Trig: [Triggered (legal/privacy notified) / Not Triggered]
+- Recovery Triggered: [Yes / No / Pending Containment]
+- Evidence Confidence:[High / Medium / Low]
+- Not Evaluable Reason:[N/A or specific reason code]
 - Summary:            [1-2 sentence description of what was detected]
 - Affected Asset:     [Hostname, IP, asset criticality]
 - Affected User:      [Username, role, privilege level]
@@ -194,8 +227,8 @@ Produce the triage decision as a structured report:
 ```markdown
 ## Alert Triage Report
 **Date:** [YYYY-MM-DD HH:MM UTC]
-**Skill:** alert-triage v1.0.0
-**Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
+**Skill:** alert-triage v1.1.0
+**Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 3, NIST CSF 2.0
 **Analyst:** [Name or AI-assisted]
 
 ### Alert Summary
@@ -215,13 +248,32 @@ Produce the triage decision as a structured report:
 | User | [username] | [Role, privilege level] |
 | Process | [process name] | [Expected / Unexpected for this host/user] |
 
+### Framework Metadata
+| Field | Value |
+|-------|-------|
+| **NIST Source Version** | NIST SP 800-61 Rev 3 (April 2025) / Legacy Rev 2 |
+| **Legacy Mode Reason** | [N/A or specific business policy justification] |
+
 ### Triage Decision
 | Field | Value |
 |-------|-------|
 | **Disposition** | **[True Positive / Benign True Positive / False Positive]** |
 | **Priority** | **[P1 Critical / P2 High / P3 Medium / P4 Low]** |
-| **Confidence** | [High / Medium / Low] |
+| **Incident Declared** | [Yes / No / Pending Investigation] |
+| **Communication Triggered** | [Yes (Privacy/Legal notified) / No] |
+| **Recovery Triggered** | [Yes / No / Pending Containment] |
+| **Evidence Confidence** | [High / Medium / Low] |
+| **Not Evaluable Reason** | [N/A or specific reason code: `missing logs`, `missing correlation context`, `missing asset info`, `unknown user role`] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
+
+### CSF 2.0 Outcome Mapping Table
+| CSF 2.0 Category | Subcategory | Status / Findings | Evaluability / Confidence |
+|------------------|-------------|-------------------|---------------------------|
+| **Detect (DE.AE)** | Adverse Event Analysis | [e.g., Telemetry verified malicious command line execution] | High / Evaluated |
+| **Respond (RS.MA)** | Incident Management | [e.g., Playbook triggered; SLA stopwatch started] | High / Evaluated |
+| **Respond (RS.AN)** | Root-Cause & Scope | [e.g., Process tree shows curl downloading malware; no lateral traffic observed] | High / Evaluated |
+| **Respond (RS.CO)** | Communication | [e.g., PII server target; privacy officer notification triggered] | High / Evaluated |
+| **Recover (RC.RP)** | Recovery Planning | [e.g., Recovery trigger scheduled: isolate host, rotate domain user credentials] | High / Evaluated |
 
 ### Evidence Summary
 1. [Key finding 1 -- what was observed]
@@ -267,33 +319,27 @@ Discovery -> Lateral Movement -> Collection -> Exfiltration -> Impact
 
 Alerts that map to later-stage tactics (Lateral Movement, Collection, Exfiltration, Impact) generally warrant higher priority because they indicate deeper compromise.
 
-### NIST SP 800-61 Rev 2 -- Computer Security Incident Handling Guide
+### NIST SP 800-61 Rev 3 -- Incident Response Recommendations (A CSF 2.0 Community Profile)
 
-NIST SP 800-61 Revision 2 (published August 2012) provides the foundational framework for incident handling in organizations. The alert triage process maps to the "Detection and Analysis" phase of the NIST incident response lifecycle:
+NIST SP 800-61 Revision 3 (finalized April 2025) supersedes Revision 2. It integrates incident response directly with the NIST Cybersecurity Framework (CSF) 2.0 community profile model, structuring response capabilities across Govern, Protect, Detect, Respond, and Recover functions.
 
-**NIST Incident Response Lifecycle:**
+**NIST CSF 2.0 Lifecycle Functions for Incident Response:**
 
-| Phase | Description | Triage Relevance |
-|-------|-------------|------------------|
-| 1. Preparation | Establishing IR capability, tools, procedures | Defines triage playbooks and escalation paths |
-| 2. Detection and Analysis | Identifying and validating potential incidents | **Primary triage phase** -- collect, correlate, classify |
-| 3. Containment, Eradication, and Recovery | Limiting damage, removing threat, restoring operations | Post-triage for confirmed TPs |
-| 4. Post-Incident Activity | Lessons learned, metric collection, process improvement | Feeds back into triage process improvement |
+| Function | Core Focus in Rev. 3 | Alert Triage Relevance |
+|----------|----------------------|-----------------------|
+| **Govern (GV)** | Organization policies, roles, and risk strategies | Escalation policies and priority thresholds |
+| **Protect (PR)** | Security awareness, access control, platform security | Identifies gaps to prevent recurrence |
+| **Detect (DE)** | Adverse event analysis, monitoring validation | **Primary triage target**: validates anomalies (`DE.AE`) |
+| **Respond (RS)** | Incident management, analysis, communication | Enforces containment (`RS.AN`) and notifications (`RS.CO`) |
+| **Recover (RC)** | Restore planning, backup execution, post-incident reviews | Validates recovery trigger (`RC.RP`) on confirmed impact |
 
-**Key NIST 800-61 Rev 2 recommendations for triage:**
+**Key NIST 800-61 Rev 3 Recommendations for Triage:**
+- **Modern Incident Analysis (Section 3.1)**: Emphasizes source-dated verification and multi-source telemetry validation before classifying.
+- **Incident Declaration**: Explicitly separates alert triage from incident declaration, avoiding premature or delayed escalations.
+- **Structured Coordination**: Establishes predefined thresholds for stakeholder notifications (privacy, legal, executives) and operational recovery.
 
-- **Section 3.2.4 -- Incident Analysis:** Use multiple data sources for correlation. Do not rely on a single alert in isolation.
-- **Section 3.2.5 -- Incident Documentation:** Document all triage decisions, evidence, and rationale. Maintain an incident log from the first alert.
-- **Section 3.2.6 -- Incident Prioritization:** Prioritize based on the functional impact, information impact, and recoverability of the incident.
-- **Section 3.2.7 -- Incident Notification:** Notify designated personnel based on predefined criteria. Over-communication is preferred to under-communication during active incidents.
-
-**NIST prioritization factors (SP 800-61 Rev 2, Section 3.2.6):**
-
-| Factor | Rating Levels |
-|--------|---------------|
-| Functional Impact | None / Low / Medium / High |
-| Information Impact | None / Privacy Breach / Proprietary Breach / Integrity Loss |
-| Recoverability | Regular / Supplemented / Extended / Not Recoverable |
+**NIST Prioritization Factors (NIST SP 800-61 Rev. 3 / Rev. 2 Legacy):**
+When legacy Rev. 2 mode is active, incident prioritization uses the legacy functional impact, information impact, and recoverability ratings. When Rev. 3 mode is active, priority is determined dynamically by mapping telemetry impact to CSF 2.0 communication triggers (`RS.CO`) and recovery plans (`RC.RP`).
 
 ---
 
@@ -319,9 +365,50 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Defaulting to Superseded NIST SP 800-61 Rev. 2 References Without Source-Dated Verification
+
+Incident response playbooks that assume NIST SP 800-61 Rev. 2 is the current guideline are using a superseded standard. Rev. 3 introduces major framework updates and maps to CSF 2.0. SOC reviews must verify the publication source date and default to Rev. 3 unless legacy alignment is explicitly documented and justified.
+
+### Pitfall 7: Triage Reporting Without Mapping to CSF 2.0 Outcomes
+
+Failing to map alert evidence to CSF 2.0 outcomes (Detect/Respond/Recover) leads to fragmented investigations. An analyst might classify an alert correctly but omit whether communication plans (`RS.CO`) or recovery triggers (`RC.RP`) were evaluated. Standardizing on CSF 2.0 categories prevents these gaps.
+
+### Pitfall 8: Escalating Alerts Without Predefined Incident Declaration, Communication, and Recovery Triggers
+
+Treating escalation as a simple binary notify/no-notify step ignores operational complexities. High-severity alerts can involve legal/regulatory data or require instant failover. SOC reports must explicitly evaluate incident declaration status, communication thresholds, and recovery triggers to enable structured incident coordination.
+
 ---
 
-## 8. Prompt Injection Safety Notice
+## 8. Triage Reporting Examples (NIST Rev. 3 vs. Legacy Rev. 2)
+
+### Stale Triage Report Example (Legacy Rev. 2)
+- **NIST Source:** NIST SP 800-61 Rev 2
+- **Disposition:** True Positive
+- **Priority:** P2 (High)
+- **Prioritization Basis:** Functional Impact = Medium, Information Impact = Unknown, Recoverability = Regular
+- **Escalation Decision:** Escalate to IR team.
+*Why this is stale/vulnerable:* This report does not record the source date, fails to map telemetry to CSF 2.0 outcomes (Detect/Respond/Recover), has no evidence confidence rating, and lacks explicit incident declaration, communication trigger, and recovery planning statuses.
+
+### Secure Triage Report Example (NIST Rev. 3 / CSF 2.0)
+- **NIST Source Version:** NIST SP 800-61 Rev 3 (April 2025)
+- **Legacy Mode Status:** No (Default Rev. 3)
+- **Disposition:** True Positive
+- **Priority:** P2 (High)
+- **Incident Declared:** Yes (threat active on production server)
+- **Communication Triggered:** Yes (PII compromised, privacy officer notified - CSF RS.CO)
+- **Recovery Triggered:** Yes (scheduled host rebuild and credential rotation - CSF RC.RP)
+- **Evidence Confidence:** High (corroborated EDR process logs and network flows)
+- **Not Evaluable Reason:** N/A
+- **CSF 2.0 Outcomes:**
+  - *DE.AE (Adverse Event Analysis)*: Telemetry validated command line process logs showing unauthorized code execution.
+  - *RS.MA (Incident Management)*: Playbook activated.
+  - *RS.AN (Root-Cause/Scope Analysis)*: Confirmed process tree and remote connection targets.
+  - *RS.CO (Communication)*: Customer data host compromised, notifying privacy office.
+  - *RC.RP (Recovery)*: Host isolated and queue scheduled for restore.
+
+---
+
+## 9. Prompt Injection Safety Notice
 
 This skill processes user-supplied content that may include alert payloads, log data, SIEM query results, and threat intelligence reports. The agent must adhere to the following safety constraints:
 
@@ -333,14 +420,22 @@ This skill processes user-supplied content that may include alert payloads, log 
 
 ---
 
-## 9. References
+## 10. References
 
-1. **NIST SP 800-61 Rev 2 -- Computer Security Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
-2. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
-3. **MITRE ATT&CK Tactics** -- https://attack.mitre.org/tactics/enterprise/
-4. **FIRST CSIRT Services Framework** -- https://www.first.org/standards/frameworks/csirts/csirt_services_framework_v2.1
-5. **SANS Incident Handler's Handbook** -- https://www.sans.org/white-papers/33901/
-6. **SOC Analyst Triage Best Practices (SANS)** -- https://www.sans.org/reading-room/
-7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
-8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
-9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+1. **NIST SP 800-61 Rev. 3, Incident Response Recommendations and Considerations for Cybersecurity Risk Management: A CSF 2.0 Community Profile** -- https://csrc.nist.gov/pubs/sp/800/61/r3/final
+2. **NIST SP 800-61 Rev 2 -- Computer Security Incident Handling Guide (Legacy)** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+3. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
+4. **MITRE ATT&CK Tactics** -- https://attack.mitre.org/tactics/enterprise/
+5. **FIRST CSIRT Services Framework** -- https://www.first.org/standards/frameworks/csirts/csirt_services_framework_v2.1
+6. **SANS Incident Handler's Handbook** -- https://www.sans.org/white-papers/33901/
+7. **SOC Analyst Triage Best Practices (SANS)** -- https://www.sans.org/reading-room/
+8. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
+9. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
+10. **NIST Cybersecurity Framework (CSF) 2.0** -- https://www.nist.gov/cyberframework
+
+---
+
+## Changelog
+
+- **1.1.0** -- Refresh default incident handling framework to NIST SP 800-61 Rev. 3 and NIST CSF 2.0, establish CSF outcome mappings, define evidence confidence ratings and NE reason codes, add legacy-mode checks, and update playbooks.
+- **1.0.0** -- Initial release. Triage guidelines aligned with NIST SP 800-61 Rev 2 and MITRE ATT&CK.
