@@ -524,7 +524,7 @@ skills:
     role: [security-engineer, devsecops]
     phase: [build, deploy]
     activity: [review, audit]
-    frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
+    frameworks: [SLSA-v1.2, OWASP-CICD-Top-10]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/devsecops/pipeline-security/SKILL.md
