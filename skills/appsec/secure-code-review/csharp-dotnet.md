@@ -336,6 +336,124 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 ```
 
+#### SameSite and External Authentication Cookies
+
+When reviewing cookie security configuration in applications utilizing external identity providers (OAuth, OpenID Connect, WS-Federation, etc.), cookie policies must be assessed according to their operational roles. While first-party session and application cookies should use `SameSite=Lax` or `SameSite=Strict`, remote-authentication state, correlation, and nonce cookies (e.g., `.AspNetCore.Correlation.` or `.AspNetCore.OpenIdConnect.Nonce.`) require cross-site access during authentication callbacks and typically default to `SameSite=None`.
+
+Reviewers MUST compile and record the following evidence before reporting SameSite issues on these cookies:
+- **Cookie name / purpose**: Role of the cookie (first-party session/auth vs. OIDC nonce/correlation).
+- **Emitting component**: Component issuing the cookie (e.g., `AddOpenIdConnect`, `AddCookie`, `AddSession`).
+- **Configured SameSite value**: The specific SameSite setting applied (`Strict`, `Lax`, `None`, or `Unspecified`).
+- **Secure policy**: Secure attribute setting (MUST be `Always` whenever `SameSite=None` is used).
+- **Global cookie policy interactions**: Interaction with `CookiePolicyOptions.MinimumSameSitePolicy` or similar global overrides, ensuring they do not break OIDC flows by forcing correlation/nonce cookies to `Strict` or `Lax`.
+- **Redirect method / context**: Callback redirection details (HTTP GET vs. POST, iframe usage).
+- **Login-flow test result**: Manual or automated testing proof verifying whether external authentication succeeds with the current SameSite settings.
+
+#### Severity Mappings
+- **Cross-site cookie `SameSite=None` without `Secure`**: Cookies utilizing `SameSite=None` must be marked `Secure` (Always) due to browser enforcement. If a remote-auth cookie is configured as `SameSite=None` but lacks the `Secure` flag, browsers will reject it, breaking external login. This vulnerability should be rated **High** to **Critical** depending on the authentication dependencies exposed.
+- **Global SameSite override breaking external authentication**: If a global policy forces `SameSite=Strict` on remote-auth cookies, authentication callbacks will fail. Remediating this by globally downgrading cookie properties to insecure settings (e.g., removing `Secure` or setting all cookies to `SameSite=None`) is a **High** risk pattern.
+
+#### Evaluation Gaps (Not Evaluable Reasons)
+The review of cookie SameSite hardening is **Not Evaluable** if any of the following details are missing:
+- `unknown_cookie_issuer`: The origin, component, or purpose of the cookie in question is unevidenced.
+- `untested_external_login_callback`: The external login flow and callback behavior have not been verified under browser-realistic conditions.
+- `unknown_global_cookie_policy`: The global middleware configuration (e.g., `app.UseCookiePolicy()`) and its overrides are not verified.
+- `missing_browser_context`: Missing context on client browser restrictions, iframe structures, or cross-site requirements of the app.
+
+---
+
+**Vulnerable and Secure Examples for Remote Authentication Cookies:**
+
+**Vulnerable: Global Cookie Policy Overriding OIDC Nonce/Correlation Cookies**
+Forcing `MinimumSameSitePolicy = SameSiteMode.Strict` globally breaks remote identity provider callbacks (like OpenID Connect / OAuth) which need to send POST callbacks containing nonces.
+```csharp
+// VULNERABLE: Overrides all cookies to Strict, breaking external authentication callbacks
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.Strict;
+    options.HttpOnly = HttpOnlyPolicy.Always;
+    options.Secure = CookieSecurePolicy.Always;
+});
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+})
+.AddCookie()
+.AddOpenIdConnect(options =>
+{
+    options.ClientId = "client-id";
+    options.Authority = "https://identity.example.com";
+});
+```
+
+**Vulnerable: SameSite=None without Secure attribute**
+If an application configures a cookie (like OpenIdConnect nonce) to `SameSiteMode.None` but does not enforce `SecurePolicy = CookieSecurePolicy.Always`, modern browsers will reject it outright.
+```csharp
+// VULNERABLE: SameSite=None configured without enforcing Secure policy
+builder.Services.AddAuthentication()
+.AddOpenIdConnect(options =>
+{
+    options.NonceCookie.SameSite = SameSiteMode.None;
+    options.NonceCookie.SecurePolicy = CookieSecurePolicy.None; // Will be rejected by modern browsers
+});
+```
+
+**Secure: Role-based Cookie Policies and Exclusion overrides**
+Configure first-party cookies to `Strict` or `Lax`, allow OIDC components to use their safe defaults (`SameSite=None; Secure`), and configure the global cookie policy to selectively bypass minimum SameSite requirements for correlation/nonce cookies.
+```csharp
+// SECURE: Global policy with conditional checks to avoid breaking remote-auth cookies
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.HttpOnly = HttpOnlyPolicy.Always;
+    options.Secure = CookieSecurePolicy.Always;
+
+    // Dynamically decide MinimumSameSitePolicy based on cookie role/name
+    options.MinimumSameSitePolicy = SameSiteMode.Unspecified;
+    options.OnAppendCookie = cookieContext =>
+    {
+        // First-party application cookies receive Strict or Lax
+        if (cookieContext.CookieName.StartsWith(".AspNetCore.Session") ||
+            cookieContext.CookieName.StartsWith(".AspNetCore.Antiforgery"))
+        {
+            cookieContext.CookieOptions.SameSite = SameSiteMode.Strict;
+        }
+        // Remote auth correlation and nonce cookies preserve SameSite=None; Secure
+        else if (cookieContext.CookieName.StartsWith(".AspNetCore.Correlation.") ||
+                 cookieContext.CookieName.StartsWith(".AspNetCore.OpenIdConnect.Nonce"))
+        {
+            cookieContext.CookieOptions.SameSite = SameSiteMode.None;
+            cookieContext.CookieOptions.Secure = true;
+        }
+    };
+});
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+})
+.AddCookie(options =>
+{
+    options.Cookie.Name = "AppAuthCookie";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Lax; // Lax is safe for first-party auth cookie
+})
+.AddOpenIdConnect(options =>
+{
+    options.ClientId = "client-id";
+    options.Authority = "https://identity.example.com";
+
+    // Explicitly configure remote auth cookies if defaults need to be stated
+    options.NonceCookie.SameSite = SameSiteMode.None;
+    options.NonceCookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.CorrelationCookie.SameSite = SameSiteMode.None;
+    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+});
+```
+
 ---
 
 #### 3. Missing Authentication (CWE-306)
