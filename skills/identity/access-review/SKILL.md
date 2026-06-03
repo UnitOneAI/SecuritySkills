@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -102,6 +102,8 @@ Identify:
 - **In-scope systems** — production environments, SaaS applications, infrastructure platforms, databases, internal tools
 - **In-scope identity types** — human users, service accounts, shared accounts, external/guest accounts
 - **Entitlement sources** — IdP group memberships, cloud IAM roles, application-level permissions, database grants
+- **Authoritative identity joins** — HRIS employment status/effective date, IdP source group, SCIM provisioning state, and target-app local account inventory
+- **Effective entitlement expansion** — nested groups, dynamic groups, inherited permissions, and app-native grants that are not visible in the top-level review export
 - **Review cadence compliance** — verify the current review meets the organization-defined frequency
 
 **What to look for:**
@@ -113,6 +115,8 @@ AR-SCOPE-03: Service accounts excluded from review population
 AR-SCOPE-04: SaaS applications not included in centralized review (shadow IT gap)
 AR-SCOPE-05: No single authoritative source for entitlements (CIS 6.7 — centralize access control)
 AR-SCOPE-06: Guest/external accounts not included in review scope
+AR-SCOPE-07: HRIS, IdP, SCIM, and target-app entitlement sources are not joined, so the review population is not the effective access state
+AR-SCOPE-08: Nested or dynamic groups are reviewed only at the parent group name, not the expanded effective membership
 ```
 
 **Recommended cadences:**
@@ -136,6 +140,16 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 
 For each user-entitlement pair, the certifier (typically the user's manager or resource owner) must affirm or revoke:
 
+Before certification, expand the entitlement to the effective permission set:
+
+- HRIS employment status and effective date
+- IdP group source and sync status
+- SCIM provisioning status in the target SaaS or application
+- Nested, dynamic, and inherited group memberships
+- Local app-native grants that bypass federation
+
+The certifier must review the effective permissions, not just the group or role label.
+
 **What to look for:**
 
 ```
@@ -147,6 +161,10 @@ AR-CERT-05: No escalation path for entitlements where the certifier is uncertain
 AR-CERT-06: Certification decisions not enforced — revoked entitlements not actually removed
 AR-CERT-07: No SLA for certification completion (recommended: 14 business days)
 AR-CERT-08: Delegated reviews without accountability (certifier delegates but is not tracked)
+AR-CERT-09: Certifier reviewed a parent group label without seeing the expanded effective permissions
+AR-CERT-10: HRIS termination or role-change effective date was not reconciled before approval
+AR-CERT-11: SCIM sync lag or failure left the target-app entitlement stale during certification
+AR-CERT-12: Local app-native grants were not included in the entitlement decision
 ```
 
 **Rubber-stamp detection criteria:**
@@ -188,6 +206,15 @@ AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle man
 | **GCP** | Admin Activity logs, Policy Analyzer | Last authentication event, unused IAM bindings |
 | **Okta / IdP** | System Log, user lifecycle status | Suspended vs. deprovisioned, last authentication timestamp |
 | **SaaS apps** | SCIM sync status, app-native audit logs | Users not synced from IdP, local accounts outside federation |
+
+**Effective entitlement reconciliation required for all platforms:**
+
+| Source Join | Evidence to Require | False-Complete Condition |
+|---|---|---|
+| HRIS -> IdP | Employee status, role change effective date, termination date, and the mapped IdP account or group | The review uses stale HR data or ignores a scheduled termination/role change |
+| IdP -> SCIM | Group sync status, provisioning timestamp, and target-app delivery confirmation | The IdP export shows a removal/approval that never reached the target app |
+| SCIM -> Target app | Provisioning result, local account inventory, and effective role/permission snapshot | The app still has a local grant even though federation says the user was removed |
+| Nested/dynamic groups | Expanded membership list and source query result | The reviewer saw only the parent group name or static export |
 
 ---
 
@@ -292,6 +319,7 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 |---|---|---|
 | Review campaign configuration (scope, reviewers, deadline) | Duration of audit period + 1 year | AC-2(j) |
 | Individual certification decisions (approve/revoke per entitlement) | Duration of audit period + 1 year | AC-6(7) |
+| Effective entitlement export showing HRIS/IdP/SCIM/target-app joins | Duration of audit period + 1 year | AC-2, AC-6(7), CIS 6.7 |
 | Revocation execution confirmation (ticket, timestamp) | Duration of audit period + 1 year | AC-2, CIS 6.2 |
 | Exception approvals with justification and expiry | Duration of exception + 1 year | AC-6 |
 | Review completion metrics (on-time %, revocation %) | Duration of audit period + 1 year | AC-2 |
@@ -320,7 +348,7 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | **Severity** | Critical / High / Medium / Low |
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, roles, systems, or platforms impacted |
-| **Evidence** | Specific data supporting the finding (counts, examples, screenshots) |
+| **Evidence** | Specific data supporting the finding (counts, examples, screenshots, effective entitlement exports, source joins) |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
