@@ -137,8 +137,15 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 - **Dynamic vs. static tool sets:** Can the agent's tool set change at runtime? If an orchestrator dynamically assigns tools, what governs which tools are assigned?
 - **Per-session vs. permanent tool access:** Is tool access scoped to a specific task or session, or does every invocation receive the same broad tool set regardless of the task?
 - **Cross-agent tool sharing:** Can one agent invoke another agent's tools? If so, through what authorization mechanism?
+- **MCP Tool Boundary and Identity Provenance:** For Model Context Protocol (MCP) integrations, verify that the reviewer maps each tool to its originating server identity (stdio path or remote SSE URL), publisher channel (verified vs. community), transport containment, and registered tool/parameter schema hashes.
+- **MCP Tool Descriptor Poisoning:** Check if tool descriptions, parameter schemas, enum options, and examples include instruction-carrying text or unsafe formatting (HTML/Markdown scripts, remote URLs). These are visible to the LLM and can trigger indirect prompt injection if poisoned.
+- **Descriptor Update and Rug-pull Controls:** Verify if the client pins and verifies hashes/signatures of tool descriptors. Determine whether changes in remote descriptors trigger a diff and force a re-approval workflow, or if updates are silently accepted.
+- **Namespace partitioning and name collisions:** Verify if tools use canonical namespace schemas (e.g., `namespace.tool_name`) to prevent lookalike tool hijacking (e.g., registering `github_get_issue` on an untrusted community server to hijack `github.get_issue` calls).
+- **OAuth and resource-bounded scopes:** For remote MCP tools using OAuth, verify whether token scopes are restricted to specific resources and actions (least-privilege audience/indicator) rather than granting wildcard tool access (`mcp:tools`) across all databases or client actions.
+- **Local stdio transport privilege isolation:** For local stdio-based servers, verify if the execution process is sandboxed, inherits a scrubbed environment without parent API keys, and has restricted process/user group access.
 
-**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), and tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`).
+**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`), MCP server configurations (`mcpServers` config files, stdio binary args, SSE endpoints), tool schema loading functions, descriptor validation code, client-side descriptor signature/hash checking, namespace partition logic, and OAuth token request parameterizations.
+
 
 **Permission model evaluation matrix:**
 
@@ -159,9 +166,14 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 |---|---|
 | Agent has write/delete access to production databases without task justification | Critical |
 | Agent service account has wildcard IAM permissions | Critical |
+| Unverified/unsigned remote MCP tool descriptors loaded without integrity checks | High |
+| Remote MCP server descriptors updated without human-in-the-loop re-approval (rug-pull risk) | High |
+| Remote MCP tool token reusing general administrative user token with broad scopes | High |
+| Local stdio MCP server inheriting parent environment keys or running unsandboxed | High |
 | Agent has access to tools it never needs for its defined purpose | High |
 | No per-task or per-session tool scoping -- every invocation gets full tool set | High |
 | Tool registration allows runtime tool injection by the agent itself | High |
+| Tool name lookalikes allowed without namespace partition checks | Medium |
 | Agent credentials do not expire or rotate | Medium |
 | Tool permissions not documented or reviewed periodically | Medium |
 
@@ -492,6 +504,12 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+## MCP Tool Boundary Inventory
+
+| Server URL/Path | Canonical Resource | Transport | Publisher/Source | Install/Update Channel | Tool Name | Descriptor Hash | Schema Hash | Side Effects | Required Scopes | Token Audience/Resource | Per-Tool Consent | Last Descriptor Change | Re-approval Required? | Evidence Confidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| [e.g., /bin/mcp] | [e.g., repo_list] | stdio/SSE/WS | Verified/Community | npm/Docker/Local | [Name] | [SHA256] | [SHA256] | none/write/destroy | [Scopes] | [Audience] | Yes/No | [Date] | Yes/No | [Confidence] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
 
@@ -568,6 +586,14 @@ Glob: **/security_architecture*
 4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+
+6. **Trusting MCP tool descriptions as static metadata.** Reviewers often treat tool descriptions as developer documentation rather than model input context. In MCP integrations, tool descriptions are loaded dynamically and sent directly to the model as part of the context. If these descriptions are not vetted or sanitized, they introduce a tool-descriptor poisoning vector where a remote server or a local package can execute indirect prompt injection attacks on the agent via the descriptions.
+
+7. **Overlooking remote descriptor updates (rug-pulls).** A major pitfall is approving an MCP tool based on its current behavior and tool descriptors, but failing to lock or verify the version/hash of the descriptors during subsequent executions. If the remote MCP server updates its tool descriptions, parameter schemas, or advertised side effects, the agent client may silently accept these changes. This allows malicious servers to change their instructions or parameter requirements post-approval without triggering security review.
+
+8. **Broad OAuth token reuse across remote MCP connections.** Remote MCP tools frequently use OAuth to access databases or APIs. Often, the client uses a single broad administrative token or client credentials across all servers and tools. If one remote tool is compromised or malicious, it can misuse the broad token to access resources outside its designated scope. Authentication tokens must be scoped tightly per-tool and per-resource.
+
+9. **Stdio privilege inheritance in local MCP setups.** Developers frequently launch local stdio MCP servers directly from the parent application process. This means the server process inherits the host system environment, filesystems, and parent credentials by default. If the local tool or its underlying npm/docker library is compromised, it has full ambient host access. Reviewers must verify that stdio execution is isolated, sandboxed, and environment variables are explicitly scrubbed.
 
 ---
 
