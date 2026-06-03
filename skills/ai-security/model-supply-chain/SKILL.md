@@ -82,6 +82,9 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
 | Access controls on model storage | Cloud storage IAM, artifact registry permissions | Determines who can replace or modify model weights |
 | Adapter/plugin sources | LoRA configs, adapter download code | Third-party adapters inherit the same supply chain risks |
+| Tokenizer and prompt/chat template | tokenizer configs, serving configs, prompt templates | Tokenization and framing changes can alter behavior without changing weights |
+| Quantization/conversion output | GGUF/AWQ/GPTQ/ONNX build scripts, release artifacts | Converted artifacts are new deployable models that need their own provenance |
+| Runtime adapter registry | vLLM/TGI/Triton configs, adapter routing configs | Hot-loaded or per-tenant adapters can change the effective deployed model |
 
 ---
 
@@ -130,6 +133,61 @@ Glob: **/config.json
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
+
+---
+
+### Step 1A -- Composed Model Artifact Identity
+
+For production reviews, establish the identity of the effective deployed model, not only the original weight file. A deployed LLM or ML service can be a composition of base weights, one or more adapters, tokenizer files, generation configs, prompt or chat templates, quantized artifacts, runtime image, and route-specific adapter policies. Any mutable component can change behavior while the base model hash remains unchanged.
+
+**What to look for in code and configuration:**
+
+- Base model references that are pinned but paired with floating tokenizers, generation configs, chat templates, or model cards.
+- LoRA, QLoRA, PEFT, routing, or tenant-specific adapters loaded from mutable names, config services, or registry aliases such as `latest`, `main`, `prod`, or `default`.
+- Multiple adapters merged or stacked without recorded order, merge method, compatibility constraints, and final artifact digest.
+- Quantized or converted artifacts (GGUF, AWQ, GPTQ, ONNX, TensorRT) produced without a recorded converter version, calibration data identity, command/config, output digest, and signer.
+- Runtime servers that can hot-load adapters or switch adapters by route, tenant, model alias, or request metadata after the reviewed deployment manifest was approved.
+- Cache-only evidence where reviewers see local files but cannot prove which remote revision and digest a fresh deployment will pull.
+
+**Detection methods using allowed tools:**
+
+```
+# Find composed model loading and adapter paths
+Grep: "PeftModel|load_adapter|set_adapter|merge_and_unload|adapter_id|lora|qlora|peft" in **/*.{py,yaml,yml,json,toml}
+Grep: "tokenizer|chat_template|generation_config|prompt_template|special_tokens" in **/*.{py,yaml,yml,json,toml,md}
+
+# Find quantization and conversion outputs
+Grep: "gguf|awq|gptq|onnx|tensorrt|quantize|convert.py|calibration" in **/*.{py,sh,yaml,yml,json,md}
+Glob: **/*.{gguf,onnx,engine}
+
+# Find runtime adapter loading and model aliases
+Grep: "vllm|tgi|triton|adapter_registry|model_alias|served_model_name|LoRA" in **/*.{py,yaml,yml,json,toml,md}
+```
+
+**Composed identity evidence table:**
+
+| Deployment | Base model source/revision/digest | Adapter(s) source/revision/digest/order | Tokenizer revision/digest | Config/template digest | Quantization/conversion output | Runtime image digest | Runtime adapter registry | Update policy | Source authority | Confidence | Not Evaluable reason |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| [service/model alias] | [pinned source] | [adapter list and order] | [tokenizer evidence] | [config/template evidence] | [method, converter, output digest] | [image digest] | [hot-load policy] | [manual/CI/registry] | [publisher/internal registry] | [High/Medium/Low] | [missing evidence] |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Production deployment cannot identify the complete composed artifact across base, adapters, tokenizer/config/templates, converted output, and runtime image | High |
+| Base model is pinned but tokenizer, generation config, chat template, or adapter reference is mutable | High |
+| Runtime can hot-load or route to unreviewed adapters after deployment approval | High |
+| Quantized or converted artifact lacks converter version, input digest, calibration data identity, output digest, or signing evidence | High |
+| Multiple adapters are merged or stacked without recorded order, compatibility checks, and final digest | Medium |
+| Evidence is cache-only and does not prove the remote revision/digest used by fresh deployments | Medium |
+
+**Remediation guidance:**
+
+- Publish a signed model bill of materials or deployment manifest that binds all model components and runtime artifacts together.
+- Pin every component to an immutable revision and digest: base weights, adapter(s), tokenizer, config, prompt/chat template, quantized artifact, runtime image, and serving configuration.
+- Disable runtime adapter hot-loading in production unless it is governed by a signed allowlist and change-control process.
+- Treat quantization and conversion as build steps that produce new artifacts with provenance, output digests, and reproducible commands.
+- Record a **Not Evaluable** outcome when any deployed component cannot be tied to an immutable revision and digest.
 
 ---
 
@@ -382,10 +440,16 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|---|---|
 | [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
 
+## Composed Artifact Identity
+
+| Deployment | Base model | Adapter(s) | Tokenizer | Config/template | Quantized artifact | Runtime image | Runtime adapter registry | Update policy | Confidence | Not Evaluable reason |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [service/model alias] | [source/revision/digest] | [source/revision/digest/order] | [revision/digest] | [digest] | [method/output digest] | [digest] | [policy/evidence] | [policy] | [High/Medium/Low] | [missing evidence] |
+
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Provenance | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
+- **Category:** [Provenance | Composed Artifact Identity | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM03:2025 -- Supply Chain Vulnerabilities
 - **MITRE ATLAS Technique:** [technique ID and name]
@@ -401,6 +465,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Domain | Current State | Target State | Gap Severity |
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
+| Composed artifact identity | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
@@ -441,6 +506,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
 
+6. **Hashing only the base weights.** For adapter-based or converted deployments, the base model digest is not the deployed model identity. Tokenizer drift, chat template changes, LoRA merge order, quantization output, runtime image changes, or hot-loaded adapters can change behavior without changing the original base weight hash.
+
 ---
 
 ## References
@@ -448,6 +515,9 @@ Assess whether architectural and procedural controls exist to detect model backd
 - OWASP Top 10 for LLM Applications (2025), LLM03: Supply Chain Vulnerabilities -- https://genai.owasp.org/llmrisk/llm03-supply-chain-vulnerabilities/ (Note: LLM03 in the 2025 edition covers supply chain; verify current numbering at https://genai.owasp.org)
 - SLSA v1.0 Specification -- https://slsa.dev/spec/v1.0/
 - MITRE ATLAS -- https://atlas.mitre.org
+- Hugging Face Hub, downloading files at specific revisions -- https://huggingface.co/docs/huggingface_hub/en/guides/download
+- Hugging Face Transformers, loading PEFT adapters -- https://huggingface.co/docs/transformers/en/peft
+- SLSA Provenance artifact digest fields -- https://slsa.dev/spec/v1.0/provenance
 - Mithril Security. "PoisonGPT: How We Hid a Lobotomized LLM on Hugging Face to Spread Fake News" (2023) -- https://blog.mithrilsecurity.io/poisongpt-how-we-hid-a-lobotomized-llm-on-hugging-face-to-spread-fake-news/
 - Oligo Security. "ShadowRay: First Known Attack Campaign Targeting Ray AI Framework" (2024) -- https://www.oligo.security/blog/shadowray-attack-ai-workloads-actively-exploited-in-the-wild
 - Mitchell, M. et al. "Model Cards for Model Reporting" (2019) -- arXiv:1810.03993
