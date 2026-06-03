@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +55,7 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Attacker access scope** -- What accounts, systems, and network segments has the attacker accessed or potentially compromised?
 - [ ] **Business criticality of affected systems** -- Revenue impact, customer impact, SLA obligations, regulatory implications of downtime.
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
+- [ ] **Effective control path evidence** -- For every planned containment action, identify the actual enforcement point that covers the affected asset, such as the attached cloud ENI/security group, endpoint EDR isolation state, IdP session/token revocation record, Kubernetes NetworkPolicy selector, DNS resolver path, proxy policy, or firewall route.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
 
@@ -110,6 +111,16 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Cloud security group lockdown** | Remove all inbound/outbound rules except management access | Cloud instance compromise | May disrupt dependent services |
 | **VPN/remote access revocation** | Disable VPN accounts, revoke remote access tokens | Compromised remote access credentials | Disrupts legitimate remote users on same system |
 
+**Effective enforcement evidence required before marking network containment complete:**
+
+| Control Type | Evidence to Require | False-Complete Condition |
+|---|---|---|
+| Cloud security group / firewall | Rule ID, direction, target interface or ENI, attached route table path, and observed flow-log drop/deny evidence | Rule exists but is not attached to the compromised interface, only covers ingress, or traffic bypasses through another route/NACL/proxy path |
+| EDR network isolation | Device ID, isolation state, timestamp, policy source, and management-console telemetry proving the endpoint is isolated | Isolation command was queued, failed, or applied to a stale device record |
+| Kubernetes NetworkPolicy | Namespace, pod labels selected, ingress and egress coverage, CNI enforcement status, and test traffic result | Policy exists but does not select the compromised pod, only covers ingress, or the CNI does not enforce NetworkPolicy |
+| DNS sinkhole / protective DNS | Resolver used by the affected endpoint, policy/feed version, blocked domain result, and endpoint query telemetry | Sinkhole is configured on a resolver the endpoint does not use, or the attacker uses direct IP/alternate DoH |
+| Proxy / egress gateway | Policy ID, source identity/group, destination indicator, deny log, and route proving egress must traverse the proxy | Proxy rule exists but the workload can egress directly or through a different gateway |
+
 **Credential revocation strategies:**
 
 | Strategy | Method | Use When | Scope |
@@ -121,6 +132,14 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Service account reset** | Reset service account passwords and regenerate keys | Lateral movement via service accounts | Downstream services may break |
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
+
+**Identity containment evidence required before marking credential containment complete:**
+
+| Control Type | Evidence to Require | False-Complete Condition |
+|---|---|---|
+| Session invalidation | IdP session revocation event, affected user/app scope, timestamp, and failed reuse attempt for a previously active token/session | Password was reset but existing SSO, refresh, Kerberos, API, or SaaS sessions remain valid |
+| API/service token revocation | Token/key ID, owning service account, revocation event, rotation target, and downstream authentication failure for the old secret | New key was created but old keys, app passwords, or workload identity credentials still work |
+| Privileged account disablement | Account ID, directory status, PAM vault status, break-glass exception review, and failed privileged action test | Directory account is disabled but cached credentials, PAM sessions, or local admin accounts still allow access |
 
 ### Step 3: Long-Term Containment
 
@@ -216,6 +235,18 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
 
+**Do not record a containment action as `Complete` unless it has effectiveness evidence.** A ticket, policy object, firewall rule, or console command is implementation evidence only. The plan must also prove the control applies to the affected asset and blocks the attacker capability it was selected to contain.
+
+**Effective containment validation matrix:**
+
+| Action Type | Required Proof | Status Rule |
+|---|---|---|
+| Cloud network isolation | Asset-to-control attachment, ingress and egress coverage, route/NACL/proxy path review, and flow-log or packet evidence showing the denied path | `Complete` only when the effective path is covered and attacker traffic stops |
+| EDR endpoint isolation | Console state, agent heartbeat, endpoint ID match, and network telemetry proving lateral/C2 traffic stopped | `Complete` only when the live agent state and telemetry agree |
+| DNS sinkhole | Endpoint resolver path, DNS response evidence, query log entry, and no direct-IP or alternate-resolver bypass for the IOC set | `Complete` only when the affected endpoint uses the protected resolver path |
+| Identity/session containment | Token/session revocation evidence, application-specific session coverage, and failed reuse test where safe | `Complete` only when stale sessions and active tokens are invalidated |
+| Kubernetes containment | Rendered workload labels, NetworkPolicy selector match, ingress and egress policy, CNI enforcement, and test pod traffic result | `Complete` only when the running pod is selected and traffic is blocked |
+
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
 - New compromised accounts appearing after credential reset
@@ -275,9 +306,9 @@ threat severity and business criticality, and expected impact on operations.]
 | Containment effectiveness | [Assessment] | [High/Medium/Low] |
 
 ### Short-Term Containment Actions
-| Action | Target | ATT&CK Technique Countered | Status | Owner | ETA |
-|---|---|---|---|---|---|
-| [Action] | [System/Account/Network] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] |
+| Action | Target | ATT&CK Technique Countered | Enforcement Point | Effectiveness Evidence | Status | Owner | ETA |
+|---|---|---|---|---|---|---|---|
+| [Action] | [System/Account/Network] | [T-code] | [Rule/Policy/Session/Resolver/EDR control] | [Proof that control applies and attacker path stopped] | [Planned/In Progress/Blocked/Complete] | [Name] | [Time] |
 
 ### Long-Term Containment Actions
 | Action | Target | Duration | Status | Owner |
@@ -290,9 +321,9 @@ threat severity and business criticality, and expected impact on operations.]
 | [Service] | [Description of disruption] | [Workaround if any] | [Yes/No -- requires escalation] |
 
 ### Containment Validation Checklist
-| Check | Result | Timestamp |
-|---|---|---|
-| [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+| Check | Effective Control Path | Result | Timestamp |
+|---|---|---|---|
+| [Validation item] | [Attached ENI/rule, EDR state, IdP session, resolver path, CNI policy, etc.] | [Pass/Fail/Pending] | [timestamp] |
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
@@ -347,6 +378,10 @@ Disconnecting a business-critical production system from the network stops the a
 ### Pitfall 4: Not Validating Containment Effectiveness
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
+
+### Pitfall 5: Treating Control Creation as Effective Containment
+
+Creating a rule, policy, or ticket is not the same as containing the attacker. Cloud rules can miss the attached interface or egress route, EDR isolation can remain queued, DNS sinkholes can miss endpoints using another resolver, and identity resets can leave refresh tokens or SaaS sessions alive. Require effective-path evidence before changing a containment action from `In Progress` to `Complete`.
 
 ---
 
