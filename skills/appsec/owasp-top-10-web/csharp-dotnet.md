@@ -30,6 +30,14 @@ FromRoute.*id|FromQuery.*id
 
 # Direct file access patterns
 Path\.Combine.*Request|PhysicalFile.*Request
+
+# Minimal API / endpoint routing authorization evidence
+MapGroup\(
+RequireAuthorization\(
+AllowAnonymous\(
+FallbackPolicy
+UseAuthentication\(\)
+UseAuthorization\(\)
 ```
 
 **Vulnerable Patterns and Secure Alternatives:**
@@ -166,6 +174,99 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
 ```
+
+**5. Minimal API route group authorization**
+
+```csharp
+// SECURE SHAPE -- authorization metadata inherited by endpoints in the group
+var api = app.MapGroup("/api")
+    .RequireAuthorization();
+
+api.MapGet("/orders/{id}", async (int id, ClaimsPrincipal user, AppDbContext db) =>
+{
+    var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+    var order = await db.Orders
+        .SingleOrDefaultAsync(o => o.Id == id && o.UserId == userId);
+
+    return order is not null ? Results.Ok(order) : Results.NotFound();
+});
+```
+
+Do not report this endpoint as missing `[Authorize]` only because it has no
+controller attribute. ASP.NET Core Minimal APIs can attach authorization metadata
+with `.RequireAuthorization()` on an endpoint or `MapGroup()` route group.
+
+```csharp
+// VULNERABLE -- looks similar by URL, but this endpoint is outside the group
+var api = app.MapGroup("/api").RequireAuthorization();
+
+api.MapGet("/me", GetCurrentUserAsync);
+
+app.MapDelete("/api/admin/users/{id}", DeleteUserAsync);
+```
+
+The presence of a protected group is not proof that every endpoint under the
+same URL prefix is inside it. Review the effective endpoint table, handler
+registration source, route group membership, and inherited endpoint metadata.
+
+**6. Fallback policy and anonymous exceptions**
+
+```csharp
+// SECURE SHAPE -- deny by default for endpoints without explicit metadata
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
+app.MapGet("/public-health", () => "ok").AllowAnonymous();
+app.MapGet("/account", GetAccountAsync);
+```
+
+`FallbackPolicy` can be a valid deny-by-default control, but it applies only
+when no explicit authorization metadata is set on the endpoint. Record whether
+each sensitive endpoint is protected by endpoint-specific metadata, route-group
+metadata, or fallback policy. Enumerate each `.AllowAnonymous()` endpoint and
+record why it is intentionally public.
+
+**7. Authentication and authorization middleware order**
+
+```csharp
+// VULNERABLE -- authorization runs before authentication establishes the user
+app.UseAuthorization();
+app.UseAuthentication();
+```
+
+For middleware-based ASP.NET Core auth, `UseAuthentication()` must run before
+`UseAuthorization()`. Endpoint metadata such as `.RequireAuthorization()` is not
+enough if the middleware pipeline is missing or ordered incorrectly.
+
+#### Endpoint Routing Authorization Evidence -- .NET
+
+For each sensitive ASP.NET Core endpoint, include:
+
+| Field | Evidence to record |
+|---|---|
+| Route and handler | `MapGet`, `MapPost`, controller action, Razor Page, or generated module |
+| Authorization source | `[Authorize]`, `.RequireAuthorization()`, route group metadata, fallback policy, or none |
+| Route group membership | Group variable, prefix, inherited policy name, and registration file |
+| Anonymous override | Whether `[AllowAnonymous]` or `.AllowAnonymous()` is present and why |
+| Middleware order | `UseAuthentication()` before `UseAuthorization()` when middleware auth is used |
+| Object ownership | User/resource ownership or `IAuthorizationService` check after authentication |
+| Public endpoint reason | Health check, login, callback, OpenAPI, webhook, static file, or other approved reason |
+
+#### Not Evaluable Conditions
+
+Do not mark A01 endpoint authorization as verified when any of these are unknown:
+
+- The endpoint inventory is incomplete.
+- Minimal API route groups are not traced to their mapped handlers.
+- Fallback policy is claimed but its definition is not shown.
+- `.AllowAnonymous()` endpoints are not enumerated.
+- Middleware order is not checked in apps that rely on authentication middleware.
+- Authentication is proven but resource ownership or function-level authorization
+  is not checked for sensitive operations.
 
 ---
 
@@ -1309,6 +1410,11 @@ Quick-reference list for automated scanning:
 \.AddCors.*AllowAnyOrigin
 \[AllowAnonymous\]
 Path\.Combine.*Request
+MapGroup\(
+RequireAuthorization\(
+AllowAnonymous\(
+FallbackPolicy
+UseAuthorization\(\).*UseAuthentication\(\)
 
 # --- A02: Cryptographic Failures ---
 MD5\.Create|SHA1\.Create|MD5CryptoServiceProvider|SHA1Managed
@@ -1357,6 +1463,10 @@ new Uri\(.*Request
 - [OWASP Top 10:2021](https://owasp.org/Top10/)
 - [OWASP .NET Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html)
 - [Microsoft ASP.NET Core Security Documentation](https://learn.microsoft.com/en-us/aspnet/core/security/)
+- [Microsoft ASP.NET Core Minimal APIs](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis)
+- [Microsoft ASP.NET Core Minimal API Route Handlers](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/route-handlers)
+- [Microsoft ASP.NET Core Routing](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/routing)
+- [Microsoft AuthorizationOptions.FallbackPolicy](https://learn.microsoft.com/en-us/dotnet/api/microsoft.aspnetcore.authorization.authorizationoptions.fallbackpolicy)
 - [Microsoft .NET Security Best Practices](https://learn.microsoft.com/en-us/dotnet/standard/security/)
 - [OWASP Deserialization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html)
 - [Microsoft Secure Coding Guidelines for .NET](https://learn.microsoft.com/en-us/dotnet/standard/security/secure-coding-guidelines)
