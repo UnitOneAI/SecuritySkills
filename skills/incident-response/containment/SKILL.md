@@ -5,14 +5,15 @@ description: >
   Rev 2 and MITRE ATT&CK techniques. Auto-invoked when a confirmed incident
   requires isolation decisions, credential revocation, network segmentation,
   or DNS sinkholing. Produces a containment plan with short-term and long-term
-  actions, business impact assessment, and ATT&CK-mapped countermeasures.
+  actions, effective-enforcement evidence, business impact assessment, and
+  ATT&CK-mapped countermeasures.
 tags: [incident-response, containment, isolation]
 role: [soc-analyst, security-engineer]
 phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -25,7 +26,7 @@ argument-hint: "[target-file-or-directory]"
 > **Frameworks:** NIST SP 800-61 Rev 2 (Containment, Eradication, and Recovery), MITRE ATT&CK Enterprise Matrix
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 15-30 min
-> **Output:** Containment plan with short-term and long-term actions, business impact trade-off analysis, ATT&CK-mapped countermeasures, and rollback criteria
+> **Output:** Containment plan with short-term and long-term actions, effective-enforcement evidence, business impact trade-off analysis, ATT&CK-mapped countermeasures, and rollback criteria
 
 ---
 
@@ -57,6 +58,7 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
+- [ ] **Effective enforcement paths** -- For each proposed action, identify the control plane, enforcement point, target attachment or scope, known bypass paths, and telemetry source that will prove the control is active.
 
 ---
 
@@ -121,6 +123,25 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Service account reset** | Reset service account passwords and regenerate keys | Lateral movement via service accounts | Downstream services may break |
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
+
+#### Effective Enforcement Requirements for Short-Term Actions
+
+Do not mark a containment action `Complete` because a ticket was opened, a command was sent, or a rule was created. Status must reflect the strongest verified state:
+
+1. `Command Sent` -- request issued, no proof that the affected asset is covered.
+2. `Control Attached` -- rule, policy, or revocation is scoped to the affected asset, identity, workload, or resolver path.
+3. `Control Enforced` -- provider state and telemetry show the control is active.
+4. `Activity Stopped` -- post-action telemetry shows the attacker behavior the action targets has ceased.
+
+If evidence is unavailable, use `Pending`, `Failed`, or `Not Evaluable`; do not use `Complete`.
+
+| Containment Type | Evidence Required Before `Complete` | Fallback When Unverified |
+|---|---|---|
+| Cloud network lockdown | Target ENI/NIC or workload association, ingress and egress rule coverage, route table/NACL/NSG/firewall/proxy/transit path review, and post-change flow or deny logs | Add host firewall or EDR isolation; detach from load balancer; quarantine subnet or VPC segment |
+| EDR host isolation | Console state, command timestamp, agent last-seen time, endpoint acknowledgement, allowed management-channel exceptions, and blocked connection telemetry | Apply cloud/security-group isolation, switchport quarantine, or VPN disablement when the endpoint is offline or tampered |
+| Identity and session containment | Account disablement, password or MFA reset, refresh-token revocation, app session invalidation status, OAuth grant review, API key/service principal/certificate/SSH key rotation, and target-app deprovisioning result | Revoke app-native sessions, rotate downstream credentials, disable non-human identities, and block source network paths |
+| DNS sinkhole or DNS block | Resolver path used by the affected asset, DoH/DoT and direct-IP bypass review, sinkhole response from the affected asset, DNS egress enforcement, and blocked-resolution or failed-C2 telemetry | Enforce proxy/firewall egress controls, block direct C2 IPs, or isolate the host if the resolver path is uncontrolled |
+| Kubernetes NetworkPolicy | Target pod and namespace selector match, CNI support for NetworkPolicy, ingress and egress `policyTypes`, namespace label evidence, and denied connection telemetry | Apply node, namespace, cloud security-group, or service-mesh policy isolation if the CNI does not enforce NetworkPolicy |
 
 ### Step 3: Long-Term Containment
 
@@ -216,6 +237,22 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
 
+**Effective enforcement evidence matrix:**
+
+For each containment action, record the evidence below before proceeding to eradication:
+
+| Field | Required Evidence |
+|---|---|
+| Target | Host, account, workload, resolver, service, or network path affected |
+| Control plane | Tool or platform used to apply the action, such as EDR, IdP, cloud network control, DNS, firewall, proxy, or Kubernetes |
+| Enforcement point | The concrete place enforcement occurs: endpoint agent, ENI/NIC, security group, route policy, firewall rule, resolver, application session store, CNI, or service mesh |
+| Scope proof | Provider-side proof that the control applies to the affected asset, identity, workload, or traffic path |
+| Direction and protocol coverage | Ingress, egress, session, token, DNS, protocol, or application coverage relevant to the attacker technique |
+| Bypass review | Alternate paths checked, including proxies, peering, transit gateways, direct IP, DoH/DoT, local accounts, cached sessions, app grants, and non-human identities |
+| Telemetry source | Flow logs, EDR events, IdP audit logs, application logs, DNS logs, proxy logs, firewall denies, Kubernetes events, or service-mesh telemetry |
+| Validation timestamp | Time the evidence was collected, including timezone |
+| Result | `Pass`, `Fail`, `Pending`, or `Not Evaluable`, with a reason for any non-pass result |
+
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
 - New compromised accounts appearing after credential reset
@@ -256,7 +293,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.0
+**Skill:** containment v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -275,9 +312,14 @@ threat severity and business criticality, and expected impact on operations.]
 | Containment effectiveness | [Assessment] | [High/Medium/Low] |
 
 ### Short-Term Containment Actions
-| Action | Target | ATT&CK Technique Countered | Status | Owner | ETA |
+| Action | Target | ATT&CK Technique Countered | Enforcement State | Owner | ETA |
 |---|---|---|---|---|---|
-| [Action] | [System/Account/Network] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] |
+| [Action] | [System/Account/Network] | [T-code] | [Command Sent/Control Attached/Control Enforced/Activity Stopped/Pending/Failed/Not Evaluable] | [Name] | [Time] |
+
+### Effective Enforcement Evidence
+| Action | Enforcement Point | Scope Proof | Bypass Paths Checked | Telemetry Source | Validation Timestamp | Result |
+|---|---|---|---|---|---|---|
+| [Action] | [EDR/IdP/Firewall/DNS/Cloud SG/CNI/etc.] | [Provider-side evidence] | [Paths checked] | [Log/source] | [timestamp] | [Pass/Fail/Pending/Not Evaluable] |
 
 ### Long-Term Containment Actions
 | Action | Target | Duration | Status | Owner |
@@ -348,6 +390,10 @@ Disconnecting a business-critical production system from the network stops the a
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
 
+### Pitfall 5: Mistaking Control-Plane Activity for Enforcement
+
+Cloud, EDR, identity, DNS, and Kubernetes systems often report that a command was accepted before the target is actually covered. A security group can miss the effective interface, an EDR isolation request can remain pending on an offline host, a password reset can leave app sessions alive, and a NetworkPolicy has no effect without an enforcing CNI. Treat control-plane success as provisional until scope proof and post-action telemetry confirm enforcement.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -376,3 +422,5 @@ This skill processes incident data including attacker-controlled indicators (IP 
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+13. **Kubernetes Network Policies** -- https://kubernetes.io/docs/concepts/services-networking/network-policies/
+14. **Microsoft Entra ID: Revoke user access in an emergency** -- https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access
