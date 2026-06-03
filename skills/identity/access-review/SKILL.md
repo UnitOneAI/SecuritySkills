@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -69,6 +69,7 @@ Access reviews are the operational heartbeat of identity governance. NIST SP 800
 | Framework | Control ID | Title | Relevance |
 |---|---|---|---|
 | **NIST SP 800-53** | AC-2 | Account Management | Account lifecycle, review cadence, disabling inactive accounts |
+| **NIST SP 800-53** | AC-2(1) | Automated System Account Management | Lifecycle automation and source-of-truth account joins |
 | **NIST SP 800-53** | AC-2(j) | Account Management — Review | Review accounts for compliance at organization-defined frequency |
 | **NIST SP 800-53** | AC-2(3) | Disable Accounts | Disable accounts when not used within organization-defined period |
 | **NIST SP 800-53** | AC-5 | Separation of Duties | Define and enforce SoD policies, document access authorizations |
@@ -81,6 +82,7 @@ Access reviews are the operational heartbeat of identity governance. NIST SP 800
 | **CIS Controls v8** | 5.1 | Establish and Maintain an Inventory of Accounts | Foundation for all access reviews |
 | **CIS Controls v8** | 5.3 | Disable Dormant Accounts | 45-day inactivity threshold |
 | **CIS Controls v8** | 5.4 | Restrict Administrator Privileges | Dedicated admin accounts |
+| **CIS Controls v8** | 5.6 | Centralize Account Management | Join account inventory to authoritative identity sources |
 | **CIS Controls v8** | 6.1 | Establish an Access Granting Process | Documented provisioning with approval |
 | **CIS Controls v8** | 6.2 | Establish an Access Revoking Process | Timely deprovisioning |
 | **CIS Controls v8** | 6.7 | Centralize Access Control | Single authoritative source |
@@ -101,7 +103,9 @@ Identify:
 
 - **In-scope systems** — production environments, SaaS applications, infrastructure platforms, databases, internal tools
 - **In-scope identity types** — human users, service accounts, shared accounts, external/guest accounts
-- **Entitlement sources** — IdP group memberships, cloud IAM roles, application-level permissions, database grants
+- **Authoritative identity sources** — HRIS for employees, vendor-management system for contractors, IdP directory, SCIM provisioning logs, and target-app user inventory
+- **Entitlement sources** — IdP group memberships, cloud IAM roles, application-level permissions, database grants, app-native local roles, direct user grants
+- **Join keys** — employee ID, immutable IdP object ID, SCIM externalId, application user ID, email alias, and contractor/vendor ID
 - **Review cadence compliance** — verify the current review meets the organization-defined frequency
 
 **What to look for:**
@@ -113,6 +117,10 @@ AR-SCOPE-03: Service accounts excluded from review population
 AR-SCOPE-04: SaaS applications not included in centralized review (shadow IT gap)
 AR-SCOPE-05: No single authoritative source for entitlements (CIS 6.7 — centralize access control)
 AR-SCOPE-06: Guest/external accounts not included in review scope
+AR-SCOPE-07: HRIS/VMS, IdP, SCIM, and target-app exports are not joined with stable identifiers
+AR-SCOPE-08: Review scope uses IdP group labels without target-app effective permission snapshots
+AR-SCOPE-09: Contractor, vendor, or guest identities are outside HRIS and have no alternate authoritative source
+AR-SCOPE-10: Local app accounts and app-native roles are excluded from the review population
 ```
 
 **Recommended cadences:**
@@ -125,6 +133,17 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 | External / guest accounts | Quarterly (90 days) | AC-2 |
 | Break-glass / emergency accounts | Monthly (30 days) | AC-6(1) |
 
+**Minimum source-of-truth join matrix:**
+
+| Join | Required Evidence | Review Risk if Missing |
+|---|---|---|
+| HRIS/VMS -> IdP | Workforce status, manager, department/job code, effective date, immutable IdP account ID | Terminated, transferred, or off-boarded identities remain active but look valid in the IdP export |
+| IdP -> SCIM | Source group, SCIM externalId, provisioning status, last sync time, sync error state | A revocation or role change appears complete in the IdP but never reaches the target app |
+| SCIM -> Target app | Target user ID, app role snapshot, local-account flag, direct assignment flag | App-native grants survive federation changes and are never certified |
+| Group -> Effective permission | Nested groups, dynamic group query, inherited roles, business capability mapping | Certifiers approve a label without seeing what the entitlement allows |
+
+If a join cannot be performed, mark the relevant access row `Not Evaluable` with the missing source and reviewer impact. Do not score the campaign as complete when the effective access state is unknown.
+
 ---
 
 ### Step 2: Entitlement Review and Certification
@@ -135,6 +154,26 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 **CIS Controls v8 Reference:** Control 6.1 — Establish an Access Granting Process
 
 For each user-entitlement pair, the certifier (typically the user's manager or resource owner) must affirm or revoke:
+
+Before presenting entitlements to certifiers, expand every review item into an effective access record. The reviewer must see what the entitlement allows in the target system, not only the IdP group, role name, or campaign label.
+
+**Effective entitlement evidence:**
+
+| Field | Required Detail |
+|---|---|
+| Identity source | HRIS/VMS identity status, effective date, manager, department, worker type |
+| Account mapping | IdP object ID, SCIM externalId, target-app user ID, local-account indicator |
+| Grant source | Direct assignment, static group, nested group, dynamic group rule, app-native role, break-glass exception |
+| Effective permission | Target-app role, cloud/database permission, business capability, privilege level |
+| Evidence timestamp | Source export time, SCIM sync time, target-app snapshot time, timezone |
+| Certifier authority | People manager, resource owner, entitlement owner, system owner, delegate, technical owner |
+
+**Reviewer authority rules:**
+
+- People managers can validate business need and employment status, but they may not understand specialized production, financial, database, or security-admin permissions.
+- Resource or entitlement owners must certify privileged, regulated, or high-impact entitlements.
+- Delegated reviews must retain the original accountable owner and the delegated reviewer identity.
+- If the certifier cannot interpret the effective permission, mark the row `Not Evaluable` and escalate to the resource owner.
 
 **What to look for:**
 
@@ -147,6 +186,13 @@ AR-CERT-05: No escalation path for entitlements where the certifier is uncertain
 AR-CERT-06: Certification decisions not enforced — revoked entitlements not actually removed
 AR-CERT-07: No SLA for certification completion (recommended: 14 business days)
 AR-CERT-08: Delegated reviews without accountability (certifier delegates but is not tracked)
+AR-CERT-09: Certifier only sees a parent group label, not expanded effective permissions
+AR-CERT-10: Nested or dynamic group membership is not expanded before approval
+AR-CERT-11: Direct app-native grants bypass the IdP review export
+AR-CERT-12: Reviewer authority does not match the resource or entitlement risk
+AR-CERT-13: HRIS role-change or termination effective date is missing from the review decision
+AR-CERT-14: Target-app role snapshot timestamp is missing or older than the review window
+AR-CERT-15: Missing source-of-truth join is treated as pass instead of Not Evaluable
 ```
 
 **Rubber-stamp detection criteria:**
@@ -156,6 +202,16 @@ AR-CERT-08: Delegated reviews without accountability (certifier delegates but is
 | Approval rate per certifier | > 95% with > 50 entitlements | Flag for management review |
 | Time to certify | < 2 minutes per decision batch | Flag as potential non-review |
 | No revocations across multiple cycles | 3+ consecutive cycles | Escalate to compliance team |
+
+**Not Evaluable conditions:**
+
+| Condition | Required Output |
+|---|---|
+| HRIS/VMS status missing | Identify the account, source gap, and why workforce status cannot be confirmed |
+| SCIM status unknown or failed | Record provisioning error state and require target-app reconciliation |
+| Nested or dynamic group unexpanded | Flag the group path/query and require effective membership evidence |
+| Target-app export unavailable | Do not accept IdP-only evidence; require app owner attestation or export |
+| Certifier lacks authority | Route to resource/entitlement owner and preserve the original decision trail |
 
 ---
 
@@ -177,6 +233,10 @@ AR-ORPH-05: Accounts inactive > 45 days without documented exception (CIS 5.3)
 AR-ORPH-06: Accounts not correlated with authoritative HR source (HRIS feed gap)
 AR-ORPH-07: Deprovisioning SLA exceeded (same-day for terminations, 24 hours for role changes)
 AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle management
+AR-ORPH-09: Target-app local account has no SCIM or IdP-linked identity
+AR-ORPH-10: HRIS/VMS termination is effective but IdP or target-app account remains active
+AR-ORPH-11: IdP deactivation succeeded but target-app role or local grant remains active
+AR-ORPH-12: Contractor/vendor account has no authoritative owner or end date outside HRIS
 ```
 
 **Platform-specific checks:**
@@ -188,6 +248,13 @@ AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle man
 | **GCP** | Admin Activity logs, Policy Analyzer | Last authentication event, unused IAM bindings |
 | **Okta / IdP** | System Log, user lifecycle status | Suspended vs. deprovisioned, last authentication timestamp |
 | **SaaS apps** | SCIM sync status, app-native audit logs | Users not synced from IdP, local accounts outside federation |
+
+**Reconciliation expectations:**
+
+- Compare HRIS/VMS status and effective dates against IdP lifecycle status before treating an account as valid.
+- Compare IdP and SCIM provisioning results against the target application export before treating revocation as enforced.
+- Separate human, contractor, service, break-glass, and guest identities so HRIS-only joins do not create false positives for non-employee populations.
+- Preserve source timestamps; a timezone or export-time mismatch can create false SLA breach findings.
 
 ---
 
@@ -284,6 +351,10 @@ AR-ENF-05: No reconciliation between review decisions and actual access state
 AR-ENF-06: Exception process not documented or exceptions not time-bounded
 AR-ENF-07: Compensating controls for exceptions not validated
 AR-ENF-08: No metrics or reporting on review completion rates and outcomes
+AR-ENF-09: Revoked IdP group was removed but target-app effective permission remains active
+AR-ENF-10: SCIM failure or retry queue is not reviewed after a revoke decision
+AR-ENF-11: Post-revocation evidence lacks target-app timestamp or user/role identifier
+AR-ENF-12: Not Evaluable rows are closed without source remediation or owner attestation
 ```
 
 **Evidence requirements for audit:**
@@ -292,9 +363,21 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 |---|---|---|
 | Review campaign configuration (scope, reviewers, deadline) | Duration of audit period + 1 year | AC-2(j) |
 | Individual certification decisions (approve/revoke per entitlement) | Duration of audit period + 1 year | AC-6(7) |
+| HRIS/VMS, IdP, SCIM, and target-app join export | Duration of audit period + 1 year | AC-2(1), AC-2(j), CIS 5.6, CIS 6.7 |
+| Effective entitlement snapshot and nested/dynamic group expansion | Duration of audit period + 1 year | AC-6(7), CIS 6.8 |
 | Revocation execution confirmation (ticket, timestamp) | Duration of audit period + 1 year | AC-2, CIS 6.2 |
+| Post-revocation target-app reconciliation | Duration of audit period + 1 year | AC-2(3), CIS 6.2 |
 | Exception approvals with justification and expiry | Duration of exception + 1 year | AC-6 |
 | Review completion metrics (on-time %, revocation %) | Duration of audit period + 1 year | AC-2 |
+
+**Post-revocation proof:**
+
+| Decision | Evidence Required Before Closure |
+|---|---|
+| Revoke group membership | IdP removal event, SCIM delivery status, target-app role snapshot showing access removed |
+| Disable terminated worker | HRIS/VMS termination effective date, IdP disabled timestamp, target-app disabled or deleted timestamp |
+| Remove app-native grant | App audit event or export row showing direct grant removed, with actor and timestamp |
+| Exception granted | Named owner, expiration date, compensating control, next review date, and approval authority |
 
 ---
 
@@ -320,7 +403,7 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | **Severity** | Critical / High / Medium / Low |
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, roles, systems, or platforms impacted |
-| **Evidence** | Specific data supporting the finding (counts, examples, screenshots) |
+| **Evidence** | Specific data supporting the finding (counts, examples, screenshots, source joins, effective entitlement exports) |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -351,6 +434,13 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 - Role Explosion (Step 4): [count]
 - Segregation of Duties (Step 5): [count]
 - Enforcement & Evidence (Step 6): [count]
+
+### Source-of-Truth Reconciliation
+- HRIS/VMS to IdP join coverage: [% complete, missing sources]
+- IdP to SCIM join coverage: [% complete, sync failures]
+- SCIM to target-app reconciliation: [% complete, stale target grants]
+- Effective entitlement expansion: [% expanded, nested/dynamic groups unresolved]
+- Not Evaluable rows: [count and reason summary]
 
 ### Detailed Findings
 [Findings table]
@@ -401,6 +491,8 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
 7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+8. **Group-label certification** — Certifiers approve group names without expanded permissions, nested membership, dynamic rules, or target-app role mapping.
+9. **IdP-only evidence** — An IdP change is treated as proof of target-app revocation even when SCIM failed or app-native grants remain active.
 
 ---
 
@@ -443,4 +535,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-03 | Added HRIS/VMS-IdP-SCIM-target reconciliation, effective entitlement evidence, reviewer authority checks, Not Evaluable outcomes, and post-revocation target-state proof |
 | 1.0.0 | 2025-03-06 | Initial release |
