@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -111,6 +111,7 @@ Identify:
 - **Permission granularity** — coarse (admin/read-only) vs. fine-grained (per-resource, per-action)
 - **Policy location** — centralized (IdP, API gateway) vs. distributed (per-application, embedded in code)
 - **Known pain points** — role explosion, provisioning delays, audit failures, excessive access
+- **Relationship graph evidence** — ownership, direct shares, parent-child inheritance, organization membership, delegated administration, and other resource-to-subject edges that may explain access without roles
 
 **Assessment checklist:**
 
@@ -123,6 +124,28 @@ RBAC-ASSESS-05: No centralized policy decision point — authorization logic fra
 RBAC-ASSESS-06: Custom roles duplicate managed/built-in roles with minor variations
 RBAC-ASSESS-07: No role lifecycle process (creation approval, periodic review, retirement)
 RBAC-ASSESS-08: Authorization decisions not logged or auditable
+RBAC-ASSESS-09: Per-resource grants are being treated as role explosion even though the access is relationship-based
+```
+
+### Step 1b: Recognize Relationship-Based Authorization
+
+Some systems are not best modeled as pure RBAC or pure ABAC. If access is granted through graph edges such as owner, viewer, editor, parent-folder inheritance, organization membership, or delegated administration, treat that as relationship-based authorization (ReBAC) rather than assuming a role design defect.
+
+**What to capture as evidence:**
+
+- Resource ownership chains
+- Direct share edges
+- Parent-child or folder inheritance paths
+- Group membership used as a graph edge, not a named role
+- Delegated admin or support access with bounded scope
+
+**What to look for:**
+
+```
+RBAC-REBAC-01: Access is justified by direct resource relationships, but the assessment only checked role names
+RBAC-REBAC-02: Parent-child or folder inheritance explains the grant, but it was misclassified as role explosion
+RBAC-REBAC-03: Org membership or delegated admin scope is the real control, not a standalone role
+RBAC-REBAC-04: Relationship graph evidence is missing, so reviewers cannot distinguish ReBAC from overbroad RBAC
 ```
 
 ---
@@ -263,6 +286,8 @@ RBAC-BOUND-06: OAuth scopes overly broad — default tokens get maximum permissi
 | Owner-based access | Separate role per owner is impractical | `subject.id == resource.owner_id OR subject.role == 'admin'` |
 | Risk-adaptive access | Static roles cannot respond to risk signals | `environment.risk_score < resource.max_risk_threshold` |
 
+If access is best explained by resource relationships rather than attributes, use a ReBAC or hybrid model. Do not force one-user-per-resource roles when the real control is ownership, sharing, inheritance, or delegated scope.
+
 #### ABAC Policy Structure (NIST SP 800-162 Section 3.2)
 
 ```
@@ -358,6 +383,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Severity** | Critical / High / Medium / Low |
 | **Framework Ref** | NIST RBAC model level or NIST SP 800-162 section |
 | **Current State** | What exists today |
+| **Evidence** | Specific data supporting the finding (counts, examples, screenshots, relationship edges, inheritance paths, direct shares) |
 | **Recommended State** | Target design |
 | **Remediation** | Steps to implement the design change |
 | **Effort** | Low / Medium / High |
@@ -380,6 +406,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - NIST RBAC Level: [RBAC0 / RBAC1 / RBAC2 / RBAC3]
 - ABAC Adoption: [None / Partial / Full]
 - Centralized PDP: [Yes / No / Partial]
+- Relationship-based access: [None / Partial / Full]
 
 ### Findings by Category
 - Authorization State (Step 1): [count]
@@ -436,6 +463,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Ignoring ReBAC evidence** -- direct shares, ownership chains, and inheritance paths may be the actual authorization model. Without graph evidence, reviewers can mislabel valid relationship-based access as role explosion.
 
 ---
 
