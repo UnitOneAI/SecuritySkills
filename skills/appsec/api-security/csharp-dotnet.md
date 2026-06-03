@@ -1063,6 +1063,101 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 ```
 
+### Client Certificate Forwarding Behind Proxies
+
+In production deployments, TLS termination often occurs upstream at a load balancer, reverse proxy (e.g., Nginx, Envoy, IIS), or cloud platform (e.g., Azure App Service, AWS ALBs). When mTLS terminates at the proxy, the application does not receive a direct client certificate on the TCP socket. Instead, the proxy forwards certificate details to ASP.NET Core via HTTP headers.
+
+To audit this configuration securely and prevent certificate spoofing, reviewers MUST compile and verify the following evidence fields:
+- **TLS termination point**: Where TLS handshake ends (e.g., proxy/load-balancer vs. direct Kestrel).
+- **Proxy product**: Reverse proxy software or cloud hosting platform used (Nginx, Envoy, IIS, Azure App Service).
+- **Certificate-forwarding header**: The HTTP header used to carry the certificate (e.g., `X-ARR-ClientCert` in IIS/Azure App Service, `X-Client-Cert` in custom proxies).
+- **Header converter**: The configuration converting the raw header to an `X509Certificate2` object in `AddCertificateForwarding(options => { ... })`.
+- **Middleware execution order**: Proof that `UseCertificateForwarding()` is executed *before* `UseAuthentication()` and `UseAuthorization()`.
+- **Trusted proxy / network configuration**: Proof that the app validates proxy identity via `UseForwardedHeaders()` with `KnownProxies`/`KnownNetworks` restrictions or restricts network-level access (e.g., accepting requests only from the proxy's IP range).
+- **Ingress header strip/overwrite proof**: Documentation or configuration showing that the proxy strips any client-supplied certificate headers from incoming public requests before appending its own verified header.
+
+#### Severity Guidance
+- **Spoofable client-certificate forwarding header**: If Certificate Forwarding is enabled but the application trusts the forwarding header from arbitrary source networks without verifying the proxy boundary, or if the proxy does not strip incoming user-supplied certificate headers, any user can spoof certificates by sending raw headers. This vulnerability must be rated **High** to **Critical** depending on the sensitivity of the exposed service paths and data.
+
+#### Evaluation Gaps (Not Evaluable Reasons)
+If the codebase uses certificate-based authentication or forwarding, the review is **Not Evaluable** if any of the following are missing or unverified:
+- `missing_deployment_topology`: No evidence of where TLS terminates or how requests flow from clients to the app.
+- `missing_ingress_config`: No evidence showing that the reverse proxy/ingress strips client-supplied certificate headers.
+- `unknown_proxy_header_trust`: Missing or unconfigured trusted network/proxy restriction (e.g., `KnownProxies` is empty, or no network firewall constraints exist).
+- `unverified_middleware_ordering`: Middleware pipeline code is missing or does not guarantee `UseCertificateForwarding()` runs before authentication.
+
+#### Certificate Forwarding -- Vulnerable
+In this example, client certificate forwarding is configured, but the app accepts the certificate header from any source IP (missing trusted proxies restrictions), and the middleware order is wrong.
+```csharp
+// VULNERABLE: Certificate forwarding configured without proxy boundaries
+builder.Services.AddCertificateForwarding(options =>
+{
+    options.CertificateHeader = "X-SSL-Client-Cert";
+    options.HeaderConverter = header => new X509Certificate2(Convert.FromBase64String(header));
+});
+
+// Authentication services
+builder.Services.AddAuthentication(CertificateAuthenticationDefaults.AuthenticationScheme)
+    .AddCertificate(options => { /* validation */ });
+
+var app = builder.Build();
+
+// VULNERABLE: Middleware order is incorrect (authentication runs before forwarding)
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseCertificateForwarding();
+```
+
+#### Certificate Forwarding -- Secure
+```csharp
+// SECURE: Define trusted proxy networks/IPs and header converters
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+    // Restrict to trusted proxy IPs, e.g. 10.0.0.5
+    options.KnownProxies.Add(IPAddress.Parse("10.0.0.5"));
+});
+
+builder.Services.AddCertificateForwarding(options =>
+{
+    options.CertificateHeader = "X-SSL-Client-Cert";
+    options.HeaderConverter = header => {
+        if (string.IsNullOrWhiteSpace(header)) return null!;
+        // Secure URL-decoding and parsing of PEM certificate
+        return X509Certificate2.CreateFromPem(WebUtility.UrlDecode(header));
+    };
+});
+
+builder.Services.AddAuthentication(CertificateAuthenticationDefaults.AuthenticationScheme)
+    .AddCertificate(options =>
+    {
+        options.AllowedCertificateTypes = CertificateTypes.All;
+        options.Events = new CertificateAuthenticationEvents
+        {
+            OnCertificateValidated = context =>
+            {
+                // Extra validation: thumbprint verify
+                if (!AllowedThumbprints.Contains(context.ClientCertificate.Thumbprint))
+                {
+                    context.Fail("Certificate not in allowlist");
+                }
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+var app = builder.Build();
+
+// SECURE: Correct Middleware Ordering
+app.UseForwardedHeaders(); // Parse X-Forwarded-* securely
+app.UseCertificateForwarding(); // Injects client certificate from header BEFORE authentication
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+
 ### Authorization Interceptors
 
 ```csharp
@@ -1129,11 +1224,14 @@ var response = await client.GetOrderAsync(
     deadline: DateTime.UtcNow.AddSeconds(5));
 ```
 
-### gRPC Review Checklist -- .NET
+### gRPC and mTLS Review Checklist -- .NET
 
-- [ ] mTLS is configured for service-to-service communication.
+- [ ] mTLS is configured for service-to-service communication (either direct Kestrel TLS or proxy-terminated certificate forwarding).
 - [ ] Client certificate validation checks issuer and thumbprint against an allowlist.
 - [ ] `[Authorize]` is applied at the service or method level.
+- [ ] For proxy-terminated deployments, the TLS termination point, proxy product, and certificate header names are documented.
+- [ ] `UseCertificateForwarding()` is registered and executes *before* `UseAuthentication()` and `UseAuthorization()`.
+- [ ] Ingress proxies strip any incoming client-supplied certificate headers, and the app restricts forwarding headers to trusted network paths (e.g. `KnownProxies`).
 - [ ] `MaxReceiveMessageSize` and `MaxSendMessageSize` are explicitly configured.
 - [ ] `EnableDetailedErrors` is `false` in production.
 - [ ] Server-side timeouts are enforced even when clients omit deadlines.
