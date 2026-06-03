@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -60,7 +60,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - Kubernetes manifests (YAML), Helm charts, or Kustomize overlays
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
-- Pod Security Standard configurations or OPA/Gatekeeper policies
+- Pod Security Standard configurations, OPA/Gatekeeper constraints, Kyverno policies, or Kubernetes admission policy resources
 - Container registry configurations (if available)
 
 ---
@@ -115,6 +115,42 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
+### Step 6A: RuntimeClass and Admission Policy Evidence
+
+**Objective:** Verify sandbox runtime selection and admission-time enforcement before scoring a workload from static manifests alone.
+
+Runtime isolation and admission controls can materially change the risk of a Kubernetes workload. A manifest that looks hardened may be admitted through a broad exception, and a manifest that looks weak may be blocked or mutated before it reaches the cluster. Treat `RuntimeClass`, policy engine mode, selectors, and exception resources as evidence that must be collected, not as assumptions.
+
+#### RuntimeClass and Admission Policy Evidence
+
+| Area | Evidence to Collect | Failure Mode |
+|---|---|---|
+| RuntimeClass selection | Pod `runtimeClassName`, matching `RuntimeClass` object, handler/runtime implementation, namespace eligibility | High-risk workload claims sandboxing but falls back to the default runtime |
+| Workload risk tier | Multi-tenant runners, plugin execution, CI jobs, document/media processing, untrusted code paths | Workload that should use gVisor, Kata, or another sandboxed runtime runs with ordinary runc isolation |
+| Admission engine | Pod Security Admission labels, Kyverno `ClusterPolicy`, Gatekeeper `ConstraintTemplate`/constraints, `ValidatingAdmissionPolicy`, `MutatingAdmissionPolicy`, and bindings | Static manifest review misses controls that enforce, mutate, audit, or exempt workloads |
+| Policy mode | `Enforce`, `Audit`, dry-run, warning-only, validation failure action, background mode | Report counts audit-only or dry-run policy as active blocking protection |
+| Selection and exceptions | Namespace selectors, object selectors, service accounts, policy exceptions, excluded namespaces, emergency bypasses | Workload under review is not actually selected by the policy |
+| Container coverage | Main, init, sidecar, and ephemeral containers in the policy match path | Policy validates app containers but misses init or debug containers |
+
+**What to look for:**
+
+```
+CONT-RUNTIME-01: Pod sets `runtimeClassName` but no matching RuntimeClass object or handler evidence is reviewed
+CONT-RUNTIME-02: Multi-tenant, plugin, CI, or untrusted-code workload uses the default runtime without sandbox-runtime justification
+CONT-RUNTIME-03: RuntimeClass exists but namespace, node, or handler constraints are not proven for the workload under review
+CONT-ADMISSION-01: Admission policy is counted as protection without proving enforcement mode (`Enforce` vs `Audit`/dry-run/warn)
+CONT-ADMISSION-02: Kyverno, Gatekeeper, or CEL admission policy selectors do not actually match the workload namespace, labels, or service account
+CONT-ADMISSION-03: Policy exceptions, exclusions, or break-glass bypasses are broad, stale, or undocumented
+CONT-ADMISSION-04: Admission checks cover only app containers and omit init, sidecar, or ephemeral containers
+CONT-ADMISSION-05: Review ignores Kubernetes `ValidatingAdmissionPolicy`, `ValidatingAdmissionPolicyBinding`, `MutatingAdmissionPolicy`, or `MutatingAdmissionPolicyBinding` resources
+CONT-INIT-01: Root init container is scored without recording container type, duration, command, mounts, capabilities, privilege escalation, seccomp, and image pinning
+CONT-INIT-02: Root init container has hostPath, broad capabilities, writable root filesystem, or privilege escalation and is treated as a benign exception
+```
+
+Root-running init containers are not automatically equivalent to long-running root application containers. Score them from evidence: command scope, lifetime, target volume, host mounts, dropped capabilities, `allowPrivilegeEscalation`, read-only root filesystem, seccomp, image digest pinning, and whether admission policy covers init containers. Missing context is a finding (`CONT-INIT-01`); unsafe context remains High or Critical (`CONT-INIT-02`).
+
+---
+
 ### Step 7: Compile Assessment Report
 
 
@@ -127,8 +163,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |
-| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
-| **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, secrets as env vars |
+| **High** | Significant security gap enabling lateral movement or privilege escalation | Long-running root application containers, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
+| **Medium** | Missing hardening that weakens defense-in-depth or lacks exception evidence | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, tightly scoped root init container without complete justification |
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
 | **Informational** | Observation with no direct security impact | Image size optimization, multi-stage build suggestions, label recommendations |
 
@@ -151,6 +187,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Failed: <N>
 - Critical/High findings requiring immediate attention: <N>
 - Pod Security Standard compliance: Privileged / Baseline / Restricted
+- RuntimeClass coverage for high-risk workloads: <default / sandboxed / unknown>
+- Admission policy enforcement coverage: <enforce / audit-only / partial / unknown>
 
 ### Findings by Domain
 
@@ -174,9 +212,19 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
 - **Container:** <container name>
+- **Container Role:** app / init / sidecar / ephemeral
+- **RuntimeClass:** <runtimeClassName, matching RuntimeClass object, handler evidence>
+- **Admission Evidence:** <policy engine, mode, selectors, exceptions, container coverage>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
 - **Remediation:** <fix with code example>
+
+### Runtime and Admission Evidence Matrix
+
+| Workload | Namespace | RuntimeClass | RuntimeClass object verified | Admission engine | Mode | Selected by policy? | Exceptions | Container coverage |
+|----------|-----------|--------------|------------------------------|------------------|------|---------------------|------------|--------------------|
+| deploy/plugin-runner | plugins | gvisor | yes | Kyverno | Enforce | yes | none | app/init/ephemeral |
+| deploy/app | default | default | n/a | PSA | Audit | partial | namespace excluded | app only |
 
 ### Pod Security Standards Compliance Matrix
 
@@ -257,6 +305,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **RuntimeClass names are not proof of sandboxing.** A pod `runtimeClassName` must be matched to a `RuntimeClass` object and handler/runtime evidence.
+9. **Admission policy presence is not enforcement.** Kyverno, Gatekeeper, PSA, and CEL admission resources need mode, selector, binding, exception, and container-coverage evidence before they count as blocking controls.
 
 ---
 
@@ -293,4 +343,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added RuntimeClass, admission-policy evidence, and root init-container exception guidance.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
