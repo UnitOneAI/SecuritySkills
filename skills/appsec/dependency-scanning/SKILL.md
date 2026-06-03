@@ -103,6 +103,20 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 | **EPSS** | [FIRST EPSS](https://www.first.org/epss/) | Probability of exploitation in the next 30 days | Score > 0.1 (10%) indicates elevated real-world risk |
 | **CISA KEV** | [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Confirmed active exploitation in the wild | Any match requires remediation within the CISA-mandated timeline |
 
+### Dependency Scope and Reachability Gates
+
+Before assigning priority from CVSS, EPSS, and CISA KEV, determine whether the vulnerable dependency is present in the shipped artifact and reachable from the reviewed deployment.
+
+Record the following evidence for each vulnerability:
+
+- **Dependency scope:** `production`, `development`, `optional`, `peer`, `test`, `build-only`, or `unknown`.
+- **Workspace/artifact:** the monorepo package, service, container image, binary, Lambda/function, or deployed bundle where the dependency appears.
+- **Production inclusion:** whether the package is included after production install/build steps such as `npm ci --omit=dev`, Poetry dependency groups, Maven scopes, Go build graph pruning, or multi-stage Docker builds.
+- **Reachability:** `confirmed reachable`, `confirmed not deployed`, `dev/build-only`, `optional feature`, or `unknown`.
+- **Confidence:** what proves the state, such as scanner output, SBOM component scope, container image scan, lockfile metadata, import graph, runtime route/entrypoint evidence, feature flag/plugin configuration, or dynamic loading review.
+
+Treat raw lockfile presence as inventory evidence, not proof of runtime exposure. If a package can be loaded dynamically through plugin names, Python entry points, Java service loaders, or feature flags, mark reachability as `unknown` unless the enabled deployment configuration proves it is present or absent.
+
 ### Triage Decision Matrix
 
 | CVSS | EPSS | KEV Listed | Priority | Action |
@@ -120,7 +134,8 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 2. Query EPSS scores via `https://api.first.org/data/v1/epss?cve=CVE-XXXX-XXXXX`.
 3. Cross-reference against the CISA KEV catalog (available as JSON/CSV at `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`).
 4. Apply the decision matrix above to assign priority.
-5. Document each finding with CVE ID, affected package and version, CVSS score, EPSS score, KEV status, and recommended fix version.
+5. Adjust priority using dependency scope and reachability evidence: production-reachable KEV/high-EPSS findings stay urgent; confirmed not-deployed or dev/build-only findings should usually be downgraded with justification; unknown reachability should not be marked safe without evidence.
+6. Document each finding with CVE ID, affected package and version, dependency scope, workspace/artifact, production inclusion, reachability status, CVSS score, EPSS score, KEV status, and recommended fix version.
 
 ## License Compliance
 
@@ -195,9 +210,9 @@ When performing a dependency scan, produce findings in the following structure:
 
 ### Vulnerability Findings
 
-| # | CVE | Package | Version | Fixed In | CVSS | EPSS | KEV | Priority |
-|---|-----|---------|---------|----------|------|------|-----|----------|
-| 1 | ... | ...     | ...     | ...      | ...  | ...  | ... | ...      |
+| # | CVE | Package | Version | Scope | Workspace/Artifact | In Production Artifact? | Reachability | Fixed In | CVSS | EPSS | KEV | Priority |
+|---|-----|---------|---------|-------|--------------------|-------------------------|--------------|----------|------|------|-----|----------|
+| 1 | ... | ...     | ...     | prod/dev/optional/peer/unknown | ... | Yes/No/Unknown | reachable/not deployed/dev-only/optional/unknown | ... | ... | ... | ... | ... |
 
 ### License Findings
 
@@ -223,11 +238,13 @@ When performing a dependency scan, produce findings in the following structure:
 1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
-4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
-6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+4. **Map dependency scope and artifact inclusion**: For each vulnerable package, identify whether it is production, development, optional, peer, test, or build-only, and compare manifest/lockfile results against the final deployed artifact or container image when available.
+5. **Assess reachability confidence**: Classify each vulnerable package as confirmed reachable, confirmed not deployed, dev/build-only, optional feature, or unknown. Preserve `unknown` when static manifest analysis cannot prove dynamic plugin or feature-flag paths.
+6. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model together with scope and reachability evidence.
+7. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
+8. **Typosquatting check**: Review dependency names for patterns described in the detection section.
+9. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+10. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
