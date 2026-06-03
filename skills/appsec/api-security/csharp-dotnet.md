@@ -946,6 +946,133 @@ app.MapGet("/users/{id}", async Task<Results<Ok<UserResponse>, NotFound>> (
 
 ---
 
+### Minimal API Form and File Upload Antiforgery (.NET 8+)
+
+**CWE:** CWE-352
+**ASVS Control:** V4.2.2
+**Severity:** High (cookie-authenticated upload without antiforgery), Not Applicable (bearer-token-only, non-browser clients)
+
+ASP.NET Core .NET 8+ Minimal APIs that accept `IFormFile` or `IFormFileCollection` parameters are automatically opted into antiforgery token validation by the antiforgery middleware. Reviewers must verify that `AddAntiforgery` and `UseAntiforgery` are configured correctly and that `DisableAntiforgery()` exceptions are justified.
+
+#### Antiforgery Not Configured -- Vulnerable
+
+```csharp
+// VULNERABLE: antiforgery services registered but middleware missing
+builder.Services.AddAntiforgery();
+
+var app = builder.Build();
+// UseAntiforgery() missing -- IFormFile endpoints are NOT protected
+app.MapPost("/account/avatar", async (IFormFile file) =>
+{
+    await avatarStore.SaveAsync(file);
+    return Results.Ok();
+}).RequireAuthorization();
+app.Run();
+```
+
+Service registration alone is not sufficient. `app.UseAntiforgery()` must appear in the middleware pipeline for form endpoints to be protected.
+
+#### `DisableAntiforgery` to Fix Dev-Tool Testing -- Vulnerable
+
+```csharp
+// VULNERABLE: DisableAntiforgery added to make Swagger/Postman work
+app.MapPost("/account/avatar", async (IFormFile file) =>
+{
+    await avatarStore.SaveAsync(file);
+    return Results.Ok();
+})
+.RequireAuthorization()
+.DisableAntiforgery(); // CSRF exposure for cookie-authenticated browser clients
+```
+
+If authentication uses cookies, disabling antiforgery on a state-changing form endpoint allows a cross-site form post to trigger account changes. "Swagger/Postman works" does not prove production browser safety.
+
+#### Correctly Configured Antiforgery -- Secure
+
+```csharp
+// SECURE: antiforgery services + middleware configured; IFormFile endpoints protected by default
+builder.Services.AddAntiforgery();
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseAntiforgery(); // Must appear after authentication/authorization
+
+app.MapPost("/account/avatar", async (IFormFile file, ClaimsPrincipal user) =>
+{
+    await SaveProfilePhoto(user, file);
+    return Results.Ok();
+}).RequireAuthorization();
+
+// Antiforgery token endpoint for SPA clients
+app.MapGet("/antiforgery/token", (IAntiforgery antiforgery, HttpContext context) =>
+{
+    var tokens = antiforgery.GetAndStoreTokens(context);
+    return Results.Ok(new { token = tokens.RequestToken });
+}).RequireAuthorization();
+```
+
+#### Bearer-Token-Only Upload -- Not Applicable (with Evidence)
+
+```csharp
+// NOT APPLICABLE: mobile/API client uses explicit Authorization header; browser cookies not accepted
+app.MapPost("/api/documents", async (IFormFile file, ClaimsPrincipal user) =>
+{
+    await documentStore.SaveAsync(user, file);
+    return Results.Ok();
+})
+.RequireAuthorization()
+.DisableAntiforgery(); // Justified: bearer-token-only; no cookie credential; non-browser client
+// Evidence: CORS policy does not allow browser origins; authentication scheme is Bearer only
+```
+
+**Reviewers MUST record the following evidence for every `IFormFile`/form-accepting Minimal API endpoint:**
+
+| Evidence Field | What to Record |
+|---|---|
+| Route | Endpoint path and method |
+| Accepted form parameters | `IFormFile`, `IFormFileCollection`, or `[FromForm]` model |
+| Authentication scheme | Cookie / Bearer / Both |
+| Browser credentials accepted? | Yes / No / Unknown |
+| `AddAntiforgery` configured? | Yes / No |
+| `UseAntiforgery` in pipeline? | Yes / No |
+| Endpoint antiforgery metadata | Default (opted-in) / `DisableAntiforgery()` / Custom |
+| `DisableAntiforgery` justification | Documented reason (bearer-only, non-browser) or None |
+| Token acquisition path for browser clients | URL or mechanism returning antiforgery token |
+| Data Protection / server farm | Data Protection configured for distributed deployments? |
+| Risk conclusion | Protected / Justified Not Applicable / CSRF Exposure |
+| Not Evaluable reason | `unknown_auth_scheme` / `unknown_browser_reachability` / `missing_middleware_config` |
+
+**Severity guidance:**
+
+| Condition | Severity |
+|---|---|
+| Cookie-authenticated state-changing form/upload endpoint with `DisableAntiforgery()` and no alternate CSRF control | High |
+| `UseAntiforgery()` missing from pipeline; `IFormFile` endpoints not protected | High |
+| Bearer-token-only, non-browser endpoint with `DisableAntiforgery()` documented | Not Applicable |
+| `AddAntiforgery` registered but no token acquisition path for browser clients | Medium |
+| Data Protection not configured for server-farm deployments | Medium |
+
+**Edge cases:**
+
+- CORS policy does not replace antiforgery for cookie-authenticated state-changing requests.
+- Generated OpenAPI metadata can show form parameters while not proving the runtime antiforgery pipeline is active.
+- Apps deployed to server farms need ASP.NET Core Data Protection configured so antiforgery tokens validate consistently across instances.
+- `IFormFile` uploads also require file size, extension/content-type validation, malware scanning, storage path controls, and quota/rate limiting; antiforgery is the CSRF branch only.
+
+#### Minimal API Antiforgery Review Checklist -- .NET 8+
+
+- [ ] `builder.Services.AddAntiforgery()` is registered.
+- [ ] `app.UseAntiforgery()` appears in the pipeline after `UseAuthentication()` and `UseAuthorization()`.
+- [ ] Every `IFormFile`/form endpoint is identified and classified by authentication scheme and browser reachability.
+- [ ] `DisableAntiforgery()` is reviewed for each occurrence; justification documented.
+- [ ] A token acquisition endpoint is provided for SPA/browser clients.
+- [ ] Data Protection is configured for server-farm deployments.
+- [ ] File upload endpoints are also reviewed for size, type, storage, and rate limiting controls.
+
+---
+
 ## GraphQL Security in .NET (HotChocolate)
 
 HotChocolate is the most widely used GraphQL server for .NET. The following patterns cover common GraphQL-specific attack vectors.
@@ -1216,6 +1343,18 @@ ServerCertificateCustomValidationCallback\s*=.*=>\s*true
 HttpClientHandler.*ServerCertificateCustomValidation.*true
 ```
 
+### Minimal API Antiforgery
+
+```
+# Minimal API antiforgery detection (.NET 8+)
+AddAntiforgery
+UseAntiforgery
+DisableAntiforgery
+IAntiforgery
+IFormFile
+# Flag every DisableAntiforgery() occurrence for manual bearer-only / non-browser review
+```
+
 ### Rate Limiting Absence
 
 ```
@@ -1237,6 +1376,7 @@ MapPost\(.*password.*\)(?![\s\S]*?RequireRateLimiting)
 - [CWE-770: Allocation of Resources Without Limits or Throttling](https://cwe.mitre.org/data/definitions/770.html)
 - [CWE-918: Server-Side Request Forgery](https://cwe.mitre.org/data/definitions/918.html)
 - [CWE-942: Permissive Cross-domain Policy with Untrusted Domains](https://cwe.mitre.org/data/definitions/942.html)
+- [CWE-352: Cross-Site Request Forgery](https://cwe.mitre.org/data/definitions/352.html)
 - [CWE-295: Improper Certificate Validation](https://cwe.mitre.org/data/definitions/295.html)
 - [Microsoft ASP.NET Core Security Documentation](https://learn.microsoft.com/en-us/aspnet/core/security/)
 - [Microsoft Rate Limiting Middleware](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)
