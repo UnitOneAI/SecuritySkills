@@ -145,7 +145,7 @@ skills:
     role: [cloud-security-engineer, security-engineer]
     phase: [assess, operate]
     activity: [audit, review]
-    frameworks: [CIS-AWS-v3.0.0]
+    frameworks: [CIS-AWS-v5.0.0, CIS-AWS-v3.0.0-legacy]
     difficulty: intermediate
     time_estimate: "60-90min"
     file: skills/cloud/aws-review/SKILL.md
