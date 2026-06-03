@@ -396,13 +396,86 @@ func fetchURL(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
 
-### 8.3 Review Checklist
+### 8.3 Archive Extraction Evidence
+
+When reviewing ZIP, tar, package, backup, CI artifact, or uploaded archive extraction, do not stop at checking for `../` in entry names. Classify the archive trust boundary and verify the final filesystem write behavior.
+
+**Required evidence for untrusted or attacker-influenced archives:**
+
+| Evidence | Review question |
+|---|---|
+| Archive source | Is the archive a user upload, third-party package, CI artifact, backup import, or trusted application fixture? |
+| Destination impact | Does extraction write to a temp directory, webroot, plugin path, startup path, build workspace, config directory, or shared volume? |
+| Canonical containment | Is each target path joined to the extraction root, normalized, and verified to remain inside the root after absolute paths, drive paths, UNC paths, mixed separators, and encoded names are handled? |
+| Link policy | Are symlink, hardlink, junction, reparse-point, device node, FIFO, and special-file entries rejected or handled without following them outside the root? |
+| Existing filesystem links | Does the extractor avoid following pre-existing links in the destination and avoid delete-then-extract behavior on attacker-controlled paths? |
+| Resource limits | Are total uncompressed bytes, per-file size, entry count, path length, nesting depth, and extraction time bounded? |
+| Permissions and metadata | Are setuid/setgid bits, executable bits, owners, and timestamps ignored or restricted unless explicitly needed? |
+
+Treat path traversal, link following, and resource exhaustion as separate conclusions. A safe path-prefix check does not prove symlink safety, and symlink rejection does not prove resistance to zip bombs.
+
+**Source and destination severity guide:**
+
+| Source / destination | Typical severity | Notes |
+|---|---|---|
+| User-uploaded archive extracted into webroot, plugin, startup, config, or executable path | Critical | Attacker can often write code, configuration, or public content. |
+| Third-party export, package dependency, or CI artifact extracted into a build or deploy workspace | High | Treat as attacker-influenced unless the artifact is signed or hash-pinned and provenance is verified. |
+| Semi-trusted archive extracted into a private temp directory and copied out through an allowlist | Medium | Confirm temp permissions, cleanup, and allowlisted copy-out behavior. |
+| Signed or hash-pinned application fixture extracted during tests or build setup | Low / Informational | Document trust evidence; do not over-count as an exploitable finding without an attacker-controlled path. |
+
+**Examples that should be flagged:**
+
+```python
+# VULNERABLE: untrusted tar can contain absolute paths, links, or later writes through links
+with tarfile.open(uploaded_tar) as archive:
+    archive.extractall("/srv/app/plugins")
+```
+
+```go
+// VULNERABLE: no total size, file count, or canonical containment budget
+for _, f := range zipReader.File {
+    out, _ := os.Create(filepath.Join(dest, f.Name))
+    rc, _ := f.Open()
+    io.Copy(out, rc)
+}
+```
+
+**Safer evidence patterns:**
+
+```python
+from pathlib import Path
+import os
+import zipfile
+
+def validate_zip_members(archive_path, dest, max_bytes=100_000_000, max_files=1000):
+    root = Path(dest).resolve()
+    total_bytes = 0
+    with zipfile.ZipFile(archive_path) as archive:
+        for index, entry in enumerate(archive.infolist(), start=1):
+            target = (root / entry.filename).resolve()
+            if os.path.commonpath([str(root), str(target)]) != str(root):
+                raise ValueError("archive entry escapes destination")
+            if (entry.external_attr >> 16) & 0o170000 in (0o120000, 0o10000, 0o20000, 0o60000):
+                raise ValueError("archive link or special file rejected")
+            total_bytes += entry.file_size
+            if index > max_files or total_bytes > max_bytes:
+                raise ValueError("archive extraction budget exceeded")
+```
+
+For Python `tarfile`, Python 3.12+ supports extraction filters such as `filter="data"`; older runtimes need explicit member filtering. Treat the runtime version and extraction filter as review evidence, not as an assumption.
+
+**Not Evaluable reasons:** unknown archive source, unknown extraction destination, no link-entry policy, no final path containment proof, no resource budget, or no evidence that the final write refuses link escapes.
+
+### 8.4 Review Checklist
 
 - [ ] No use of native deserialization (pickle, ObjectInputStream, Marshal.load) on untrusted data.
 - [ ] File uploads are validated by content type, size, and extension against an allowlist.
 - [ ] Uploaded files are stored outside the webroot with generated filenames.
 - [ ] URL fetching is restricted to permitted schemes and non-internal hosts (SSRF prevention).
-- [ ] Archive extraction checks for zip bombs and path traversal in entry names.
+- [ ] Archive extraction classifies the archive source and destination impact.
+- [ ] Archive extraction verifies canonical target containment for absolute paths, drive/UNC paths, mixed separators, encoded names, and sibling-prefix cases.
+- [ ] Archive extraction rejects or safely handles symlinks, hardlinks, reparse points, junctions, device nodes, FIFOs, special files, and pre-existing destination links.
+- [ ] Archive extraction enforces total size, per-file size, entry count, path length, nesting depth, and extraction-time limits.
 
 ---
 
@@ -516,6 +589,8 @@ The final review output must be structured as follows:
 | CWE-22 | Path Traversal | Step 2 |
 | CWE-352 | Cross-Site Request Forgery | Step 4 |
 | CWE-434 | Unrestricted Upload of File with Dangerous Type | Step 8 |
+| CWE-59 | Improper Link Resolution Before File Access | Step 8 |
+| CWE-400 | Uncontrolled Resource Consumption | Step 8 |
 | CWE-862 | Missing Authorization | Step 4 |
 | CWE-476 | NULL Pointer Dereference | Step 6 (error handling) |
 | CWE-287 | Improper Authentication | Step 3 |
@@ -541,6 +616,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Reducing archive extraction review to `../` checks.** Zip Slip and archive extraction bugs also involve absolute paths, Windows drive or UNC paths, mixed separators, symlink and hardlink entries, special files, pre-existing destination links, and decompression bombs. Review the archive source, extraction destination, final write path, link policy, and resource limits together.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -563,3 +640,7 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+- **MITRE CWE-22 Path Traversal:** https://cwe.mitre.org/data/definitions/22.html
+- **MITRE CWE-59 Link Following:** https://cwe.mitre.org/data/definitions/59.html
+- **Python tarfile extraction filters:** https://docs.python.org/3/library/tarfile.html
+- **Android Developers Zip Path Traversal:** https://developer.android.com/privacy-and-security/risks/zip-path-traversal
