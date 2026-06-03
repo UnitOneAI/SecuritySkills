@@ -5,15 +5,16 @@ description: >
   and improve result accuracy. Covers false positive identification patterns,
   scan policy configuration, authenticated vs unauthenticated scanning tradeoffs,
   severity override criteria, plugin/check selection, scan scheduling, and result
-  correlation across multiple scanners. Uses CVSS 4.0 for severity validation and
-  CWE for vulnerability classification.
+  correlation across multiple scanners. Uses CVSS 4.0 for severity validation,
+  CWE for vulnerability classification, and CWE Top 25 2025 / CWE Top 10 KEV
+  evidence for source-dated prioritization.
 tags: [vuln-management, false-positives, scanner]
 role: [security-engineer]
 phase: [operate]
-frameworks: [CVSS-4.0, CWE]
+frameworks: [CVSS-4.0, CWE, CWE-Top-25-2025, CWE-Top-10-KEV-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -21,9 +22,9 @@ injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
 
-# Vulnerability Scanner Tuning -- CVSS 4.0 / CWE
+# Vulnerability Scanner Tuning -- CVSS 4.0 / CWE Top 25 2025
 
-> **Frameworks:** CVSS 4.0 (FIRST.org), CWE (MITRE)
+> **Frameworks:** CVSS 4.0 (FIRST.org), CWE (MITRE), CWE Top 25 2025, CWE Top 10 KEV 2025
 > **Role:** Security Engineer
 > **Time:** 30-60 min
 > **Output:** Tuned scan policy configuration, false positive analysis, severity override documentation, and cross-scanner correlation report
@@ -53,6 +54,8 @@ Before starting, collect or confirm:
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
 - [ ] **Compliance requirements:** Whether scans must meet specific compliance mandates (PCI ASV, DISA STIG, CIS Benchmark)
 - [ ] **Multi-scanner context:** If using multiple scanners, which ones and how results are currently correlated
+- [ ] **CWE source version:** CWE taxonomy version or export date, CWE Top 25 list year, and CWE Top 25 data pull date if available
+- [ ] **KEV weakness context:** Whether CISA KEV or MITRE CWE Top 10 KEV weakness evidence is used for advisory prioritization
 
 ---
 
@@ -91,6 +94,7 @@ False Positive Record:
 - Plugin/Check ID:     [ID]
 - CVE ID:              [CVE-YYYY-NNNNN or N/A]
 - CWE:                 [CWE-NNN or N/A]
+- CWE Source:          [CWE taxonomy version/export date; CWE Top 25 year if used]
 - Affected Asset:      [hostname/IP]
 - Scanner Severity:    [Critical/High/Medium/Low/Info]
 - FP Pattern:          [Version-based | Banner | Protocol | OS Misidentification | Container | Informational | Compensated]
@@ -225,8 +229,9 @@ When using multiple scanners, correlate results to improve confidence and identi
 #### Correlation Method
 
 1. **Normalize identifiers:** Map findings across scanners using CVE ID as the primary correlation key. For findings without CVE IDs, use CWE + affected component + vulnerability description as a composite key.
-2. **Severity normalization:** Different scanners may assign different severity ratings to the same CVE. Use CVSS 4.0 Base score from NVD as the authoritative severity, not scanner-specific severity.
-3. **Confidence scoring:** Assign confidence based on corroboration across scanners:
+2. **Preserve CWE provenance:** Record the original scanner CWE, the normalized CWE if changed during review, the CWE taxonomy version or export date, and the CWE Top 25 list year used for prioritization. Do not silently replace scanner-provided CWEs with broader or narrower CWEs without explaining the normalization method.
+3. **Severity normalization:** Different scanners may assign different severity ratings to the same CVE. Use CVSS 4.0 Base score from NVD as the authoritative severity, not scanner-specific severity.
+4. **Confidence scoring:** Assign confidence based on corroboration across scanners:
 
 | Confidence Level | Criteria | Action |
 |---|---|---|
@@ -235,7 +240,8 @@ When using multiple scanners, correlate results to improve confidence and identi
 | **Low** | Finding reported by 1 scanner only; inconsistent with NVD data or contradicted by another scanner | Investigate further; likely false positive if contradicted |
 | **Conflict** | One scanner reports vulnerable, another explicitly reports not vulnerable (patched) for the same asset+CVE | Requires manual investigation; re-scan with authentication; check patch status directly |
 
-4. **Coverage gap analysis:** Identify vulnerability classes or asset types that only one scanner detects. Common gaps:
+5. **KEV weakness cross-check:** If a finding maps to a CWE in the CWE Top 10 KEV Weaknesses list, mark it as prioritization evidence and validate affected-asset exposure. KEV weakness evidence can raise review urgency, but it must not automatically override CVSS 4.0 severity without asset-specific proof.
+6. **Coverage gap analysis:** Identify vulnerability classes or asset types that only one scanner detects. Common gaps:
 
 | Scanner Type | Typical Strength | Typical Weakness |
 |---|---|---|
@@ -247,6 +253,10 @@ When using multiple scanners, correlate results to improve confidence and identi
 ```
 Cross-Scanner Correlation Summary:
 - Scanners Correlated:     [List of scanners]
+- CWE Taxonomy Source:     [CWE version or export date]
+- CWE Top 25 Source:       [List year and source date; e.g., 2025 list]
+- CWE Normalization Method: [Original scanner CWE preserved | normalized with rationale | not applicable]
+- KEV Weakness Cross-Check: [Performed | Not performed | Not applicable]
 - Total Unique Findings:   [N] (after deduplication)
 - High Confidence:         [N] (corroborated by 2+ scanners)
 - Medium Confidence:       [N] (single scanner, consistent with NVD)
@@ -303,9 +313,18 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.0
-**Frameworks:** CVSS 4.0, CWE
+**Skill:** scanner-tuning v1.0.1
+**Frameworks:** CVSS 4.0, CWE, CWE Top 25 2025, CWE Top 10 KEV 2025
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
+
+### Evidence Sources
+
+| Evidence Source | Version or Date | Purpose | Status |
+|---|---|---|---|
+| CWE taxonomy | [version/export date] | Cross-scanner weakness classification | [Current / Stale / Missing] |
+| CWE Top 25 | [2025 or other] | Advisory prioritization by weakness prevalence and impact | [Current / Stale / Missing] |
+| CWE Top 10 KEV Weaknesses | [2025 or N/A] | Advisory prioritization for exploited weakness patterns | [Performed / Not performed / N/A] |
+| NVD CVSS | [query/export date] | CVSS 4.0 base severity normalization | [Current / Stale / Missing] |
 
 ### Executive Summary
 [3-5 sentences. State the scanner(s) evaluated, current false positive rate estimate,
@@ -343,6 +362,10 @@ Highlight the most impactful tuning recommendations.]
 | Metric | Value |
 |---|---|
 | Scanners Correlated | [list] |
+| CWE Taxonomy Source | [version/export date] |
+| CWE Top 25 Source | [list year/source date] |
+| CWE Normalization Method | [preserved/normalized/not applicable] |
+| KEV Weakness Cross-Check | [performed/not performed/not applicable] |
 | Total Unique Findings | [N] |
 | High Confidence (2+ scanners) | [N] ([%]) |
 | Conflicts Requiring Investigation | [N] |
@@ -366,6 +389,7 @@ Highlight the most impactful tuning recommendations.]
 ### References
 - CVSS 4.0 Specification: https://www.first.org/cvss/v4-0/
 - CWE (MITRE): https://cwe.mitre.org/
+- CWE Top 25 (2025): https://cwe.mitre.org/top25/archive/2025/2025_cwe_top25.html
 - Scanner documentation: [URLs for specific scanner platforms]
 ```
 
@@ -382,7 +406,9 @@ Common Vulnerability Scoring System version 4.0. Used in scanner tuning for seve
 ### CWE (MITRE)
 Common Weakness Enumeration. A community-developed list of software and hardware weakness types used to classify vulnerability findings across scanners. CWE provides a common taxonomy for cross-scanner result correlation and false positive pattern analysis.
 - Database: https://cwe.mitre.org/
-- Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
+- Top 25 (2025): https://cwe.mitre.org/top25/archive/2025/2025_cwe_top25.html
+- Top 25 Methodology (2025): https://cwe.mitre.org/top25/archive/2025/2025_methodology.html
+- Top 10 KEV Weaknesses (2025): https://cwe.mitre.org/top25/archive/2025/2025_kev_list.html
 - CWE/CVE Mapping: https://cwe.mitre.org/data/index.html
 
 ---
@@ -398,6 +424,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 4. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
+
+6. **Using stale CWE priority data without saying so.** CWE Top 25 is a source-dated prioritization aid, not a timeless severity system. If a report uses an older CWE Top 25 list, mark it as stale or legacy evidence and do not present it as current prioritization.
 
 ---
 
@@ -416,7 +444,9 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - CVSS v4.0 Specification: https://www.first.org/cvss/v4-0/
 - CVSS v4.0 Calculator: https://www.first.org/cvss/calculator/4.0
 - CWE (MITRE): https://cwe.mitre.org/
-- CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
+- CWE Top 25 (2025): https://cwe.mitre.org/top25/archive/2025/2025_cwe_top25.html
+- CWE Top 25 Methodology (2025): https://cwe.mitre.org/top25/archive/2025/2025_methodology.html
+- CWE Top 10 KEV Weaknesses (2025): https://cwe.mitre.org/top25/archive/2025/2025_kev_list.html
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - CIS Benchmarks: https://www.cisecurity.org/cis-benchmarks
 - DISA STIGs: https://public.cyber.mil/stigs/

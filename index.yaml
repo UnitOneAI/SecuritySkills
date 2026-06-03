@@ -242,7 +242,7 @@ skills:
     role: [security-engineer]
     phase: [operate]
     activity: [configure, review]
-    frameworks: [CVSS-4.0, CWE]
+    frameworks: [CVSS-4.0, CWE, CWE-Top-25-2025, CWE-Top-10-KEV-2025]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/vuln-management/scanner-tuning/SKILL.md
