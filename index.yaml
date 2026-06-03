@@ -507,13 +507,13 @@ skills:
 
   - id: dns-security
     name: "DNS Security Review"
-    tags: [network, dns, dnssec, exfiltration]
+    tags: [network, dns, dnssec, exfiltration, protective-dns]
     role: [security-engineer]
     phase: [operate]
     activity: [review, audit]
-    frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
+    frameworks: [NIST-SP-800-81-Rev3, CIS-Controls-v8]
     difficulty: intermediate
-    time_estimate: "20-40min"
+    time_estimate: "30-60min"
     file: skills/network/dns-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
