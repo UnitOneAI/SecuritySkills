@@ -1,7 +1,7 @@
 ---
 name: dns-security
 description: >
-  Performs a structured DNS security review against NIST SP 800-81 Rev 2
+  Performs a structured DNS security review against NIST SP 800-81 Rev 3
   (Secure Domain Name System Deployment Guide) and CIS Controls v8 (Control 9.2
   -- Use DNS Filtering Services). Auto-invoked when reviewing DNS configurations,
   DNSSEC deployment, or investigating DNS-based exfiltration and tunneling
@@ -10,10 +10,10 @@ description: >
 tags: [network, dns, dnssec, exfiltration]
 role: [security-engineer]
 phase: [operate]
-frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
+frameworks: [NIST-SP-800-81-Rev3, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DNS Security Review
 
-A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 3 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
 
 ---
 
@@ -42,7 +42,13 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2 Section 2 identifies three primary DNS threat categories: DNS cache poisoning, DNS-based denial of service, and unauthorized zone data modification. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
+DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 3 is the current baseline for Secure Domain Name System (DNS) Deployment Guide reviews. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
+
+**Baseline selection preflight:**
+
+- Default to NIST SP 800-81 Rev 3 for current DNS security reviews.
+- Record `nist_sp_800_81_revision`, `baseline_source_date`, `baseline_source_url`, and `legacy_baseline`.
+- If Rev 2 is intentionally requested for a legacy audit, set `legacy_baseline: true` and state why Rev 2 was selected.
 
 ---
 
@@ -94,22 +100,22 @@ Categorize discovered configurations:
 
 ---
 
-### Step 2: DNSSEC Deployment Review (NIST SP 800-81 Rev 2, Sections 4 and 5)
+### Step 2: DNSSEC Deployment Review (NIST SP 800-81 Rev 3)
 
-NIST SP 800-81 Rev 2 Section 4 covers DNSSEC for authoritative servers (zone signing) and Section 5 covers DNSSEC for recursive resolvers (validation).
+Use the selected NIST SP 800-81 revision as the baseline for DNSSEC authoritative-server and recursive-resolver validation. For current reviews, use Rev 3; only use Rev 2 when the scope explicitly requires a legacy baseline.
 
 #### 2.1 Authoritative Zone Signing (Section 4)
 
 For each authoritative zone, verify:
 
 - **Zone is signed:** RRSIG, DNSKEY, NSEC/NSEC3 records are present in zone files.
-- **Algorithm strength:** RSA keys must be at least 2048-bit. ECDSA P-256 (Algorithm 13) or Ed25519 (Algorithm 15) are preferred per NIST SP 800-81 Rev 2 Section 4.3.
+- **Algorithm strength:** RSA keys must be at least 2048-bit. ECDSA P-256 (Algorithm 13) or Ed25519 (Algorithm 15) are preferred for modern DNSSEC deployments.
 - **Key management:**
   - Key Signing Key (KSK) and Zone Signing Key (ZSK) are separate.
   - KSK rollover procedure is documented and tested.
   - ZSK rotation occurs at defined intervals (NIST recommends ZSK rotation every 1-3 months).
 - **DS record in parent:** A DS record matching the KSK is published in the parent zone.
-- **NSEC vs. NSEC3:** NSEC3 is preferred to prevent zone enumeration (NIST SP 800-81 Rev 2 Section 4.4).
+- **NSEC vs. NSEC3:** Document whether NSEC or NSEC3 is used and whether zone enumeration risk is acceptable for the selected baseline.
 
 **Patterns to check in zone files:**
 
@@ -314,7 +320,10 @@ abcdef0123456789.dnscat.example.com TXT
 - DNS infrastructure reviewed: <authoritative servers, resolvers, protective DNS>
 - Configuration files analyzed: <list of file paths>
 - Date: <assessment date>
-- Frameworks applied: NIST SP 800-81 Rev 2, CIS Controls v8 (9.2)
+- Frameworks applied: NIST SP 800-81 Rev 3, CIS Controls v8 (9.2)
+- NIST SP 800-81 revision: <Rev 3 / Rev 2 legacy>
+- Baseline source date: <publication or source review date>
+- Legacy baseline: <true/false and rationale>
 
 ### DNSSEC Status
 
@@ -332,7 +341,7 @@ abcdef0123456789.dnscat.example.com TXT
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
-- **Control Reference:** NIST SP 800-81 Section X / CIS 9.2
+- **Control Reference:** NIST SP 800-81 Rev 3 Section X / CIS 9.2
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration snippet>
@@ -354,15 +363,17 @@ abcdef0123456789.dnscat.example.com TXT
 
 ## Framework Reference
 
-### NIST SP 800-81 Rev 2
+### NIST SP 800-81 Rev 3
 
-| Section | Topic | Key Requirements |
-|---------|-------|-----------------|
-| 2 | DNS Threats | Cache poisoning, unauthorized zone modification, DDoS |
-| 3 | Securing DNS Transactions | TSIG for zone transfers, ACLs on recursive queries |
-| 4 | DNSSEC for Authoritative Servers | Zone signing, key management, algorithm selection, NSEC3 |
-| 5 | DNSSEC for Recursive Resolvers | Validation enablement, trust anchor management, NTA policy |
-| 6 | Securing DNS Infrastructure | Restricting zone transfers, hiding version strings, rate limiting |
+Use Rev 3 as the current baseline. When a report is generated against Rev 2, mark it as a legacy baseline and record the reason.
+
+| Topic | Key Requirements |
+|-------|-----------------|
+| DNS threats and architecture | Cache poisoning, unauthorized zone modification, denial of service, resolver bypass paths |
+| Securing DNS transactions | TSIG for zone transfers, ACLs on recursive queries, transport protection where appropriate |
+| DNSSEC for authoritative servers | Zone signing, key management, algorithm selection, DS chain validation |
+| DNSSEC for recursive resolvers | Validation enablement, trust anchor management, negative trust anchor policy |
+| DNS infrastructure hardening | Restricting zone transfers, hiding version strings, rate limiting, logging and monitoring |
 
 ### CIS Controls v8
 
@@ -384,6 +395,8 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Reporting against a superseded DNS baseline.** If a report is generated after Rev 3 became the current NIST SP 800-81 baseline, do not silently cite Rev 2 section mappings. Record the selected revision, source date, and whether the report is intentionally legacy.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -399,8 +412,8 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## References
 
-- NIST SP 800-81 Rev 2, Secure Domain Name System (DNS) Deployment Guide: https://csrc.nist.gov/publications/detail/sp/800-81/2/final
-- NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
+- NIST SP 800-81 Rev 3, Secure Domain Name System (DNS) Deployment Guide: https://csrc.nist.gov/pubs/sp/800/81/r3/final
+- NIST SP 800-81 Rev 3 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81r3.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
@@ -413,4 +426,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Refresh default NIST SP 800-81 baseline to Rev 3 and require revision/source-date evidence in reports.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
