@@ -336,6 +336,79 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 ```
 
+#### SameSite and External Authentication Cookies
+
+Do not treat every `SameSiteMode.None` cookie as a vulnerability. First identify
+the cookie purpose and emitting ASP.NET Core component. First-party session and
+application authentication cookies can usually use `Lax` or stronger settings,
+but remote authentication correlation cookies and OpenID Connect nonce cookies
+are cross-site flow cookies. They may require `SameSite=None` for POST-based
+OIDC or WS-Federation redirects.
+
+```csharp
+// EXPECTED FOR CROSS-SITE AUTH FLOW: SameSite=None paired with Secure
+builder.Services.AddAuthentication()
+    .AddOpenIdConnect(options =>
+    {
+        options.NonceCookie.SameSite = SameSiteMode.None;
+        options.NonceCookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.CorrelationCookie.SameSite = SameSiteMode.None;
+        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+    });
+```
+
+Flag `SameSite=None` only when it lacks `Secure`, has no cross-site-flow reason,
+or is applied to a cookie whose purpose should remain first-party only.
+
+```csharp
+// VULNERABLE: cross-site cookie without Secure
+builder.Services.AddAuthentication()
+    .AddOpenIdConnect(options =>
+    {
+        options.CorrelationCookie.SameSite = SameSiteMode.None;
+        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.None;
+    });
+```
+
+Also review global cookie policy overrides. A blanket minimum SameSite policy can
+break OIDC, WS-Federation, or OAuth callback flows and can push teams toward
+unsafe workarounds.
+
+```csharp
+// RISKY: may override remote-auth correlation or nonce cookies
+app.UseCookiePolicy(new CookiePolicyOptions
+{
+    MinimumSameSitePolicy = SameSiteMode.Strict
+});
+
+builder.Services.AddAuthentication()
+    .AddCookie()
+    .AddOpenIdConnect();
+```
+
+When reviewing a failed external login such as "Correlation failed" or "nonce
+validation failed", do not accept disabling nonce, state, or correlation
+protections as remediation. First capture the SameSite policy, Secure flag,
+callback method, iframe or cross-site context, and browser compatibility path.
+
+##### SameSite External Auth Evidence Fields
+
+For every authentication-related cookie, include:
+
+| Field | Evidence to record |
+|---|---|
+| Cookie purpose | Session, application auth, OIDC nonce, remote-auth correlation, temp data, antiforgery, state |
+| Emitting component | Session, cookie auth, OpenID Connect, OAuth/social provider, WS-Federation, custom middleware |
+| SameSite value | `Strict`, `Lax`, `None`, or `Unspecified` |
+| Secure flag | `CookieSecurePolicy.Always`, `Secure = true`, or equivalent |
+| Global policy | `CookiePolicyOptions.MinimumSameSitePolicy` and `UseCookiePolicy()` order |
+| Cross-site reason | POST callback, iframe/embed, external identity provider, legacy browser handling |
+| Flow test | Login/callback test result and any correlation or nonce errors |
+
+Do not mark cookie hardening as verified when the cookie issuer is unknown, the
+external login callback is untested, the global cookie policy is unknown, or
+`SameSite=None` is present without `Secure`.
+
 ---
 
 #### 3. Missing Authentication (CWE-306)
@@ -946,6 +1019,10 @@ Use these regex patterns to locate potential vulnerabilities in C# source files.
 | Missing Authorize | `\[HttpPost\]` or `\[HttpDelete\]` without preceding `\[Authorize` |
 | Developer exception in prod | `UseDeveloperExceptionPage` |
 | Insecure cookie | `SecurePolicy\s*=\s*CookieSecurePolicy\.None` |
+| SameSite None without review | `SameSite\s*=\s*SameSiteMode\.None` |
+| Global SameSite override | `MinimumSameSitePolicy\s*=\s*SameSiteMode\.(Strict|Lax)` |
+| External auth cookie config | `(NonceCookie|CorrelationCookie)\.(SameSite|SecurePolicy)` |
+| OIDC/external auth flow | `Add(OpenIdConnect|OAuth|Google|MicrosoftAccount|Facebook|Twitter)\s*\(` |
 | JWT validation disabled | `Validate(Issuer\|Audience\|Lifetime\|IssuerSigningKey)\s*=\s*false` |
 | Anti-forgery missing | `\[HttpPost\]` without `\[ValidateAntiForgeryToken\]` (MVC only) |
 | Sensitive data in logs | `Log(Information\|Debug\|Warning)\s*\(.*([Pp]assword\|[Tt]oken\|[Ss]ecret)` |
@@ -1070,6 +1147,8 @@ builder.Services.AddDataProtection()
 - **OWASP .NET Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html
 - **Microsoft Secure Coding Guidelines:** https://learn.microsoft.com/en-us/dotnet/standard/security/secure-coding-guidelines
 - **ASP.NET Core Security Documentation:** https://learn.microsoft.com/en-us/aspnet/core/security/
+- **ASP.NET Core SameSite Cookies:** https://learn.microsoft.com/en-us/aspnet/core/security/samesite
+- **ASP.NET Core External Login Providers:** https://learn.microsoft.com/en-us/aspnet/core/security/authentication/social/
 - **BinaryFormatter Security Guide:** https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
