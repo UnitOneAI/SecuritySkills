@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -264,7 +264,44 @@ on: pull_request_target
     PR_TITLE: ${{ github.event.pull_request.title }}
 ```
 
-**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+- **Dependency Cache Poisoning and Trust-Boundaries**: Auditing workflow caching mechanisms (`actions/cache`, `actions/cache/restore`, `actions/cache/save`, or implicit setup-action caching such as `setup-node`, `setup-python`, `setup-go`, etc.) to prevent dependency cache poisoning.
+  - *Cache Writer Trust Level & Ref Scope*: Evaluate which branches/refs/events can write (save) caches. GitHub scopes caches by branch/ref: PR-created caches cannot be read by default branches, but default branch caches are readable by PR workflows. Check if PR workflows or untrusted events can create caches that are later restored by privileged workflows (e.g., release jobs).
+  - *Loose `restore-keys` & Stale Content*: Workflows with loose or partial `restore-keys` (e.g., prefix matching instead of exact lockfile hash keys) can restore outdated or unrelated caches. Flag cases where workflows treat partial matches as fully trusted or skip critical installation/verification checks based on partial cache hits (like checking `cache-hit != ''` when `cache-hit` is false on partial restores).
+  - *Implicit Setup-Action Caching*: Setup actions may default to implicit caching. Ensure that automatic caching is disabled or strictly verified in privileged/release workflows to prevent importing unvalidated cached layers.
+  - *Executable vs Package Cache*: Differentiate between package download caches (safer, as package managers with locked checksums revalidate them on install) and executable/build-output caches (e.g., `node_modules`, `.venv`, `.gradle`, `build-tools`, `dist`, compiled binaries), which are high-risk if executed without integrity revalidation.
+  - *Split Save/Restore*: Check if workflows use split actions where `save` is restricted to trusted workflows/refs, and privileged runs are strictly read-only (`restore`).
+
+**Grep patterns:**
+```yaml
+# GitHub Actions: check for direct pushes to main/master
+on:
+  push:
+    branches: [main, master]
+
+# Look for direct expressions in scripts or commands
+run:
+
+# Look for cache actions, restore-keys, and implicit setup action caching
+actions/cache
+actions/cache/restore
+actions/cache/save
+restore-keys:
+cache-hit
+cache:
+cache-dependency-path
+setup-node
+setup-python
+setup-go
+setup-dotnet
+setup-java
+```
+
+**Severity Guidance for Cache Security:**
+*   **Critical/High**: A workflow running on a pull request or untrusted branch can save executable or build-output caches (like `node_modules`, `.venv`, or custom binaries) that are subsequently restored and executed in a privileged workflow (e.g., a release or deploy job running on `main`).
+*   **Medium**: Broad `restore-keys` or implicit setup-action caching are active in sensitive/elevated pipelines without checking exact key matching, or when a partial cache hit bypasses dependency lock validation.
+*   **Low/Informational**: Read-only dependency caches or download caches where subsequent installer steps run a locked/frozen install (e.g., `npm ci`, `poetry install --no-update`) that re-validates dependency cryptographic integrity.
+
+**Finding format:** Report any `pull_request_target` usage, dependency caching trust boundaries, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
 
 ---
 
@@ -392,6 +429,7 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- **Cache integrity revalidation**: Workflows that restore dependency or tool caches without running post-restore verification (such as package-manager integrity checks or checksum validation). See also the cache security checks in `CICD-SEC-4`.
 
 **Grep patterns:**
 
@@ -412,6 +450,12 @@ sbom
 # Look for digest pinning in container references
 image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
+
+# Look for dependency verification / locked installs
+npm ci
+yarn install --frozen-lockfile
+poetry install --no-update
+pip install --require-hashes
 ```
 
 **Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
@@ -479,6 +523,11 @@ Produce the final report using the following structure:
 | CICD-SEC-1 | Insufficient Flow Control | High/Med/Low | Pass/Fail/Partial | <summary> |
 | CICD-SEC-2 | Inadequate IAM | ... | ... | ... |
 | ... | ... | ... | ... | ... |
+
+### Dependency Cache Evidence Matrix
+| Cache Path | Key Pattern | Restore Keys | Event/Ref Scope | Save Condition | Restore Consumer | Executable Content? | Integrity Revalidated? | Status | Not Applicable Reason (if N/A) |
+|------------|-------------|--------------|-----------------|----------------|------------------|---------------------|------------------------|--------|--------------------------------|
+| [e.g., node_modules] | [key] | [restore-keys] | [e.g., pull_request] | [e.g., main only] | [e.g., deploy job] | [Yes/No] | [Yes/No] | [Pass/Fail/NE/NA] | [Reason] |
 
 ### Detailed Findings
 
@@ -555,6 +604,73 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ---
 
+## Output Report Examples (Dependency Caching Security)
+
+### Vulnerable Example (Poisonable Caching & Skip Install on Partial Hits)
+This workflow allows untrusted pull requests to save caches under prefix keys and skips dependency verification when partial caches are restored, directly executing unverified/poisonable build files:
+```yaml
+name: release-pipeline
+on:
+  push:
+    branches: [main]
+  pull_request: # PR branch runs can save caches scope-accessible to base branch target ref
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: |
+            node_modules
+            build-tools
+            dist
+          key: build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            build-${{ runner.os }}-
+            build-
+
+      - name: Skip install/build if any cache was restored
+        if: ${{ steps.build-cache.outputs.cache-hit != '' }} # Vulnerable: skips install on partial/stale/poisoned cache hits
+        run: echo "using restored cache as build input"
+
+      - name: Build and Release
+        if: ${{ steps.build-cache.outputs.cache-hit == '' }}
+        run: |
+          npm install
+          npm run build
+
+      - run: ./build-tools/release.sh # Vulnerable: executes unverified binaries from the cache
+```
+
+### Benign Example (Locked Revalidation & Read-Only / Default-Only Save Scopes)
+This workflow restricts cache-saving to the protected default branch (via automatic setup caching or conditional actions), uses exact keys, and runs integrity checks (`npm ci` which verifies package hashes) on restore:
+```yaml
+name: release-pipeline
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Elevated credentials present, caching disabled for safety or locked to read-only restore
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm' # Uses implicit safe download caching (lockfile hashed)
+      - run: npm ci # Benign: npm ci verifies dependency cryptographic integrity on every restore
+```
+
+---
+
 ## Changelog
 
+- **1.1.0** -- Add dependency cache poisoning guidelines, restore-key safety checks, setup-action caching, and report examples.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
