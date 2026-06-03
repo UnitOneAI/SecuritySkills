@@ -255,24 +255,128 @@ public XmlDocument ParseXml(Stream input)
 
 **ASVS Control:** V5.1.3
 
+**Variant 1: static `Regex` methods use the infinite default timeout**
+
 ```csharp
-// VULNERABLE: unbounded regex on user input with catastrophic backtracking
-public bool ValidateInput(string input)
+// VULNERABLE: static Regex.IsMatch uses infinite default timeout on attacker-controlled input
+public bool IsAllowed(string value)
 {
-    return Regex.IsMatch(input, @"^(a+)+$");
+    return Regex.IsMatch(value, @"^([a-z]+)+$");
 }
 ```
 
-Remediation: Set a timeout on the `Regex` instance and simplify the pattern.
+Static `Regex` methods (`IsMatch`, `Match`, `Replace`, `Split`) use the infinite default timeout unless a process-wide default is configured via `AppDomain.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", ...)`. A catastrophic pattern on attacker-controlled input can consume CPU indefinitely.
 
 ```csharp
-// SECURE: timeout prevents catastrophic backtracking
-public bool ValidateInput(string input)
+// SECURE: instance Regex with explicit timeout and simplified pattern
+private static readonly Regex AllowedPattern =
+    new(@"^[a-z]+$", RegexOptions.None, TimeSpan.FromMilliseconds(250));
+
+public bool IsAllowed(string value)
 {
-    var regex = new Regex(@"^a+$", RegexOptions.None, TimeSpan.FromSeconds(1));
-    return regex.IsMatch(input);
+    try
+    {
+        return AllowedPattern.IsMatch(value);
+    }
+    catch (RegexMatchTimeoutException)
+    {
+        return false; // fail-closed: treat timeout as validation failure
+    }
 }
 ```
+
+**Variant 2: `[GeneratedRegex]` attribute without timeout or `NonBacktracking`**
+
+```csharp
+// VULNERABLE: source-generated regex with no timeout -- attribute arguments are not visible in grep
+[GeneratedRegex(@"^([a-z]+)+$", RegexOptions.None)]
+private static partial Regex SlugRegex();
+
+public bool CheckSlug(string slug) => SlugRegex().IsMatch(slug);
+```
+
+Reviewers should inspect `[GeneratedRegex]` attribute arguments for `matchTimeoutMilliseconds` and `RegexOptions.NonBacktracking`. A source-generated regex without a timeout carries the same ReDoS risk as a runtime constructor with no timeout.
+
+```csharp
+// SECURE: generated regex with explicit timeout (milliseconds) and simplified pattern
+[GeneratedRegex(@"^[a-z]+$", RegexOptions.None, matchTimeoutMilliseconds: 250)]
+private static partial Regex SlugRegex();
+```
+
+**Variant 3: `RegexOptions.NonBacktracking` eligibility is not evaluated**
+
+```csharp
+// ACCEPTABLE when backtracking is not needed -- use NonBacktracking to eliminate the risk
+private static readonly Regex CodePattern =
+    new(@"^[A-Z]{3}-\d{4}$", RegexOptions.NonBacktracking);
+
+// REQUIRES backtracking (backreference) -- NonBacktracking is incompatible; use timeout instead
+private static readonly Regex DuplicateWordPattern =
+    new(@"^(?<word>\w+)\s+\k<word>$", RegexOptions.None, TimeSpan.FromMilliseconds(250));
+```
+
+Reviewers should record whether `RegexOptions.NonBacktracking` was evaluated: applicable patterns should use it as a strong mitigation; incompatible patterns (backreferences, some lookarounds) must retain a timeout.
+
+**Variant 4: fail-open timeout exception handling**
+
+```csharp
+// VULNERABLE: timeout exception results in a validation bypass
+try
+{
+    return ValidationRegex.IsMatch(userInput);
+}
+catch (RegexMatchTimeoutException)
+{
+    return true; // fail-open: bypasses validation on timeout
+}
+```
+
+```csharp
+// SECURE: fail-closed timeout handling with telemetry
+try
+{
+    return ValidationRegex.IsMatch(userInput);
+}
+catch (RegexMatchTimeoutException ex)
+{
+    _logger.LogWarning(ex, "Regex timeout for input length {Len}", userInput.Length);
+    return false; // fail-closed: reject on timeout
+}
+```
+
+Reviewers MUST verify and compile the following evidence:
+
+| Evidence Field | What to Record |
+|---|---|
+| Input source | Trusted constant / bounded enum, or attacker-controlled request field |
+| Input bounded? | Max length enforced before regex call? |
+| Call style | Static (`Regex.IsMatch`), instance `new Regex(...)`, or `[GeneratedRegex]` |
+| Pattern ownership | Application-defined or third-party library |
+| Default timeout | `AppDomain` REGEX_DEFAULT_MATCH_TIMEOUT set? |
+| Local/constructor timeout | `TimeSpan` argument in `new Regex(...)` or `matchTimeoutMilliseconds` in `[GeneratedRegex]`? |
+| NonBacktracking eligible? | Pattern compatible with `RegexOptions.NonBacktracking`? Applied? |
+| Timeout exception handling | `RegexMatchTimeoutException` caught? Fails closed (returns false/deny)? |
+| Test evidence | Adversarial worst-case fixture tested in a bounded environment? |
+| Confidence | High (code + test) / Medium (code only) / Low (docs only) |
+| Not Evaluable reason | `missing_input_trust` / `unknown_default_timeout` / `unreviewed_generated_regex` / `unknown_exception_handling` |
+
+**Severity guidance:**
+
+| Condition | Severity |
+|---|---|
+| Attacker-controlled unbounded input + catastrophic pattern + no timeout | High |
+| Attacker-controlled input + timeout configured but exception handler fails open | High |
+| Static regex method on attacker-controlled input + no default timeout configured | High |
+| `[GeneratedRegex]` without timeout attribute on attacker-controlled input | High |
+| Simple, anchored, bounded pattern on short input with evidence of limitation | Low / Not Applicable |
+| `RegexOptions.NonBacktracking` applied to compatible pattern | Not Applicable (mitigated) |
+
+**Edge cases:**
+
+- Regexes on trusted constants or short, bounded enum-like values should not be escalated the same way as regexes over user-controlled request bodies, filenames, headers, or database fields attackers can write.
+- `RegexOptions.Compiled` improves runtime performance but does not eliminate catastrophic backtracking.
+- A process-wide default timeout (via `AppDomain.SetData`) reduces risk for static methods, but reviewers must verify it is set early in application startup and not overridden by infinite local timeouts.
+- Timeout tests should use safe bounded fixtures and not run destructive load tests against production services.
 
 ---
 
