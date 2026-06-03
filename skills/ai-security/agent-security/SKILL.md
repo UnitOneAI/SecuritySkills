@@ -78,9 +78,11 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 |---|---|---|
 | Agent architecture diagram | Design docs, README, infrastructure code | Maps trust boundaries, delegation chains, tool surface |
 | Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters |
+| Runtime tool registry export | Agent runtime, MCP/tool broker admin endpoint, plugin inventory | Confirms what tools are actually invokable after dynamic registration, feature flags, and remote server updates |
+| Remote tool provenance | MCP manifests, plugin marketplace metadata, tool server release attestations | Shows whether remote tool schemas and descriptions come from a trusted publisher and pinned version |
 | Permission/IAM configuration | Cloud IAM, role definitions, service account configs, .env files | Reveals whether least-privilege is enforced |
 | Human approval gate implementation | Workflow code, UI code, approval service configs | Determines if HITL is architecturally sound or bypassable |
-| Agent identity and credential management | Auth middleware, secret managers, token configs | Exposes credential scope and rotation practices |
+| Agent identity and credential management | Auth middleware, secret managers, token configs, OAuth consent records | Exposes service-account scope, delegated-user scope, token audience, refresh lifetime, and rotation practices |
 | Multi-agent communication protocol | Message bus configs, inter-agent APIs, shared state stores | Identifies trust boundary violations |
 | Audit logging implementation | Logger configs, log pipeline code, SIEM integration | Determines forensic capability |
 | Error handling and rollback code | Exception handlers, compensation logic, undo mechanisms | Reveals recovery capability |
@@ -134,11 +136,26 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 - **Tool registration breadth:** Does each agent have access only to the tools required for its specific task, or does it receive the full tool registry? Look for tool lists in agent initialization code and assess whether each tool is justified for the agent's stated purpose.
 - **Permission granularity:** Are tools granted with broad capabilities (e.g., "database access" meaning read, write, delete, schema alter) or scoped to specific operations (e.g., "read-only access to the orders table")?
 - **Credential scope:** Does the agent's service identity have cloud IAM permissions beyond what its tools require? Are wildcards present in IAM policies (`*` actions, `*` resources)?
-- **Dynamic vs. static tool sets:** Can the agent's tool set change at runtime? If an orchestrator dynamically assigns tools, what governs which tools are assigned?
+- **Delegated credential scope:** If tools use OAuth or user-delegated tokens, are scopes downscoped to the current task and tenant? Can refresh tokens outlive the workflow that justified the access?
+- **Dynamic vs. static tool sets:** Can the agent's tool set change at runtime? If an orchestrator dynamically assigns tools, what governs which tools are assigned? Does the runtime registry match the reviewed registry?
+- **Remote tool provenance:** For MCP servers, plugins, marketplace tools, or remote tool manifests, is the publisher identity verified and are tool manifests/schemas pinned, signed, or attested?
+- **Tool manifest drift:** Can a remote server add write/delete/deploy/send actions after review without an explicit approval event?
 - **Per-session vs. permanent tool access:** Is tool access scoped to a specific task or session, or does every invocation receive the same broad tool set regardless of the task?
 - **Cross-agent tool sharing:** Can one agent invoke another agent's tools? If so, through what authorization mechanism?
 
-**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), and tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`).
+**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), and tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`). Search for remote tool and delegated-auth evidence (`mcp`, `tool_server`, `plugin`, `manifest`, `schema`, `digest`, `signature`, `attestation`, `oauth`, `scope`, `refresh_token`, `consent`).
+
+**Remote tool provenance and registry drift evidence:**
+
+| Evidence Item | Secure State | Finding If Missing |
+|---|---|---|
+| Runtime registry export | Reviewed tool list matches tools available at runtime | Medium -- review may be based on stale declarations |
+| Manifest/schema digest | Tool manifest and schema are pinned or signed | High -- remote tool capabilities can drift silently |
+| Publisher identity | Tool server or plugin publisher is verified | High -- tool source cannot be trusted |
+| Transport trust | mTLS, certificate validation, or equivalent trust is enforced | High -- tool schema/output can be tampered with in transit |
+| Update approval | New or changed tool actions require security approval | High -- destructive actions can appear after review |
+| Delegated OAuth scopes | Scopes are task-bounded, tenant-bounded, and revocable | High -- excessive delegated user authority |
+| Tool description integrity | Descriptions are tied to the reviewed manifest, not mutable prompt text | Medium -- model planning can be influenced by changed descriptions |
 
 **Permission model evaluation matrix:**
 
@@ -147,7 +164,9 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 | Least privilege | Each agent has only the tools it needs | High -- excessive agency |
 | Separation of duties | Read agents cannot write; analysis agents cannot execute | High -- insufficient separation |
 | Scoped credentials | Service identity permissions match tool requirements, no wildcards | High -- over-privileged identity |
+| Scoped delegated auth | OAuth/user-delegated scopes match task, tenant, and session | High -- excessive delegated authority |
 | Per-task scoping | Tool set varies by task, not globally assigned | Medium -- static over-provisioning |
+| Registry integrity | Runtime tool registry matches reviewed manifest and approved changes | High -- unreviewed capabilities available |
 | Time-bounded access | Credentials and tool access expire, requiring renewal | Medium -- persistent access risk |
 | Explicit deny | Actions not explicitly permitted are denied by default | High -- fail-open permission model |
 
@@ -162,6 +181,10 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 | Agent has access to tools it never needs for its defined purpose | High |
 | No per-task or per-session tool scoping -- every invocation gets full tool set | High |
 | Tool registration allows runtime tool injection by the agent itself | High |
+| Remote tool manifests or schemas are unpinned and can change without approval | High |
+| Runtime tool registry cannot be exported or compared to reviewed tools | Medium |
+| Delegated OAuth scopes exceed task requirements or cannot be downscoped per task | High |
+| Tool server publisher identity or transport trust cannot be verified | High |
 | Agent credentials do not expire or rotate | Medium |
 | Tool permissions not documented or reviewed periodically | Medium |
 
@@ -492,13 +515,25 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+## Tool Registry and Provenance
+
+| Tool / Server | Publisher | Reviewed Manifest Digest | Runtime Digest | Transport Trust | Credential / OAuth Scope | Downscoped Per Task? | Update Approval | Evidence Confidence |
+|---|---|---|---|---|---|---|---|---|
+| [tool or MCP server] | [publisher] | [sha256/signature/N/A] | [sha256/export time] | [mTLS/TLS/pinned/unknown] | [service role or OAuth scopes] | [Yes/No] | [required/not required] | [source/config/runtime/docs-only/unknown] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
+
+## Not Evaluable Items
+
+| Area | Missing Evidence | Why It Matters | Required Evidence |
+|---|---|---|---|
+| [tool provenance / registry / OAuth / audit / rollback] | [missing item] | [risk of scoring without evidence] | [artifact needed] |
 
 ## Findings
 
 ### Finding [N]: [Title]
-- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
+- **Review Area:** [Permission Model | Remote Tool Provenance | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP Agentic AI Category:** [AG01-AG10 or N/A]
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -514,6 +549,7 @@ Glob: **/security_architecture*
 | Review Area | Rating | Key Finding | Priority |
 |---|---|---|---|
 | Permission Model | [rating] | [one-line summary] | [priority] |
+| Remote Tool Provenance | [rating] | [one-line summary] | [priority] |
 | Least-Privilege Design | [rating] | [one-line summary] | [priority] |
 | HITL Gate Placement | [rating] | [one-line summary] | [priority] |
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
@@ -569,6 +605,10 @@ Glob: **/security_architecture*
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
 
+6. **Treating remote tool manifests as static documentation.** MCP servers, plugins, and marketplace tools can change their descriptions, schemas, or available actions without a code change in the agent application. A review based only on source-code tool declarations can miss runtime capabilities added by remote server upgrades, tenant feature flags, or marketplace updates. Pin or sign tool manifests, export the runtime registry during review, and require approval for new side-effecting actions.
+
+7. **Reviewing service-account IAM while missing delegated user tokens.** Many agent integrations run with OAuth tokens granted by users rather than with a cloud service account. A clean service-account policy does not prove least privilege if the agent can still use a delegated token with broad Gmail, Drive, calendar, repository, or workspace scopes. Record consented scopes, token audience, refresh lifetime, revocation path, and whether scopes are downscoped per task.
+
 ---
 
 ## References
@@ -587,3 +627,5 @@ Glob: **/security_architecture*
 12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
 13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
 14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
+15. SLSA Provenance -- Artifact provenance model useful for adapting manifest/signature evidence to remote agent tools -- https://slsa.dev/spec/v1.0/provenance
+16. OAuth 2.0 Security Best Current Practice (RFC 9700) -- Guidance for delegated token security and scope management -- https://datatracker.ietf.org/doc/rfc9700/
