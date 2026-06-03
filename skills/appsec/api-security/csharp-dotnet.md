@@ -1063,6 +1063,114 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 ```
 
+### Client Certificate Forwarding Behind Proxies
+
+Direct Kestrel mTLS evidence is not enough when TLS terminates at Azure App Service,
+IIS, Nginx, Envoy, an ingress controller, or a cloud load balancer before the
+request reaches ASP.NET Core. In those deployments, review the certificate path
+as a proxy trust boundary:
+
+1. Identify where TLS terminates: Kestrel directly, platform proxy, ingress,
+   service mesh, or load balancer.
+2. Record whether the app receives the client certificate directly from the TLS
+   handshake or through Certificate Forwarding Middleware.
+3. For forwarded certificates, record the header name, converter, proxy product,
+   and whether the proxy strips or overwrites any inbound client-supplied copy of
+   that header.
+4. Prove the app only accepts forwarded certificate headers from the trusted proxy
+   path, using `KnownProxies`, `KnownNetworks`, ingress source restrictions, mTLS
+   between proxy and app, or equivalent network controls.
+5. Verify `UseCertificateForwarding()` runs before `UseAuthentication()` and
+   `UseAuthorization()` so certificate claims exist before policy evaluation.
+
+#### Forwarded Certificate Header -- Risky Without Proxy Boundary Evidence
+
+```csharp
+// RISKY: This can be secure only if a trusted proxy strips inbound X-SSL-CERT
+// and injects its own value after authenticating the client certificate.
+builder.Services.AddCertificateForwarding(options =>
+{
+    options.CertificateHeader = "X-SSL-CERT";
+    options.HeaderConverter = header =>
+        X509Certificate2.CreateFromPem(WebUtility.UrlDecode(header));
+});
+
+app.UseCertificateForwarding();
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+Flag this as High or Critical when the forwarded certificate identity controls
+access to sensitive service methods and the review cannot prove header
+strip/overwrite behavior or trusted proxy/network restrictions. A client that can
+spoof the forwarded certificate header may become any certificate identity the
+application trusts.
+
+#### Middleware Order -- Vulnerable
+
+```csharp
+// VULNERABLE: Authentication runs before the forwarded certificate is attached.
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseCertificateForwarding();
+```
+
+#### Forwarded Headers Trust -- Secure Shape
+
+```csharp
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownProxies.Add(IPAddress.Parse("10.0.0.10"));
+});
+
+builder.Services.AddCertificateForwarding(options =>
+{
+    options.CertificateHeader = "X-SSL-CERT";
+    options.HeaderConverter = header =>
+        X509Certificate2.CreateFromPem(WebUtility.UrlDecode(header));
+});
+
+var app = builder.Build();
+
+app.UseForwardedHeaders();
+app.UseCertificateForwarding();
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+This shape is still only evidence, not proof by itself. Confirm the deployment
+configuration requires client certificates at the proxy, overwrites the chosen
+certificate header, and prevents direct client access to the ASP.NET Core app.
+
+#### Proxied mTLS Evidence Fields
+
+For each service path that relies on client certificates, include:
+
+| Field | Evidence to record |
+|---|---|
+| TLS termination point | Kestrel, Azure App Service, IIS, Nginx, Envoy, ingress, load balancer, or service mesh |
+| Certificate path | Direct TLS client certificate or forwarded certificate header |
+| Header contract | Header name, encoding, `HeaderConverter`, and issuer of the header |
+| Proxy boundary | Proxy identity, source network restrictions, `KnownProxies`/`KnownNetworks`, or ingress policy |
+| Header spoofing control | Proxy strips/overwrites inbound certificate headers before forwarding |
+| Middleware order | `UseForwardedHeaders`, `UseCertificateForwarding`, `UseAuthentication`, `UseAuthorization` order |
+| Certificate validation | Chain, issuer, thumbprint, EKU, validity, revocation, and app-specific allowlist |
+| Authorization impact | Policies, gRPC services, methods, or API routes that consume the certificate identity |
+
+#### Not Evaluable Conditions
+
+Do not mark proxied mTLS as verified when any of these are unknown:
+
+- TLS termination point is not documented.
+- The review cannot determine whether Kestrel sees the original client TLS
+  certificate.
+- Certificate forwarding header behavior at the proxy is missing.
+- Trusted proxy or network restrictions are missing.
+- Direct access to the app behind the proxy is not ruled out.
+- `UseCertificateForwarding()` order relative to authentication is unverified.
+
 ### Authorization Interceptors
 
 ```csharp
@@ -1133,6 +1241,9 @@ var response = await client.GetOrderAsync(
 
 - [ ] mTLS is configured for service-to-service communication.
 - [ ] Client certificate validation checks issuer and thumbprint against an allowlist.
+- [ ] The review distinguishes direct Kestrel mTLS from proxy/load-balancer certificate forwarding.
+- [ ] Forwarded certificate headers are accepted only from trusted proxy paths and cannot be spoofed by clients.
+- [ ] `UseCertificateForwarding()` runs before authentication and authorization middleware.
 - [ ] `[Authorize]` is applied at the service or method level.
 - [ ] `MaxReceiveMessageSize` and `MaxSendMessageSize` are explicitly configured.
 - [ ] `EnableDetailedErrors` is `false` in production.
@@ -1204,6 +1315,12 @@ AllowAnyOrigin\(\)
 # Detailed errors in production
 IncludeExceptionDetails\s*=\s*true
 EnableDetailedErrors\s*=\s*true
+# Certificate forwarding requires proxy trust and middleware order review
+AddCertificateForwarding
+UseCertificateForwarding
+CertificateHeader\s*=
+X-ARR-ClientCert|X-SSL-CERT|ssl-client-cert
+KnownProxies\.Clear\(\)|KnownNetworks\.Clear\(\)
 ```
 
 ### Unsafe Upstream Consumption
@@ -1239,6 +1356,9 @@ MapPost\(.*password.*\)(?![\s\S]*?RequireRateLimiting)
 - [CWE-942: Permissive Cross-domain Policy with Untrusted Domains](https://cwe.mitre.org/data/definitions/942.html)
 - [CWE-295: Improper Certificate Validation](https://cwe.mitre.org/data/definitions/295.html)
 - [Microsoft ASP.NET Core Security Documentation](https://learn.microsoft.com/en-us/aspnet/core/security/)
+- [Microsoft ASP.NET Core Certificate Authentication](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/certauth)
+- [Microsoft ASP.NET Core Proxy and Load Balancer Configuration](https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/proxy-load-balancer)
+- [Microsoft ASP.NET Core Forwarded Headers Trusted Proxy Change](https://learn.microsoft.com/en-us/aspnet/core/breaking-changes/8/forwarded-headers-unknown-proxies)
 - [Microsoft Rate Limiting Middleware](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)
 - [HotChocolate GraphQL Security](https://chillicream.com/docs/hotchocolate/security)
 - [ASP.NET Core gRPC Authentication](https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz)
