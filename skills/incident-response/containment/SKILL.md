@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -203,7 +203,39 @@ Wiper and destructive malware require a distinct containment approach from ranso
 
 ### Step 5: Containment Validation
 
-After implementing containment, verify effectiveness before proceeding to eradication.
+After implementing containment, verify effectiveness before proceeding to eradication. Responders must collect effective-enforcement evidence mapping to specific provider-side checkpoints, rather than assuming a command or ticket completion represents active enforcement.
+
+#### 5.1 Effective-Enforcement Evidence Guidelines
+
+##### Cloud Network Containment
+- **Proof of Attachment**: Confirm policy or security group modification applies directly to the target Elastic Network Interface (ENI), container network interface, or cloud workload resource ID.
+- **Scope & Path Review**: Verify the security group, Network ACL (NACL), route table, and peering/transit paths cover both ingress and egress directions for the target ports/protocols. Ensure proxy and firewall bypass channels are blocked.
+- **Telemetry Verification**: Analyze VPC Flow Logs or firewall logs post-enforcement to prove traffic is being rejected. If flow logs are unavailable, perform a connection check or mark as `Not Evaluable`.
+- **Kubernetes Containment**: Verify CNI capability (e.g. Calico, Cilium) enforces the deployed `NetworkPolicy` object, or use host-level namespace blocks if CNI enforcement is unverified.
+
+##### EDR/Endpoint Isolation
+- **State Verification**: Do not rely on "command sent" status. Require console state confirmation indicating agent acknowledgement and host quarantine mode active.
+- **Agent Connectivity**: Confirm last-seen sync timestamp is current. If endpoint goes offline immediately and stays offline without sending acknowledgement, treat as unverified.
+- **Allowed Management Channel Exceptions**: Audit active firewall rules on isolated endpoints to ensure the EDR management channel itself is active, but target traffic is blocked.
+- **Fallback Network Path**: If the agent is offline or tampered with, execute fallback network containment (e.g., cloud security group lockdown, switch port disable, or disabling physical network access).
+
+##### Identity Containment
+- **Password Reset**: Confirm password change is active in Active Directory/Identity Provider (IdP).
+- **Session Revocation**: Require explicit evidence of active session invalidation across all IdP directories (e.g., revoking Azure AD/Entra ID refresh tokens).
+- **OAuth & App Grants**: Audit and revoke all active OAuth application permissions, API keys, and service principal secrets associated with the compromised user.
+- **SSH Keys & Certificates**: Remove compromised public keys from `authorized_keys` configurations and revoke client/mTLS certificates.
+- **Downstream SaaS Sessions**: Coordinate session revocation across downstream SaaS platforms integrated via SAML/OIDC.
+
+##### DNS Containment
+- **Resolver Path Verification**: Verify that the affected asset resolves DNS exclusively via the DNS resolver where the block or sinkhole is active.
+- **DoH/DoT Bypass Block**: Ensure endpoint bypasses (e.g., hardcoded DoH to `8.8.8.8`) are blocked at the network firewall.
+- **Sinkhole Verification**: Query the domain from the affected network segment to verify it returns the designated sinkhole loopback IP.
+- **Telemetry Verification**: Confirm DNS query logs show resolution blocks or sinkhole responses.
+
+#### 5.2 Fallback and Escalation Criteria
+- **Pending/Asynchronous state**: If EDR isolation command is pending (endpoint offline), deploy network-level containment immediately.
+- **Validation Failure**: If traffic is observed bypassing the control, escalate containment to a wider network boundary (e.g., isolating the whole subnet) and disable the associated accounts.
+- **Telemetry Unavailable**: If evidence of enforcement or telemetry logs are missing, mark the validation status as `Not Evaluable` (NE) with reason. Do not mark as `Complete`.
 
 **Validation checklist:**
 
@@ -292,7 +324,22 @@ threat severity and business criticality, and expected impact on operations.]
 ### Containment Validation Checklist
 | Check | Result | Timestamp |
 |---|---|---|
-| [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+| [Validation item] | [Pass/Fail/Pending/Not Evaluable] | [timestamp] |
+
+### Effective Enforcement Evidence Matrix
+| Target Asset | Control Plane / Tool | Enforcement Point | Attachment & Scope Proof | Traffic Direction / Protocol | Enforcement State | Telemetry Source | Validation Timestamp | Result | Fallback Controls |
+|---|---|---|---|---|---|---|---|---|---|
+| [IP/host/ID] | [EDR / AWS / Active Directory] | [ENI / Resolver / IdP] | [e.g., Policy attached to ENI-1234] | [Ingress/Egress/DoH] | [command sent / control attached / control enforced / activity stopped] | [e.g., VPC Flow Logs] | [YYYY-MM-DD HH:MM] | [Complete / Failed / Not Evaluable] | [e.g., physical switch isolation] |
+
+### Identity Containment Evidence
+- User/Principal ID: [Principal]
+- Password Reset Timestamp: [timestamp / N/A]
+- Session Revocation Timestamp: [timestamp / N/A]
+- Refresh-Token Invalidation Proof: [e.g., API response ID]
+- OAuth / App Grant Revocation Status: [Revoked / No active grants]
+- Service Principal / API Key Rotation: [Rotated / N/A]
+- SSH Keys & Certificates Revoked: [Yes / No SSH keys present]
+- Downstream SaaS Sessions Invalidated: [Yes / No downstream SaaS integrated]
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
@@ -348,6 +395,14 @@ Disconnecting a business-critical production system from the network stops the a
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
 
+### Pitfall 5: Treating Command Status as Enforcement Proof
+
+Assuming EDR isolation or cloud security group lockdown is active just because the console returned "Command Sent" or "Policy Modified" is a critical failure. The endpoint might be offline, tampered with, or the security group might not be attached to the active ENI. Always verify containment via console state status and post-action flow/telemetry log verification.
+
+### Pitfall 6: Ignoring DNS Bypass Paths (DoH/DoT)
+
+Deploying a DNS sinkhole on the local resolver will fail if the compromised asset bypasses the local resolver using hardcoded public resolvers over DNS over HTTPS (DoH) or DNS over TLS (DoT). Responders must block external DoH/DoT resolvers at the perimeter firewall and verify client-side resolution behavior.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -376,3 +431,11 @@ This skill processes incident data including attacker-controlled indicators (IP 
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+
+---
+
+## Changelog
+
+- **1.1.0** -- Add effective-enforcement evidence gates, fallback containment criteria, identity, network, and DNS containment validation fields, and report matrix.
+- **1.0.1** -- Update reference list.
+- **1.0.0** -- Initial release.
