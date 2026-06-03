@@ -57,6 +57,9 @@ Before beginning, gather or confirm:
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
+- [ ] **Deployment shape:** Whether the rule will be deployed as a Sentinel scheduled analytics rule, Sentinel NRT rule, Splunk saved search, Splunk ES correlation search, or risk-only rule.
+- [ ] **Alert delivery metadata:** Required entity mappings, custom details, alert title/description overrides, incident/notable settings, grouping, suppression/throttling, response automation, owner, and runbook.
+- [ ] **End-to-end validation target:** What proves production readiness: query rows only, non-production alert object, incident/notable creation, entity enrichment, suppression behavior, and response-action field delivery.
 
 ---
 
@@ -540,6 +543,27 @@ Produce SIEM rule deliverables in this structure:
 | Account | [UserPrincipalName / TargetUserName] |
 | IP | [IPAddress / IpAddress] |
 | Host | [Computer / ComputerName] |
+
+### Deployment Metadata
+| Field | Sentinel Analytics Rule | Splunk ES Correlation Search |
+|-------|-------------------------|------------------------------|
+| Rule type | [Scheduled / NRT] | [Saved search / correlation search / risk-only] |
+| Schedule | [Run every X, lookup period Y] | [Cron schedule, dispatch window] |
+| Alert creation | [One alert per row / group all events] | [Notable on/off, risk event on/off] |
+| Incident grouping | [Enabled, matching fields, lookback] | [Episode grouping / notable aggregation] |
+| Suppression | [Suppression duration and grouping fields] | [Throttle window and throttle fields] |
+| Custom details | [Field-to-detail mappings] | [Notable fields / drilldown fields] |
+| Response actions | [Automation rule / playbook name] | [Adaptive response / SOAR action] |
+| Ownership | [Owner, runbook, review date] | [Owner, app/context, runbook, review date] |
+
+### Alert Delivery Validation
+- [ ] Query returns the expected true-positive row(s) in a test or non-production workspace.
+- [ ] Alert/notable object is created with the intended title, severity, description, and custom details.
+- [ ] Entity mappings populate investigation entities (account, host, IP, URL, file, or process as applicable).
+- [ ] Event grouping and incident/notable grouping preserve the analyst evidence needed to investigate.
+- [ ] Suppression/throttling prevents duplicate floods without hiding repeated true positives.
+- [ ] Response automation receives the fields it expects and routes to the documented owner/runbook.
+- [ ] If the rule is risk-only or intentionally non-incident-generating, that choice is documented with downstream owner and aggregation logic.
 
 ### Known False Positives
 - [List specific FP sources]
