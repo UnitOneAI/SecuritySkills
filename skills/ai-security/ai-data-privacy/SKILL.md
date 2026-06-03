@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -288,33 +288,132 @@ Grep: "dedup|deduplicate|exact_match|near_duplicate|minhash|simhash" in **/*.py
 
 ---
 
-### Step 5 -- EU AI Act Data Governance Requirements
+### Step 5 -- EU AI Act Applicability and Data Governance
 
-Assess compliance with the EU AI Act's data governance requirements for AI systems deployed in or affecting EU residents.
+Assess compliance with the EU AI Act (Regulation (EU) 2024/1689) for AI systems deployed in or affecting EU residents. This step requires classifying the AI Act role and applicability **before** applying obligation checklists, because obligations differ significantly between prohibited, high-risk, GPAI provider, and deployer categories.
 
-**Applicability:** The EU AI Act (Regulation (EU) 2024/1689) applies to providers and deployers of AI systems placed on the EU market or whose output is used in the EU, regardless of where the provider is established. Data governance requirements under Article 10 apply primarily to high-risk AI systems but represent best practice for all AI deployments.
+**Applicability:** Applies to providers and deployers of AI systems placed on the EU market or whose output is used in the EU, regardless of where the provider is established. Obligations have staged application dates starting 2 August 2025 (prohibited practices), 2 August 2026 (high-risk systems in Annex III), and 2 August 2027 (remaining provisions).
+
+#### 5.1 EU AI Act Applicability Matrix
+
+Reviewers MUST complete the following matrix for each AI system or model before evaluating obligation checklists:
+
+| Field | Value | Evidence Source |
+|---|---|---|
+| System / model name | | |
+| EU market placement or EU-affecting use? | Yes / No / Unknown | Deployment documentation |
+| AI Act role | Provider / Deployer / Both / Neither | Legal / architecture docs |
+| Placement / first use date | | Deployment records |
+| Applicable obligation date | 2025-08-02 / 2026-08-02 / 2027-08-02 | EU AI Act timeline |
+| Prohibited practice screen (Art. 5) | Passed / Flagged / Not Evaluated | Use case review |
+| AI literacy evidence (Art. 4) | Present / Missing / N/A | Training records |
+| GPAI model? (Art. 51-55) | Yes / No / Unknown | Model provenance |
+| Systemic risk / FLOP threshold met? | Yes / No / Unknown | Model card / training docs |
+| High-risk / Annex III classification | High-risk / Not high-risk / Unknown | Intended purpose + domain |
+| Article 50 transparency applicable? | Yes / No / Unknown | Deployment context |
+| Evidence confidence | High / Medium / Low | |
+| Not Evaluable reason | See codes below | |
+
+**Not Evaluable reason codes:**
+- `missing_intended_purpose`: Intended purpose not documented; cannot classify Annex III status.
+- `missing_placement_date`: EU placement or first-use date not recorded; cannot determine applicable obligations.
+- `unknown_eu_scope`: Insufficient evidence to determine whether system output affects EU residents.
+- `unknown_gpai_status`: Model provenance or training documentation unavailable.
+- `missing_systemic_risk_evidence`: FLOP threshold or systemic risk documentation not available.
+- `legal_counsel_required`: Classification requires legal interpretation; mark as Not Evaluable pending counsel.
+
+#### 5.2 Prohibited Practices and AI Literacy (Art. 4, Art. 5)
+
+Before scoring data governance controls, verify that the system does not engage in prohibited practices and that AI literacy obligations are met.
+
+**What to evaluate:**
+
+| Prohibited Practice | Article | What to Check |
+|---|---|---|
+| Subliminal manipulation of behaviour | Art. 5(1)(a) | Use case design; outputs target vulnerabilities or bypass conscious awareness |
+| Exploitation of vulnerable groups | Art. 5(1)(b) | Target population; age, disability, socioeconomic status exploitation vectors |
+| Social scoring by public authorities | Art. 5(1)(c) | System operator type and scoring outputs |
+| Real-time remote biometric ID in public spaces | Art. 5(1)(d) | Deployment context; camera or sensor integration |
+| Emotion recognition in workplace/education | Art. 5(1)(f) | Sensor input types; HR or educational deployment |
+| Biometric categorisation by sensitive characteristics | Art. 5(1)(g) | Output categories; protected characteristic inference |
+
+**AI Literacy (Art. 4):** Providers and deployers must ensure staff who operate or use AI systems have sufficient AI literacy (understanding of AI capabilities, limitations, and risks). Reviewers should verify role-appropriate training records exist for staff operating high-impact AI systems.
+
+| Condition | Severity |
+|---|---|
+| System engages in a prohibited practice under Art. 5 | Critical |
+| Workplace emotion recognition deployed without prohibited-practice review | High |
+| No AI literacy evidence for staff operating a high-risk AI system | Medium |
+| AI literacy obligation not tracked for any deployed AI system | Medium |
+
+#### 5.3 GPAI Provider Obligations (Art. 51-55)
+
+If the system is or includes a General-Purpose AI (GPAI) model, the following GPAI-specific obligations apply in addition to deployer obligations.
+
+**GPAI Evidence Table:**
+
+| Obligation | Article | Evidence Required | Present? |
+|---|---|---|---|
+| Technical documentation | Art. 53(1)(a) | Model architecture, training process, data governance documented | |
+| Copyright policy | Art. 53(1)(c) | Policy for compliance with copyright law during training documented | |
+| Training content summary | Art. 53(1)(d) | Summary of training data sources published (may be high-level for proprietary models) | |
+| Systemic risk assessment (FLOP ≥ 10²⁵) | Art. 55(1)(a) | FLOP count documented; systemic risk classification recorded | |
+| Downstream information package | Art. 53(1)(b) | Information for integrators on capabilities, limitations, and safe use documented | |
+| Vendor / provider GPAI evidence (for third-party models) | Art. 53 | Provider's technical documentation and downstream package reviewed | |
+
+| Condition | Severity |
+|---|---|
+| GPAI model provider lacks technical documentation or copyright policy | High |
+| Systemic-risk GPAI model lacks risk assessment | High |
+| No downstream information package for integrators of GPAI model | Medium |
+| Third-party GPAI model integrated without reviewing vendor evidence | Medium |
+
+#### 5.4 Article 50 Transparency Obligations
+
+Transparency duties apply separately from privacy/GDPR notice requirements.
+
+**What to evaluate:**
+
+| Transparency Duty | Article | What to Check |
+|---|---|---|
+| AI interaction disclosure | Art. 50(1) | Users informed they are interacting with an AI system where not obvious |
+| Synthetic / generated content labeling | Art. 50(2) | Audio, image, video, or text generated by AI is labeled with machine-readable disclosure |
+| Deepfake / synthetic media disclosure | Art. 50(3) | Clearly labeled where applicable; exception rationale documented if omitted |
+| Emotion recognition disclosure | Art. 50(4) | Users informed when emotion recognition is in use |
+
+| Condition | Severity |
+|---|---|
+| No user disclosure for AI interaction where not self-evident | High |
+| AI-generated content not labeled or disclosed | High |
+| Emotion recognition active with no user disclosure | High |
+| Deepfake / synthetic media labeling absent without exception rationale | Medium |
+
+#### 5.5 High-Risk Classification and Article 10 Data Governance
+
+Article 10 data governance applies in the context of high-risk AI systems classified under Annex III. High-risk status depends on **intended purpose and domain**, not model architecture.
+
+**High-risk Annex III domains include:** biometric identification, critical infrastructure, education, employment and worker management, access to essential private services, law enforcement, migration and border control, and administration of justice.
 
 **What to evaluate:**
 
 | EU AI Act Requirement | Article | What to Check |
 |---|---|---|
+| Intended-purpose classification | Art. 9, Annex III | Intended purpose documented; Annex III domain assessed |
 | Training data quality and relevance | Art. 10(2) | Data selection criteria documented; relevance to intended purpose demonstrated |
+| Validation and test data governance | Art. 10(2) | Data governance covers validation/test data, not only training data |
 | Bias examination | Art. 10(2)(f) | Demographic representation analysis; bias testing on protected characteristics |
-| Data governance practices | Art. 10(2) | Documented processes for data collection, preparation, labeling, and curation |
-| Statistical properties documentation | Art. 10(2)(e) | Dataset characteristics (size, distribution, coverage) documented |
-| Gap identification | Art. 10(2)(d) | Known gaps in data coverage identified and documented with risk assessment |
-| Free of errors | Art. 10(3) | Data quality validation; error rate measurement; cleaning procedures documented |
-| Personal data processing | Art. 10(5) | Legal basis for processing; purpose limitation; data minimization; DPIA conducted |
-| Transparency to data subjects | Art. 13, Art. 86 | Data subjects informed that their data is used for AI training; right to explanation |
-| Technical documentation | Art. 11 | Complete documentation of data governance practices maintained |
+| Personal data processing | Art. 10(5) | Legal basis for processing; DPIA conducted for high-risk systems |
+| Human oversight evidence | Art. 14 | Human oversight mechanisms designed and documented |
+| Technical documentation | Art. 11 | Complete documentation maintained per Annex IV |
 
 **Detection methods using allowed tools:**
 
 ```
 # Find compliance documentation
-Grep: "eu.ai.act|ai.act|high.risk|annex.iii|article.10|article.13" in **/*.{md,txt,pdf,yaml,yml}
-Grep: "bias|fairness|demographic|protected.characteristic|discrimination" in **/*.{py,yaml,yml,md}
-Grep: "dpia|data.protection.impact|impact.assessment" in **/*.{md,txt,yaml,yml}
+Grep: "eu.ai.act|ai.act|high.risk|annex.iii|article.10|article.50|gpai|general.purpose" in **/*.{md,txt,yaml,yml}
+Grep: "prohibited|emotion.recognition|biometric|systemic.risk|flop" in **/*.{py,yaml,yml,md}
+Grep: "ai.literacy|staff.training|operator.training" in **/*.{md,txt,yaml,yml}
+Grep: "transparency|disclosure|synthetic|generated.content|deepfake" in **/*.{md,html,ts,js}
 
 # Check for bias testing
 Grep: "bias_test|fairness_test|demographic|disparate.impact|equalized.odds" in **/*.{py,yaml,yml}
@@ -322,6 +421,7 @@ Grep: "bias_test|fairness_test|demographic|disparate.impact|equalized.odds" in *
 # Check for documentation
 Glob: **/data_governance*
 Glob: **/DPIA*
+Glob: **/ai_act*
 Glob: **/technical_documentation*
 ```
 
@@ -329,12 +429,14 @@ Glob: **/technical_documentation*
 
 | Condition | Severity |
 |---|---|
-| High-risk AI system deployed to EU with no Article 10 data governance practices | Critical |
+| High-risk AI system deployed to EU with no Annex III classification or Art. 10 data governance | Critical |
 | No DPIA conducted for AI system processing personal data of EU residents | High |
+| High-risk system lacks human oversight evidence (Art. 14) | High |
 | No bias examination on training data for protected characteristics | High |
+| Article 10 data governance covers only training data, not validation/test data | Medium |
 | Training data quality and relevance not documented | Medium |
-| No data subject notification of AI training data usage | Medium |
-| Technical documentation incomplete per Article 11 requirements | Medium |
+| Technical documentation incomplete per Annex IV requirements | Medium |
+| AI Act role (provider vs deployer) not classified per system | Medium |
 
 ---
 
@@ -451,7 +553,11 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | NIST AI RMF 1.0 | GOVERN 1.1 | Legal and regulatory requirements applicable to the AI system |
 | OWASP Top 10 for LLMs (2025) | LLM02 | Sensitive Information Disclosure -- model reveals training data, PII, or confidential information |
 | GDPR | Art. 5, 6, 13, 17, 22, 25, 35 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, DPIA |
+| EU AI Act | Art. 4 | AI literacy obligations for providers and deployers |
+| EU AI Act | Art. 5 | Prohibited AI practices |
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
+| EU AI Act | Art. 50 | Transparency obligations for AI-generated content and interactions |
+| EU AI Act | Art. 51-55 | General-purpose AI (GPAI) model obligations |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
 
 **NIST AI RMF 1.0:** The AI Risk Management Framework organizes risk management into four functions: GOVERN (policies, roles, culture), MAP (context, risk identification), MEASURE (risk analysis and tracking), and MANAGE (risk response and monitoring). Privacy is addressed across all four functions, with MAP 5.1 and MEASURE 2.9 providing the most direct privacy risk guidance. Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework)
@@ -471,6 +577,10 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 4. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
+
+6. **Conflating EU AI Act obligations with GDPR obligations.** The EU AI Act introduces a separate regulatory framework with different obligation holders, article-level requirements, and application dates. Satisfying GDPR Article 10 training-data lawfulness does not prove AI Act Article 10 data governance compliance. Keep findings separate: a GDPR legal-basis finding does not remediate an AI Act missing-intended-purpose classification finding.
+
+7. **Applying Article 10 without first classifying intended purpose and Annex III status.** Article 10 data governance requirements apply to high-risk AI systems. Applying them universally inflates assessment scope; failing to apply them to actual high-risk systems creates compliance gaps. Always classify intended purpose and Annex III domain before scoring Article 10 controls.
 
 ---
 
