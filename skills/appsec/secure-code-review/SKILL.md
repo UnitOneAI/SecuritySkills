@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -357,7 +357,42 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 | V12.4.2 | Files obtained from untrusted sources are scanned by antivirus or verified by content type |
 | V12.6.1 | The web server only processes requests to specified and permitted file types |
 
-### 8.2 Vulnerable Patterns by Language
+### 8.2 Archive Extraction Security (Zip Slip & Resource Limits)
+
+Decompressing ZIP, tar, or other archive formats poses severe security risks if the archive is obtained from an untrusted boundary. Attackers can leverage path traversal sequences, directory links, or massive compression ratios to compromise the filesystem or exhaust host resources.
+
+#### 8.2.1 Archive Source & Destination Classification
+Before evaluating the extraction logic, reviewers must classify the threat model:
+- **Archive Source Trust**:
+  - *Untrusted*: Public file uploads, third-party webhook payloads, user-submitted URLs, data from untrusted messaging queues.
+  - *Semi-trusted*: CI/CD artifacts, package dependencies, upstream data pipelines (compromised dependencies or upstream nodes can still inject malicious payloads).
+  - *Trusted*: Bundled local application configuration files and static local test fixtures.
+- **Destination Impact**:
+  - *High Impact*: Webroot directories, configuration paths, plugin directories, cron paths, `.ssh` structures, shared directories, or executable workspaces.
+  - *Low Impact*: Sandbox temporary directories with randomized names and strict permissions, discarded immediately after processing.
+
+#### 8.2.2 Required Evidence Checklist
+Reviewers must collect and verify evidence for the following parameters:
+1. **Canonical Path Containment**: Verification that resolved extraction targets are normalized (e.g., resolving double dots, Windows drive paths like `C:temp\file`, and absolute paths) and verified to start with the target base directory prefix.
+2. **Link Entry Policy**: Rejection or safe resolution of symbolic links (`symlink`) and hard links (`hardlink`) in the archive. In tar files, verify that a directory link is not followed by subsequent file entries writing outside the extraction root.
+3. **Special-File Policy**: Rejection of device nodes, sockets, FIFOs (named pipes), and ignoring setuid/setgid executable attributes.
+4. **Decompression Resource Limits (Decompression Budgets)**:
+  - *Maximum Uncompressed Size*: Absolute byte budget allowed for extraction (to prevent zip bombs).
+  - *Maximum File Size*: Cap on individual decompressed files.
+  - *Maximum Entry Count*: Maximum number of individual files/folders allowed inside the archive.
+  - *Nesting Depth*: Restriction on recursive directories.
+  - *Name and Path Length*: Validation to prevent buffer overflow or OS path limit issues.
+  - *Timeout & Cancellation*: Enforced timeout on the extraction loop with context cancellation.
+
+#### 8.2.3 Not Evaluable Reason Codes
+If evidence is insufficient to verify safety, reviewers should mark the control as **Not Evaluable** with one of the following reasons:
+- `unknown archive source`: Trust boundary of the incoming archive cannot be determined.
+- `unknown destination`: Write target path or filesystem permission scope is unspecified.
+- `no link-entry policy`: Code does not explicitly reject, filter, or isolate symlinks/hardlinks during decompression.
+- `no total uncompressed size limit`: Decompressor extracts files without checking uncompressed size, representing a zip bomb risk.
+- `unverified link escapes`: No evidence that the filesystem API blocks write escapes through previously created directory links.
+
+### 8.3 Vulnerable Patterns by Language
 
 **Python -- Unsafe Deserialization (CWE-502)**
 ```python
@@ -396,13 +431,177 @@ func fetchURL(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
 
-### 8.3 Review Checklist
+**Python -- Unsafe Tar Extraction (CWE-22, CWE-59, CWE-400)**
+```python
+# VULNERABLE: No path traversal checks, follows links, no resource limits (zip bomb)
+import tarfile
+
+def unsafe_untar(uploaded_tar, dest):
+    with tarfile.open(uploaded_tar) as tf:
+        tf.extractall(dest)
+```
+Remediation (Python 3.12+): Use the `filter="data"` parameter to reject path traversal, directory links, and special files.
+```python
+import tarfile
+
+def safe_untar(uploaded_tar, dest):
+    with tarfile.open(uploaded_tar) as tf:
+        tf.extractall(dest, filter="data")
+```
+Remediation (Older Python / Zipfile): Validate path containment, check for symlinks, and enforce uncompressed size/file count budgets.
+```python
+from pathlib import Path
+import zipfile
+
+def safe_zip_extract(uploaded_zip, dest, max_bytes=100 * 1024 * 1024, max_files=1000):
+    root = Path(dest).resolve()
+    total_bytes = 0
+    total_files = 0
+
+    with zipfile.ZipFile(uploaded_zip) as zf:
+        for entry in zf.infolist():
+            # 1. Canonical path containment check (detects absolute, parent, and Windows drive escapes)
+            target_path = Path(root / entry.filename).resolve()
+            if not target_path.is_relative_to(root):
+                raise ValueError(f"Path traversal detected: {entry.filename}")
+
+            # 2. Link entry policy: reject mode 120000 (symlinks)
+            is_symlink = (entry.external_attr >> 16) & 0o120000 == 0o120000
+            if is_symlink:
+                raise ValueError(f"Symbolic link entry rejected: {entry.filename}")
+
+            # 3. Resource budget validation (zip bomb check)
+            total_bytes += entry.file_size
+            if total_bytes > max_bytes:
+                raise ValueError("Decompression limit (uncompressed bytes) exceeded")
+
+            total_files += 1
+            if total_files > max_files:
+                raise ValueError("Decompression limit (file count) exceeded")
+
+        # Safe streaming extraction
+        for entry in zf.infolist():
+            target_path = Path(root / entry.filename).resolve()
+            if entry.is_dir():
+                target_path.mkdir(parents=True, exist_ok=True)
+            else:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(entry) as source, open(target_path, "wb") as target:
+                    while chunk := source.read(65536):
+                        target.write(chunk)
+```
+
+**Go -- Unsafe ZIP Extraction (CWE-22, CWE-59, CWE-400)**
+```go
+// VULNERABLE: No path traversal checks, no resource limits (Zip bomb)
+func extractAll(r *zip.Reader, dest string) error {
+    for _, f := range r.File {
+        rc, err := f.Open()
+        if err != nil {
+            return err
+        }
+        defer rc.Close()
+
+        path := filepath.Join(dest, f.Name) // Zip Slip path traversal
+        out, err := os.Create(path)
+        if err != nil {
+            return err
+        }
+        defer out.Close()
+        io.Copy(out, rc)
+    }
+    return nil
+}
+```
+Remediation: Resolve and clean the target paths, reject symlinks and device files, verify uncompressed size headers, and copy bytes with a limit wrapper.
+```go
+import (
+    "archive/zip"
+    "errors"
+    "io"
+    "os"
+    "path/filepath"
+    "strings"
+)
+
+func SafeZipExtract(r *zip.Reader, dest string, maxBytes int64, maxFiles int) error {
+    destClean := filepath.Clean(dest)
+    var totalBytes int64
+    var fileCount int
+
+    // Pre-scan headers to validate boundaries before writing any files
+    for _, f := range r.File {
+        // 1. Path containment check
+        path := filepath.Join(destClean, f.Name)
+        if !strings.HasPrefix(filepath.Clean(path), destClean + string(filepath.Separator)) {
+            return errors.New("path traversal detected: " + f.Name)
+        }
+
+        // 2. Reject symbolic/hard links and special files (sockets/FIFOs)
+        if f.Mode()&os.ModeSymlink != 0 || f.Mode()&os.ModeDevice != 0 || f.Mode()&os.ModeNamedPipe != 0 {
+            return errors.New("symbolic link or special file entry rejected: " + f.Name)
+        }
+
+        // 3. Resource budget validation (Zip bomb check)
+        totalBytes += int64(f.UncompressedSize64)
+        if totalBytes > maxBytes {
+            return errors.New("decompression limit (total size) exceeded")
+        }
+
+        fileCount++
+        if fileCount > maxFiles {
+            return errors.New("decompression limit (file count) exceeded")
+        }
+    }
+
+    // Safe write phase
+    for _, f := range r.File {
+        path := filepath.Join(destClean, f.Name)
+
+        if f.FileInfo().IsDir() {
+            os.MkdirAll(path, 0750)
+            continue
+        }
+
+        if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+            return err
+        }
+
+        rc, err := f.Open()
+        if err != nil {
+            return err
+        }
+
+        // O_EXCL helps prevent overwriting files via pre-existing target symlinks
+        out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+        if err != nil {
+            rc.Close()
+            return err
+        }
+
+        // Limit individual file size write to protect against header tampering
+        _, err = io.Copy(out, io.LimitReader(rc, int64(f.UncompressedSize64)))
+        out.Close()
+        rc.Close()
+        if err != nil {
+            return err
+        }
+    }
+    return nil
+}
+```
+
+### 8.4 Review Checklist
 
 - [ ] No use of native deserialization (pickle, ObjectInputStream, Marshal.load) on untrusted data.
 - [ ] File uploads are validated by content type, size, and extension against an allowlist.
 - [ ] Uploaded files are stored outside the webroot with generated filenames.
 - [ ] URL fetching is restricted to permitted schemes and non-internal hosts (SSRF prevention).
-- [ ] Archive extraction checks for zip bombs and path traversal in entry names.
+- [ ] Archive extraction threat-models the source trust boundary and destination impact.
+- [ ] Archive extraction enforces canonical target path containment (preventing path traversal via absolute, relative, Windows drive-relative, or UNC path escapes).
+- [ ] Archive extraction rejects or safely handles symbolic links and hard links to prevent link-following write escapes.
+- [ ] Archive extraction rejects special files (sockets, FIFOs, device nodes) and drops execution permissions.
+- [ ] Archive extraction applies resource budgets (total uncompressed size, file size, entry count, depth, and timeout) to protect against zip bombs.
 
 ---
 
@@ -513,7 +712,9 @@ The final review output must be structured as follows:
 | CWE-78 | OS Command Injection | Step 2 |
 | CWE-20 | Improper Input Validation | Step 2 |
 | CWE-125 | Out-of-bounds Read | Step 2 (memory-safe language check) |
-| CWE-22 | Path Traversal | Step 2 |
+| CWE-22 | Path Traversal | Step 2, Step 8 |
+| CWE-59 | Improper Link Resolution Before File Access (Link Following) | Step 8 |
+| CWE-400 | Uncontrolled Resource Consumption | Step 8 |
 | CWE-352 | Cross-Site Request Forgery | Step 4 |
 | CWE-434 | Unrestricted Upload of File with Dangerous Type | Step 8 |
 | CWE-862 | Missing Authorization | Step 4 |
@@ -541,6 +742,12 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Relying on simple `../` substring checks in archive filenames.** Simple filename screening is easily bypassed. Attackers can use absolute paths, Windows drive paths (e.g., `C:temp\file`), backslash separators on POSIX platforms, or UNC paths. Secure code reviews must verify that the target path is canonicalized and resolved relative to the destination directory.
+
+7. **Overlooking symlink and hardlink creation during archive extraction.** Checking entry filenames for traversal paths does not prevent Zip Slip via links. An archive can establish a symlink pointing to an external directory (e.g. `/etc`), and subsequent archive entries can write files relative to that link. The extractor must explicitly reject symlinks/hardlinks or ensure the filesystem API blocks escapes during write operations.
+
+8. **Assuming archive extraction is resource-safe if there is a path traversal check.** Validating path containment does not prevent zip bombs. Reviewers must verify that resource budgets (maximum uncompressed size, maximum file size, entry count, nesting depth, and execution timeout) are active to prevent CPU/disk exhaustion.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -563,3 +770,14 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+- **MITRE CWE-22 Path Traversal:** https://cwe.mitre.org/data/definitions/22.html
+- **MITRE CWE-59 Link Following:** https://cwe.mitre.org/data/definitions/59.html
+- **Python tarfile extraction filters:** https://docs.python.org/3/library/tarfile.html
+- **Android Developers, Zip Path Traversal:** https://developer.android.com/privacy-and-security/risks/zip-path-traversal
+
+---
+
+## Changelog
+
+- **1.1.0** -- Add archive extraction security checklist, vulnerable/secure Python & Go examples, CWE-59/CWE-400 mapping, and archive decompression pitfalls.
+- **1.0.0** -- Initial release. Full coverage of secure code review standards mapped to ASVS 4.0.3 and CWE Top 25.
