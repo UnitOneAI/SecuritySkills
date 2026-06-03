@@ -165,6 +165,57 @@ Skills are not ordered arbitrarily. The sequence follows the logic of how cloud 
 
 ---
 
+## Verification Gates
+
+Every cloud engagement must distinguish source version, evidence source, scope,
+and confidence. Do not mix direct cloud observations, CSPM findings, and IaC
+intent without labeling the source type for each finding.
+
+### Provider Posture Reviews
+
+- Record account, subscription, project, organization, folder, region, and
+  resource coverage before scoring benchmark controls.
+- Confirm benchmark name/version and provider source date are captured for
+  every control family.
+- Mark each finding source as direct observation, CSPM/scanner, IaC intent,
+  deployed-state comparison, or `Not Evaluable`.
+- Verify IAM findings include inherited grants, policy intersections, and
+  effective-access reasoning.
+- Verify container findings include image digest, SBOM or provenance reference,
+  signature status, runtime scan date, or `Not Evaluable`.
+- Verify IaC findings compare intended control state with deployed state and
+  record drift owner and remediation confidence.
+
+### Zero Trust Program
+
+- Separate capability maturity from evidence quality for every pillar.
+- Record policy exceptions, owner, expiry, and compensating control for each
+  accepted gap.
+- Verify privileged access findings include approval evidence and revocation
+  proof for elevated access.
+- Confirm segmentation findings include enforcement point, bypass path, and
+  test evidence.
+
+---
+
+## Gotchas
+
+1. **Scanner output is not the same as observed state.** CSPM findings must name
+   the tool/version and should be downgraded to lower confidence when direct
+   cloud evidence is unavailable.
+2. **IaC can be stale.** A secure Terraform template does not prove the deployed
+   environment is secure; record drift checks before closing findings.
+3. **Inherited IAM grants hide risk.** Group membership, SCPs, permission
+   boundaries, deny policies, and cross-account trust can change effective
+   access even when an individual policy looks safe.
+4. **Zero trust maturity is not evidence quality.** A pillar may be mature but
+   poorly evidenced; keep capability maturity and evidence confidence separate.
+5. **Role-bundle execution may need broader tools.** If the environment enforces
+   `allowed-tools` as an ACL, delegate execution to the referenced sub-skills or
+   expand tooling through a maintainer-approved follow-up.
+
+---
+
 ## Output Templates
 
 ### Cloud Security Posture Report
