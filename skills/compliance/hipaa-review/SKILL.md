@@ -411,6 +411,45 @@ Assess:
 
 ---
 
+## HIPAA Safeguard Evidence Matrix
+
+Before assigning compliance ratings, compiling findings, or structuring the final report, the reviewer MUST construct a **HIPAA Safeguard Evidence Matrix**. This matrix maps each audited implementation specification to its regulatory decision type, evidence sources, and confidence level to prevent speculative or unverified compliance conclusions.
+
+### 1. Matrix Columns
+Construct a table containing the following fields for each specification reviewed:
+- **CFR Citation:** The exact CFR reference (e.g., 45 CFR 164.308(a)(1)(ii)(A)).
+- **Implementation Specification:** The title of the specification.
+- **Specification Type:** Required (R) or Addressable (A).
+- **Decision Type:**
+  - `implemented`: The control is fully functional and matches the specification.
+  - `alternative measure`: The addressable specification is met via a documented equivalent alternative.
+  - `not reasonable and appropriate`: The addressable specification is determined not to be reasonable/appropriate, with a documented risk assessment and rationale.
+  - `not evidenced`: Gaps exist; no satisfactory policy, system config, or operational proof is available.
+- **Evidence Source:** The specific document, artifact, log, or system configuration checked (e.g., "SOC 2 Type II report Sec CC6", "AWS IAM Credential Report dated 2026-06-03", "BAA signed with AWS on 2024-05-15").
+- **Evidence Owner:** The custodian or contract owner responsible for the control/evidence.
+- **Freshness:** The date of creation or last review of the evidence (auditing for stale evidence).
+- **Evidence Confidence:** Confidence level of the gathered evidence (`source-code` | `config` | `runtime export` | `test evidence` | `docs-only` | `unknown`).
+- **Not Evaluable Reason:** If the control cannot be assessed, specify the reason code (see below).
+
+### 2. Evidence Confidence Classification
+- **`source-code`:** Direct implementation verified in code or IaC templates (e.g., Terraform kms encryption config).
+- **`config`:** Verified via system policies, export JSONs, or live administrative configs (e.g., AD password policies).
+- **`runtime export`:** Verified via live API queries, credential reports, or current environment outputs.
+- **`test evidence`:** Verified via active test assertions, disaster recovery test logs, or penetration testing reports.
+- **`docs-only`:** Stated in policies, procedures, or employee manuals without technical or configuration verification.
+- **`unknown`:** No evidence is available.
+
+### 3. Not Evaluable Reason Codes
+If a safeguard or specification cannot be evaluated, classify the gap using one of the following codes:
+- **`missing ePHI inventory`:** ePHI data elements, storage locations, and transmission flows are not mapped or identified.
+- **`missing risk analysis scope`:** The risk assessment does not cover all identified ePHI components, storage systems, or Business Associates.
+- **`missing implementation evidence`:** A policy exists but no technical configuration, logs, or operational evidence can be verified.
+- **`missing BAA/subcontractor evidence`:** Missing Business Associate Agreement contracts or subcontractor assurance records.
+- **`stale evidence`:** The provided audit evidence, BAA, or policy has expired or has not been refreshed within regulatory cadences.
+- **`missing alternative-measure rationale`:** An addressable specification is skipped or an alternative is claimed without a documented assessment and rationalized decision.
+
+---
+
 ## Output Format
 
 ```markdown
@@ -430,27 +469,33 @@ Assess:
 ## ePHI Inventory Summary
 [Systems, data types, storage locations, transmission paths]
 
+## HIPAA Safeguard Evidence Matrix
+
+| CFR Citation | Standard / Specification | R/A | Decision Type | Evidence Source | Evidence Owner | Freshness | Evidence Confidence | Not Evaluable Reason | Gaps / Notes |
+|--------------|-------------------------|-----|---------------|-----------------|----------------|-----------|---------------------|----------------------|--------------|
+| 164.308(a)(1)(ii)(A) | Risk Analysis | R | [implemented / alternative / not evidenced] | [Source] | [Owner] | [Date] | source-code/config/runtime/test/docs/unknown | [Reason code or N/A] | [Notes] |
+
 ## Safeguard Assessment
 
 ### Administrative Safeguards (164.308)
 
-| CFR Citation | Standard / Specification | R/A | Status | Finding | Priority |
-|-------------|-------------------------|-----|--------|---------|----------|
-| 164.308(a)(1)(ii)(A) | Risk Analysis | R | [status] | [finding] | [H/M/L] |
-| 164.308(a)(1)(ii)(B) | Risk Management | R | [status] | [finding] | [H/M/L] |
-| ... | ... | ... | ... | ... | ... |
+| CFR Citation | Standard / Specification | R/A | Decision Type | Evidence Confidence | Not Evaluable Reason | Status | Finding | Priority |
+|-------------|-------------------------|-----|---------------|---------------------|----------------------|--------|---------|----------|
+| 164.308(a)(1)(ii)(A) | Risk Analysis | R | [decision] | [confidence] | [reason] | [status] | [finding] | [H/M/L] |
+| 164.308(a)(1)(ii)(B) | Risk Management | R | [decision] | [confidence] | [reason] | [status] | [finding] | [H/M/L] |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
 
 ### Physical Safeguards (164.310)
-[same table format]
+[same table format, including Decision Type, Evidence Confidence, and Not Evaluable Reason columns]
 
 ### Technical Safeguards (164.312)
-[same table format]
+[same table format, including Decision Type, Evidence Confidence, and Not Evaluable Reason columns]
 
 ### Organizational Requirements (164.314)
-[same table format]
+[same table format, including Decision Type, Evidence Confidence, and Not Evaluable Reason columns]
 
 ### Documentation Requirements (164.316)
-[same table format]
+[same table format, including Decision Type, Evidence Confidence, and Not Evaluable Reason columns]
 
 ## Business Associate Assessment
 - BAA Inventory: [count of BAs, count with BAAs in place]
@@ -561,15 +606,19 @@ Policies, Procedures, and Documentation — 164.316
 
 ## Common Pitfalls
 
-1. **Treating addressable specifications as optional.** "Addressable" does not mean optional. Organizations must assess each addressable specification and either implement it, implement an equivalent alternative measure, or document why neither is reasonable and appropriate given the risk. OCR has penalized organizations that simply skipped addressable specifications without documented rationale.
+1. **Treating addressable specifications as optional.** "Addressable" does not mean optional. Organizations must assess each addressable specification and either implement it, implement an equivalent alternative measure, or document a rationalized assessment explaining why neither is reasonable and appropriate. OCR has penalized organizations that simply skipped addressable specifications without a documented alternative or rationale.
 
-2. **Incomplete or stale risk analysis.** The risk analysis required by 164.308(a)(1)(ii)(A) is the most frequently cited deficiency in OCR enforcement actions and Resolution Agreements. It must be comprehensive (covering all ePHI systems), must assess current threats and vulnerabilities, and must be updated when the environment changes — not treated as a one-time exercise.
+2. **Treating policy as implementation.** Reviewers frequently accept written policies (e.g., "The organization encrypts ePHI at rest") as proof of safeguard execution. A compliant review must require concrete technical, administrative, or physical evidence (such as system configurations, key management policies, and database parameters) rather than relying on policy documentation alone (`docs-only` confidence).
 
-3. **Missing or deficient Business Associate Agreements.** Organizations frequently fail to identify all Business Associates (cloud providers, IT support, shredding companies, EHR vendors, billing services) or execute BAAs that meet the minimum requirements of 164.314(a)(2)(i). Every entity that creates, receives, maintains, or transmits ePHI on behalf of the CE must have a BAA.
+3. **Accepting stale BA or security evidence.** Relying on expired Business Associate Agreements (BAAs), outdated vendor SOC 2 reports without current bridge letters, or historical risk analyses that have not been updated for environmental or threat changes (like nation-state destructive/wiper malware). Evidence must be assessed for freshness to ensure active compliance.
 
-4. **Confusing HIPAA Security Rule with HIPAA Privacy Rule.** The Security Rule (Subpart C) applies only to ePHI and focuses on technical, physical, and administrative safeguards. The Privacy Rule (Subpart E) covers all PHI including paper records and addresses permitted uses and disclosures. A Security Rule review does not satisfy Privacy Rule obligations and vice versa.
+4. **Incomplete or stale risk analysis.** The risk analysis required by 164.308(a)(1)(ii)(A) is the most frequently cited deficiency in OCR enforcement actions. It must be comprehensive (covering all ePHI systems), must assess current threats and vulnerabilities (including destructive/wiper malware), and must be updated when the environment changes — not treated as a one-time exercise.
 
-5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
+5. **Missing or deficient Business Associate Agreements.** Organizations frequently fail to identify all Business Associates (cloud providers, IT support, shredding companies, EHR vendors, billing services) or execute BAAs that meet the minimum requirements of 164.314(a)(2)(i). Every entity that creates, receives, maintains, or transmits ePHI on behalf of the CE must have a BAA.
+
+6. **Confusing HIPAA Security Rule with HIPAA Privacy Rule.** The Security Rule (Subpart C) applies only to ePHI and focuses on technical, physical, and administrative safeguards. The Privacy Rule (Subpart E) covers all PHI including paper records and addresses permitted uses and disclosures. A Security Rule review does not satisfy Privacy Rule obligations and vice versa.
+
+7. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
 
 ---
 
