@@ -72,6 +72,45 @@ SECURITY BOUNDARY — This skill processes IAM configuration data only.
 
 ## Process
 
+### Step 0: IAM Evidence and Effective Privilege Matrix
+
+Before assigning findings or performing the step-by-step checks, the reviewer MUST construct an **IAM Evidence and Effective Privilege Matrix**. This matrix is crucial because a simple policy check does not represent effective privilege. For instance, an attached `AdministratorAccess` policy can be restricted by SCPs, permission boundaries, IAM conditions, or conditional access policies, while an account with no direct attached policies might inherit wildcard access through unexpanded groups or nested roles.
+
+#### 1. Constructing the Matrix
+For every privileged identity or target group, map the following attributes:
+- **Identity ID:** Unique name, ARN, or email.
+- **Identity Type:** Human user, federated identity, guest, service account, workload identity, managed identity, or API key.
+- **Provider:** AWS, Azure/Entra ID, GCP, Okta, etc.
+- **Owner:** Individual, team, or application responsible for the identity.
+- **Assigned Privilege:** The explicit policy or role attached (e.g., `AdministratorAccess`, `Owner` role).
+- **Effective Privilege Modifiers:** Explicit Deny policies, Service Control Policies (SCPs), Permission Boundaries, IAM resource policies, or session duration limits that restrict the assigned privilege.
+- **MFA / Conditional Access State:** MFA status (none, SMS, TOTP, FIDO2/WebAuthn) and conditional access policy state (e.g., enforced, report-only, excluded).
+- **Activity Source:** Where the last activity data is sourced from (e.g., credential report, sign-in logs, CloudTrail, GCP IAM Recommender).
+- **Last Activity Timestamp:** Date of last recorded authentication or API call.
+- **Log Retention:** The retention period of the activity logs (to evaluate if "N/A" or stale status is due to lack of logs).
+- **Evidence Confidence:** Confidence level of the gathered evidence (`source-code` | `config` | `runtime export` | `test evidence` | `docs-only` | `unknown`).
+
+#### 2. Evidence Confidence Classification
+For each evaluated control and finding, classify the evidence confidence using these standards:
+- **`source-code`:** Verified via direct code definitions (e.g., IaC configurations, Terraform, CloudFormation).
+- **`config`:** Verified via exported policy JSON files, configuration definitions, or console screens.
+- **`runtime export`:** Verified via live API exports (e.g., credential reports, active CLI outputs).
+- **`test evidence`:** Verified via Access Analyzer tests, Policy Simulator results, or login audit logs.
+- **`docs-only`:** Stated in documentation (e.g., README, disaster recovery wiki) but not verified in code or live configs.
+- **`unknown`:** No evidence could be gathered.
+
+#### 3. Not Evaluable Reason Codes
+If an identity or control cannot be evaluated due to missing access or data, specify one of the following reason codes:
+- **`missing inventory`:** Central list of identities, guests, or application registrations is unavailable.
+- **`missing activity logs`:** Access logs, CloudTrail, or Entra sign-in history cannot be accessed or have expired.
+- **`unknown enforcement mode`:** Cannot verify if conditional access or MFA rules are enforced, in report-only mode, or have bypass groups.
+- **`unexpanded groups`:** Nested roles, directory groups, or federated mapping permissions cannot be traced to effective members.
+- **`unknown modifiers`:** Permission boundaries, SCPs, or resource-level deny rules are not accessible to verify effective limits.
+- **`missing owner`:** Identity exists but has no metadata, tags, or records identifying the responsible owner.
+- **`missing break-glass monitoring`:** Break-glass or emergency access accounts exist but their alert or audit settings are not reviewable.
+
+---
+
 ### Step 1: Inventory Identities
 
 **Objective:** Build a complete inventory of all identity types across the environment.
@@ -379,6 +418,8 @@ For each finding, produce a row with:
 | **Severity** | Critical / High / Medium / Low |
 | **Framework Ref** | NIST SP 800-63B section, NIST SP 800-207 tenet, or CIS Control ID |
 | **Affected Scope** | Accounts, roles, policies, or platforms impacted |
+| **Evidence Confidence** | source-code | config | runtime export | test evidence | docs-only | unknown |
+| **Not Evaluable Reason** | [Reason code if applicable, else N/A: missing inventory | missing activity logs | unknown enforcement mode | unexpanded groups | unknown modifiers | missing owner | missing break-glass monitoring] |
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
@@ -397,6 +438,11 @@ For each finding, produce a row with:
 ### Executive Summary
 [2-3 sentences: overall posture, critical gaps, top priority actions]
 
+### IAM Evidence and Effective Privilege Matrix
+| Identity ID | Identity Type | Provider | Owner | Assigned Privilege | Effective Privilege Modifiers | MFA / Conditional Access State | Activity Source | Last Activity Timestamp | Log Retention | Evidence Confidence |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [ARN/ID] | Human/Service | AWS/Azure | [Owner] | [Privilege] | [SCPs, Boundaries, Deny Rules] | [MFA Type, Enforced/Report-only] | [Log source] | [Date/Time] | [Duration] | [Confidence level] |
+
 ### Findings by Severity
 - Critical: [count]
 - High: [count]
@@ -412,7 +458,7 @@ For each finding, produce a row with:
 - Zero Trust (Step 7): [count]
 
 ### Detailed Findings
-[Findings table — see above]
+[Findings table — see above, containing columns: Finding ID, Title, Severity, Framework Ref, Affected Scope, Evidence Confidence, Not Evaluable Reason, Evidence, Remediation, Effort]
 
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
@@ -431,6 +477,18 @@ For each finding, produce a row with:
 | **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, no stale account process |
 | **P2 — Important** | 31-90 days | No phishing-resistant MFA, incomplete identity inventory, no access review cadence |
 | **P3 — Planned** | 91-180 days | Zero trust maturity gaps, device trust integration, continuous access evaluation |
+
+---
+
+## Common Pitfalls
+
+These are the three most frequent mistakes agents make when performing IAM security reviews:
+
+1. **Treating attached policy as effective privilege.** Reviewers often look only at the attached IAM policies (e.g., seeing `AdministratorAccess` and flagging it as a Critical finding) without verifying if there are Service Control Policies (SCPs), permission boundaries, IAM conditions, or explicit Deny policies that restrict that access. Conversely, they may ignore identities that appear to have minimal direct access but inherit wildcard administrative privileges through unexpanded groups or nested role trusts.
+
+2. **Treating "N/A" or missing last-used activity as proof of inactivity.** Flagging credentials as stale or dormant purely because the `password_last_used` or `access_key_last_used` fields show "N/A" is a common pitfall. Reviewers must confirm the log retention limits and the provider-specific tracking details. For example, if CloudTrail retention is 7 days, a lack of log entries for an API key does not mean it has been inactive for 90 days. Furthermore, programmatic access by some SDKs or integrations may not register in default credential reports, requiring active audit logs for validation.
+
+3. **Counting report-only conditional access policies as control enforcement.** When auditing MFA or conditional access policies, reviewers often flag a policy as "Implemented" without checking its state or exclusions. If a policy is in `reportOnly` or log-only mode, or if it has wide bypass groups (such as excluding all service principals or break-glass accounts without compensating alert monitoring), it does not enforce the security control and represents a significant gap.
 
 ---
 
