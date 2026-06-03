@@ -114,11 +114,14 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 **API Keys and Tokens:**
 
 ```regex
-# AWS Access Key ID (starts with AKIA)
-(?:AKIA)[0-9A-Z]{16}
+# AWS Access Key ID (long-lived AKIA or temporary STS ASIA)
+(?:AKIA|ASIA)[0-9A-Z]{16}
 
 # AWS Secret Access Key (40 chars, base64-like)
 (?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
+
+# AWS STS Session Token (temporary credential tuple member)
+(?:aws_session_token|AWS_SESSION_TOKEN|AWS_SECURITY_TOKEN)\s*[=:]\s*[A-Za-z0-9/+=]{40,}
 
 # GitHub Personal Access Token
 (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
@@ -165,13 +168,15 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
-4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
+3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` or `ASIA*` for AWS access key IDs, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+4. **Treat temporary AWS credentials as sensitive while valid.** `ASIA*` access keys, `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN`, and `aws_session_token` values are part of AWS STS temporary credential tuples. Short lifetime reduces blast radius, but leaked temporary credentials are still reportable secret exposures when real. Record the secret type, source location, observed TTL or expiry if available, and whether the leak path preserves the credential after expiry (for example CI logs or retained artifacts), but never reproduce the value.
+5. **Preserve placeholder filtering for temporary credentials.** Redacted examples such as `ASIA<temporary-access-key-placeholder>`, `<redacted-session-token>`, `example`, `dummy`, or non-random training snippets are not findings. If one member of an STS tuple appears real, inspect adjacent log/config context for the matching access key, secret access key, and session token without copying any value into the report.
+6. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
    - Missing rotation automation (note in recommendations, not as a finding)
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
-5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
+7. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
 #### 2.3 Detection Tool Configuration Review
 
@@ -237,6 +242,19 @@ Secrets removed from current files may still exist in git history. Verify:
 - BFG Repo Cleaner or `git filter-repo` has been used to purge high-sensitivity secrets from history when warranted.
 
 **Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is **High**.
+
+---
+
+#### 3.3 CI Logs and Artifact Exposure for Temporary Credentials
+
+Temporary cloud credentials can leak outside source control through build logs, test reports, screenshots, crash dumps, and downloadable artifacts. Verify:
+
+- CI logs and artifacts are scanned for AWS STS material (`ASIA*` access key IDs plus `AWS_SESSION_TOKEN` / `AWS_SECURITY_TOKEN` / `aws_session_token` names).
+- Findings record credential type, file/log location, retention period, token TTL/expiry if visible, and whether revocation/session invalidation evidence exists.
+- Remediation includes disabling the leak path, reducing log/artifact retention, and invalidating or allowing expiry only when the provider confirms no active session remains.
+- OIDC or workload identity federation is treated as a preferred design, but exchanged temporary credentials printed by tooling remain findings while valid.
+
+**Finding classification:** Valid temporary credentials exposed in retained CI logs or artifacts are **High**. Expired temporary credentials in retained logs are **Medium** if the leak path persists and could expose future tokens. Redacted examples and non-random placeholders are **not findings**.
 
 ---
 
@@ -357,8 +375,8 @@ spec:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; valid temporary credentials in retained CI logs/artifacts; no git history scanning; audit logging disabled on vault. |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; expired temporary credentials in retained logs when the leak path persists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -387,7 +405,14 @@ spec:
 |-------------|---------------|-----------------|-----------|-------------|
 | DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
+| AWS STS temporary credential | CI environment | 60 minutes | Yes | N/A (temporary) |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
+
+### Temporary Credential Exposure Checks
+
+| Provider | Temporary Credential Evidence | TTL/Expiry | Exposure Location | Retention | Revocation/Invalidation Evidence |
+|----------|-------------------------------|------------|-------------------|-----------|----------------------------------|
+| AWS STS | Present/Not present | <duration> | <log/artifact/path> | <days> | Yes/No/N/A |
 
 ### Findings
 
