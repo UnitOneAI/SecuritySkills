@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -172,6 +172,7 @@ RBAC-HIER-04: God roles — single role inheriting from all functional roles
 RBAC-HIER-05: Missing base role — common permissions duplicated across functional roles
 RBAC-HIER-06: Admin roles permanently assigned instead of JIT-activated (link to RBAC2 constraints)
 RBAC-HIER-07: Role hierarchy does not reflect organizational structure or job functions
+RBAC-HIER-08: Break-glass wildcard role scored without checking ticket, approver, MFA, expiry, recording, and auto-revoke controls
 ```
 
 ---
@@ -301,6 +302,49 @@ RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
 
 ---
 
+### Step 5A: Authorization Decision Assurance
+
+**Objective:** Verify that authorization decisions fail closed, use fresh role and attribute data, and have test evidence across the runtime enforcement path.
+
+RBAC and ABAC designs can look correct on paper while the application still permits access during PDP outages, stale cache windows, token lifetime drift, or policy-engine migrations. Treat runtime assurance as part of the authorization model, not as a separate operational detail.
+
+#### Runtime Enforcement Evidence
+
+| Area | Evidence to Collect | Failure Mode |
+|---|---|---|
+| PDP outage handling | Code path or policy gateway behavior for `deny`, `indeterminate`, timeout, and unreachable PDP states | Fail-open access during authorization-service outage |
+| PEP coverage | Service, route, resolver, queue consumer, data-access layer, and admin path inventory | Some paths bypass the central authorization decision |
+| Decision logging | Subject, resource, action, tenant, policy version, decision, reason, correlation ID, and enforcement point | No audit trail for denied, permitted, or indeterminate decisions |
+| Cache freshness | Role/attribute/scope/session cache TTLs and invalidation triggers | Revoked or transferred users retain stale privileges |
+| Migration safety | Old-vs-new policy decision diff tests before cutover | New policy engine silently changes permit/deny semantics |
+
+**What to look for:**
+
+```
+RBAC-RUNTIME-01: PDP, policy gateway, or authorization service errors fail open instead of deny/indeterminate
+RBAC-RUNTIME-02: PEP coverage is incomplete across APIs, background jobs, data access, or admin paths
+RBAC-RUNTIME-03: Authorization decisions are not logged with subject, resource, action, tenant, policy version, decision, reason, correlation ID, and enforcement point
+RBAC-RUNTIME-04: Services enforce embedded role checks that can diverge from the central PDP or policy-as-code source
+RBAC-RUNTIME-05: Policy obligations are documented but not enforced by the PEP after a permit decision
+RBAC-REVOCATION-01: Role, attribute, OAuth scope, or session-claim caches have no maximum TTL or revocation invalidation path
+RBAC-REVOCATION-02: Access review revocations, employee transfers, tenant moves, or SoD exception expiries are not proven to take effect within SLA
+RBAC-REVOCATION-03: Long-lived tokens keep authorization claims trusted until expiry with no introspection, revalidation, or forced-session-revocation path
+RBAC-TEST-01: No negative authorization tests for denied roles, tenant boundaries, revoked users, and SoD violations
+RBAC-TEST-02: No policy decision diff tests during PDP, Rego, Cedar, XACML, or custom-engine migrations
+RBAC-TEST-03: No outage-mode tests proving timeout, error, and indeterminate decisions are denied and logged
+```
+
+#### Break-Glass and Wildcard Role Review
+
+A wildcard permission is not automatically the same risk as a standing god role. Distinguish:
+
+- **Standing wildcard access** — permanently assigned, no expiry, broad scope, weak logging. Usually high or critical.
+- **Controlled break-glass access** — ticketed activation, at least two approvers, MFA, short expiry, session recording, alerting, and automatic revocation. Usually an exception requiring evidence and periodic review.
+
+When a break-glass role is present, require evidence for the activation workflow, expiry enforcement, approver identity, MFA proof, session recording or command logs, alert routing, and auto-revoke outcome. If any of those controls are missing, classify the gap under `RBAC-HIER-08` or the applicable `RBAC-REVOCATION-*` finding.
+
+---
+
 ### Step 6: Role Mining and Rationalization
 
 **Objective:** Derive optimal roles from existing access patterns and reduce role sprawl.
@@ -361,6 +405,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Recommended State** | Target design |
 | **Remediation** | Steps to implement the design change |
 | **Effort** | Low / Medium / High |
+| **Evidence Required** | Specific proof needed to confirm the finding or exception |
+| **Runtime / Revocation Impact** | Whether the issue can permit access at runtime or after revocation |
 
 ### Summary Report Structure
 
@@ -387,6 +433,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
+- Authorization Decision Assurance (Step 5A): [count]
 - Role Mining (Step 6): [count]
 
 ### Detailed Findings
@@ -436,6 +483,10 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Fail-open authorization plumbing** — a correct role model still fails if PDP outages, timeouts, or indeterminate decisions return `allow`.
+9. **Trusting stale claims after revocation** — cached roles, OAuth scopes, and session claims need TTLs, invalidation, or introspection tied to revocation events.
+10. **Treating all wildcard roles equally** — controlled break-glass roles need evidence-based exception handling; standing god roles need removal or JIT activation.
+11. **Migrating policies without decision diff tests** — old and new engines should be tested against the same allow/deny fixtures before cutover.
 
 ---
 
@@ -481,4 +532,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.2 | 2026-06-03 | Add runtime authorization assurance, revocation/cache freshness, break-glass exception, and policy decision diff testing gates |
 | 1.0.0 | 2025-03-06 | Initial release |
