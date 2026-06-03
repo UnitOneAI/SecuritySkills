@@ -372,28 +372,58 @@ value = request.args.get("id")  # nosemgrep: python.django.security.injection.sq
 
 #### 6.1 CI Pipeline Integration Patterns
 
-**GitHub Actions -- Semgrep:**
+CI integration must support both developers (fast feedback on PRs) and security operations (thorough scheduled full repository scans). Reviews must distinguish between the integration patterns of platform-managed SAST (e.g., Semgrep AppSec Platform) and standalone open-source scans (e.g., Semgrep Community Edition running locally with custom uploaders).
+
+**GitHub Actions -- Semgrep AppSec Platform (Managed):**
+Uses `semgrep ci` and authenticates via `SEMGREP_APP_TOKEN` to synchronize findings, policies, and triage status to the Semgrep AppSec Platform dashboard.
 
 ```yaml
-name: Semgrep
+name: Semgrep AppSec Platform
 on:
   pull_request: {}
   push:
     branches: [main]
 
 jobs:
-  semgrep:
+  semgrep-platform:
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep        # Use official container
     steps:
       - uses: actions/checkout@v4
-      - run: semgrep ci              # Uses .semgrep.yml config
+      - run: semgrep ci
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 ```
 
-**GitHub Actions -- CodeQL:**
+**GitHub Actions -- Standalone Third-Party SAST (Semgrep CE with SARIF Upload):**
+Runs standalone rules locally, outputting to a SARIF report, and uses `github/codeql-action/upload-sarif` to publish findings to GitHub Code Scanning. Explicit `security-events: write` permissions are required.
+
+```yaml
+name: Semgrep CE Scan
+on:
+  pull_request: {}
+  schedule:
+    - cron: '0 0 * * 1'             # Scheduled full scan
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  semgrep-ce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep CE
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" semgrep/semgrep semgrep scan --sarif --output=semgrep.sarif
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+```
+
+**GitHub Actions -- CodeQL (First-party):**
+CodeQL runs locally inside GitHub Actions. Examples use current CodeQL action version `v4`. Note the explicit `security-events: write` permission requirement.
 
 ```yaml
 name: CodeQL
@@ -414,24 +444,26 @@ jobs:
         language: [javascript, python, java]
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           config-file: .github/codeql/codeql-config.yml
-      - uses: github/codeql-action/autobuild@v3
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/autobuild@v4
+      - uses: github/codeql-action/analyze@v4
 ```
 
 **What to verify:**
 
-- SAST runs on every pull request (not just scheduled scans).
-- SAST is a required status check (PR cannot merge if SAST fails).
-- Full repository scan runs on a schedule (weekly minimum) in addition to PR-scoped scans.
-- SAST container/action is pinned to a specific version (not `latest`).
-- Results are uploaded to a central dashboard (Semgrep App, GitHub Security tab, SonarQube).
-- Scan time is under 10 minutes for PR checks (developer experience matters).
+- **Scan Mode & Cadence:** Verify SAST runs on every PR (diff-aware/incremental scan acceptable for fast developer loops) AND a full repository scan runs on a weekly schedule.
+- **SARIF Upload Permissions:** Ensure jobs publishing to GitHub Code Scanning explicitly configure `permissions: { security-events: write }` (necessary for upload success).
+- **CodeQL Action Version:** Verify CodeQL actions use `v4` or current, avoiding deprecated `v3` instances.
+- **Platform vs OSS Alignment:** Confirm that AppSec platform-mode integrations successfully sync to the central dashboard, and that standalone scans correctly parse and forward their SARIF reports.
+- **Gating Enforcement:** Confirm SAST is configured as a required status check in branch protection policies (preventing unreviewed vulnerability merges). Note: Mark branch-protection status as `Unknown` if repository files alone cannot confirm enforcement settings.
+- **Dependency Pinning Calibration:** Verify action versions are pinned. First-party actions (e.g., `actions/*`, `github/*`) may use maintained major tags (e.g., `@v4`). Third-party actions should be reviewed for SHA-pinning (e.g., `@sha256-hash`) or evaluated against organization-specific supply-chain risk policies.
+- **Result Ingestion Health:** Separately verify that the SAST scan job succeeded and that the result was successfully ingested by the central dashboard (an upload error can hide findings even if the builder task passes).
+- **Developer DX:** Confirm PR scan times remain under 10 minutes to minimize friction.
 
-**Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**.
+**Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. Missing SARIF upload write permissions or failed ingestion is **High**. No scheduled full-repo scan is **Medium**. Third-party SAST action unpinned or lack of SHA-pinning (where required by policy) is **Medium**.
 
 ---
 
@@ -468,12 +500,14 @@ jobs:
 
 ### CI Integration Status
 
-| Check | Status | Evidence |
-|-------|--------|---------|
+| Check | Status | Evidence / Notes |
+|-------|--------|------------------|
 | Runs on PR | Yes/No | <workflow file> |
-| Required status check | Yes/No | <branch protection config> |
+| Required status check | Yes/No / Unknown | <branch protection config / API state> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+| Scan mode | Diff-aware / Full Scan / Both | <PR-scoped incremental or full codebase> |
+| Central ingestion status | Ingested / Error / Unknown | <SARIF upload logs / Platform status> |
 
 ### Findings
 
@@ -526,7 +560,7 @@ jobs:
 
 ## Common Pitfalls
 
-1. **Running SAST only on changed files in PRs.** Incremental scanning misses vulnerabilities introduced by the interaction of new code with existing code. Run full-repo scans on schedule (weekly minimum) to catch cross-file taint flows that PR-scoped scans miss.
+1. **Running SAST only on changed files in PRs.** Incremental (diff-aware) scanning is excellent for optimizing developer experience and keeping scan times under 10 minutes on PRs. However, running *only* PR scans can miss cross-file taint flows and vulnerabilities introduced by new code interacting with unchanged files. Thus, diff-aware PR scanning is acceptable *only* when paired with scheduled full-repository scans (weekly minimum) and clear developer documentation that cross-file taint flows require the scheduled job.
 
 2. **Tuning rules by disabling instead of fixing.** When a rule produces false positives, the instinct is to disable it. Instead, add `pattern-not` clauses (Semgrep) or exclusion predicates (CodeQL) to handle the safe patterns while keeping detection for unsafe ones. Disabling a rule eliminates all coverage for that weakness class.
 
@@ -535,6 +569,10 @@ jobs:
 4. **Not testing custom rules against both vulnerable and safe code.** A custom rule that fires on vulnerable patterns but also fires on safe patterns is worse than no rule (it trains developers to suppress). Maintain a test corpus with expected true positives and expected true negatives for every custom rule.
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
+
+6. **SARIF upload permissions and path misconfigurations.** Uploading third-party SAST results (such as Semgrep CE, Bandit, or ESLint) to GitHub Code Scanning via `github/codeql-action/upload-sarif` requires explicit `security-events: write` permissions. Failing to configure this permission causes the upload to fail silently or crash the workflow, resulting in a loss of central dashboard visibility.
+
+7. **Conflating Semgrep AppSec Platform with OSS/CE Mode.** Misconfiguring AppSec Platform tokens (`SEMGREP_APP_TOKEN`) or command behaviors (e.g., running `semgrep ci` when expecting standalone CE execution) leads to failed policy syncs or missing results. Standalone OSS scans should generate a SARIF report using `semgrep scan --sarif` and utilize a dedicated uploader, whereas platform-managed scans must use the correct client token for automatic synchronization.
 
 ---
 
