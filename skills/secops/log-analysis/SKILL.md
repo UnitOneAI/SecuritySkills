@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -59,6 +59,29 @@ Before beginning analysis, gather or confirm:
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
+- [ ] **Telemetry integrity evidence:** Are the relevant collectors, parsers, indexes, pipelines, and retention windows healthy for the investigation window?
+
+### Telemetry Integrity Pre-Check
+
+Before interpreting "no evidence found" as a meaningful result, verify that the expected telemetry could actually reach the analysis system. Treat missing or degraded log collection as an evidence limitation unless integrity is proven.
+
+| Check | Evidence to collect | Why it matters |
+|-------|---------------------|----------------|
+| Source heartbeat | Last successful event from each required source, sensor health, or agent heartbeat | A quiet source may mean no activity, but it may also mean the collector stopped reporting. |
+| Pipeline health | Forwarder status, parser errors, queue depth, dropped-record counters, output failure counters | Events can be lost before they reach the SIEM even when endpoints continue logging locally. |
+| Filter and route configuration | Fluent Bit/Logstash/SIEM filters, index routing rules, tenant filters, suppression rules | A misconfigured or malicious filter can remove exactly the event classes needed for the investigation. |
+| Retention and lookup scope | Index names, table names, permissions, retention window, cold/archive status | An analyst may falsely conclude absence when the data exists outside the queried scope. |
+| Time integrity | Clock source, time zone, event time, ingest time, known clock skew | Out-of-order, delayed, or replayed events can distort the incident timeline. |
+
+**Source-to-hypothesis matrix:** For every investigation hypothesis, list the log sources required to prove or disprove it and mark each source as `present`, `partial`, `missing`, `delayed`, or `untrusted`.
+
+| Hypothesis | Required sources | Current status | Confidence impact |
+|------------|------------------|----------------|-------------------|
+| Credential theft via LSASS access | Sysmon EID 10, EDR process telemetry, Windows Security 4624/4672 | [present/partial/missing] | [high/medium/low confidence] |
+| Cloud IAM privilege escalation | Cloud audit logs, identity provider logs, change ticket history | [present/partial/missing] | [high/medium/low confidence] |
+| DNS-based C2 | DNS resolver logs, endpoint DNS telemetry, proxy/firewall logs | [present/partial/missing] | [high/medium/low confidence] |
+
+If a required source is missing or untrusted, lower the confidence of any negative conclusion. For example, "no suspicious logons found" is not high confidence when domain controller security logs are present but EDR, PowerShell Script Block, and Sysmon ProcessAccess telemetry are missing.
 
 ---
 
@@ -313,6 +336,8 @@ Step 4: Pivot on host
 
 Step 5: Build timeline
   -> Combine all findings into a chronological sequence
+  -> Track event_time, ingest_time, and query_time separately when available
+  -> Mark delayed, replayed, deduplicated, or out-of-order events
   -> Map each event to an ATT&CK technique
   -> Identify gaps in visibility (log sources not available)
 ```
@@ -352,6 +377,16 @@ Produce log analysis findings in this structure:
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
 
+### Telemetry Integrity
+| Source | Status | Last Event / Heartbeat | Pipeline Evidence | Confidence Impact |
+|--------|--------|------------------------|-------------------|-------------------|
+| [Source] | [Present / Partial / Missing / Delayed / Untrusted] | [Timestamp] | [Forwarder/parser/index evidence] | [Impact on conclusions] |
+
+### Source-to-Hypothesis Matrix
+| Hypothesis | Required Sources | Available Evidence | Confidence |
+|------------|------------------|--------------------|------------|
+| [Hypothesis] | [Sources needed] | [Present/missing/delayed sources] | [High / Medium / Low] |
+
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
 |---|---------|----------|-------------------|------------|----------|
@@ -370,15 +405,15 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Event Time (UTC) | Ingest Time (UTC) | Source | Event | ATT&CK Technique | Assessment |
+|------------------|-------------------|--------|-------|-------------------|------------|
+| [HH:MM:SS] | [HH:MM:SS or unknown] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
 
 ### Visibility Gaps
-[Log sources that were not available but would have provided relevant data]
+[Log sources that were not available but would have provided relevant data. Include the confidence impact from the telemetry integrity and source-to-hypothesis matrices.]
 
 ### Recommendations
 - [ ] [Action 1]
@@ -442,6 +477,10 @@ No single log source provides complete visibility. Authentication logs show who 
 ### Pitfall 3: Ignoring the Absence of Expected Logs
 
 The absence of logs can be as significant as their presence. If a server that normally generates 1000 events per hour suddenly shows zero events, the logging pipeline may be broken or an adversary may have disabled logging (T1070.001 -- Clear Windows Event Logs, T1562.001 -- Disable or Modify Tools). Monitor for gaps in log continuity.
+
+### Pitfall 3a: Treating Pipeline Silence as Host Silence
+
+A SIEM query that returns no events does not prove the endpoint was quiet. It may prove only that data did not arrive in the queried index. Check collector heartbeats, parser failures, output retries, queue drops, index routing, tenant filters, and retention before making high-confidence negative findings.
 
 ### Pitfall 4: Misinterpreting Event IDs Without Context
 
