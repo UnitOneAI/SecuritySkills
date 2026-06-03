@@ -193,6 +193,28 @@ ENTRYPOINT ["/server"]
 
 Evaluate Kubernetes workload definitions against CIS Kubernetes Benchmark Section 5 (Policies) and Pod Security Standards.
 
+### Rendered Manifest and Workload Traversal Gate
+
+Before applying the pod-security checks below, identify the environment artifact being reviewed:
+
+| Input Type | Evidence Needed Before Scoring |
+|------------|--------------------------------|
+| Plain Kubernetes YAML | Manifest path and environment mapping |
+| Helm chart | `helm template` output with selected values, or `helm get manifest` output for a deployed release |
+| Kustomize overlay | `kubectl kustomize` or `kustomize build` output for the reviewed overlay |
+
+Then normalize each workload to the pod spec that creates containers:
+
+| Kind | Pod Spec Path | Container Arrays to Inspect |
+|------|---------------|-----------------------------|
+| Pod | `spec` | `containers[]`, `initContainers[]`, `ephemeralContainers[]` |
+| Deployment / StatefulSet / DaemonSet / ReplicaSet | `spec.template.spec` | `containers[]`, `initContainers[]`, `ephemeralContainers[]` |
+| ReplicationController | `spec.template.spec` | `containers[]`, `initContainers[]`, `ephemeralContainers[]` |
+| Job | `spec.template.spec` | `containers[]`, `initContainers[]`, `ephemeralContainers[]` |
+| CronJob | `spec.jobTemplate.spec.template.spec` | `containers[]`, `initContainers[]`, `ephemeralContainers[]` |
+
+Do not mark a Helm or Kustomize workload as pass or fail from the source template alone when the reviewed environment has selected values or overlays. The rendered manifest is the evidence; source templates, values, and patches are provenance for remediation.
+
 ### CIS 5.1 -- RBAC and Service Accounts
 
 #### CIS 5.1.1 -- Ensure that the cluster-admin role is only used where required
