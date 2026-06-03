@@ -157,7 +157,7 @@ skills:
     role: [cloud-security-engineer, security-engineer]
     phase: [assess, operate]
     activity: [audit, review]
-    frameworks: [CIS-Azure-v2.1.0]
+    frameworks: [CIS-Azure-v6.0.0, CIS-Azure-v2.1.0-legacy, CIS-M365-Entra-scope]
     difficulty: intermediate
     time_estimate: "60-90min"
     file: skills/cloud/azure-review/SKILL.md

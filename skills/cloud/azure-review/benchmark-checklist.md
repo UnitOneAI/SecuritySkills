@@ -1,706 +1,254 @@
-# CIS Azure Foundations Benchmark v2.1.0 -- Detailed Checklist
+# CIS Azure Foundations Benchmark -- Version-Aware Checklist
 
-This file contains the detailed CIS benchmark checklist items for the Azure Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+This file contains detailed checklist guidance for the Azure Security Posture Review skill. See [SKILL.md](SKILL.md) for the main process and report format.
 
----
-
-## Section 1 -- Identity and Access Management
-
-Evaluate Entra ID and IAM configurations against CIS Azure v2.1.0 Section 1 recommendations.
-
-### CIS 1.1 -- Security Defaults and Conditional Access
-
-#### CIS 1.1.1 -- Ensure Security Defaults is enabled on Microsoft Entra ID
-
-Check for security defaults or conditional access policies:
-
-```hcl
-# Terraform AzureAD provider
-resource "azuread_authentication_strength_policy" { ... }
-```
-
-**Note:** Security Defaults should be disabled ONLY when Conditional Access policies provide equivalent or stronger controls.
-
-#### CIS 1.1.2 -- Ensure that Multi-Factor Authentication is enabled for all privileged users
-
-Check for Conditional Access policies requiring MFA for admin roles:
-
-```hcl
-resource "azuread_conditional_access_policy" {
-  conditions {
-    users {
-      included_roles = ["62e90394-69f5-4237-9190-012177145e10"] # Global Admin
-    }
-  }
-  grant_controls {
-    built_in_controls = ["mfa"]
-  }
-}
-```
-
-#### CIS 1.1.3 -- Ensure that Multi-Factor Authentication is enabled for all non-privileged users
-
-Verify MFA requirement extends to all users, not just admins.
-
-#### CIS 1.1.4 -- Ensure that 'Allow users to remember multi-factor authentication on devices they trust' is Disabled
-
-Check for MFA trust settings that weaken the control.
-
-### CIS 1.2 -- Conditional Access Policies
-
-#### CIS 1.2.1 -- Ensure Trusted Locations Are Defined
-
-Check for named location definitions:
-
-```hcl
-resource "azuread_named_location" {
-  display_name = "Corporate Network"
-  ip {
-    ip_ranges = ["203.0.113.0/24"]
-    trusted   = true
-  }
-}
-```
-
-#### CIS 1.2.2 -- Ensure that an exclusionary Geographic Access Policy is considered
-
-Verify country-based access restrictions exist in conditional access policies.
-
-#### CIS 1.2.3 -- Ensure that 'Restrict non-admin users from creating tenants' is set to 'Yes'
-
-Check for tenant creation restrictions.
-
-#### CIS 1.2.4 -- Ensure Guest Users are reviewed on a regular basis
-
-Look for access review configurations targeting guest users.
-
-#### CIS 1.2.5 -- Ensure that 'Number of methods required to reset' is set to '2'
-
-Check SSPR (Self-Service Password Reset) configuration.
-
-#### CIS 1.2.6 -- Ensure that password hash sync is enabled for hybrid deployments
-
-Verify `password_hash_sync_enabled` in Entra Connect configurations.
-
-### CIS 1.3 -- Privileged Identity Management
-
-#### CIS 1.3.1 -- Ensure that 'Users can register applications' is set to 'No'
-
-```hcl
-# Check for app registration restrictions
-resource "azuread_directory_role_assignment" { ... }
-```
-
-#### CIS 1.3.2 -- Ensure that 'Guest users access restrictions' is set to 'Guest user access is restricted to properties and memberships of their own directory objects'
-
-#### CIS 1.3.3 -- Ensure that 'Restrict access to Microsoft Entra admin center' is set to 'Yes'
+The current default is **CIS Microsoft Azure Foundations Benchmark v6.0.0-aware** reporting. CIS Azure v2.1.0 remains supported only as explicit legacy mode. Entra ID controls are routed to Microsoft 365/Entra scope unless legacy mode or an explicit Microsoft 365 benchmark scope is declared.
 
 ---
 
-## Section 2 -- Microsoft Defender for Cloud
+## Benchmark Preflight
 
-Evaluate Defender for Cloud configurations against Section 2 recommendations.
+Record these fields before evaluating controls:
 
-### CIS 2.1 -- Defender Plans
+| Field | Required Evidence |
+|-------|-------------------|
+| `benchmark_version` | `CIS Microsoft Azure Foundations Benchmark v6.0.0`, or explicit legacy version such as `v2.1.0`. |
+| `benchmark_source_date` | Date of CIS update, CIS PDF/DOCX, NIST NCP record, or exported benchmark evidence. |
+| `evidence_source` | Defender for Cloud, Azure Policy, Azure CLI, Terraform, Bicep, ARM, manual evidence, or mixed. |
+| `legacy_baseline` | `true` only when the user requested a historical benchmark. Include the reason. |
+| `entra_scope_handling` | `excluded`, `included-as-m365`, `legacy-v2.1.0`, or `not-supplied`. |
+| `denominator_source` | Current CIS v6 artifact, Defender/Azure Policy mapping, legacy v2.1.0 checklist, or scoped subset. |
 
-#### CIS 2.1.1 -- Ensure that Microsoft Defender for Servers is set to 'On'
+Do not treat the old nine-section v2.1.0 map as current v6.0.0. If exact v6.0.0 IDs are not available in the supplied material, say `exact v6 mapping requires benchmark access` instead of guessing IDs.
 
-```hcl
-resource "azurerm_security_center_subscription_pricing" {
-  tier          = "Standard"  # Must be Standard, not Free
-  resource_type = "VirtualMachines"
-}
-```
+Use these statuses:
 
-#### CIS 2.1.2 -- Ensure that Microsoft Defender for App Service is set to 'On'
-
-```hcl
-resource "azurerm_security_center_subscription_pricing" {
-  tier          = "Standard"
-  resource_type = "AppServices"
-}
-```
-
-#### CIS 2.1.3 -- Ensure that Microsoft Defender for Azure SQL Database Servers is set to 'On'
-
-Check for `resource_type = "SqlServers"` with `tier = "Standard"`.
-
-#### CIS 2.1.4 -- Ensure that Microsoft Defender for SQL Servers on Machines is set to 'On'
-
-Check for `resource_type = "SqlServerVirtualMachines"` with `tier = "Standard"`.
-
-#### CIS 2.1.5 -- Ensure that Microsoft Defender for Open-Source Relational Databases is set to 'On'
-
-Check for `resource_type = "OpenSourceRelationalDatabases"` pricing tier.
-
-#### CIS 2.1.6 -- Ensure that Microsoft Defender for Azure Cosmos DB is set to 'On'
-
-Check for `resource_type = "CosmosDbs"` pricing tier.
-
-#### CIS 2.1.7 -- Ensure that Microsoft Defender for Storage is set to 'On'
-
-Check for `resource_type = "StorageAccounts"` with `tier = "Standard"`.
-
-#### CIS 2.1.8 -- Ensure that Microsoft Defender for Containers is set to 'On'
-
-Check for `resource_type = "Containers"` pricing tier.
-
-#### CIS 2.1.9 -- Ensure that Microsoft Defender for Key Vault is set to 'On'
-
-Check for `resource_type = "KeyVaults"` pricing tier.
-
-#### CIS 2.1.10 -- Ensure that Microsoft Defender for DNS is set to 'On'
-
-Check for `resource_type = "Dns"` pricing tier.
-
-#### CIS 2.1.11 -- Ensure that Microsoft Defender for Resource Manager is set to 'On'
-
-Check for `resource_type = "Arm"` pricing tier.
-
-### CIS 2.2 -- Security Policies and Contacts
-
-#### CIS 2.2.1 -- Ensure that 'Auto provisioning of Log Analytics agent' is set to 'On'
-
-```hcl
-resource "azurerm_security_center_auto_provisioning" {
-  auto_provision = "On"
-}
-```
-
-#### CIS 2.2.2 -- Ensure that Microsoft Defender for Cloud Apps integration with Microsoft Defender for Cloud is selected
-
-#### CIS 2.2.3 -- Ensure that Microsoft Defender for Endpoint integration with Microsoft Defender for Cloud is selected
-
-#### CIS 2.2.4 -- Ensure that 'Email notification for high severity alerts' is set to 'On'
-
-```hcl
-resource "azurerm_security_center_contact" {
-  alert_notifications = true
-  alerts_to_admins    = true
-  email               = "security@example.com"
-  phone               = "+1-555-0100"
-}
-```
+| Status | Use When |
+|--------|----------|
+| Current Azure v6 Scope | Control belongs to selected CIS Azure Foundations v6.0.0 evidence. |
+| Entra/M365 Scope | Control belongs to Microsoft Entra or Microsoft 365 identity benchmark scope. |
+| Legacy Azure v2.1.0 | Control came from the v2.1.0 checklist. |
+| Deleted or Migrated | Control was deleted from Azure Foundations or migrated to Microsoft 365 Foundations. |
+| Manual Evidence | Reviewer has portal exports, governance records, or other non-automated evidence. |
+| Not Evaluable | Supplied evidence cannot prove pass or fail. |
 
 ---
 
-## Section 3 -- Storage Accounts
+## Current Azure v6.0.0-Aware Review Areas
 
-Evaluate Storage account configurations against Section 3 recommendations.
+Use the current CIS benchmark artifact, Defender for Cloud regulatory compliance evidence, Azure Policy compliance exports, or Azure CLI exports to map exact control IDs. The review areas below guide evidence collection without inventing recommendation IDs.
 
-### CIS 3.1 -- Ensure that 'Secure transfer required' is set to 'Enabled'
+### Defender for Cloud and Azure Policy
 
-```hcl
-resource "azurerm_storage_account" {
-  enable_https_traffic_only = true  # Must be true
-}
+Review focus:
+
+- Defender plans enabled for relevant resource types.
+- Security contacts and notification routing.
+- Auto provisioning or modern agent settings where required by the selected benchmark.
+- Azure Policy assignments and exemptions that affect compliance.
+- Defender regulatory compliance export tied to the selected benchmark version.
+
+Evidence patterns:
+
+```
+azurerm_security_center_subscription_pricing
+azurerm_security_center_contact
+azurerm_security_center_auto_provisioning
+azurerm_policy_assignment
+azurerm_policy_exemption
+Microsoft.Security/pricings
+Microsoft.PolicyInsights
 ```
 
-### CIS 3.2 -- Ensure that 'Enable Infrastructure Encryption' for each Storage Account is checked
+### Storage, Database, and Data Services
+
+Review focus:
+
+- Storage secure transfer, public access, minimum TLS, CMK, private endpoints, and soft delete.
+- SQL auditing, firewall rules, TDE, Microsoft Entra admin, private access, and threat detection.
+- Cosmos DB, PostgreSQL Flexible Server, MySQL Flexible Server, and other supported database services when present.
+
+Terraform patterns:
 
 ```hcl
-resource "azurerm_storage_account" {
+resource "azurerm_storage_account" "sa" {
+  enable_https_traffic_only         = true
+  allow_nested_items_to_be_public   = false
+  min_tls_version                   = "TLS1_2"
   infrastructure_encryption_enabled = true
 }
-```
 
-### CIS 3.3 -- Ensure that 'Enable key rotation reminders' is enabled for each Storage Account
-
-Check for key expiration policies.
-
-### CIS 3.7 -- Ensure that 'Public access level' is disabled for storage accounts with blob containers
-
-```hcl
-resource "azurerm_storage_account" {
-  allow_nested_items_to_be_public = false  # Must be false
-}
-```
-
-### CIS 3.8 -- Ensure Default Network Access Rule for Storage Accounts is Set to Deny
-
-**Critical check:**
-
-```hcl
-resource "azurerm_storage_account_network_rules" {
-  default_action = "Deny"  # Must be Deny, not Allow
+resource "azurerm_storage_account_network_rules" "sa" {
+  default_action = "Deny"
 }
 
-# Or within the storage account resource:
-resource "azurerm_storage_account" {
-  network_rules {
-    default_action = "Deny"
-  }
-}
-```
-
-### CIS 3.9 -- Ensure 'Allow Azure services on the trusted services list to access this storage account' is Enabled
-
-Check for `bypass = ["AzureServices"]` in network rules.
-
-### CIS 3.10 -- Ensure Private Endpoints are used to access Storage Accounts
-
-Check for private endpoint configurations:
-
-```hcl
-resource "azurerm_private_endpoint" {
-  private_service_connection {
-    is_manual_connection           = false
-    private_connection_resource_id = azurerm_storage_account.example.id
-    subresource_names              = ["blob"]
-  }
-}
-```
-
-### CIS 3.11 -- Ensure Soft Delete is Enabled for Azure Containers and Blob Storage
-
-```hcl
-resource "azurerm_storage_account" {
-  blob_properties {
-    delete_retention_policy {
-      days = 7  # Must be > 0
-    }
-    container_delete_retention_policy {
-      days = 7
-    }
-  }
-}
-```
-
-### CIS 3.12 -- Ensure Storage for Critical Data are Encrypted with Customer Managed Keys
-
-Check for CMK encryption on storage accounts containing sensitive data:
-
-```hcl
-resource "azurerm_storage_account_customer_managed_key" {
-  storage_account_id = azurerm_storage_account.example.id
-  key_vault_id       = azurerm_key_vault.example.id
-  key_name           = azurerm_key_vault_key.example.name
-}
-```
-
-### CIS 3.13 -- Ensure Storage Logging is Enabled for Queue Service
-
-Check for diagnostic settings on queue services.
-
-### CIS 3.15 -- Ensure Minimum TLS Version is set to 1.2
-
-```hcl
-resource "azurerm_storage_account" {
-  min_tls_version = "TLS1_2"  # Must be TLS1_2
-}
-```
-
----
-
-## Section 4 -- Database Services
-
-Evaluate database configurations against Section 4 recommendations.
-
-### CIS 4.1 -- SQL Server Auditing
-
-#### CIS 4.1.1 -- Ensure that 'Auditing' is set to 'On' for SQL servers
-
-```hcl
-resource "azurerm_mssql_server_extended_auditing_policy" {
-  server_id              = azurerm_mssql_server.example.id
-  storage_endpoint       = azurerm_storage_account.example.primary_blob_endpoint
-  retention_in_days      = 90
-}
-```
-
-#### CIS 4.1.2 -- Ensure no Azure SQL Databases allow ingress from 0.0.0.0/0
-
-**Critical check:**
-
-```hcl
-# BAD: Allow all Azure services
-resource "azurerm_mssql_firewall_rule" {
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "0.0.0.0"
+resource "azurerm_mssql_server" "sql" {
+  public_network_access_enabled = false
+  minimum_tls_version           = "1.2"
 }
 
-# BAD: Allow all IPs
-resource "azurerm_mssql_firewall_rule" {
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "255.255.255.255"
-}
-```
-
-#### CIS 4.1.3 -- Ensure SQL Server Threat Detection is set to 'On'
-
-```hcl
-resource "azurerm_mssql_server_security_alert_policy" {
-  state = "Enabled"
-}
-```
-
-#### CIS 4.1.4 -- Ensure that 'Email service and co-administrators' is enabled for MSSQL
-
-Check email notification settings in threat detection policies.
-
-### CIS 4.2 -- PostgreSQL and MySQL
-
-#### CIS 4.2.1 -- Ensure 'Enforce SSL connection' is set to 'Enabled' for PostgreSQL Database Server
-
-```hcl
-resource "azurerm_postgresql_server" {
-  ssl_enforcement_enabled = true
-}
-```
-
-#### CIS 4.2.2 -- Ensure 'Enforce SSL connection' is set to 'Enabled' for MySQL Database Server
-
-```hcl
-resource "azurerm_mysql_server" {
-  ssl_enforcement_enabled = true
-}
-```
-
-### CIS 4.3 -- Cosmos DB and Other Databases
-
-#### CIS 4.3.1 -- Ensure that Azure Active Directory Admin is Configured for SQL Servers
-
-```hcl
-resource "azurerm_mssql_server_active_directory_administrator" {
-  server_id  = azurerm_mssql_server.example.id
-  login      = "sqladmin"
-  object_id  = data.azuread_group.sql_admins.object_id
-}
-```
-
-#### CIS 4.3.2 -- Ensure that 'Data encryption' is set to 'On' on a SQL Database
-
-Check for Transparent Data Encryption (TDE):
-
-```hcl
-resource "azurerm_mssql_database" {
-  transparent_data_encryption_enabled = true
-}
-```
-
-#### CIS 4.3.8 -- Ensure that 'Public Network Access' is 'Disabled' for Cosmos DB accounts
-
-```hcl
-resource "azurerm_cosmosdb_account" {
+resource "azurerm_postgresql_flexible_server" "pg" {
   public_network_access_enabled = false
 }
 ```
 
----
+### Logging and Monitoring
 
-## Section 5 -- Logging and Monitoring
+Review focus:
 
-Evaluate logging configurations against Section 5 recommendations.
+- Diagnostic settings for subscriptions, Key Vault, Network Security Groups, Storage, SQL, and other critical resources.
+- Activity Log alerts for policy changes, NSG changes, SQL firewall changes, public IP changes, and security rule changes.
+- Log Analytics workspace retention and routing evidence.
 
-### CIS 5.1 -- Diagnostic Settings and Activity Logs
+Evidence patterns:
 
-#### CIS 5.1.1 -- Ensure that a 'Diagnostic Setting' exists
+```
+azurerm_monitor_diagnostic_setting
+azurerm_monitor_activity_log_alert
+azurerm_log_analytics_workspace
+Microsoft.Insights/diagnosticSettings
+```
 
-Check for diagnostic settings on subscriptions:
+### Networking, Virtual Machines, and Compute
+
+Review focus:
+
+- NSG rules exposing RDP, SSH, or admin ports to `0.0.0.0/0`, `Internet`, or `::/0`.
+- Flow logs, traffic analytics, and Network Watcher evidence.
+- Azure Bastion or other controlled administrative access.
+- Managed disks, disk encryption, approved VM extensions, and endpoint protection.
+- Modern VM resources and deprecated resource aliases.
+
+Terraform patterns:
 
 ```hcl
-resource "azurerm_monitor_diagnostic_setting" {
-  target_resource_id = "/subscriptions/${var.subscription_id}"
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.example.id
+resource "azurerm_network_security_rule" "bad_ssh" {
+  direction                 = "Inbound"
+  access                    = "Allow"
+  source_address_prefix     = "Internet"
+  destination_port_range    = "22"
+}
+
+resource "azurerm_linux_virtual_machine" "vm" {
+  disable_password_authentication = true
+}
+
+resource "azurerm_windows_virtual_machine" "vm" {
+  provision_vm_agent = true
 }
 ```
 
-#### CIS 5.1.2 -- Ensure Diagnostic Setting captures appropriate categories
+### Key Vault and App Service
 
-Verify that Administrative, Security, ServiceHealth, Alert, Recommendation, Policy, Autoscale, and ResourceHealth categories are enabled.
+Review focus:
 
-#### CIS 5.1.3 -- Ensure the storage container storing the activity logs is not publicly accessible
+- Key Vault soft delete, purge protection, RBAC authorization, private endpoints, and key/secret expiration.
+- App Service HTTPS-only, minimum TLS, client certificates where required, managed identity, authentication, HTTP/2, and FTP restrictions.
 
-Check storage account access level for the diagnostic logs container.
-
-#### CIS 5.1.4 -- Ensure the storage account containing the container with activity logs is encrypted with a Customer Managed Key
-
-Cross-reference the diagnostics storage account with CMK encryption.
-
-#### CIS 5.1.5 -- Ensure that logging for Azure Key Vault is 'Enabled'
+Terraform patterns:
 
 ```hcl
-resource "azurerm_monitor_diagnostic_setting" {
-  target_resource_id = azurerm_key_vault.example.id
-  enabled_log {
-    category = "AuditEvent"
-  }
-}
-```
-
-### CIS 5.2 -- Activity Log Alerts
-
-#### CIS 5.2.1 -- Ensure that Activity Log Alert exists for Create Policy Assignment
-
-```hcl
-resource "azurerm_monitor_activity_log_alert" {
-  criteria {
-    operation_name = "Microsoft.Authorization/policyAssignments/write"
-    category       = "Administrative"
-  }
-}
-```
-
-**Required Activity Log Alerts (CIS 5.2.1 through 5.2.9):**
-
-| CIS ID | Operation | Category |
-|--------|-----------|----------|
-| 5.2.1 | Create Policy Assignment | Microsoft.Authorization/policyAssignments/write |
-| 5.2.2 | Delete Policy Assignment | Microsoft.Authorization/policyAssignments/delete |
-| 5.2.3 | Create or Update Network Security Group | Microsoft.Network/networkSecurityGroups/write |
-| 5.2.4 | Delete Network Security Group | Microsoft.Network/networkSecurityGroups/delete |
-| 5.2.5 | Create or Update Security Solution | Microsoft.Security/securitySolutions/write |
-| 5.2.6 | Delete Security Solution | Microsoft.Security/securitySolutions/delete |
-| 5.2.7 | Create or Update SQL Server Firewall Rule | Microsoft.Sql/servers/firewallRules/write |
-| 5.2.8 | Delete SQL Server Firewall Rule | Microsoft.Sql/servers/firewallRules/delete |
-| 5.2.9 | Create or Update Public IP Address | Microsoft.Network/publicIPAddresses/write |
-
-### CIS 5.3 -- Network Watcher
-
-#### CIS 5.3.1 -- Ensure that Network Watcher is 'Enabled'
-
-```hcl
-resource "azurerm_network_watcher" {
-  location = var.location
-}
-```
-
----
-
-## Section 6 -- Networking
-
-Evaluate network configurations against Section 6 recommendations.
-
-### CIS 6.1 -- Ensure that RDP access from the Internet is evaluated and restricted
-
-**Critical check:**
-
-```hcl
-# BAD: NSG allowing RDP from Internet
-resource "azurerm_network_security_rule" {
-  direction                  = "Inbound"
-  access                     = "Allow"
-  destination_port_range     = "3389"
-  source_address_prefix      = "*"      # or "Internet" or "0.0.0.0/0"
-}
-```
-
-### CIS 6.2 -- Ensure that SSH access from the Internet is evaluated and restricted
-
-```hcl
-# BAD: NSG allowing SSH from Internet
-resource "azurerm_network_security_rule" {
-  direction                  = "Inbound"
-  access                     = "Allow"
-  destination_port_range     = "22"
-  source_address_prefix      = "*"
-}
-```
-
-### CIS 6.3 -- Ensure that UDP access from the Internet is evaluated and restricted
-
-Check for NSG rules allowing UDP from any source.
-
-### CIS 6.4 -- Ensure that HTTP(S) access from the Internet is evaluated and restricted
-
-Verify that ports 80 and 443 are only open where intended (e.g., load balancers, app gateways).
-
-### CIS 6.5 -- Ensure that Network Security Group Flow Log retention period is 'greater than 90 days'
-
-```hcl
-resource "azurerm_network_watcher_flow_log" {
-  retention_policy {
-    enabled = true
-    days    = 90  # Must be >= 90
-  }
-}
-```
-
-### CIS 6.6 -- Ensure that Network Watcher flow logs capture and send data to Log Analytics
-
-Check for `traffic_analytics` block in flow log configuration.
-
----
-
-## Section 7 -- Virtual Machines
-
-Evaluate VM configurations against Section 7 recommendations.
-
-### CIS 7.1 -- Ensure an Azure Bastion Host Exists
-
-Check for Azure Bastion deployment:
-
-```hcl
-resource "azurerm_bastion_host" { ... }
-```
-
-### CIS 7.2 -- Ensure Virtual Machines are utilizing Managed Disks
-
-```hcl
-resource "azurerm_virtual_machine" {
-  storage_os_disk {
-    managed_disk_type = "Premium_LRS"  # Using managed disk
-  }
-}
-```
-
-### CIS 7.3 -- Ensure that 'OS and Data' disks are encrypted with CMK
-
-```hcl
-resource "azurerm_disk_encryption_set" {
-  key_vault_key_id = azurerm_key_vault_key.example.id
-}
-```
-
-### CIS 7.4 -- Ensure that 'Unattached disks' are encrypted with CMK
-
-Check for orphaned disks without encryption.
-
-### CIS 7.5 -- Ensure that Only Approved Extensions Are Installed
-
-Audit VM extensions for unauthorized or unnecessary extensions.
-
-### CIS 7.6 -- Ensure that Endpoint Protection is installed for all Virtual Machines
-
-Check for anti-malware extension deployment.
-
-### CIS 7.7 -- Ensure that VHDs are Encrypted
-
-Verify encryption for any legacy VHD-based disks.
-
----
-
-## Section 8 -- Key Vault
-
-Evaluate Key Vault configurations against Section 8 recommendations.
-
-### CIS 8.1 -- Ensure that the Expiration Date is set for all Keys in RBAC Key Vaults
-
-```hcl
-resource "azurerm_key_vault_key" {
-  expiration_date = "2025-12-31T00:00:00Z"  # Must be set
-}
-```
-
-### CIS 8.2 -- Ensure that the Expiration Date is set for all Keys in Non-RBAC Key Vaults
-
-Same check for classic access policy-based Key Vaults.
-
-### CIS 8.3 -- Ensure that the Expiration Date is set for all Secrets in RBAC Key Vaults
-
-```hcl
-resource "azurerm_key_vault_secret" {
-  expiration_date = "2025-12-31T00:00:00Z"  # Must be set
-}
-```
-
-### CIS 8.4 -- Ensure that the Expiration Date is set for all Secrets in Non-RBAC Key Vaults
-
-Same check for classic access policy-based Key Vaults.
-
-### CIS 8.5 -- Ensure that the Key Vault is Recoverable
-
-**Critical check -- enable soft delete and purge protection:**
-
-```hcl
-resource "azurerm_key_vault" {
+resource "azurerm_key_vault" "kv" {
   soft_delete_retention_days = 90
-  purge_protection_enabled   = true  # Must be true
+  purge_protection_enabled   = true
+  enable_rbac_authorization  = true
 }
-```
 
-### CIS 8.6 -- Enable Role Based Access Control for Azure Key Vault
-
-```hcl
-resource "azurerm_key_vault" {
-  enable_rbac_authorization = true  # Preferred over access policies
+resource "azurerm_linux_web_app" "app" {
+  https_only = true
+  site_config {
+    minimum_tls_version = "1.2"
+    ftps_state          = "Disabled"
+    http2_enabled       = true
+  }
 }
-```
 
-### CIS 8.7 -- Ensure that Private Endpoints are used for Azure Key Vault
-
-Check for private endpoint connections to Key Vault:
-
-```hcl
-resource "azurerm_private_endpoint" {
-  private_service_connection {
-    private_connection_resource_id = azurerm_key_vault.example.id
-    subresource_names              = ["vault"]
+resource "azurerm_windows_web_app" "app" {
+  https_only = true
+  site_config {
+    minimum_tls_version = "1.2"
+    ftps_state          = "Disabled"
+    http2_enabled       = true
   }
 }
 ```
 
 ---
 
-## Section 9 -- App Service
+## Entra Boundary Rules
 
-Evaluate App Service configurations against Section 9 recommendations.
+Current Azure Foundations v6.0.0-aware reports must not silently score Entra controls as Azure controls.
 
-### CIS 9.1 -- Ensure App Service Authentication is set up for apps in Azure App Service
+| Evidence Found | Requested Scope | Handling |
+|----------------|-----------------|----------|
+| Entra Security Defaults, MFA, Conditional Access, guest access, PIM, app registration settings | Azure Foundations v6 only | Report under `Entra/M365 Scope` and exclude from Azure score. |
+| Same Entra evidence | Microsoft 365/Entra scope included | Evaluate in a separate Microsoft 365/Entra section with its own benchmark version and denominator. |
+| Same Entra evidence | Legacy Azure v2.1.0 requested | Evaluate under `Legacy Azure v2.1.0` and mark the report as legacy. |
+| No Entra evidence supplied | Azure Foundations v6 only | Record `entra_scope_handling: excluded` or `not-supplied`. |
 
-```hcl
-resource "azurerm_linux_web_app" {
-  auth_settings_v2 {
-    auth_enabled = true
-  }
-}
-```
+Entra examples to route out of current Azure score:
 
-### CIS 9.2 -- Ensure Web App Redirects All HTTP Traffic to HTTPS
+- Security Defaults and Conditional Access equivalence.
+- MFA for privileged and non-privileged users.
+- Named/trusted locations and geographic access policies.
+- Guest user access reviews and restrictions.
+- Self-service password reset methods.
+- Privileged Identity Management.
+- App registration restrictions.
 
-```hcl
-resource "azurerm_linux_web_app" {
-  https_only = true  # Must be true
-}
-```
+---
 
-### CIS 9.3 -- Ensure Web App is using the latest version of TLS encryption
+## Version Mapping and Scoring Rules
 
-```hcl
-resource "azurerm_linux_web_app" {
-  site_config {
-    minimum_tls_version = "1.2"  # Must be 1.2 or higher
-  }
-}
-```
+Use this table when the evidence includes current and legacy benchmark material:
 
-### CIS 9.4 -- Ensure the Web App has 'Client Certificates (Incoming client certificates)' set to 'On'
+| Control or Finding | Current Azure v6 Status | Legacy v2.1.0 Status | Entra/M365 Status | Evidence Source | Assessment Status |
+|--------------------|-------------------------|----------------------|-------------------|-----------------|-------------------|
+| Storage secure transfer | Current Azure v6 Scope | legacy mapped if supplied | none | Terraform + Azure Policy | Pass/Fail |
+| Conditional Access MFA | Deleted or Migrated | Legacy Azure v2.1.0 | Entra/M365 Scope | Entra export | Excluded from Azure score |
+| Key Vault purge protection | Current Azure v6 Scope | legacy mapped if supplied | none | Terraform + Defender | Pass/Fail |
 
-```hcl
-resource "azurerm_linux_web_app" {
-  client_certificate_mode    = "Required"
-  client_certificate_enabled = true
-}
-```
+Scoring rules:
 
-### CIS 9.5 -- Ensure that Register with Entra ID is enabled on App Service
+1. Count only controls in the selected Azure Foundations denominator.
+2. Do not count `Entra/M365 Scope`, `Legacy Azure v2.1.0`, `Deleted or Migrated`, or `Not Evaluable` as passing current Azure v6 controls.
+3. A Defender for Cloud or Azure Policy finding can prove live status only for the tenant/subscription/resource scope named in the evidence.
+4. IaC evidence can prove intended configuration, not live runtime compliance, unless backed by Defender, Azure Policy, Azure CLI, or portal exports.
+5. If exact v6 IDs are unavailable, use service-family labels and mark exact mapping as requiring benchmark access.
 
-Check for identity configuration:
+---
 
-```hcl
-resource "azurerm_linux_web_app" {
-  identity {
-    type = "SystemAssigned"
-  }
-}
-```
+## Legacy CIS Azure v2.1.0 Checklist
 
-### CIS 9.9 -- Ensure that 'HTTP20Enabled' is set for a Web App
+Use this section only when `legacy_baseline: true` or `entra_scope_handling: legacy-v2.1.0` is declared.
 
-```hcl
-resource "azurerm_linux_web_app" {
-  site_config {
-    http2_enabled = true
-  }
-}
-```
+Legacy v2.1.0 grouped controls into nine sections:
 
-### CIS 9.10 -- Ensure FTP deployments are Disabled
+| Legacy Section | Domain | Current Handling |
+|----------------|--------|------------------|
+| 1 | Identity and Access Management | Migrated out of current Azure Foundations; route to Entra/M365 or legacy mode. |
+| 2 | Microsoft Defender for Cloud | Re-evaluate against v6 source before current scoring. |
+| 3 | Storage Accounts | Re-evaluate against v6 source before current scoring. |
+| 4 | Database Services | Re-evaluate against v6 source before current scoring. |
+| 5 | Logging and Monitoring | Re-evaluate against v6 source before current scoring. |
+| 6 | Networking | Re-evaluate against v6 source before current scoring. |
+| 7 | Virtual Machines | Include modern VM resources when checking current IaC. |
+| 8 | Key Vault | Re-evaluate against v6 source before current scoring. |
+| 9 | App Service | Include Linux and Windows App Service variants. |
 
-```hcl
-resource "azurerm_linux_web_app" {
-  site_config {
-    ftps_state = "Disabled"  # Must be Disabled, not AllAllowed or FtpsOnly
-  }
-}
-```
+Legacy v2.1.0 examples remain useful as implementation patterns, but the report must not present them as current v6 control IDs unless a current mapping source is recorded.
+
+---
+
+## Output Checklist
+
+Every final report must include:
+
+- Benchmark version and source date.
+- `legacy_baseline` and reason when true.
+- `entra_scope_handling` and whether Entra evidence was excluded, included under Microsoft 365, or handled as legacy.
+- Evidence source for every finding.
+- Scope status for every finding.
+- Denominator source.
+- Separate counts for current Azure, Entra/M365, legacy, deleted/migrated, manual, and not-evaluable controls.
+- Clear statement when the review is IaC-only and cannot prove live Azure posture.
