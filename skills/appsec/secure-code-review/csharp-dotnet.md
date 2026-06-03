@@ -274,6 +274,118 @@ public bool ValidateInput(string input)
 }
 ```
 
+Reviewer evidence should distinguish attacker-controlled regex usage from safe, bounded validation. Do not treat every `Regex.IsMatch` call as vulnerable by default; record the call style, pattern shape, timeout source, input trust level, and exception handling before assigning severity.
+
+**Static regex methods -- verify local or default timeout evidence**
+
+```csharp
+// RISKY: static call over untrusted input, catastrophic pattern, no local timeout
+public bool IsAllowedSlug(string slug)
+{
+    return Regex.IsMatch(slug, @"^([a-z]+)+$");
+}
+```
+
+Static `Regex.IsMatch`, `Regex.Match`, `Regex.Replace`, and `Regex.Split` calls use an infinite timeout unless the application has configured a default regex timeout or the overload includes a timeout. Check startup code before downgrading the risk.
+
+```csharp
+// SECURE: application-wide default timeout configured early in startup
+AppDomain.CurrentDomain.SetData(
+    "REGEX_DEFAULT_MATCH_TIMEOUT",
+    TimeSpan.FromMilliseconds(500));
+
+public bool IsAllowedCode(string value)
+{
+    return Regex.IsMatch(value, @"^[A-Z]{3}-\d{4}$");
+}
+```
+
+**Source-generated regexes -- inspect attribute timeout and options**
+
+```csharp
+// RISKY: generated regex has no timeout and uses a backtracking pattern
+[GeneratedRegex(@"^([a-z]+)+$", RegexOptions.None)]
+private static partial Regex SlugRegex();
+
+public bool IsAllowedSlug(string slug) => SlugRegex().IsMatch(slug);
+```
+
+```csharp
+// SECURE: timeout is declared in the generated-regex attribute
+[GeneratedRegex(@"^[a-z0-9-]{1,64}$", RegexOptions.None, 500)]
+private static partial Regex SlugRegex();
+
+public bool IsAllowedSlug(string slug) => SlugRegex().IsMatch(slug);
+```
+
+**NonBacktracking -- evaluate compatibility, do not require blindly**
+
+```csharp
+// SECURE: simple validation pattern can use the non-backtracking engine
+private static readonly Regex SafeCode =
+    new(@"^[A-Z]{3}-\d{4}$", RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(250));
+
+// NEEDS REVIEW: backreferences require ordinary backtracking semantics
+private static readonly Regex RepeatedWord =
+    new(@"^(?<word>\w+)\s+\k<word>$", RegexOptions.None, TimeSpan.FromMilliseconds(250));
+```
+
+For .NET 7+, `RegexOptions.NonBacktracking` is a strong mitigation when the pattern does not require constructs that depend on backtracking. If it is not compatible, require a bounded timeout and document why ordinary backtracking remains necessary.
+
+**Timeout handling -- fail closed for validation**
+
+```csharp
+// VULNERABLE: timeout is handled as a validation pass
+try
+{
+    return RiskyRegex.IsMatch(userInput);
+}
+catch (RegexMatchTimeoutException)
+{
+    return true;
+}
+```
+
+```csharp
+// SECURE: timeout is handled as a validation failure
+try
+{
+    return BoundedRegex.IsMatch(userInput);
+}
+catch (RegexMatchTimeoutException)
+{
+    _logger.LogWarning("Regex validation timed out for request input.");
+    return false;
+}
+```
+
+**Regex/ReDoS evidence table**
+
+| Field | Evidence to record |
+|---|---|
+| Input source | HTTP body, route/query parameter, header, uploaded file, database field attackers can write, or trusted constant |
+| Bounds | Maximum length, allowlisted character set, enum-like value, or no meaningful bound |
+| Pattern ownership | Static literal, generated regex, runtime-built pattern, user-supplied pattern, or configuration-driven pattern |
+| Call style | Static method, `new Regex(...)`, cached instance, `[GeneratedRegex]`, `RegexOptions.Compiled`, or `RegexOptions.NonBacktracking` |
+| Timeout evidence | Local timeout overload, `GeneratedRegex` timeout, application default timeout, explicit infinite timeout, or none found |
+| Backtracking risk | Nested quantifiers, overlapping alternation, backreferences, lookarounds, or simple anchored pattern |
+| NonBacktracking status | Applied, compatible but missing, incompatible with reason, or not evaluated |
+| Exception handling | Fail closed, fail open, retries, sensitive payload logging, or no catch path |
+| Test evidence | Bounded adversarial fixture, benign fixture, timeout test, or not tested |
+| Confidence / Not Evaluable | High/medium/low confidence plus the missing artifact when evidence cannot be verified |
+
+Use these Not Evaluable reason codes when evidence is missing:
+
+- `NE-INPUT-SOURCE` -- input trust boundary cannot be traced from the reviewed diff
+- `NE-INPUT-BOUND` -- maximum input length or allowlist is not visible
+- `NE-DEFAULT-TIMEOUT` -- startup/configuration code that might set `REGEX_DEFAULT_MATCH_TIMEOUT` is outside scope
+- `NE-GENERATED-REGEX` -- `[GeneratedRegex]` attribute arguments or generated method declaration are outside scope
+- `NE-DYNAMIC-PATTERN` -- pattern is built from configuration or runtime data that is not available
+- `NE-EXCEPTION-PATH` -- timeout catch behavior cannot be inspected
+- `NE-TEST-EVIDENCE` -- no bounded adversarial or benign regex fixture is available
+
+Severity guidance: untrusted unbounded input plus a catastrophic pattern plus no timeout is High. Simple anchored patterns over bounded enum-like inputs can be Low or Not Applicable with evidence. Timeout handlers that return success should be treated as validation bypasses, not merely availability findings.
+
 ---
 
 ### Authentication and Session (Step 3)
@@ -930,7 +1042,10 @@ Use these regex patterns to locate potential vulnerabilities in C# source files.
 | XXE | `XmlResolver\s*=\s*new\s+XmlUrlResolver` |
 | XXE (DTD) | `DtdProcessing\s*=\s*DtdProcessing\.Parse` |
 | LDAP Injection | `DirectorySearcher.*Filter\s*=.*[\+\$]` |
-| ReDoS | `new\s+Regex\s*\([^)]*\)\s*[^,]` (missing timeout parameter) |
+| ReDoS (instance missing timeout) | `new\s+Regex\s*\([^)]*\)\s*[^,]` |
+| ReDoS (static call needs timeout/default review) | `Regex\.(IsMatch|Match|Matches|Replace|Split)\s*\(` |
+| ReDoS (source-generated regex needs attribute review) | `\[GeneratedRegex\s*\(` |
+| ReDoS (timeout handling) | `catch\s*\(\s*RegexMatchTimeoutException` |
 | Hard-coded credentials | `(Password\|Secret\|Key)\s*=\s*"[^"]{8,}"` |
 | BinaryFormatter | `BinaryFormatter` |
 | NetDataContractSerializer | `NetDataContractSerializer` |
@@ -1070,6 +1185,9 @@ builder.Services.AddDataProtection()
 - **OWASP .NET Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html
 - **Microsoft Secure Coding Guidelines:** https://learn.microsoft.com/en-us/dotnet/standard/security/secure-coding-guidelines
 - **ASP.NET Core Security Documentation:** https://learn.microsoft.com/en-us/aspnet/core/security/
+- **Microsoft .NET Regex Backtracking and Timeouts:** https://learn.microsoft.com/en-us/dotnet/standard/base-types/backtracking-in-regular-expressions
+- **Microsoft .NET Regular Expression Options:** https://learn.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-options
+- **Microsoft GeneratedRegexAttribute API:** https://learn.microsoft.com/en-us/dotnet/api/system.text.regularexpressions.generatedregexattribute
 - **BinaryFormatter Security Guide:** https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
