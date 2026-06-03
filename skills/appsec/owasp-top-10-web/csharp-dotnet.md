@@ -13,8 +13,26 @@ Language-specific supplement for `owasp-top-10-web` covering ASP.NET Core, Entit
 **Detection Patterns (Grep):**
 
 ```
-# Missing [Authorize] on controllers
-\[ApiController\](?!.*\[Authorize\])
+# [Authorize] attributes on controllers/actions
+\[Authorize\]|\[Authorize\(
+
+# RequireAuthorization on endpoints or groups
+\.RequireAuthorization\(
+
+# AllowAnonymous attributes or extension methods
+\[AllowAnonymous\]|\.AllowAnonymous\(
+
+# Route groups definition
+\.MapGroup\(
+
+# Global FallbackPolicy configuration
+\bFallbackPolicy\b
+
+# Authentication middleware setup
+\.UseAuthentication\(
+
+# Authorization middleware setup
+\.UseAuthorization\(
 
 # CORS allow all origins
 \.AddCors.*AllowAnyOrigin
@@ -25,12 +43,10 @@ FromRoute.*id|FromQuery.*id
 # Missing anti-forgery token validation
 \[HttpPost\](?!.*\[ValidateAntiForgeryToken\])
 
-# AllowAnonymous on sensitive endpoints
-\[AllowAnonymous\]
-
 # Direct file access patterns
 Path\.Combine.*Request|PhysicalFile.*Request
 ```
+
 
 **Vulnerable Patterns and Secure Alternatives:**
 
@@ -165,6 +181,85 @@ builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
+```
+
+### Endpoint Routing Authorization Evidence (Minimal APIs and Mixed Applications)
+
+When auditing modern ASP.NET Core applications (especially those utilizing Minimal APIs or mixed routing models with controllers), authorization checks are frequently configured via endpoint-routing metadata rather than traditional controller attributes.
+
+Before reporting a Broken Access Control (A01) finding or claiming that an endpoint lacks authorization, reviewers MUST compile and verify the following evidence points:
+
+1. **Controller attributes**: Search for `[Authorize]` or `[AllowAnonymous]` annotations on the controller class or specific action methods.
+2. **Endpoint metadata**: Check for explicit calls to `.RequireAuthorization(...)` or `.AllowAnonymous()` on the mapping declarations (e.g., `app.MapGet(...)`, `app.MapPost(...)`).
+3. **Route-group inherited policies**: Trace the endpoint registration to determine if it belongs to a route group defined by `.MapGroup()`. Check if `.RequireAuthorization(...)` has been chained onto the group builder, which automatically protects all endpoints within that group.
+4. **Fallback policy definition**: Identify if a global `FallbackPolicy` is registered in `Program.cs` under the authorization services setup. For example:
+   ```csharp
+   builder.Services.AddAuthorization(options =>
+   {
+       options.FallbackPolicy = new AuthorizationPolicyBuilder()
+           .RequireAuthenticatedUser()
+           .Build();
+   });
+   ```
+   *Note*: The FallbackPolicy applies ONLY if no other authorization or anonymous metadata is present on the endpoint.
+5. **`AllowAnonymous()` exceptions**: Check if the endpoint explicitly overrides the inherited route-group policy or the global fallback policy using `.AllowAnonymous()` or the `[AllowAnonymous]` attribute.
+6. **Middleware ordering**: Verify that `app.UseAuthentication()` is called BEFORE `app.UseAuthorization()`. Incorrect middleware order can cause authorization checks to run against unauthenticated context, bypassing security controls or raising unexpected exceptions.
+7. **Object-ownership checks**: Verify that the application performs data-level/object-level authorization checks (e.g., verifying that the authenticated user ID matches the owner of the resource being updated or deleted) instead of relying solely on route/endpoint authentication.
+
+---
+
+**Vulnerable Patterns and Secure Alternatives for Endpoint Routing:**
+
+**Vulnerable: Minimal API Route Mapped Outside Protected Group**
+In this scenario, a developer creates a route group for API endpoints and calls `.RequireAuthorization()`, but maps a sensitive endpoint directly to the app or outside of the group builder, bypassing authorization entirely.
+```csharp
+var apiGroup = app.MapGroup("/api/v1").RequireAuthorization();
+
+// Mapped correctly inside the group (inherited auth)
+apiGroup.MapGet("/me", GetCurrentUserAsync);
+
+// VULNERABLE: Mapped directly to the app instead of apiGroup
+app.MapDelete("/api/v1/admin/users/{id}", DeleteUserAsync);
+```
+
+**Vulnerable: Wrong Middleware Execution Order**
+If `UseAuthorization` is called before `UseAuthentication`, the endpoint's authorization policy runs on an empty or unauthenticated security context, leading to security bypasses or auth failures.
+```csharp
+// VULNERABLE: UseAuthorization called before UseAuthentication
+app.UseAuthorization();
+app.UseAuthentication();
+
+app.MapGet("/api/secure-data", () => "secret").RequireAuthorization();
+```
+
+**Vulnerable: Global Fallback Policy Overridden by Implicit Anonymous Mappings or Unvalidated Overrides**
+Relying blindly on a fallback policy without enumerating and auditing intentionally public endpoints. If a sensitive endpoint is decorated with `.AllowAnonymous()` (e.g. for testing) and left in production, it will bypass the fallback policy.
+```csharp
+// Global fallback policy set, but...
+builder.Services.AddAuthorization(options => {
+    options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+});
+
+// VULNERABLE: Sensitive endpoint explicitly overrides authorization using AllowAnonymous
+app.MapGet("/api/admin/debug-settings", () => GetSettings()).AllowAnonymous();
+```
+
+**Secure: Route Groups, Correct Middleware Order, and Explicit Exception Audit**
+```csharp
+// 1. Correct middleware order in Program.cs
+app.UseRouting();
+app.UseAuthentication(); // First
+app.UseAuthorization();  // Second
+
+// 2. Define route groups with explicit authorization policy mapping
+var adminGroup = app.MapGroup("/api/admin")
+    .RequireAuthorization("AdminOnlyPolicy");
+
+// Mapped on the group builder - inherits AdminOnlyPolicy
+adminGroup.MapDelete("/users/{id}", DeleteUserAsync);
+
+// 3. Document and audit any intentional public routes
+app.MapGet("/healthz", () => "healthy").AllowAnonymous(); // Permitted public endpoint
 ```
 
 ---
@@ -1305,9 +1400,14 @@ Quick-reference list for automated scanning:
 
 ```
 # --- A01: Broken Access Control ---
-\[ApiController\](?!.*\[Authorize\])
+\[Authorize\]|\[Authorize\(
+\.RequireAuthorization\(
+\[AllowAnonymous\]|\.AllowAnonymous\(
+\.MapGroup\(
+\bFallbackPolicy\b
+\.UseAuthentication\(
+\.UseAuthorization\(
 \.AddCors.*AllowAnyOrigin
-\[AllowAnonymous\]
 Path\.Combine.*Request
 
 # --- A02: Cryptographic Failures ---
