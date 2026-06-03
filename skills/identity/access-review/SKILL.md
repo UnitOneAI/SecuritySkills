@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -134,7 +134,17 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 **NIST SP 800-53 Reference:** AC-6(7) — Review of User Privileges
 **CIS Controls v8 Reference:** Control 6.1 — Establish an Access Granting Process
 
-For each user-entitlement pair, the certifier (typically the user's manager or resource owner) must affirm or revoke:
+For each user-entitlement pair, the certifier must affirm or revoke. Reviewers must evaluate the following components:
+
+- **Reviewer Authority Classification**: Access review campaigns must align certifiers to their scope of authority. Entitlements are classified by ownership:
+  - *People Manager*: Validates workforce active status and general business need.
+  - *Resource / Entitlement Owner*: Validates application-specific access, database roles, or specialized privileges.
+  - *Technical / Delegate Owner*: Validates specialized or privileged infrastructure access.
+  - *Escalation requirement*: Privileged, financial, or regulated access must not be certified solely by people managers; they must escalate to or require co-approval from resource/technical owners who understand the permissions.
+- **Effective Entitlement Visibility (Nested & Dynamic Groups)**: Ensure reviews certify *effective* entitlements (actual permissions and roles mapped to business capabilities) rather than abstract group names. Audit configurations for:
+  - *Nested-group expansion depth*: Group hierarchies must be fully expanded to show all inherited roles and direct grants.
+  - *Dynamic-group rules*: Identify dynamic rules (e.g., cost center or department rules) to verify membership conditions.
+  - *Direct vs Inherited permissions*: Demarcate direct user assignments from inherited role grants.
 
 **What to look for:**
 
@@ -178,6 +188,11 @@ AR-ORPH-06: Accounts not correlated with authoritative HR source (HRIS feed gap)
 AR-ORPH-07: Deprovisioning SLA exceeded (same-day for terminations, 24 hours for role changes)
 AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle management
 ```
+
+- **HRIS authoritative source joins**: Confirm that the campaign population includes reconciliation metadata from HRIS/workforce management feeds. Identify:
+  - *Termination & transfer effective dates*: Verify accounts are deactivated or updated on the exact termination/transfer effective dates.
+  - *Contractor end dates*: Reconcile contract duration and end dates.
+  - *Unmatched identities*: Reconcile active IdP or target-app accounts that have no corresponding record in the HRIS feed.
 
 **Platform-specific checks:**
 
@@ -286,6 +301,11 @@ AR-ENF-07: Compensating controls for exceptions not validated
 AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 ```
 
+- **SCIM & Provisioning Verification**: Reviewers must verify that revocation decisions were successfully pushed and reconciled on target systems:
+  - *Deprovision status verification*: Check for SCIM sync status and provisioning errors. SCIM deprovisioning commands may return successful status in the IdP but fail silently in the target application due to sync conflicts (e.g., HTTP 409).
+  - *Target-app local state verification*: Compare the post-campaign IdP group membership with direct user exports from the target application itself to ensure local accounts or native roles were successfully revoked.
+  - *Post-revocation reconciliation cadence*: Audit whether automatic reconciliation processes run regularly to detect drift between IGA decisions and target-app access states.
+
 **Evidence requirements for audit:**
 
 | Evidence Artifact | Retention Period | Framework Basis |
@@ -352,8 +372,32 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 - Segregation of Duties (Step 5): [count]
 - Enforcement & Evidence (Step 6): [count]
 
+### Source of Truth Reconciliation Matrix
+| Identity / User ID | HRIS Status | HRIS Effective Date | IdP Status | SCIM Provisioning Status | Target App Local Status | Local Account? (Yes/No) | Mismatch Reason / Status |
+|---|---|---|---|---|---|---|---|
+| [User-ID] | [Active / Terminated] | [YYYY-MM-DD / N/A] | [Active / Suspended] | [Synced / Failed-409 / Disabled] | [Active / Revoked] | [Yes / No] | [e.g., local account bypasses federation] |
+
+### Effective Entitlement Evidence Matrix
+| Account ID | Entitlement / Role Name | Direct Grant? (Yes/No) | Inherited/Nested via Group | Dynamic Group Rule | Target App Effective Role | Business Capability / Privilege Level | Validation Timestamp | Status |
+|---|---|---|---|---|---|---|---|---|
+| [User-ID] | [e.g., AD-Group-Prod] | [Yes / No] | [e.g., Finance-Approver] | [e.g., costCenter = 8100] | [Payment-Admin] | [High - financial transaction deploy] | [YYYY-MM-DD HH:MM] | [Certified / Revoked / Not Evaluable] |
+
+### Reviewer Authority & Revocation Verification
+- Reviewer Authority Type: [people manager | resource owner | entitlement owner | delegate | technical owner]
+- Escalation Required for Privileged Access: [Yes / No / N/A]
+- Revocation SLA / Completion Time: [decisions completed in N days, enforced in N days]
+- Target App State Post-Revocation Reconciled: [Yes / No / Pending]
+- Verification Telemetry Source: [e.g., IdP provisioning logs + SaaS app local user export]
+
 ### Detailed Findings
 [Findings table]
+
+**Not Evaluable (NE) Reason Codes**: If the review cannot be verified due to missing information, use one of the following reason codes in the findings table:
+- `missing_hris_feed` -- Workforce lifecycle/authoritative status feed not integrated or stale.
+- `missing_target_export` -- Local user/role database from the target SaaS/app cannot be exported.
+- `unknown_scim_sync` -- Provisioning gateway error logs or SCIM endpoint telemetry unavailable.
+- `unexpanded_group_nesting` -- Reviewer certified a parent group without recursive member/privilege expansion.
+- `certifier_lacks_context` -- Reviewer certified privileged access but holds no ownership or technical context for the resource.
 
 ### Remediation Roadmap
 - Immediate (0-7 days): [critical findings]
@@ -401,6 +445,8 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
 7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+8. **Treating SCIM deprovisioning status as target state** — Assuming a user is deprovisioned because the SCIM gateway sent a success code is a major trap. The application might fail to process the sync due to local database locks or duplicate email conflicts. Always verify the target-app local user state directly.
+9. **Manager certifications for specialized or privileged infrastructure** — People managers can confirm that an employee is still active, but they often lack the technical context to evaluate database admin roles, network route definitions, or cloud IAM permissions. Always escalate or co-certify privileged/regulated roles with the resource/technical owner.
 
 ---
 
@@ -443,4 +489,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-03 | Add HRIS/SCIM reconciliation joins, nested/dynamic group visibility, reviewer authority classification, post-revocation validation, and matrices. |
 | 1.0.0 | 2025-03-06 | Initial release |
