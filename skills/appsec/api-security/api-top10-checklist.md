@@ -101,6 +101,7 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] Next.js Route Handlers and Server Actions using `ctx.params`, `RouteContext`, `NextRequest`, `request.nextUrl.searchParams`, `FormData.get(...)`, or hidden form fields verify that the caller can access the referenced object.
 
 ---
 
@@ -225,6 +226,8 @@ const UserType = new GraphQLObjectType({
 - [ ] Update endpoints use an allowlist of modifiable fields; mass assignment is impossible.
 - [ ] GraphQL fields containing sensitive data have resolver-level authorization.
 - [ ] API documentation (OpenAPI spec) accurately reflects the actual response schema.
+- [ ] Next.js Server Actions validate `FormData` or JSON input server-side with an allowlisted schema before writing to models or passing values to an ORM.
+- [ ] Next.js query parameters that toggle included fields, such as `includeBilling=true`, enforce property-level authorization before returning sensitive nested data.
 
 ---
 
@@ -284,6 +287,8 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
+- [ ] Next.js `serverActions.bodySizeLimit` increases are justified and paired with authentication, validation, rate limiting, and file/content constraints.
+- [ ] Expensive Server Actions and Route Handlers have per-user or per-tenant throttling, not only IP-based throttling.
 
 ---
 
@@ -331,6 +336,8 @@ const resolvers = {
 - [ ] Each HTTP method on each endpoint has an independent authorization check.
 - [ ] GraphQL mutations enforce role/permission checks in resolvers or directives.
 - [ ] The authorization policy is deny-by-default; endpoints are inaccessible unless explicitly permitted.
+- [ ] Next.js Server Actions that delete, update, publish, bill, invite, email, export, or otherwise mutate privileged state enforce function-level authorization inside the action.
+- [ ] Client-side UI hiding, hidden form fields, and disabled buttons are not treated as function-level authorization evidence.
 
 ---
 
@@ -472,6 +479,9 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
+- [ ] Next.js `serverActions.allowedOrigins` is minimal and does not use broad shared preview or wildcard domains without a documented trust boundary.
+- [ ] Sensitive Next.js Route Handlers do not opt into unsafe static caching through `dynamic = "force-static"`, `revalidate`, `fetch(..., { cache })`, or `use cache`.
+- [ ] Sensitive Route Handler responses set appropriate cache headers such as `Cache-Control: no-store`.
 
 ---
 
@@ -515,6 +525,172 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] No debug, test, or playground endpoints are accessible in production.
 - [ ] Internal APIs are not reachable from external networks.
 - [ ] CI/CD pipelines validate that code routes match the API specification.
+- [ ] Next.js inventory includes `app/**/route.ts`, exported HTTP verb handlers, module-level or inline `"use server"` functions, `<form action={...}>`, `formAction={...}`, and Client Component server-action imports.
+- [ ] Public Route Handlers are labeled with intended audience and data sensitivity before missing authentication is classified as a finding.
+
+---
+
+## Next.js App Router and Server Actions Supplement
+
+Use this supplement when reviewing Next.js App Router applications. It is not a separate OWASP category; it helps map framework-native API surfaces to API1-API10 without over-reporting intentionally public handlers.
+
+### Inventory Patterns
+
+Search for:
+
+- `app/**/route.ts` and `app/**/route.js`
+- `export async function GET|POST|PUT|PATCH|DELETE`
+- `"use server"` at module or inline function scope
+- `<form action={...}>` and `formAction={...}`
+- Client Component imports of server action functions
+- `FormData.get(...)`, `Object.fromEntries(formData)`, `RouteContext`, `ctx.params`, `NextRequest`, and `request.nextUrl.searchParams`
+- `serverActions.allowedOrigins`, `serverActions.bodySizeLimit`, `dynamic = "force-static"`, `revalidate`, `fetch(..., { cache })`, and `use cache`
+
+### Vulnerable Server Action
+
+```typescript
+// VULNERABLE: Server Action is callable from a form but has no auth, ownership, or schema validation
+"use server";
+
+import { db } from "@/lib/db";
+
+export async function deleteProject(formData: FormData) {
+  const projectId = String(formData.get("projectId"));
+  await db.project.delete({ where: { id: projectId } });
+}
+```
+
+Security mapping:
+
+- API1:2023 when the object ID is user-controlled and no ownership/relationship check exists.
+- API2:2023 when the action does not require an authenticated server-side user.
+- API3:2023 when `FormData` or JSON fields are bound directly to data models.
+- API4:2023 when the action accepts large payloads or triggers expensive work without quotas.
+- API5:2023 when the action performs privileged mutations without role or permission checks.
+
+Remediation:
+
+```typescript
+"use server";
+
+import { z } from "zod";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+const deleteProjectInput = z.object({
+  projectId: z.string().uuid(),
+});
+
+export async function deleteProject(formData: FormData) {
+  const user = await auth.requireUser();
+  const input = deleteProjectInput.parse({
+    projectId: formData.get("projectId"),
+  });
+
+  const project = await db.project.findFirst({
+    where: { id: input.projectId, ownerId: user.id },
+    select: { id: true },
+  });
+
+  if (!project) {
+    throw new Error("Not authorized");
+  }
+
+  await db.project.delete({ where: { id: project.id } });
+}
+```
+
+### Route Handler False-Positive Calibration
+
+Do not report missing authentication solely because a Route Handler is public.
+
+```typescript
+// BENIGN: intentional public product metadata with no privileged data or side effects
+export async function GET() {
+  return Response.json({
+    product: "public-docs",
+    docsVersion: "2026.06",
+  });
+}
+```
+
+Require a finding only when the handler returns sensitive data, performs side effects, exposes tenant/user state, or contradicts its intended public audience.
+
+### Route Params and Query Params
+
+```typescript
+// VULNERABLE: user-controlled params and search params drive object lookup and sensitive field inclusion
+import type { NextRequest } from "next/server";
+
+export async function GET(request: NextRequest, ctx: RouteContext<"/api/projects/[id]">) {
+  const { id } = await ctx.params;
+  const includeBilling = request.nextUrl.searchParams.get("includeBilling") === "true";
+
+  return Response.json(
+    await db.project.findUnique({
+      where: { id },
+      include: { billing: includeBilling },
+    })
+  );
+}
+```
+
+Check that route params and query params are:
+
+- Validated for type and format.
+- Bound to the authenticated user's tenant, ownership, or explicit permission.
+- Prevented from toggling sensitive response properties unless property-level authorization passes.
+
+### Server Action Origin and Body Controls
+
+```javascript
+// RISKY: broad origin and large body limit without documented trust boundary
+module.exports = {
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["*.example.com", "*.preview.example.com"],
+      bodySizeLimit: "50mb",
+    },
+  },
+};
+```
+
+Review evidence:
+
+- `allowedOrigins` is narrow and tied to controlled hosts or reverse proxies.
+- Preview domains are not shared with untrusted users or arbitrary branches.
+- `bodySizeLimit` changes are justified by a specific use case.
+- Large body actions require authentication, validation, throttling, and content/file constraints.
+
+### Route Handler Cache Safety
+
+```typescript
+// VULNERABLE: sensitive admin data is statically cached
+export const dynamic = "force-static";
+
+export async function GET() {
+  const users = await db.user.findMany({
+    select: { id: true, email: true, role: true },
+  });
+
+  return Response.json(users);
+}
+```
+
+Review `dynamic`, `revalidate`, `fetch(..., { cache })`, and `use cache` around handlers returning user, tenant, admin, regulated, or billing data. Sensitive responses should avoid static caching and should return explicit non-cache headers.
+
+### Next.js Review Checklist
+
+- [ ] Route Handler inventory includes every `app/**/route.ts` / `route.js` file and exported HTTP verb function.
+- [ ] Server Action inventory includes module-level and inline `"use server"` functions plus their form, button, and Client Component call sites.
+- [ ] Public handlers have documented public intent and return only non-sensitive data.
+- [ ] Server Actions authenticate the caller inside the action before side effects.
+- [ ] Server Actions and Route Handlers enforce object-level and function-level authorization server-side.
+- [ ] `FormData`, JSON bodies, route params, and query params are schema-validated and allowlisted.
+- [ ] Query params cannot enable sensitive fields or nested includes without property-level authorization.
+- [ ] `serverActions.allowedOrigins` is minimal and justified for proxy or preview deployments.
+- [ ] `serverActions.bodySizeLimit` increases are paired with authentication, validation, throttling, and content/file constraints.
+- [ ] Sensitive Route Handlers do not opt into static caching and set appropriate non-cache headers.
 
 ---
 
