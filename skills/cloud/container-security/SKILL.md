@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -58,6 +58,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 
 - Access to Dockerfiles and container build configurations
 - Kubernetes manifests (YAML), Helm charts, or Kustomize overlays
+- Rendered manifests generated from Helm/Kustomize/other templating tools
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
@@ -92,6 +93,8 @@ Use Glob to locate all relevant configuration files.
 **/values-*.yaml
 **/kustomization.yaml
 **/kustomization.yml
+**/*cronjob*.yaml
+**/*cronjob*.yml
 **/base/**/*.yaml
 **/overlays/**/*.yaml
 **/*-deployment.yaml
@@ -103,13 +106,22 @@ Use Glob to locate all relevant configuration files.
 **/*-podsecuritypolicy.yaml
 ```
 
-Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, and supporting configs. Record all discovered files.
+Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, rendered manifests, and supporting configs. Record all discovered files.
+
+### Rendered Manifest Coverage Gate
+
+When the workload is produced by Helm, Kustomize, Jsonnet, or another generator, inspect the rendered manifest that will actually be applied to the cluster.
+
+- Record the render command and the rendered output path.
+- Compare template defaults against the rendered output and values overrides.
+- Do not score Pod Security, RBAC, NetworkPolicy, or secret exposure from templates alone.
+- For CronJob workloads, inspect `spec.jobTemplate.spec.template.spec` in the rendered manifest, not just the top-level CronJob object.
 
 ---
 
 ### Step 2 through Step 6: CIS Benchmark and NIST SP 800-190 Evaluation
 
-Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
+Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening. For templated workloads, base the assessment on the rendered manifest, not the source template alone.
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
@@ -143,7 +155,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Repository: <identifier>
 - Date: <assessment date>
 - Frameworks: CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, NIST SP 800-190
-- Files reviewed: <N Dockerfiles, N K8s manifests, N Helm charts>
+- Files reviewed: <N Dockerfiles, N K8s manifests, N Helm charts, N rendered manifests>
 
 ### Executive Summary
 - Total checks evaluated: <N>
