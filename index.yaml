@@ -230,7 +230,7 @@ skills:
     role: [security-engineer, appsec-engineer]
     phase: [build, operate]
     activity: [review, assess]
-    frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
+    frameworks: [CycloneDX-1.5, CycloneDX-1.6, SPDX-2.3, SPDX-3.0.1, VEX-CSAF, NTIA-SBOM-Minimum-Elements, CISA-SBOM-Guidance]
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/vuln-management/sbom-analysis/SKILL.md
