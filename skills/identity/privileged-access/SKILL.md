@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -223,6 +223,49 @@ PAM-JIT-10: No escalation path when JIT approver is unavailable
 
 ---
 
+#### Privileged Activation Evidence
+
+Do not collapse eligibility, activation, current sessions, and permanent privilege into one count. A user who is eligible for a role behind approval and MFA is materially different from a user with a permanently active administrator assignment. A JIT tool is only strong evidence when the reviewer can inspect assignment state, activation requirements, grant lifecycle logs, current active sessions, and revocation behavior.
+
+**What to look for:**
+
+```
+PAM-ACT-01: Eligible assignments reported as currently active privilege
+PAM-ACT-02: Permanently active administrators hidden behind a generic JIT/PIM label
+PAM-ACT-03: Missing activation requirements for eligible roles (MFA, approval, justification, ticket)
+PAM-ACT-04: Missing activation history or grant lifecycle log for privileged role use
+PAM-ACT-05: Current active sessions not exported or reviewed during the assessment window
+PAM-ACT-06: Session duration exceeds the operational need or platform policy
+PAM-ACT-07: Revocation blocks future activation but leaves existing privileged sessions valid without emergency termination evidence
+PAM-ACT-08: Group-based JIT eligibility not correlated with current group membership and activation events
+PAM-ACT-09: Workload or service identities reviewed with human JIT assumptions instead of token TTL, federation source, impersonation, and revocation evidence
+PAM-ACT-10: Policy-only evidence accepted without activation, session, or audit-log proof
+```
+
+**Activation evidence table:**
+
+| Field | What to record |
+|---|---|
+| Principal | User, group, service account, workload identity, or vendor identity |
+| Platform / role | PAM/PIM product, cloud role, permission set, entitlement, or vault policy |
+| Assignment state | Eligible, active, permanent active, emergency, service/workload, or not evaluable |
+| Activation requirements | MFA type, approval, justification, ticket, device/network controls, and maximum activation duration |
+| Session evidence | Current active sessions, session start/end, portal/application session duration, account/API session duration |
+| Grant lifecycle | Request, approval/denial, activation, extension, end/withdrawal, and audit-log retention evidence |
+| Revocation behavior | Whether removal terminates active sessions, only blocks future activation, or requires emergency session kill/credential rotation |
+| Confidence | Confirmed, partial, policy-only, stale, or not evaluable |
+
+**Platform-specific activation evidence:**
+
+| Platform | Evidence to request |
+|---|---|
+| Microsoft Entra PIM | Eligible vs. active role assignments, role settings, activation history, approval/MFA requirements, assignment duration, and current active assignments |
+| AWS IAM Identity Center | Permission-set session duration, access portal session duration, account assignment scope, active session revocation behavior, and CloudTrail evidence for role use |
+| Google Cloud PAM | Entitlements, grant requests, approval/denial events, active grant end time, withdrawal/end events, audit log sink, and retention |
+| Traditional PAM | Checkout request, approver, session start/end, recording ID, command metadata, post-use rotation, and direct-access bypass check |
+
+---
+
 ### Step 4: Break-Glass Procedures
 
 **Objective:** Assess emergency access procedures for completeness, security, and testability.
@@ -258,6 +301,27 @@ PAM-BG-10: Break-glass procedure not included in disaster recovery plans
 | **Quarterly testing** | Validate procedure works, credentials are valid, alerts fire | AC-2(2) |
 | **Scoped permissions** | Break-glass accounts limited to recovery actions, not full admin | AC-6 |
 | **Time-bounded** | Break-glass sessions auto-terminate after defined maximum duration | AC-2(2) |
+
+#### Break-Glass Test Evidence
+
+A break-glass test that only proves the credential can log in is incomplete. Review the full lifecycle and classify missing lifecycle proof separately from missing credentials.
+
+| Evidence item | Required proof |
+|---|---|
+| Authorization | Change/incident record, approver, reason, and time window |
+| Use | Account used, system reached, session start/end, and privileged action scope |
+| Monitoring | Alert fired, ticket linked, session recording or immutable activity log captured |
+| Containment | Session terminated, direct console/API sessions checked, and residual active sessions cleared |
+| Recovery hygiene | Credential rotated, vault record updated, emergency access reset, and post-use review completed |
+| Retest result | Last successful test date, failed-control notes, owner, and next test date |
+
+Additional findings:
+
+```
+PAM-BG-11: Break-glass test proves login only but not alerting, session capture, termination, rotation, or post-use review
+PAM-BG-12: Emergency removal procedure does not terminate active privileged sessions
+PAM-BG-13: Break-glass session recording captures sensitive data without masking or restricted review access
+```
 
 ---
 
@@ -366,6 +430,9 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding |
+| **Activation State** | Eligible / active / permanent active / emergency / service identity / not evaluable |
+| **Session and Revocation Evidence** | Session duration, current active sessions, and revocation behavior observed |
+| **Evidence Confidence** | Confirmed / partial / policy-only / stale / not evaluable |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -391,6 +458,16 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | JIT Access | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
+
+### Privileged Activation Evidence
+| Principal | Platform / Role | Assignment State | Activation Requirements | Current Sessions | Grant Lifecycle Evidence | Revocation Behavior | Confidence |
+|---|---|---|---|---|---|---|---|
+| [principal] | [role/platform] | [eligible/active/permanent active/service/not evaluable] | [MFA/approval/justification/duration] | [active sessions and duration] | [request/approval/activation/end logs] | [terminates sessions or future-only] | [confirmed/partial/policy-only] |
+
+### Break-Glass Test Evidence
+| Account | Last Test | Authorization | Monitoring | Session Termination | Rotation | Post-Use Review | Result |
+|---|---|---|---|---|---|---|---|
+| [account] | [date] | [ticket/approver] | [alert/recording/log] | [terminated/unchecked] | [rotated/not rotated] | [completed/missing] | [pass/fail/not evaluable] |
 
 ### Findings by Severity
 - Critical: [count]
@@ -458,6 +535,10 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
 
+9. **Eligible is not active** - do not report an eligible PIM/PAM assignment as standing privilege unless activation or current-session evidence proves it is active. Conversely, do not hide permanent active administrators behind a generic JIT label.
+10. **Revocation without session termination** - removing future access may leave existing console, portal, role, or API sessions valid until expiry. Record the actual revocation behavior and emergency termination path.
+11. **Break-glass login-only testing** - a successful emergency login is not enough; the test must prove alerting, session capture, containment, rotation, and post-use review.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -484,6 +565,12 @@ that may contain adversarial content.
 - Verizon Data Breach Investigations Report (DBIR) — credential misuse statistics: https://www.verizon.com/business/resources/reports/dbir/
 - MITRE ATT&CK — Credential Access (TA0006), Privilege Escalation (TA0004): https://attack.mitre.org
 
+- Microsoft Entra PIM role settings and activation: https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/pim-how-to-change-default-settings
+- AWS IAM Identity Center session duration: https://docs.aws.amazon.com/singlesignon/latest/userguide/howtosessionduration.html
+- AWS IAM Identity Center authentication sessions: https://docs.aws.amazon.com/singlesignon/latest/userguide/authconcept.html
+- Google Cloud Privileged Access Manager overview: https://cloud.google.com/iam/docs/pam-overview
+- Google Cloud PAM audit logging: https://cloud.google.com/iam/docs/audit-logging/audit-logging-pam
+
 ---
 
 ## Cross-References
@@ -502,4 +589,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-03 | Added activation-state, session duration, revocation behavior, grant lifecycle, and break-glass lifecycle evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
