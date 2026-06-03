@@ -5,8 +5,8 @@ description: >
   and cloud audit log sources. Auto-invoked when the user shares log data, asks
   about suspicious events, needs help interpreting Windows Event IDs or Linux auth
   logs, or is establishing baselines for anomaly detection. Produces log source
-  taxonomy, anomaly identification, baseline recommendations, and correlation
-  findings mapped to MITRE ATT&CK v16 techniques.
+  taxonomy, telemetry integrity checks, anomaly identification, baseline
+  recommendations, and correlation findings mapped to MITRE ATT&CK v16 techniques.
 tags: [secops, logging, anomaly-detection]
 role: [soc-analyst, security-engineer]
 phase: [operate]
@@ -56,6 +56,8 @@ Before beginning analysis, gather or confirm:
 - [ ] **Time window:** The specific time range to analyze.
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
+- [ ] **Required log sources by hypothesis:** Which sources are required to answer the analysis objective, and which are optional corroboration?
+- [ ] **Telemetry health evidence:** Are source heartbeat, last successful ingestion, collector status, parser/filter configuration, queue depth, drop/error counters, and SIEM index permissions available for the relevant sources?
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
@@ -120,6 +122,37 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | Azure Activity Log | Azure | Resource operations -- create, delete, modify at the control plane | Cloud Service (DS0025) |
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
+
+### Step 1A: Telemetry Integrity and Ingestion Coverage
+
+Before interpreting "no evidence found" as benign, prove that the required telemetry sources were present, trustworthy, and queryable for the analysis window.
+
+**Source-to-hypothesis matrix:**
+
+| Hypothesis / Question | Required Sources | Status | Integrity Evidence | Confidence |
+|-----------------------|------------------|--------|--------------------|------------|
+| Account compromise | IdP sign-in, MFA/CA, endpoint process, proxy/DNS, EDR alerts | Present / Partial / Missing / Delayed / Untrusted | Heartbeat, last event time, last ingest time, index permissions, known maintenance | High / Medium / Low / Not Evaluable |
+| Credential theft | Sysmon 10, EDR process access, PowerShell 4104, Windows Security, cloud audit | Present / Partial / Missing / Delayed / Untrusted | Sensor policy, parser status, drop counters, query scope, event volume baseline | High / Medium / Low / Not Evaluable |
+| C2 or exfiltration | DNS, proxy, firewall, NetFlow/VPC flow, endpoint network | Present / Partial / Missing / Delayed / Untrusted | Collector health, queue/backpressure counters, sampling policy, late-arrival window | High / Medium / Low / Not Evaluable |
+
+**Telemetry integrity checks:**
+
+- **Source heartbeat:** Confirm the source or collector reported healthy during the window, not merely that some old events exist.
+- **Last event vs. last ingest:** Record both event occurrence time and SIEM ingestion time. A source can be producing events while the SIEM is delayed, or the SIEM can receive replayed backlog after the fact.
+- **Pipeline configuration:** Review collector, parser, routing, filter, and index configuration for the event classes needed by the hypothesis. Treat silent drops of authentication, EDR, cloud audit, DNS, or proxy events as high-risk visibility failures.
+- **Drop and error counters:** Check queue depth, output failures, parser failures, rejected events, throttling, sampling, truncation, and license/volume caps before drawing volumetric conclusions.
+- **Access scope:** Confirm the analyst can query the required tenant, namespace, index, subscription, account, project, or workspace. Search permissions can create a false "no logs found" result.
+- **Known maintenance:** Document change tickets, planned parser deployments, approved sampling, or expected zero-event windows. These can explain gaps but should lower confidence if they prevent answering the hypothesis.
+- **Replay and duplication:** Use stable event IDs, sequence numbers, or source offsets to deduplicate replayed batches and to flag late-arriving events that may change the timeline.
+
+**Telemetry integrity finding guidance:**
+
+| Condition | Classification Guidance |
+|-----------|-------------------------|
+| Documented maintenance or zero-event period with heartbeat, ticket, expected-events rationale, and no corroborating suspicious activity | Record as a visibility limitation; do not classify as compromise by itself. |
+| Required source missing, delayed, sampled, or access-restricted for the analysis window | Mark the hypothesis as Partial or Not Evaluable; do not issue high-confidence benign closure. |
+| Collector filter, parser, route, or SIEM rule suppresses high-value event classes without approval | Treat as P2 High; escalate as possible telemetry evasion or monitoring control failure. |
+| Evidence of deliberate log clearing, sensor disabling, audit policy downgrade, or targeted auth/EDR/cloud/DNS event suppression during an incident | Treat as P1 Critical when tied to active compromise context; map to ATT&CK T1070 or T1562 as applicable. |
 
 ### Step 2: Critical Windows Event IDs
 
@@ -313,6 +346,7 @@ Step 4: Pivot on host
 
 Step 5: Build timeline
   -> Combine all findings into a chronological sequence
+  -> Preserve event time, ingestion time, source event ID, deduplication key, and late-arrival status
   -> Map each event to an ATT&CK technique
   -> Identify gaps in visibility (log sources not available)
 ```
@@ -327,6 +361,13 @@ Step 5: Build timeline
 | P2 | High | Log analysis reveals high-confidence anomalies consistent with an intrusion: unusual privileged logons, new persistence mechanisms, or C2 communication patterns. | Escalate within 1 hour. |
 | P3 | Medium | Log analysis identifies suspicious patterns requiring further investigation: behavioral anomalies, first-seen activity, or partial kill chain indicators. | Investigate within 4 hours. |
 | P4 | Low | Log analysis reveals informational findings: minor policy deviations, logging gaps, or baseline drift without immediate threat indication. | Document and review within 24 hours. |
+
+**Telemetry confidence modifiers:**
+
+- Downgrade benign conclusions to **Not Evaluable** when required log sources are missing, delayed, access-restricted, sampled without a stated policy, or have unreviewed parser/filter changes.
+- Escalate to **P2 High** when high-value security telemetry is silently dropped, filtered, or routed away without an approved change.
+- Escalate to **P1 Critical** when telemetry suppression coincides with confirmed compromise, active containment, destructive activity, or credential-theft evidence.
+- Keep documented maintenance gaps as visibility limitations rather than findings when change tickets, heartbeat evidence, expected event counts, and post-maintenance recovery are all present.
 
 ---
 
@@ -352,6 +393,16 @@ Produce log analysis findings in this structure:
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
 
+### Telemetry Integrity and Coverage
+| Hypothesis | Required Source | Status | Last Event Time | Last Ingest Time | Integrity Evidence | Confidence / Limitation |
+|------------|-----------------|--------|-----------------|------------------|--------------------|-------------------------|
+| [Question being answered] | [Source] | [Present / Partial / Missing / Delayed / Untrusted] | [UTC or N/A] | [UTC or N/A] | [Heartbeat, ticket, drop counters, parser/filter review, index permission] | [High / Medium / Low / Not Evaluable plus reason] |
+
+### Pipeline Exceptions
+| Source | Exception Type | Evidence | Security Impact | Disposition |
+|--------|----------------|----------|-----------------|-------------|
+| [Collector/SIEM source] | [Maintenance / Sampling / Backpressure / Parser failure / Filter change / Access scope] | [Ticket, config, metric, query result] | [What cannot be concluded] | [Accepted limitation / Needs re-query / Escalate] |
+
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
 |---|---------|----------|-------------------|------------|----------|
@@ -370,15 +421,15 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Event Time (UTC) | Ingest Time (UTC) | Source | Event ID / Dedup Key | Event | ATT&CK Technique | Arrival Status | Assessment |
+|------------------|-------------------|--------|----------------------|-------|-------------------|----------------|------------|
+| [HH:MM:SS] | [HH:MM:SS or N/A] | [Source] | [Stable ID / hash / offset] | [Description] | [T-ID] | [On time / Late / Replay / Duplicate] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
 
 ### Visibility Gaps
-[Log sources that were not available but would have provided relevant data]
+[Log sources that were not available but would have provided relevant data. Include whether each source was missing, delayed, access-restricted, sampled, filtered, or untrusted, and how that changes confidence.]
 
 ### Recommendations
 - [ ] [Action 1]
@@ -441,13 +492,17 @@ No single log source provides complete visibility. Authentication logs show who 
 
 ### Pitfall 3: Ignoring the Absence of Expected Logs
 
-The absence of logs can be as significant as their presence. If a server that normally generates 1000 events per hour suddenly shows zero events, the logging pipeline may be broken or an adversary may have disabled logging (T1070.001 -- Clear Windows Event Logs, T1562.001 -- Disable or Modify Tools). Monitor for gaps in log continuity.
+The absence of logs can be as significant as their presence. If a server that normally generates 1000 events per hour suddenly shows zero events, the logging pipeline may be broken or an adversary may have disabled logging (T1070.001 -- Clear Windows Event Logs, T1562.001 -- Disable or Modify Tools). Monitor for gaps in log continuity, but separate unplanned loss from documented maintenance, approved sampling, expected zero-event windows, and analyst access limits. A gap with a change ticket and healthy post-maintenance recovery is a visibility limitation; a gap caused by unauthorized filtering, parser failure, or source disablement is a security finding.
 
-### Pitfall 4: Misinterpreting Event IDs Without Context
+### Pitfall 4: Treating SIEM Arrival Order as Event Order
+
+SIEM ingestion order is not the same as event occurrence order. Endpoint agents, cloud audit services, forwarders, and collectors can buffer events and replay them later, sometimes with duplicates. Preserve event time, ingest time, source event ID, deduplication key, and replay batch context before building timelines, baselines, or "first seen" conclusions.
+
+### Pitfall 5: Misinterpreting Event IDs Without Context
 
 A single Event ID can have very different meanings depending on the context. Event ID 4624 (successful logon) with LogonType 3 (network) is routine on a file server but suspicious on a developer workstation receiving inbound network logons. Always consider the LogonType, source/destination, user, time of day, and host role when interpreting events.
 
-### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
+### Pitfall 6: Not Establishing Baselines Before Looking for Anomalies
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
