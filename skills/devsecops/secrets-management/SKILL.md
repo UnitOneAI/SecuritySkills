@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -170,6 +170,8 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
    - Missing rotation automation (note in recommendations, not as a finding)
+   - OIDC token enablement permissions (e.g., `id-token: write` in GitHub Actions) are NOT secret leaks. They are configuration permissions that enable keyless token fetching, not static credentials.
+   - Broad/missing OIDC trust conditions (these are architectural identity findings, which should be reported under the OIDC section and prioritized remediation plan, not as hardcoded secret leaks)
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
@@ -348,7 +350,118 @@ spec:
     kind: SecretStore
 ```
 
-**Finding classification:** Agents using long-lived static credentials is **High**. No JIT credential mechanism for automated systems is **Medium**. Token TTL exceeding 10x task duration is **Medium**.
+#### 5.3 CI/CD OIDC Trust Policy Evidence
+
+When CI/CD workflows authenticate to cloud providers via OpenID Connect (OIDC), they retrieve short-lived credentials dynamically rather than using long-lived static access keys. While OIDC usage is a significant credential-hygiene improvement, it is only secure if the cloud-side trust policy enforces strict conditions on the incoming identity claims. Reviewers must evaluate cloud-side trust policies and collect the following evidence parameters:
+
+1. **Cloud Provider**: Identify the target cloud (AWS, Azure, GCP, Vault).
+2. **Identity Provider (IdP) / Issuer URL**: Verify the trusted issuer matches the workflow provider (e.g., `https://token.actions.githubusercontent.com` for GitHub Actions).
+3. **Audience (`aud`)**: Confirm that the client/relying party restricts the accepted audience to a specific client ID or cloud service identifier (e.g., `sts.amazonaws.com` for AWS).
+4. **Subject (`sub`) / Context Condition**: Check that the policy explicitly constrains the subject claim to allow list values (restricting wildcards to avoid broad authorization).
+5. **Allowed Repo/Branch/Tag/Environment**: Verify that the trust relationship restricts role assumption based on the repository name, specific branch/tag (e.g., `refs/heads/main`), or a defined environment.
+6. **Reusable Workflow Claim**: If centralized, verify that the policy evaluates reusable workflow claims (e.g., `job_workflow_ref`) rather than trusting any runner execution in the repo.
+7. **Token Session Lifetime**: Ensure session durations are minimized to the task length.
+8. **Environment Protection Evidence**: If environment-based deployment is used, verify that GitHub environments have protection rules (e.g., manual approvals, branch restrictions) configured.
+
+##### AWS IAM Trust Policy Verification Examples
+
+Below are patterns to evaluate when auditing AWS IAM role trust policies associated with GitHub Actions OIDC:
+
+**Vulnerable trust configuration (Wildcard Subject / Missing repository boundary):**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+```
+*Why this is a finding:* While this configuration avoids static credentials, any GitHub workflow running on *any* GitHub repository in the world can assume this IAM role and access AWS resources, because it lacks a `sub` check.
+
+**Secure configuration with Repository and Branch restrictions:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:octo-org/octo-repo:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+*Why this is secure:* The policy restricts role assumption to a specific organization and repository (`octo-org/octo-repo`), and specifically to executions on the `main` branch.
+
+**Secure configuration with Environment restriction:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:octo-org/octo-repo:environment:production"
+        }
+      }
+    }
+  ]
+}
+```
+*Why this is secure:* The policy restricts role assumption to workflows executing within the protected `production` environment. Non-production branches or untrusted workflows in the repository cannot assume the role.
+
+**Secure configuration with Reusable Workflow restriction:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:octo-org/octo-repo:*",
+          "token.actions.githubusercontent.com:job_workflow_ref": "octo-org/automation/.github/workflows/deploy.yml@refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+*Why this is secure:* It checks that the executing workflow is indeed the centralized, approved reusable deployment template rather than arbitrary workflow scripts in the repository.
+
+**Finding classification:** Agents using long-lived static credentials is **High**. OIDC trust policy omitting subject (`sub`) validation or allowing excessive wildcards on production roles is **High**. OIDC workflow usage without environment or reusable workflow restrictions (where environments are used for protection) is **Medium**. No JIT credential mechanism for automated systems is **Medium**. Token TTL exceeding 10x task duration is **Medium**.
 
 ---
 
@@ -383,11 +496,12 @@ spec:
 
 ### Secrets Inventory (by type, NOT values)
 
-| Secret Type | Storage Method | Rotation Period | Automated | Last Rotated |
-|-------------|---------------|-----------------|-----------|-------------|
-| DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
-| API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
-| TLS cert | cert-manager | 60 days | Yes | Auto |
+| Secret Type | Storage Method | Rotation Period | Automated | Last Rotated | Federated/OIDC Role | Allowed Subject/Context | Audience | Token Lifetime | Environment Protection Verified |
+|-------------|---------------|-----------------|-----------|-------------|---------------------|-------------------------|----------|----------------|---------------------------------|
+| DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) | N/A | N/A | N/A | N/A | N/A |
+| API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 | N/A | N/A | N/A | N/A | N/A |
+| TLS cert | cert-manager | 60 days | Yes | Auto | N/A | N/A | N/A | N/A | N/A |
+| OIDC Cloud Role | GitHub OIDC | N/A | Yes | JIT (Short-lived) | `arn:aws:iam::123456789012:role/deploy` | `repo:octo-org/octo-repo:environment:production` | `sts.amazonaws.com` | `3600s` | Yes (Manual approvals) |
 
 ### Findings
 
@@ -442,6 +556,12 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Trusting OIDC integration without verifying cloud-side trust conditions (wildcard subjects).** Replacing static, long-lived access keys with dynamic workflow authentication is a major security improvement. However, if the cloud role trust policy trusts the OIDC provider (e.g. GitHub Actions) with wildcards or missing subject (`sub`) checks, any GitHub repository in the world can assume the role. Cloud trust policies must explicitly restrict the allowed organization and repositories.
+
+6. **Environment-scoped deployments without environment claim verification in the cloud policy.** When deploying to production using protected environments, verifying OIDC authentication is not enough. If the cloud role trust policy does not explicitly check the environment context of the subject (e.g., `repo:org/repo:environment:production`), any branch, workflow run, or developer run in that repository can assume the deployment role, bypassing the environment's approval gates.
+
+7. **Trusting reusable workflows without verifying the `job_workflow_ref` claim.** When organizations standardize deployments using centralized, reusable workflows to enforce gates, they must verify the workflow itself, not just the repository. Failing to restrict the trust policy to specific reusable workflow references allows any workflow script in the repository to assume the cloud role directly.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -466,10 +586,15 @@ This skill processes configuration files and code that may contain secret values
 - detect-secrets: https://github.com/Yelp/detect-secrets
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
+- GitHub Docs, Configuring OpenID Connect in cloud providers: https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-cloud-providers
+- GitHub Docs, Configuring OpenID Connect in Amazon Web Services: https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws
+- GitHub Docs, OpenID Connect reference: https://docs.github.com/en/actions/reference/security/oidc
+- AWS IAM User Guide, Create an OpenID Connect identity provider in IAM: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc.html
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Add CI/CD OIDC trust policy evidence checklist, AWS trust policy validation patterns, OIDC false positive rules, updated output formats, and OIDC trust pitfalls.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
