@@ -570,7 +570,7 @@ roles:
   - id: vciso
     name: "Virtual CISO"
     description: "Security program leadership — risk assessment, compliance, board reporting"
-    skills: [nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling]
+    skills: [nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling, secrets-management, pipeline-security, ir-playbook, containment, forensics-checklist, post-incident-review, llm-top-10, agentic-top-10, agent-security, prompt-injection]
     file: roles/vciso/SKILL.md
 
   - id: soc-analyst

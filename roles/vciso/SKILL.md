@@ -196,6 +196,88 @@ Skills are not ordered arbitrarily. The sequence follows the logic of how securi
 
 ---
 
+## Verification Gates
+
+The vCISO role produces governance evidence, not just narrative reports. Every
+engagement must close with a source register, evidence window, quality gate, and
+decision log. If a required artifact is missing or stale, mark the control or
+metric `Not Evaluable` and assign an evidence owner.
+
+### Baseline Assessment
+
+- Verify the maturity summary covers all NIST CSF functions and links each score
+  to evidence, owner, and assessment date.
+- Confirm SOC 2, IAM, CVE, and threat-model findings reconcile into the same top
+  risk list; mismatched counts or stale dates must be flagged.
+- Confirm each 90-day roadmap item has owner, target date, validation evidence,
+  residual-risk treatment, and board/customer impact.
+
+### Compliance Sprint
+
+- Verify every in-scope Trust Services Criteria mapping has design status,
+  operating-effectiveness status, evidence owner, evidence source, and audit
+  period.
+- Confirm secrets and pipeline evidence is current for the audit window.
+- Track missing evidence separately from failed controls.
+
+### Incident Response Support
+
+- Confirm containment timestamps, chain-of-custody notes, legal/materiality
+  checkpoints, and remediation validation evidence are recorded.
+- Map each root cause to a failed control and risk-register update.
+- Do not close the engagement until action items have owners and follow-up dates.
+
+### Board Reporting
+
+- Verify every metric has source, measurement date, trend period, and confidence
+  note.
+- Convert technical findings into business risk with residual-risk treatment and
+  decision owner.
+- Include a decision log even when the board has no immediate action.
+
+### AI/LLM Program Review
+
+- Confirm AI app inventory, model/provider scope, data classification, exposed
+  tool/action scope, and taxonomy versions are recorded.
+- Link prompt-injection and agentic-risk findings to remediation owner and
+  acceptance status.
+- Require output sanitization before board or customer sharing.
+
+---
+
+## Gotchas
+
+1. **Engagement scope creep.** If the user asks for a single tactical task, use
+   the individual skill instead of running the full vCISO sequence.
+2. **Stale assessment data.** Board and maturity reports must call out source
+   data older than the engagement evidence window, especially CVE and IAM data.
+3. **Framework mismatch.** Validate whether SOC 2, ISO 27001, CIS Controls, or a
+   sector-specific framework fits the business before launching a sprint.
+4. **Sensitive evidence leakage.** Board reports and risk registers must avoid
+   embedding credentials, secret names, exact internal hostnames, or raw incident
+   indicators unless the audience is authorized.
+5. **Metric mismatch.** CVE counts, incident counts, and maturity scores from
+   different dates can produce misleading trends; align dates or label the gap.
+
+---
+
+## Subagent Execution Profile
+
+- **Recommended subagent:** senior security program reviewer with governance,
+  compliance, incident response, and AI-risk context.
+- **Sequential by engagement:** each engagement type is mostly sequential because
+  later steps consume source versions, evidence, and findings from earlier steps.
+- **Parallelizable work:** independent organizations or separate engagement
+  types can run in parallel when evidence windows and decision owners are
+  separate.
+- **Context required:** source registers, prior reports, risk register, control
+  inventory, vulnerability metrics, incident timeline, and AI system inventory.
+- **Stop condition:** stop and ask for missing business authorization only when
+  publishing externally, accessing private systems, approving risk, or handling
+  legal/materiality decisions.
+
+---
+
 ## Output Templates
 
 ### Security Program Maturity Summary (One-Page)
