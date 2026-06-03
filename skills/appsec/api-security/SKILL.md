@@ -1,10 +1,11 @@
 ---
 name: api-security
 description: >
-  Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
+  Reviews REST, GraphQL, and framework-native API surfaces against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, SSRF,
+  and Next.js App Router handlers or Server Actions. Produces findings
+  mapped to API1-API10 with remediation guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
@@ -21,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST, GraphQL, and framework-native API surfaces against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, Next.js App Router Route Handlers, Server Actions/Server Functions, and API gateway configurations.
 
 ---
 
@@ -31,11 +32,11 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
-1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
+1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, Next.js App Router/Server Actions, or hybrid. Each style has distinct attack patterns.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions. For Next.js App Router projects, include `app/**/route.ts`, exported HTTP verb handlers, module-level or inline `"use server"` Server Actions, `<form action={...}>`, `formAction={...}`, and Client Component imports of server action functions.
 3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
-5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
+5. **Catalog data objects and intended audience** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public). Distinguish intentionally public metadata endpoints from private data or mutation surfaces before reporting missing authentication.
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
 
@@ -62,7 +63,7 @@ Each finding produced by this review must include the following fields:
 | **OWASP API Risk** | API1:2023 through API10:2023 identifier |
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
-| **API Style** | REST, GraphQL, gRPC, or General |
+| **API Style** | REST, GraphQL, gRPC, Next.js App Router, or General |
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
@@ -89,7 +90,7 @@ The final review output must be structured as follows:
 ## API Security Review Report
 
 **Scope:** [API name, version, endpoints reviewed]
-**API Style:** [REST / GraphQL / gRPC / Hybrid]
+**API Style:** [REST / GraphQL / gRPC / Next.js App Router / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
 **Reviewer:** AI Agent -- api-security skill v1.0.0
@@ -118,7 +119,7 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|General]
+- **API Style:** [REST|GraphQL|gRPC|Next.js App Router|General]
 - **Location:** [file:line or spec path]
 - **Description:** [explanation]
 - **Evidence:**
@@ -201,6 +202,40 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 ---
 
+## Next.js App Router and Server Actions Considerations
+
+Next.js App Router projects may expose API attack surface without traditional `pages/api` routes or OpenAPI paths. Treat these as first-class API surfaces during inventory and finding classification.
+
+### Route Handler Inventory
+
+Route Handlers live under `app/**/route.ts` or `app/**/route.js` and export HTTP verb functions such as `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`. Review `RouteContext`, `params`, `NextRequest`, and `request.nextUrl.searchParams` usage for object identifiers, field selectors, and privilege switches.
+
+Public Route Handlers are valid when they serve intentional public metadata, health, or documentation-style responses. Do not report a missing auth finding solely because a handler is unauthenticated. First classify data sensitivity, intended audience, side effects, and cache behavior.
+
+### Server Actions and Server Functions
+
+Server Actions/Server Functions declared with `"use server"` can be invoked from forms, event handlers, and Client Components. They are mutation endpoints even when no URL route appears in the source tree.
+
+Reviewers should search for:
+
+- Module-level or inline `"use server"` declarations.
+- Exported async action functions used from `<form action={...}>` or `formAction={...}`.
+- Client Component imports of server action functions.
+- `FormData.get(...)`, `Object.fromEntries(formData)`, unchecked JSON payloads, or hidden form fields.
+- Database mutations, privileged operations, billing changes, email sends, file writes, or external API calls inside actions.
+
+Each Server Action that performs a mutation must have authentication, object-level authorization, function-level authorization, server-side schema validation, and appropriate resource controls. Client-side checks and hidden form fields are not authorization.
+
+### Server Action Origin and Body Controls
+
+Review `next.config.js` / `next.config.mjs` for `serverActions.allowedOrigins` and `serverActions.bodySizeLimit` when present. Broad wildcard origins, shared preview domains, or large body limits require documented trust boundaries, authentication, input validation, and rate limiting.
+
+### Route Handler Cache Safety
+
+Route Handlers that return sensitive, tenant-specific, or user-specific data should not opt into static caching. Inspect `export const dynamic`, `revalidate`, `fetch(..., { cache })`, and `use cache` usage around handlers returning sensitive data. Sensitive responses need explicit non-cache behavior and appropriate `Cache-Control` headers.
+
+---
+
 ## Common Pitfalls
 
 1. **Confusing authentication with authorization.** An API that verifies the user's identity (authentication) but does not verify the user's permission to access the specific resource or function (authorization) is vulnerable to both BOLA (API1) and BFLA (API5). These are distinct checks that must both be present.
@@ -214,6 +249,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Missing framework-native API surfaces.** Modern frameworks can expose server-callable functions without obvious route decorators. In Next.js, Server Actions and App Router Route Handlers must be included in the same inventory as REST and GraphQL endpoints.
+
+8. **Flagging public handlers without sensitivity evidence.** An unauthenticated public metadata Route Handler is not automatically API2/API5. Classify the data, audience, side effects, and cache behavior before reporting missing authentication or authorization.
 
 ---
 
@@ -239,3 +278,7 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+- **Next.js Route Handlers:** https://nextjs.org/docs/app/getting-started/route-handlers
+- **Next.js Updating Data / Server Functions:** https://nextjs.org/docs/app/getting-started/updating-data
+- **Next.js Data Security -- Allowed Origins:** https://nextjs.org/docs/app/guides/data-security#allowed-origins-advanced
+- **Next.js serverActions Configuration:** https://nextjs.org/docs/app/api-reference/config/next-config-js/serverActions
