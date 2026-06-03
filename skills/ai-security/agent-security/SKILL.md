@@ -129,6 +129,15 @@ For high-consequence agentic systems, apply defenses in the following order. Eac
 
 Evaluate what each agent can do, under what conditions, and whether the permission model follows least-privilege principles.
 
+#### 1.1 Capability and Action Evidence Register
+Prior to scoring the permission model, compile a complete capability and action register. Do not rely on high-level or generic tool names (e.g., `github_tool` or `file_tool`), which can drift from their actual implementation. Tracing only documentation-level definitions is insufficient; you must audit the operation-level capabilities. For every tool, record the following fields in the assessment matrix:
+- **Tool/Function Name:** The exact code/schema identifier (e.g., `github_delete_branch`).
+- **Operation Scope:** The operation-level action: read-only, write, delete, dispatch, send, deploy, or publish.
+- **Runtime Principal:** The credential or service identity under which the operation runs (e.g., specific user token, shared API key, or system service account).
+- **Reversibility:** Whether the action is programmatically or manually reversible (Yes/No).
+- **Enforcing Control Layer:** The layer enforcing the permission boundary: prompt, wrapper, broker policy, container sandbox, or target API.
+- **Audit Log Target:** Where the invocation parameters and results are permanently logged.
+
 **What to look for in code and configuration:**
 
 - **Tool registration breadth:** Does each agent have access only to the tools required for its specific task, or does it receive the full tool registry? Look for tool lists in agent initialization code and assess whether each tool is justified for the agent's stated purpose.
@@ -492,6 +501,12 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+### Capability and Action Evidence Register
+
+| Agent | Tool/Function Name | Operation Scope | Runtime Principal | Reversibility | Enforcing Layer | Audit Log Target |
+|---|---|---|---|---|---|---|
+| [agent-name] | [function-name] | [read/write/delete/etc.] | [API key/User/etc.] | [Yes/No] | [sandbox/broker/etc.] | [SIEM/console/etc.] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
 
@@ -499,7 +514,9 @@ Glob: **/security_architecture*
 
 ### Finding [N]: [Title]
 - **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
-- **Severity:** [Critical | High | Medium | Low | Informational]
+- **Severity:** [Critical | High | Medium | Low | Informational | Not Evaluable]
+- **Evidence Confidence:** [Source-code | Configuration | Runtime Export | Docs-only | Unknown]
+- **Not Evaluable Reason:** [N/A or MISSING_TOOL_SCHEMA | MISSING_CREDENTIAL_MAP | MISSING_POLICY_GATE | MISSING_APPROVAL_FLOW | MISSING_AUDIT_LOGS | MISSING_ROLLBACK_LOGIC | MISSING_RUNTIME_REGISTRY]
 - **OWASP Agentic AI Category:** [AG01-AG10 or N/A]
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
 - **Location:** [file path, configuration, or architectural component]
@@ -568,6 +585,14 @@ Glob: **/security_architecture*
 4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+
+6. **Relying on broad or generic tool names (documentation drift).** Assuming a tool named `search_issues` is read-only when it actually has write or dispatch capabilities under the hood, or vice-versa. Tool scoping must be verified through actual schemas and API credentials, not by reading function names or README descriptions.
+
+7. **Prompt-only approval gates.** Placing safety guardrails exclusively inside the system prompt (e.g., "always ask before deleting") instead of hardcoding validation in the execution broker. Jailbreaks and prompt injections can bypass natural-language rules easily.
+
+8. **Shared broker credentials hiding per-agent/user attribution.** Running all agents or sessions under a single, static API token or service identity, preventing proper audit log attribution and triggering confused-deputy vulnerabilities. Always pass caller identity context through to the broker.
+
+9. **Docs-only tool declarations.** Reviewing agent designs based on README files or developer documentation without checking actual source-code tool schemas or dynamic runtime registrations, which are prone to drift and can dynamically introduce unauthorized tools.
 
 ---
 
