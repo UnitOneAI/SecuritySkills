@@ -548,7 +548,7 @@ skills:
     role: [security-engineer, appsec-engineer]
     phase: [build]
     activity: [configure, review]
-    frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
+    frameworks: [OWASP-ASVS-5.0.0, CWE-Top-25-2025]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/devsecops/sast-config/SKILL.md
