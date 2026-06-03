@@ -156,6 +156,68 @@ Skills are not ordered arbitrarily. The sequence follows the logic of how applic
 
 ---
 
+## Verification Gates
+
+Every engagement must finish with explicit pass/fail evidence. A deliverable is
+not complete until the reviewer can point to the source versions used, the
+evidence collected, and the follow-up state for each condition or finding.
+
+### New Application Review
+
+- Confirm the threat model names all user roles, trust boundaries, sensitive
+  assets, and externally reachable entry points.
+- Cross-check that each high-risk threat has a corresponding code, API, or
+  dependency review finding, or is marked `Not Evaluable` with the missing
+  evidence.
+- Verify the consolidated risk summary links every remediation item to an
+  owner, due date, source framework, and evidence-confidence rating.
+
+### PR Security Review
+
+- Confirm every finding is tied to a changed file, reachable execution path,
+  affected object or privilege, and current CWE/ASVS/OWASP mapping.
+- Treat `Approved with Conditions` as incomplete unless the conditions include
+  a tracking owner, validation step, and re-review trigger.
+- Verify checklist items are supported by diff analysis; do not mark a category
+  pass solely because the template was filled out.
+
+### API Security Assessment
+
+- Confirm the API inventory includes unauthenticated, authenticated, partner,
+  admin, and background-service routes, plus the authentication method for each.
+- Verify object-level, function-level, and property-level authorization tests
+  have expected behavior, observed behavior, and evidence-confidence fields.
+- Confirm SAST rule updates or suppressions include owner, expiry, and reason.
+
+### AI Feature Review
+
+- Confirm the model/provider, context sources, output sinks, tool inventory,
+  permission scope, and data-retention behavior are recorded.
+- Run direct and indirect prompt-injection scenarios and record expected policy,
+  observed behavior, and downstream sink for each.
+- If the feature is agentic, verify destructive or external-side-effect actions
+  have human approval, audit logging, and rollback paths.
+
+---
+
+## Gotchas
+
+1. **Template completion can create false confidence.** A filled PR checklist is
+   evidence only when each pass/fail entry is backed by diff, route, object, or
+   data-flow analysis.
+2. **Engagement type mis-selection wastes effort.** Use PR Security Review for
+   a narrow code change; use New Application Review only when architecture,
+   trust boundaries, or major features are in scope.
+3. **Conditional approval must close the loop.** Conditions without an owner,
+   re-test step, and due date become untracked residual risk.
+4. **LLM review scope expands quickly.** If an LLM feature can call tools, write
+   data, send messages, or trigger workflow actions, include the agent-security
+   step even when the user only asked about prompt injection.
+5. **Framework version drift changes findings.** Re-run source-version capture
+   when a review is reused after a framework, scanner, or ruleset update.
+
+---
+
 ## Output Templates
 
 ### Application Threat Model

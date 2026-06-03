@@ -588,7 +588,7 @@ roles:
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, llm-top-10, prompt-injection, agent-security, owasp-top-10-web, sast-config]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
