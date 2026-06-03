@@ -193,7 +193,7 @@ skills:
     role: [cloud-security-engineer, security-engineer]
     phase: [build, deploy, operate]
     activity: [review, audit]
-    frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
+    frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v2.0.0, NIST-SP-800-190]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/cloud/container-security/SKILL.md

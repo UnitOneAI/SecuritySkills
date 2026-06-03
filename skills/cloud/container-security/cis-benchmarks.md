@@ -1,6 +1,10 @@
 # Docker and Kubernetes CIS Benchmark Details
 
-This file contains the detailed CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 checklist items for the Container & Kubernetes Security Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+This file contains the detailed CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v2.0.0-aware review guidance, and NIST SP 800-190 checklist items for the Container & Kubernetes Security Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+
+> **Benchmark version note:** CIS announced CIS Kubernetes Benchmark v2.0.0 in May 2026 with Automated Assessment Content (AAC), Kubernetes 1.35 and 1.34 support, and updated audit/remediation procedures for 23 recommendations. Use v2.0.0 by default. Use v1.9.0 only in explicit legacy mode with source date and rationale.
+
+> **Evidence source note:** For every Kubernetes finding, record whether evidence came from manifest review, rendered Helm/Kustomize output, kube-bench/AAC output, provider API, node/control-plane file evidence, or `Not Evaluable`.
 
 ---
 
@@ -189,9 +193,15 @@ ENTRYPOINT ["/server"]
 
 ---
 
-## Kubernetes Security Review -- Pod Security (CIS Kubernetes v1.9.0, Section 5)
+## Kubernetes Security Review -- Pod Security (CIS Kubernetes v2.0.0, Section 5)
 
 Evaluate Kubernetes workload definitions against CIS Kubernetes Benchmark Section 5 (Policies) and Pod Security Standards.
+
+**Evaluation methods:**
+- **Manifest review:** Check raw YAML, rendered Helm, and Kustomize output for workload and namespace policy settings.
+- **kube-bench/AAC:** Use a v2.0.0-compatible profile/output when available for benchmark IDs and audit commands.
+- **Provider API:** For managed clusters, use provider security posture evidence where the provider controls enforcement.
+- **Not evaluable:** Use when only manifests are available and the control requires live cluster/provider/node evidence.
 
 ### CIS 5.1 -- RBAC and Service Accounts
 
@@ -256,7 +266,7 @@ spec:
 
 ### CIS 5.2 -- Pod Security Standards
 
-Evaluate workload configurations against Kubernetes Pod Security Standards. The three levels are:
+Evaluate workload configurations against Kubernetes Pod Security Standards and Pod Security Admission (PSA). The three levels are:
 
 | Level | Description | Use Case |
 |-------|-------------|----------|
@@ -278,7 +288,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
 ```
 
-Or check for OPA/Gatekeeper or Kyverno policies.
+Or check for OPA/Gatekeeper or Kyverno policies. For Kubernetes 1.25+ and current CIS Kubernetes v2.0.0-oriented reviews, do not treat missing PodSecurityPolicy resources as a failure; PSP is legacy and PSA or an equivalent admission policy is the relevant evidence.
 
 #### CIS 5.2.2 -- Minimize the admission of privileged containers
 
@@ -503,9 +513,11 @@ stringData:
 
 ---
 
-## Kubernetes Security Review -- Control Plane (CIS Kubernetes v1.9.0, Sections 1-4)
+## Kubernetes Security Review -- Control Plane (CIS Kubernetes v2.0.0, Sections 1-4)
 
-These checks apply when control plane configuration files are available (self-managed clusters).
+These checks apply when control plane configuration files, kube-bench/AAC output, node evidence, or provider evidence are available. Managed clusters may hide or own some control-plane settings; mark those controls `Provider Managed`, `Provider Evidence Required`, or `Not Evaluable` instead of failing them from missing manifests.
+
+**Control ID note:** The examples below describe the control families and common audit intent. Use the exact recommendation ID from the selected benchmark version or v2.0.0-compatible automated assessment output when writing a finding.
 
 ### CIS 1.1 -- Control Plane Node Configuration Files
 
