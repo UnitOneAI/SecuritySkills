@@ -104,6 +104,134 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 
 ---
 
+## Next.js App Router and Server Actions
+
+Next.js App Router projects expose API attack surface through both Route Handlers and Server Actions. These surfaces may not appear in OpenAPI documentation, so they must be discovered directly from source code before evaluating API1 through API10.
+
+### What to Look For
+
+- Route Handlers under `app/**/route.ts` or `app/**/route.js` that export HTTP methods such as `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, or `OPTIONS`.
+- Server Actions marked with `"use server"` and invoked from `<form action={...}>`, `formAction={...}`, or client components.
+- User-controlled identifiers read from `RouteContext`, `params`, `NextRequest`, `request.nextUrl.searchParams`, request JSON, or `FormData.get(...)`.
+- Configuration in `next.config.js` or `next.config.mjs`, especially `serverActions.allowedOrigins` and `serverActions.bodySizeLimit`.
+- Caching controls such as `dynamic = "force-static"`, `revalidate`, `use cache`, `cacheTag`, or `unstable_cache` on handlers that return user, tenant, billing, or admin data.
+
+### Vulnerable Server Action Patterns
+
+```typescript
+// VULNERABLE: Server Action deletes an object with no authentication or ownership check
+"use server";
+
+export async function deleteInvoice(formData: FormData) {
+  const invoiceId = String(formData.get("invoiceId"));
+  await db.invoice.delete({ where: { id: invoiceId } });
+}
+```
+
+Remediation:
+
+```typescript
+// SECURE: Treat Server Actions as API mutation endpoints
+"use server";
+
+export async function deleteInvoice(formData: FormData) {
+  const user = await requireCurrentUser();
+  const invoiceId = String(formData.get("invoiceId"));
+
+  const invoice = await db.invoice.findFirst({
+    where: { id: invoiceId, ownerId: user.id },
+  });
+  if (!invoice) {
+    throw new Error("Not authorized");
+  }
+
+  await db.invoice.delete({ where: { id: invoice.id } });
+}
+```
+
+### Vulnerable Route Handler Patterns
+
+```typescript
+// VULNERABLE: Query parameter controls a sensitive object lookup without ownership filtering
+import { NextRequest } from "next/server";
+
+export async function GET(request: NextRequest) {
+  const accountId = request.nextUrl.searchParams.get("accountId");
+  const invoices = await db.invoice.findMany({ where: { accountId } });
+  return Response.json(invoices);
+}
+```
+
+Remediation:
+
+```typescript
+import { NextRequest } from "next/server";
+
+export async function GET(request: NextRequest) {
+  const user = await requireCurrentUser();
+  const accountId = request.nextUrl.searchParams.get("accountId");
+
+  const invoices = await db.invoice.findMany({
+    where: {
+      accountId,
+      account: { members: { some: { userId: user.id } } },
+    },
+    select: { id: true, amount: true, status: true },
+  });
+
+  return Response.json(invoices, {
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+```
+
+### Configuration and Caching Patterns
+
+```javascript
+// VULNERABLE: Broad Server Action origins and excessive body size
+module.exports = {
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["*"],
+      bodySizeLimit: "50mb",
+    },
+  },
+};
+```
+
+```typescript
+// VULNERABLE: Sensitive response can be statically cached
+export const dynamic = "force-static";
+
+export async function GET() {
+  const user = await requireCurrentUser();
+  return Response.json(await db.billingProfile.findUnique({ where: { userId: user.id } }));
+}
+```
+
+### Remediation Guidance
+
+- Treat Server Actions as API mutation endpoints, not as trusted UI helpers.
+- Authenticate and authorize inside every Server Action or call a shared policy wrapper before data access or side effects.
+- Validate `FormData`, JSON bodies, route params, and query parameters with an allowlisted schema before using them in queries.
+- Classify every Route Handler as public or private. Public handlers may intentionally omit authentication, but only after confirming they expose nonsensitive data and safe operations.
+- Keep `serverActions.allowedOrigins` narrow and justified. Treat broad origins as API8:2023 misconfiguration.
+- Keep `serverActions.bodySizeLimit` as small as the feature allows and combine uploads or expensive operations with API4:2023 rate and quota controls.
+- Avoid static caching for user, tenant, billing, or admin responses. If caching is required, verify cache keys are isolated per authenticated principal.
+
+### Review Checklist
+
+- [ ] `app/**/route.ts` and `app/**/route.js` handlers are inventoried with method, data sensitivity, and public/private classification.
+- [ ] Server Actions marked with `"use server"` are inventoried as API operations.
+- [ ] Every action or private handler verifies authentication and object/function-level authorization before database access or side effects.
+- [ ] `FormData.get(...)`, JSON bodies, `params`, and `request.nextUrl.searchParams` are validated before use.
+- [ ] Public Route Handlers are checked for sensitive response fields before reporting missing authentication.
+- [ ] `serverActions.allowedOrigins` is not wildcard or broader than the deployed frontend origins.
+- [ ] `serverActions.bodySizeLimit` is justified and paired with rate limits or quotas for expensive operations.
+- [ ] Sensitive handlers do not use static caching or shared cache entries across users or tenants.
+
+---
+
 ## API2:2023 -- Broken Authentication
 
 **CWE:** CWE-287 (Improper Authentication), CWE-307 (Improper Restriction of Excessive Authentication Attempts), CWE-798 (Use of Hard-coded Credentials)

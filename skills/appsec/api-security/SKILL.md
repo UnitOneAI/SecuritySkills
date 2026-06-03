@@ -1,17 +1,18 @@
 ---
 name: api-security
 description: >
-  Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
-  Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
-tags: [appsec, api, rest, graphql]
+  Reviews REST, GraphQL, gRPC, and framework-native APIs against the OWASP
+  API Security Top 10:2023. Auto-invoked when reviewing OpenAPI/Swagger specs,
+  API endpoint code, Next.js App Router handlers, Server Actions, or GraphQL
+  schemas. Covers BOLA, BFLA, authentication, rate limiting, and SSRF.
+  Produces findings mapped to API1-API10 with remediation guidance.
+tags: [appsec, api, rest, graphql, grpc, nextjs]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -21,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST, GraphQL, gRPC, and framework-native APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, Next.js App Router handlers, Server Actions, GraphQL schemas, and API gateway configurations.
 
 ---
 
@@ -31,8 +32,8 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
-1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
+1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, framework-native endpoints such as Next.js App Router, or hybrid. Each style has distinct attack patterns.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions. For Next.js App Router, include `app/**/route.ts` handlers, Server Actions marked with `"use server"`, and form/action call sites that invoke them.
 3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
@@ -40,6 +41,16 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
+
+### Framework-Native Endpoint Discovery
+
+Framework-native APIs can hide sensitive operations outside traditional route files or OpenAPI definitions. Include these patterns in the inventory before classifying findings.
+
+| Framework | Discovery Signals | Security Review Focus |
+|---|---|---|
+| **Next.js App Router** | `app/**/route.ts`, `app/**/route.js`, exported HTTP methods, `RouteContext`, `NextRequest`, `request.nextUrl.searchParams` | Classify public versus private route handlers, then verify authentication, object ownership, response field filtering, caching behavior, and rate limits. Public metadata handlers may be intentional, so do not report missing authentication until the exposed data or operation sensitivity is established. |
+| **Next.js Server Actions** | `"use server"`, exported async actions, `<form action=...>`, `formAction=...`, `FormData.get(...)` | Treat Server Actions as API mutation endpoints. Verify authentication and authorization inside the action or a shared policy wrapper, validate all form fields, and check `serverActions.allowedOrigins` and `serverActions.bodySizeLimit` in `next.config.js` when present. |
+| **Next.js Caching Controls** | `dynamic = "force-static"`, `revalidate`, `use cache`, `cacheTag`, `unstable_cache` | Confirm sensitive user, tenant, billing, or admin data is not statically cached or shared across callers without per-user cache isolation. |
 
 ---
 
@@ -62,7 +73,7 @@ Each finding produced by this review must include the following fields:
 | **OWASP API Risk** | API1:2023 through API10:2023 identifier |
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
-| **API Style** | REST, GraphQL, gRPC, or General |
+| **API Style** | REST, GraphQL, gRPC, Next.js, Framework-Native, or General |
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
@@ -89,10 +100,10 @@ The final review output must be structured as follows:
 ## API Security Review Report
 
 **Scope:** [API name, version, endpoints reviewed]
-**API Style:** [REST / GraphQL / gRPC / Hybrid]
+**API Style:** [REST / GraphQL / gRPC / Next.js / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.1.0
 
 ### Summary
 
@@ -118,7 +129,7 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|General]
+- **API Style:** [REST|GraphQL|gRPC|Next.js|Framework-Native|General]
 - **Location:** [file:line or spec path]
 - **Description:** [explanation]
 - **Evidence:**
@@ -207,9 +218,9 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 2. **Relying solely on API gateway controls.** API gateways can enforce rate limiting, authentication, and coarse-grained authorization, but they cannot enforce object-level authorization, property-level filtering, or business logic protections. These controls must be implemented in the application layer.
 
-3. **Treating GraphQL as inherently different from REST for security.** GraphQL shares all the same authorization, authentication, and injection risks as REST. The query language adds additional concerns (depth attacks, introspection, alias abuse) but does not eliminate any REST security requirements.
+3. **Treating GraphQL or Server Actions as inherently different from REST for security.** GraphQL resolvers and Next.js Server Actions share the same authorization, authentication, validation, and resource-consumption risks as REST. Their framework syntax changes the discovery method, not the security requirements.
 
-4. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification.
+4. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification, and include framework-native surfaces such as `app/**/route.ts` and Server Actions that may not appear in OpenAPI.
 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
@@ -239,3 +250,7 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+- **Next.js Route Handlers:** https://nextjs.org/docs/app/getting-started/route-handlers
+- **Next.js Server Actions and Mutations:** https://nextjs.org/docs/app/getting-started/updating-data
+- **Next.js Server Actions Configuration:** https://nextjs.org/docs/app/api-reference/config/next-config-js/serverActions
+- **Next.js Caching:** https://nextjs.org/docs/app/building-your-application/caching
