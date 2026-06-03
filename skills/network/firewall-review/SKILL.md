@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -80,8 +80,33 @@ Record all discovered files. Categorize each by:
 - **Platform:** iptables, nftables, pf, cloud security groups, Kubernetes NetworkPolicy, vendor-specific (Palo Alto, Fortinet, Cisco ASA).
 - **Direction:** Perimeter (north-south) vs. internal (east-west).
 - **Scope:** Server, endpoint, network segment.
+- **Evaluation model:** Ordered first-match rule base, stateful allow list, stateless ACL, cloud default-rule model, or hierarchical policy model.
+- **Association scope:** Which subnet, NIC, instance, workload, VPC, resource group, project, folder, or organization the policy actually applies to.
 
 ---
+
+### Step 1.5: Platform Effective Policy Preflight
+
+Before scoring default deny, shadowing, egress filtering, or exposure, identify how the platform evaluates traffic. Do not apply a traditional explicit terminal deny model to every firewall type.
+
+| Platform / Type | What to verify | Common review error |
+|---|---|---|
+| AWS security group | Stateful allow-list behavior, inbound rules, outbound rules, attached ENIs/resources, IPv4 and IPv6 CIDRs | Requiring an explicit deny rule even though security groups do not support explicit denies |
+| AWS network ACL | Stateless ordered rules, subnet association, rule numbers, inbound/outbound pairs, default NACL behavior | Treating NACLs like stateful security groups |
+| Azure NSG | Effective security rules, rule priority, default rules, subnet and NIC association, inbound/outbound evaluation | Seeing `DenyAllOutBound` and missing higher-priority `AllowInternetOutBound` |
+| GCP VPC firewall | Implied ingress/egress rules, hierarchical firewall policies, network scope, target tags/service accounts, IPv4 and IPv6 ranges | Checking only explicit rules and missing implied allow egress or hierarchical policy |
+| Kubernetes NetworkPolicy | Namespace selection, pod selection, default allow/deny behavior, CNI support, ingress and egress policy presence | Assuming a policy exists for every namespace or that egress is denied by default |
+| Traditional firewall / ACL | Rule order, terminal cleanup rule, default action, zones/interfaces, route context | Missing first-match shadowing or relying on an undocumented implicit rule |
+
+**Default-deny evidence states:**
+
+| State | Meaning |
+|---|---|
+| Explicit terminal deny | A final deny/drop rule exists in an ordered rule base and no earlier broad allow bypasses it |
+| Implicit deny | The platform denies traffic not explicitly allowed, and this behavior is documented for the reviewed firewall type |
+| Implied allow | The platform has a default or implied allow path, such as broad outbound egress, that must be overridden or accepted as risk |
+| Unsupported by platform | Explicit denies are not available for that control type; score the effective allow list instead |
+| Not evaluable | The available source does not prove effective policy, association, runtime defaults, or IPv4/IPv6 coverage |
 
 ### Step 2: Rule Base Analysis -- NIST SP 800-41 Rev 1 Evaluation
 
@@ -89,13 +114,16 @@ NIST SP 800-41 Rev 1 Section 4 defines core firewall policy principles. Evaluate
 
 #### 2.1 Default Deny Verification (NIST SP 800-41, Section 4.2)
 
-The rule base MUST terminate with an explicit deny-all rule. Every traffic flow that is not explicitly permitted must be dropped.
+The rule base should enforce default deny for each applicable direction. For ordered firewall rule bases this usually means an explicit terminal deny/drop rule. For cloud-native controls, score the platform's effective policy: stateful allow-list behavior, implicit or implied rules, default rules, priority/order, and association scope.
 
 **What to verify:**
 
-- The last rule in every chain/policy is an explicit `deny all` or `drop all`.
-- No implicit allow rules override the default deny (e.g., cloud security groups that default to allow outbound).
+- The last rule in every ordered chain/policy is an explicit `deny all` or `drop all`, when the platform supports this model.
+- Cloud default or implied rules are included in the effective-policy evidence, not only explicit IaC resources.
+- No implicit, implied, inherited, or higher-priority allow rules override the intended default deny.
 - Both inbound AND outbound directions enforce default deny.
+- IPv4 and IPv6 paths are scored separately.
+- Resource association proves the reviewed policy applies to the intended targets.
 
 **Patterns to check:**
 
@@ -112,7 +140,19 @@ egress: 0.0.0.0/0 allow all
 default_action = "Allow"    # BAD -- should be "Deny"
 ```
 
-**Finding classification:** Absence of explicit default deny is **Critical**.
+**Finding classification:** Missing effective inbound default deny is **Critical** for exposed services. Missing explicit terminal deny in a platform that supports it is **Critical**. Unsupported explicit deny on a stateful allow-list platform is **Not a finding** by itself; score broad allow rules, implied allow egress, and missing association evidence instead.
+
+#### 2.1a Cloud Implicit and Default Rules
+
+For cloud firewalls, include provider default behavior in the finding evidence.
+
+| Provider | Evidence to collect |
+|---|---|
+| AWS | Security group inbound and outbound rules, default outbound behavior, security group attachments, NACL subnet association, IPv4/IPv6 CIDRs, and whether default security groups remain in use |
+| Azure | NSG default security rules, custom rule priority, effective security rules export, subnet/NIC association, application security groups, and IPv4/IPv6 prefixes |
+| GCP | VPC implied ingress deny and egress allow rules, hierarchical firewall policies, network firewall policies, target tags/service accounts, priority, direction, and IPv4/IPv6 ranges |
+
+If only source code or IaC is available, mark effective-policy conclusions as `Not Evaluable from Source Only` unless defaults, inherited policies, and associations can be proven from the reviewed artifacts.
 
 ---
 
@@ -254,6 +294,22 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 
 ---
 
+#### 2.8 IPv4 and IPv6 Exposure Review
+
+Dual-stack systems need separate IPv4 and IPv6 conclusions. A rule set that is restrictive for `0.0.0.0/0` can still expose services through `::/0`.
+
+**What to verify:**
+
+- Whether IPv6 is disabled, unsupported, enabled, or unknown for each reviewed target.
+- Inbound exposure for `0.0.0.0/0` and `::/0`.
+- Outbound exposure for `0.0.0.0/0` and `::/0`.
+- Cloud-specific IPv6 rule fields such as AWS `ipv6_cidr_blocks`, Azure IPv6 prefixes, and GCP IPv6 firewall ranges.
+- Whether IPv6 controls match the stated IPv4 intent.
+
+**Finding classification:** Global IPv6 inbound exposure to sensitive services is **Critical** or **High** using the same severity as equivalent IPv4 exposure. Unknown IPv6 posture on a dual-stack resource is **Medium** until proven disabled or controlled.
+
+---
+
 ### Step 3: Compile Assessment Report
 
 Produce the final report using the following structure.
@@ -301,10 +357,21 @@ Produce the final report using the following structure.
 - **Remediation:** <concrete fix with example>
 
 ### Default Deny Status
-| Direction | Status | Evidence |
-|-----------|--------|----------|
-| Inbound   | Pass/Fail | <rule reference> |
-| Outbound  | Pass/Fail | <rule reference> |
+| Direction | Explicit Terminal Deny | Implicit Deny | Implied Allow | Unsupported by Platform | Not Evaluable | Evidence |
+|-----------|------------------------|---------------|---------------|-------------------------|---------------|----------|
+| Inbound   | Yes/No/N/A | Yes/No/N/A | Yes/No/N/A | Yes/No/N/A | Yes/No | <rule/default/effective-policy reference> |
+| Outbound  | Yes/No/N/A | Yes/No/N/A | Yes/No/N/A | Yes/No/N/A | Yes/No | <rule/default/effective-policy reference> |
+
+### Platform Effective Policy
+| Platform | Firewall Type | Stateful/Stateless | Ordered | Explicit Deny Supported | Default/Implicit Rules Reviewed | Resource Association Proven | Source of Effective Rules | Confidence |
+|----------|---------------|--------------------|---------|-------------------------|---------------------------------|-----------------------------|---------------------------|------------|
+| <AWS/Azure/GCP/etc.> | <SG/NSG/NACL/VPC firewall/etc.> | <stateful/stateless> | <yes/no> | <yes/no> | <yes/no> | <yes/no> | <IaC/export/runtime> | High/Medium/Low |
+
+### IPv4/IPv6 Exposure Matrix
+| Direction | Protocol/Port | IPv4 Exposure | IPv6 Exposure | Effective Source | Confidence |
+|-----------|---------------|---------------|---------------|------------------|------------|
+| Inbound | <tcp/443> | <restricted/0.0.0.0/0/not reviewed> | <restricted/::/0/not reviewed> | <rule/effective-policy export> | High/Medium/Low |
+| Outbound | <all> | <restricted/0.0.0.0/0/not reviewed> | <restricted/::/0/not reviewed> | <rule/effective-policy export> | High/Medium/Low |
 
 ### Shadowed Rules Summary
 | Shadowed Rule | Position | Shadowing Rule | Position | Impact |
@@ -353,13 +420,15 @@ Produce the final report using the following structure.
 
 1. **Auditing inbound only and ignoring egress.** NIST SP 800-41 Section 4.2 explicitly requires both directions. Unrestricted egress is the primary enabler of data exfiltration and C2 communication. Always evaluate outbound rules with equal rigor.
 
-2. **Treating cloud security groups like traditional firewalls.** Cloud security groups are stateful and often default to allow-all egress. Each cloud provider has different implicit behaviors (AWS security groups allow all outbound by default; Azure NSGs do not). Document the platform's default behavior before auditing rules.
+2. **Treating cloud security groups like traditional firewalls.** Cloud security groups are stateful allow-list controls and may not support explicit deny rules. Do not fail an AWS security group only because it lacks a terminal deny. Do fail or downgrade confidence when broad allow rules, default outbound behavior, or missing attachment evidence leave an effective path open.
 
-3. **Ignoring IPv6 rules.** Many environments have parallel IPv4 and IPv6 rule bases (ip6tables, IPv6 security group rules). If IPv6 is not explicitly disabled at the interface level, an unmanaged IPv6 rule base can bypass all IPv4 firewall controls.
+3. **Ignoring IPv6 rules.** Many environments have parallel IPv4 and IPv6 rule bases (ip6tables, IPv6 security group rules). If IPv6 is not explicitly disabled at the interface level, an unmanaged IPv6 rule base can bypass all IPv4 firewall controls. Always report IPv4 and IPv6 exposure separately.
 
 4. **Assuming hit count of zero means the rule is unused.** Hit counters reset on firewall reload or failover. Verify the counter baseline timestamp before recommending rule removal. Cross-reference with SIEM/flow data where available.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
+
+6. **Reviewing rule text without association proof.** A restrictive NSG, security group, firewall policy, or NetworkPolicy does not protect a workload unless it is attached to the right subnet, NIC, instance, namespace, pod selector, VPC, project, folder, or organization. Mark association gaps as `Not Evaluable` or as findings when the target is known to be unprotected.
 
 ---
 
@@ -381,9 +450,13 @@ This skill processes firewall configurations that may contain user-supplied comm
 - NIST SP 800-41 Rev 1, Guidelines on Firewalls and Firewall Policy: https://csrc.nist.gov/publications/detail/sp/800-41/rev-1/final
 - NIST SP 800-41 Rev 1 (PDF): https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-41r1.pdf
 - CIS Benchmarks (platform-specific firewall hardening): https://www.cisecurity.org/cis-benchmarks
+- AWS EC2, Security group rules: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-rules.html
+- Microsoft Azure, Network security groups and default security rules: https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview
+- Google Cloud, VPC firewall rules and implied rules: https://cloud.google.com/firewall/docs/firewalls
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Add cloud effective-policy, implicit/default-rule, IPv4/IPv6 exposure, and association-scope evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
