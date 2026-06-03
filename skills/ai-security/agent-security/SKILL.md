@@ -11,10 +11,10 @@ description: >
 tags: [ai-security, agents, agentic-ai, architecture]
 role: [security-engineer, architect, appsec-engineer, vciso]
 phase: [design, build, review]
-frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
+frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0, MCP-Security]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -78,6 +78,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 |---|---|---|
 | Agent architecture diagram | Design docs, README, infrastructure code | Maps trust boundaries, delegation chains, tool surface |
 | Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters |
+| MCP server and tool descriptors | MCP config, server registry, tool list output, OAuth consent screens | Shows model-visible tool text, server identity, scopes, side effects, and descriptor drift risk |
 | Permission/IAM configuration | Cloud IAM, role definitions, service account configs, .env files | Reveals whether least-privilege is enforced |
 | Human approval gate implementation | Workflow code, UI code, approval service configs | Determines if HITL is architecturally sound or bypassable |
 | Agent identity and credential management | Auth middleware, secret managers, token configs | Exposes credential scope and rotation practices |
@@ -164,6 +165,65 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 | Tool registration allows runtime tool injection by the agent itself | High |
 | Agent credentials do not expire or rotate | Medium |
 | Tool permissions not documented or reviewed periodically | Medium |
+
+---
+
+### Step 1A -- MCP Tool Boundary Evidence
+
+For agents connected to Model Context Protocol (MCP) servers, review the MCP
+server and tool boundary as a first-class supply-chain and authorization
+boundary. Do not treat a tool as safe only because it is listed in a trusted
+client. MCP tool descriptions, parameter descriptions, enum labels, examples,
+and error text are model-visible content and can act as indirect prompt
+injection.
+
+**MCP-specific evidence to collect:**
+
+| Evidence Item | Required Evidence | Finding If Missing |
+|---|---|---|
+| Canonical server identity | Server URL/path, canonical resource, publisher/source, install/update channel | High -- tool source and trust boundary unclear |
+| Transport and runtime mode | Remote HTTP/SSE, local stdio, proxy, marketplace install, or bundled server | Medium -- containment model cannot be assessed |
+| Tool descriptor integrity | Tool name, descriptor hash, schema hash, side-effect declaration, last reviewed version | High -- model-visible instructions can change without review |
+| Descriptor diff and re-approval | Re-approval required when descriptions, schemas, side effects, or scopes change | High -- descriptor rug-pull can bypass prior approval |
+| Descriptor poisoning review | Hidden instructions, markdown/HTML, URLs, prompt-like text, examples, enum labels, error text | High -- tool metadata can steer the model into unsafe actions |
+| OAuth/resource binding | Token audience/resource, scopes, client identity, redirect URI, token lifetime, revocation path | High -- broad tokens can cross tool/server boundaries |
+| Per-tool consent | User sees the exact tool, server, scopes, side effects, and data categories before approval | High -- per-server approval hides mixed-sensitivity tools |
+| Namespace collision control | Tool namespace, server namespace, allowlist, publisher, and lookalike-name review | Medium -- sensitive context may route to a lookalike tool |
+| Local server containment | Command, args, environment, filesystem/network access, sandbox, and update source | Critical/High -- local stdio server can inherit host privileges |
+
+**Descriptor poisoning checks:**
+
+- Treat tool names, descriptions, parameter descriptions, enum labels, examples,
+  markdown/HTML, URLs, and error strings as untrusted input.
+- Compare what the user approved with what the model receives. A shortened UI
+  summary is not enough when the full descriptor contains hidden instructions.
+- Require descriptor hashing, signing, pinning, or a runtime registry export for
+  high-impact tools.
+- Require re-approval when model-visible descriptor text, parameter schema,
+  declared side effects, required scopes, or server identity changes.
+
+**MCP authorization checks:**
+
+- Verify tokens are issued for the MCP server or intended resource, not passed
+  through from an unrelated client without audience/resource validation.
+- Record whether an MCP proxy uses per-client consent rather than a shared
+  static client identity with broad downstream API access.
+- Confirm consent is per tool or per action when one MCP server exposes both
+  read-only and write/destructive tools.
+- Capture token lifetime, refresh behavior, revocation path, and whether scopes
+  can be downscoped for the current task.
+
+**MCP boundary findings:**
+
+| Condition | Severity |
+|---|---|
+| Local stdio MCP server runs unsandboxed with broad filesystem, network, or environment access | Critical |
+| Tool descriptor or schema can change without hashing, signing, diffing, or re-approval | High |
+| Tool descriptor contains prompt-like instructions to read secrets, ignore policy, or exfiltrate context | High |
+| OAuth token audience/resource binding is missing or token passthrough is accepted | High |
+| One server-level approval covers mixed read/write/admin tools without per-tool consent | High |
+| Tool namespace collisions or lookalike community servers are not reviewed | Medium |
+| Runtime tool registry cannot be exported for comparison with reviewed descriptors | Medium |
 
 ---
 
@@ -492,13 +552,19 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+## MCP Tool Boundary Evidence
+
+| MCP Server / Tool | Transport | Publisher / Source | Descriptor Hash | Schema Hash | Side Effects | OAuth Resource / Scopes | Per-Tool Consent | Re-Approval on Change | Local Containment | Confidence |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [server/tool] | [remote/local/proxy] | [publisher/channel] | [sha256/signature/missing] | [sha256/signature/missing] | [none/read/write/admin] | [audience + scopes] | [Yes/No] | [Yes/No] | [sandbox/env/fs/network] | [High/Medium/Low] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
 
 ## Findings
 
 ### Finding [N]: [Title]
-- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
+- **Review Area:** [Permission Model | MCP Tool Boundary | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP Agentic AI Category:** [AG01-AG10 or N/A]
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -514,6 +580,7 @@ Glob: **/security_architecture*
 | Review Area | Rating | Key Finding | Priority |
 |---|---|---|---|
 | Permission Model | [rating] | [one-line summary] | [priority] |
+| MCP Tool Boundary | [rating] | [one-line summary] | [priority] |
 | Least-Privilege Design | [rating] | [one-line summary] | [priority] |
 | HITL Gate Placement | [rating] | [one-line summary] | [priority] |
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
@@ -569,6 +636,10 @@ Glob: **/security_architecture*
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
 
+6. **Approving an MCP server while ignoring the model-visible tool descriptor.** A user may approve a harmless-looking server name while the model receives a longer tool description, parameter schema, enum label, or example containing unsafe instructions. Review descriptor text as untrusted content, not as trusted documentation.
+
+7. **Treating MCP server approval as per-tool consent.** One MCP server can expose read-only, write, export, admin, and local-host tools. Server-level approval is not enough when tools have different side effects, scopes, data categories, or blast radius.
+
 ---
 
 ## References
@@ -587,3 +658,6 @@ Glob: **/security_architecture*
 12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
 13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
 14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
+15. Model Context Protocol Security Best Practices -- https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices
+16. Model Context Protocol Authorization Specification -- https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization
+17. OWASP MCP Tool Poisoning -- https://owasp.org/www-community/attacks/MCP_Tool_Poisoning

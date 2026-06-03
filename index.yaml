@@ -315,7 +315,7 @@ skills:
     role: [security-engineer, architect, appsec-engineer, vciso]
     phase: [design, build, review]
     activity: [review, design, assess]
-    frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
+    frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0, MCP-Security]
     difficulty: advanced
     time_estimate: "60-120min"
     file: skills/ai-security/agent-security/SKILL.md
