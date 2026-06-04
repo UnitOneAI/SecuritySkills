@@ -5,8 +5,9 @@ description: >
   Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190.
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
-  hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
+  hardening, RBAC, Pod Security Standards, network policies, secrets management,
+  image provenance enforcement, rendered manifests, and system workload exceptions.
+  Produces a prioritized findings report with remediation guidance.
 tags: [cloud, containers, kubernetes, docker]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
@@ -58,9 +59,11 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 
 - Access to Dockerfiles and container build configurations
 - Kubernetes manifests (YAML), Helm charts, or Kustomize overlays
+- Rendered manifests from Helm/Kustomize when charts or overlays are used, or enough values/overlays to render them
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
+- Image signature/provenance policy evidence (Kyverno, Gatekeeper, Sigstore policy-controller, Connaisseur, or equivalent), if available
 - Container registry configurations (if available)
 
 ---
@@ -90,6 +93,8 @@ Use Glob to locate all relevant configuration files.
 **/Chart.yaml
 **/values.yaml
 **/values-*.yaml
+**/values/**/*.yaml
+**/templates/**/*.yaml
 **/kustomization.yaml
 **/kustomization.yml
 **/base/**/*.yaml
@@ -107,7 +112,54 @@ Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kusto
 
 ---
 
-### Step 2 through Step 6: CIS Benchmark and NIST SP 800-190 Evaluation
+### Step 2: Render and Inventory Workloads
+
+For Helm charts and Kustomize overlays, review rendered manifests whenever possible. Template files alone are incomplete because environment-specific values or overlays can weaken security settings.
+
+Record:
+
+- Render command used, such as `helm template`, `kustomize build`, or an equivalent CI rendering step
+- Values files, overlays, namespaces, and release settings included
+- Whether rendered manifests were available; if not, mark the review as template-only and call out the uncertainty
+
+Build an inventory of every workload and every container spec:
+
+- Workloads: Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet, ReplicationController
+- Containers: `containers[]`, `initContainers[]`, and `ephemeralContainers[]`
+- Namespace, service account, image reference, image tag/digest, security context, volume mounts, host namespace settings, and RBAC bindings
+
+Do not conclude Pod Security Standards compliance until init containers and ephemeral containers are included in the inventory.
+
+### Step 3: System Workload Exception Gate
+
+Before assigning Critical or High severity to host namespace, privileged, hostPath, or elevated-capability findings, determine whether the workload is an application workload or a platform/system workload.
+
+Treat these as possible system workload exceptions only when evidence supports the exception:
+
+- Namespace is `kube-system` or an organization-controlled platform namespace
+- Workload is a known infrastructure component, such as CNI, CSI, kube-proxy, node exporter, log agent, EDR agent, or service mesh node agent
+- Elevated permission is necessary for the component's documented function
+- RBAC is least-privilege and scoped to the component
+- Image provenance, digest pinning, and change-control evidence are documented
+- Equivalent privileged settings are denied for ordinary application namespaces
+
+If the exception is documented, classify the issue as an exception requiring governance and compensating controls rather than an ordinary application violation. If the evidence is missing, keep the original severity.
+
+### Step 4: Image Provenance and Admission Enforcement
+
+NIST SP 800-190 image countermeasures require more than a signing job in CI. Determine whether the cluster denies unsigned, mutable, or untrusted images at admission time.
+
+Record:
+
+- Whether images are pinned by digest (`image: repo/app@sha256:...`) or only by mutable tag
+- Whether images are signed or covered by provenance attestations
+- Admission policy engine and mode: enforce, audit, warn, dry-run, or absent
+- Policy evidence showing which issuers, subjects, keys, repositories, or attestations are trusted
+- Denial evidence, such as an unsigned image or disallowed issuer being rejected by policy
+
+Distinguish "signing exists" from "verification is enforced." If signatures exist but the cluster admits unsigned or untrusted images, report a failing NIST 800-190 image-provenance control.
+
+### Step 5 through Step 7: CIS Benchmark and NIST SP 800-190 Evaluation
 
 Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
 
@@ -115,7 +167,7 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 8: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -126,7 +178,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 | Severity | Definition | Examples |
 |----------|-----------|----------|
-| **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |
+| **Critical** | Container escape, cluster compromise, or credential exposure | Privileged application containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods without a documented system exception |
 | **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
 | **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, secrets as env vars |
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
@@ -144,6 +196,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Frameworks: CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, NIST SP 800-190
 - Files reviewed: <N Dockerfiles, N K8s manifests, N Helm charts>
+- Rendered manifests reviewed: <Yes/No/Not applicable>
+- Render command / overlays / values: <command and values files, or reason unavailable>
 
 ### Executive Summary
 - Total checks evaluated: <N>
@@ -151,12 +205,15 @@ Produce the final report using the structure defined in the Output Format sectio
 - Failed: <N>
 - Critical/High findings requiring immediate attention: <N>
 - Pod Security Standard compliance: Privileged / Baseline / Restricted
+- System workload exceptions reviewed: <N> (<N approved, N missing evidence>)
+- Image provenance admission enforcement: Enforced / Audit-only / Not configured / Not reviewed
 
 ### Findings by Domain
 
 | Domain | Framework | Critical | High | Medium | Low | Pass |
 |--------|-----------|----------|------|--------|-----|------|
 | Dockerfile Security | CIS Docker 4.x | X | X | X | X | X |
+| Image Provenance | NIST 800-190 CM-3/CM-4 | X | X | X | X | X |
 | Pod Security | CIS K8s 5.2.x | X | X | X | X | X |
 | RBAC | CIS K8s 5.1.x | X | X | X | X | X |
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
@@ -173,17 +230,42 @@ Produce the final report using the structure defined in the Output Format sectio
 - **File:** <path>
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
-- **Container:** <container name>
+- **Container:** <container/initContainer/ephemeralContainer name>
+- **Workload class:** Application / System workload exception / Unknown
+- **Exception evidence:** <namespace, component role, RBAC scope, provenance, compensating controls, or "not provided">
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
+- **Verification performed:** <rendered manifest reviewed, admission denial tested, effective NetworkPolicy checked, or not available>
 - **Remediation:** <fix with code example>
+
+### Workload Inventory
+
+| Workload | Namespace | Type | Containers Reviewed | Images | Rendered Source |
+|----------|-----------|------|---------------------|--------|-----------------|
+| deploy/app | production | Application | containers=1, init=0, ephemeral=0 | app@sha256:... | helm template values-prod.yaml |
+| ds/cilium-agent | kube-system | System exception | containers=1, init=1, ephemeral=0 | quay.io/cilium/cilium@sha256:... | raw manifest |
 
 ### Pod Security Standards Compliance Matrix
 
-| Workload | Namespace | PSS Level | Violations |
-|----------|-----------|-----------|------------|
-| deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
-| deploy/worker | production | Privileged | privileged: true |
+| Workload | Namespace | Container Scope | PSS Level | Violations | Exception Status |
+|----------|-----------|-----------------|-----------|------------|------------------|
+| deploy/app | production | containers/init/ephemeral | Baseline (not Restricted) | runAsRoot, no seccomp | None |
+| ds/cilium-agent | kube-system | containers/init/ephemeral | Privileged | hostNetwork, NET_ADMIN | Documented system exception |
+
+### Image Provenance and Admission Evidence
+
+| Control | Status | Evidence |
+|---------|--------|----------|
+| Digest pinning | Pass/Fail/Partial | <image refs using tags vs sha256 digests> |
+| Signature/provenance available | Pass/Fail/Partial | <cosign/notation/Sigstore/SLSA evidence> |
+| Admission verification mode | Enforce/Audit/Warn/Absent | <policy engine and policy name> |
+| Unsigned/untrusted image denied | Pass/Fail/Not tested | <test result, policy status, or gap> |
+
+### Network Policy Effective Coverage
+
+| Namespace | Default Deny | Broad Ingress Exceptions | Broad Egress Exceptions | Effective Risk |
+|-----------|--------------|--------------------------|-------------------------|----------------|
+| production | Yes | None | allow all egress | Medium |
 
 ### Prioritized Remediation Plan
 
@@ -257,6 +339,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **System workloads need exception evidence, not automatic failure or automatic approval.** CNI, CSI, observability, and security agents may need host access, but the exception must include RBAC scope, image provenance, namespace isolation, change control, and compensating controls.
+9. **Image signing is not the same as admission enforcement.** A signed image in CI does not protect the cluster if admission policies allow unsigned or untrusted images.
 
 ---
 
@@ -285,6 +369,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Kubernetes Ephemeral Containers: https://kubernetes.io/docs/concepts/workloads/pods/ephemeral-containers/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
