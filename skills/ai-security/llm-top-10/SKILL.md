@@ -5,14 +5,14 @@ description: >
   Model Applications (2025 edition). Auto-invoked when reviewing code that
   integrates LLM APIs, builds RAG pipelines, or deploys AI-powered features.
   Produces a structured findings report mapped to LLM01-LLM10 with severity
-  ratings, CWE mappings, and prioritized remediation guidance.
+  ratings, evidence-driven CWE mappings, and prioritized remediation guidance.
 tags: [ai-security, llm, appsec]
 role: [appsec-engineer, security-engineer, vciso]
 phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -328,6 +328,9 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - No human review step for model-generated content published to external audiences (customer-facing documentation, medical advice, legal guidance).
 - Automated pipelines that take model output and write it directly to production databases, CMSes, or knowledge bases without verification.
 - Temperature settings set high (>1.0) for use cases requiring factual accuracy.
+- Report templates, scanners, or triage rules that hard-code `CWE-1188` for every LLM09 observation without checking whether a concrete software weakness exists.
+- Model answers classified as vulnerabilities without recording the security boundary, downstream sink, authoritative claim, validation control, and human review gate.
+- Hallucinated package names, generated code snippets, or factual answers treated identically even though their risk depends on whether they are only displayed, automatically installed, committed to code, used in a security decision, or published as authoritative content.
 
 **Detection methods:**
 
@@ -335,6 +338,10 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Review whether source citations or references are included in model output and whether they are validated (do the cited sources actually exist and support the claim?).
 - Search for automated publish flows where model output reaches end users without human review.
 - Check model configuration: temperature, top-p, and other sampling parameters relative to the use case's factual accuracy requirements.
+- Trace the model output to its downstream sink: escaped UI text, markdown/HTML rendering, external publication, database/CMS write, tool call, dependency install, generated-code commit, alert disposition, or another security decision.
+- Record whether the output crosses a security boundary, is presented as authoritative, has deterministic validation, and has an accountable human review gate.
+- Assign a CWE only when evidence shows a specific software weakness. For governance, product-quality, legal, trust, or low-stakes factual-risk observations with no software weakness, record `CWE: Not Applicable` or `CWE: None assigned`.
+- Use `CWE-1188` only when the evidence shows a product initializes or sets a resource with an insecure default that is intended to be changed by an installer, administrator, or maintainer. Do not use it as a generic synonym for hallucination, misinformation, or unvalidated information.
 
 **Mitigations:**
 
@@ -344,8 +351,21 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Require human review before publishing model-generated content in high-stakes domains (medical, legal, financial).
 - Use lower temperature settings (0.0-0.3) for factual, deterministic use cases.
 - Implement cross-referencing or fact-checking pipelines for critical content generation workflows.
+- Add a CWE applicability gate before exporting LLM09 observations to vulnerability trackers, CWE dashboards, or SLA workflows.
+- Store the CWE mapping rationale with each finding so downstream triage can distinguish vulnerability evidence from governance-only misinformation risk.
+- When LLM09 output triggers another weakness, map the concrete weakness and cross-reference the relevant LLM category instead of forcing `CWE-1188`.
 
-**CWE Mapping:** CWE-1188 (Initialization with Hard-Coded Network Resource Configuration Reference — analogous: reliance on unvalidated information source)
+**CWE Applicability Gate for LLM09:**
+
+| Evidence pattern | CWE handling | Related LLM categories | Severity guidance |
+|------------------|--------------|------------------------|-------------------|
+| Escaped chatbot text gives an unsupported answer, has visible AI disclosure, cannot call tools, cannot publish, and does not make security decisions | `CWE: Not Applicable` or `CWE: None assigned`; record as product/governance risk if needed | LLM09 | Informational or Low unless domain impact justifies more |
+| High-stakes medical, legal, financial, safety, or security advice is shown as authoritative without validation or human review | Assign a CWE only if a concrete implementation weakness is present; otherwise record LLM09 governance risk with no CWE | LLM09 | Severity follows domain harm, audience, and review controls |
+| Model output is automatically written to a database, CMS, build file, configuration, ticket workflow, or security decision without deterministic validation | Map the concrete output-to-action weakness, such as improper output handling, injection, authorization, or excessive agency; do not default to `CWE-1188` | LLM05, LLM06, LLM09 | Medium to Critical depending on action authority and blast radius |
+| Hallucinated package is displayed as advice only | No CWE unless the application presents it as authoritative in a security-impacting context | LLM09 | Low or Informational |
+| Hallucinated package is installed, trusted, added to a manifest, or used by automation | Map the supply-chain or untrusted dependency weakness that matches the install/trust path; pair with LLM03 and LLM05/LLM06 if applicable | LLM03, LLM05, LLM06, LLM09 | Medium to Critical depending on execution path |
+| Generated insecure code is copied or committed into the reviewed product | Map the introduced code weakness, such as SQL injection, XSS, command injection, insecure crypto, or improper authorization; use LLM09 as context, not the CWE | LLM05, LLM09 | Severity follows the introduced code flaw |
+| Product initializes a resource with an insecure default that an installer, administrator, or maintainer is expected to change | `CWE-1188` may apply when this resource-initialization evidence exists | Any relevant LLM category plus root cause | Severity follows exposed resource and exploitability |
 
 ---
 
@@ -419,7 +439,14 @@ Structure the findings report as follows:
 
 - **OWASP Category:** LLM0X:2025 — [Category Name]
 - **Severity:** Critical | High | Medium | Low | Informational
-- **CWE:** CWE-XXX
+- **CWE:** CWE-XXX | Not Applicable | None assigned
+- **CWE Applicability:** Applicable | Not Applicable | Inherited from linked weakness | Needs more evidence
+- **CWE Mapping Rationale:** [why this CWE applies, why no CWE is assigned, or which linked implementation weakness owns the CWE]
+- **Security Boundary:** [none, user-to-server, model-to-tool, model-to-publisher, tenant boundary, security decision boundary]
+- **Downstream Sink:** [escaped display, markdown/HTML rendering, database write, tool call, package install, generated-code commit, alert disposition, external publication]
+- **Authoritative Claim:** Yes | No | Partial
+- **Validation Control:** [source citation validation, allowlist, schema check, dependency verification, static analysis, human review, none]
+- **Human Review Gate:** Required and present | Required but missing | Not required | Not evaluable
 - **Location:** [file path, function, configuration]
 - **Description:** [What was found]
 - **Evidence:** [Code snippet, configuration excerpt, or architectural observation]
@@ -431,9 +458,9 @@ Structure the findings report as follows:
 
 ## Summary Table
 
-| ID | OWASP Category | Severity | Priority | Status |
-|----|---------------|----------|----------|--------|
-| FINDING-001 | LLM0X:2025 | High | P1 | Open |
+| ID | OWASP Category | Severity | CWE Applicability | Priority | Status |
+|----|---------------|----------|-------------------|----------|--------|
+| FINDING-001 | LLM0X:2025 | High | Applicable | P1 | Open |
 
 ## Recommendations
 
@@ -505,5 +532,6 @@ When performing a review using this skill:
 - LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm06-excessive-agency/
 - LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm07-system-prompt-leakage/
 - LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
-- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
+- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm092025-misinformation/
 - LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+- MITRE CWE-1188: Initialization of a Resource with an Insecure Default: https://cwe.mitre.org/data/definitions/1188.html
