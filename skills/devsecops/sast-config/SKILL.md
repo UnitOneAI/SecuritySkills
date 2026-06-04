@@ -208,7 +208,8 @@ rules:
           # nosemgrep: custom.crypto.weak-random
           ...
     message: >
-      Weak PRNG used in potentially security-sensitive context. Use
+      Weak PRNG used in a security-sensitive token, session, nonce, key, or
+      authorization context. Use
       secrets.token_bytes() or crypto.getRandomValues() for security purposes.
     languages: [python, javascript]
     severity: WARNING
@@ -229,6 +230,46 @@ rules:
 - [ ] `confidence` is documented (HIGH, MEDIUM, LOW).
 - [ ] `languages` is explicitly specified.
 - [ ] `pattern-not` or `pattern-not-inside` handles known safe patterns to reduce false positives.
+
+#### 3.3 Source-to-Sink and Context Evidence
+
+For vulnerability classes that depend on data flow, reviewers should not accept
+a broad point pattern as sufficient evidence. This includes injection, SSRF,
+path traversal, unsafe deserialization, template injection, weak randomness, and
+secret generation rules. A rule that matches every source or every sink can be
+useful as an inventory aid, but it should not be treated as a high-confidence
+security gate without source-to-sink evidence.
+
+**What to verify:**
+
+- [ ] Semgrep rules for flow-sensitive classes use `mode: taint`, or the rule
+      explicitly documents why a point pattern is sufficient.
+- [ ] `pattern-sources`, `pattern-sinks`, `pattern-sanitizers`, and
+      `pattern-propagators` are reviewed for the framework being scanned.
+- [ ] CodeQL path queries define appropriate remote sources, sinks, barriers,
+      and additional flow steps for the language/framework.
+- [ ] Each custom source-to-sink rule has at least one vulnerable fixture that
+      proves flow through a local variable or helper.
+- [ ] Each custom source-to-sink rule has at least one benign fixture that proves
+      a real sanitizer or non-security context is not flagged.
+
+**Weak randomness context gate:**
+
+The `custom.crypto.weak-random` example above should only be a blocking finding
+when the random value reaches a security-sensitive context such as a session ID,
+CSRF token, password reset code, API key, invite code, nonce, key material, or
+authorization decision. Non-security uses such as A/B test bucketing, UI
+animation jitter, randomized sort order, or sampling should be suppressed by the
+rule or reported only as informational hardening.
+
+```python
+# Vulnerable: random value becomes a password reset code.
+reset_code = str(random.randint(100000, 999999))
+send_password_reset(user.email, reset_code)
+
+# Benign: random value only controls a cosmetic experiment.
+variant = "new_nav" if random.random() < 0.5 else "old_nav"
+```
 
 ---
 
@@ -350,21 +391,27 @@ ticket         |
 **Suppression requirements:**
 
 ```python
-# Semgrep inline suppression -- MUST include justification
-value = request.args.get("id")  # nosemgrep: python.django.security.injection.sql.sql-injection -- validated by ORM layer, not raw SQL
+# Semgrep inline suppression -- MUST include actionable justification
+value = request.args.get("id")  # nosemgrep: python.django.security.injection.sql.sql-injection -- owner: appsec, ticket: SEC-1234, reviewed: 2025-02-01, expires: 2025-05-01, reason: validated by ORM layer, not raw SQL
 
 # CodeQL suppression via query filter (in codeql-config.yml)
-# Document in SAST-SUPPRESSIONS.md with ticket reference
+# Document in SAST-SUPPRESSIONS.md with owner, ticket, review date, expiry, and risk category
 ```
 
 **What to verify:**
 
 - Every suppression has a documented justification (not just `nosemgrep`).
+- Every suppression has an owner, ticket/reference, review date or expiry date,
+  and a risk category.
+- Suppressions are scoped to one finding or rule instance whenever possible;
+  broad rule-level suppressions require extra approval and compensating evidence.
+- Suppressions that hide reachable sinks without equivalent validation evidence
+  are treated as security findings, not as routine false-positive cleanup.
 - Suppressions are reviewed periodically (quarterly).
 - False positive rate is tracked as a metric (target: < 20% FP rate).
 - True positive findings have a defined SLA (Critical: 7 days, High: 30 days, Medium: 90 days).
 
-**Finding classification:** No false positive management process is **Medium**. Suppressions without justification is **High**. No SLA for true positive remediation is **Medium**.
+**Finding classification:** No false positive management process is **Medium**. Suppressions without justification is **High**. Suppressions without owner/ticket/expiry evidence are **Medium**. Suppressions that hide exploitable sinks without compensating evidence are **High**. No SLA for true positive remediation is **Medium**.
 
 ---
 
