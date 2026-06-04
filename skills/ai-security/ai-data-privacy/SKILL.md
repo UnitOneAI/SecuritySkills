@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
