@@ -266,20 +266,34 @@ START: Is the attack actively ongoing?
 Use this branch when Step 2.4 applies. It separates identity/mailbox containment from endpoint/network containment.
 
 ```
-START: Is mailbox or SaaS account access still active or uncertain?
+START: Did payment, invoice, or vendor workflow change?
   |
-  +-- YES --> IDENTITY CONTAINMENT
-  |           - Preserve audit/sign-in/message trace evidence
-  |           - Revoke sessions, refresh tokens, app passwords, suspicious OAuth grants
-  |           - Reset credentials and require MFA re-registration
-  |           - Remove forwarding, transport, inbox, delegate, and send-as abuse
+  +-- YES --> START FRAUD RESPONSE IN PARALLEL
+  |           - Out-of-band vendor/customer callback
+  |           - Bank recall / fraud desk / insurer / legal workflow
+  |           - Preserve email threads and payment evidence
+  |           |
+  |           v
+  |       Is mailbox or SaaS account access still active or uncertain?
+  |           |
+  |           +-- YES --> IDENTITY CONTAINMENT
+  |           |           - Preserve audit/sign-in/message trace evidence
+  |           |           - Revoke sessions, refresh tokens, app passwords, suspicious OAuth grants
+  |           |           - Reset credentials and require MFA re-registration
+  |           |           - Remove forwarding, transport, inbox, delegate, and send-as abuse
+  |           |
+  |           +-- NO --> MONITORED RECOVERY
+  |                       - Keep enhanced sign-in/mailbox/OAuth monitoring
+  |                       - Review related accounts and shared mailboxes
+  |                       - Validate no new rules, delegates, grants, or suspicious sends
   |
-  +-- NO --> Did payment, invoice, or vendor workflow change?
+  +-- NO --> Is mailbox or SaaS account access still active or uncertain?
               |
-              +-- YES --> FRAUD RESPONSE
-              |           - Out-of-band vendor/customer callback
-              |           - Bank recall / fraud desk / insurer / legal workflow
-              |           - Preserve email threads and payment evidence
+              +-- YES --> IDENTITY CONTAINMENT
+              |           - Preserve audit/sign-in/message trace evidence
+              |           - Revoke sessions, refresh tokens, app passwords, suspicious OAuth grants
+              |           - Reset credentials and require MFA re-registration
+              |           - Remove forwarding, transport, inbox, delegate, and send-as abuse
               |
               +-- NO --> MONITORED RECOVERY
                           - Keep enhanced sign-in/mailbox/OAuth monitoring
