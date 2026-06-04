@@ -373,7 +373,7 @@ skills:
   # -- Compliance -----------------------------------------------------------
   - id: soc2-gap
     name: "SOC 2 Gap Analysis"
-    tags: [compliance, soc2, audit]
+    tags: [compliance, soc2, audit, availability, backup, disaster-recovery]
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]

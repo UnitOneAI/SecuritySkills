@@ -271,15 +271,22 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Are recovery procedures documented?
   - Are backups tested for recoverability?
   - Are disaster recovery and business continuity plans in place?
+  - Are backup and restore controls mapped to stated RPO/RTO and customer commitments?
+  - Are backups protected from deletion or alteration by the same compromise path as production?
 - Evidence to look for:
   - Disaster recovery plan
   - Business continuity plan
   - Backup configuration and retention records
   - Backup restoration test records
+  - Failed-backup alert and ticket records
+  - Immutable retention, object/vault lock, offline-copy, or backup-account separation evidence
+  - Restore integrity checks and business-owner sign-off
 - Common gaps:
   - Backups exist but have never been tested for restoration
   - No documented disaster recovery plan
   - Recovery time objectives (RTO) and recovery point objectives (RPO) are undefined
+  - Restore tests are limited to dev-only samples or do not measure elapsed recovery time
+  - Backup administrators can delete backups through the same privileged path that controls production
 
 ---
 
@@ -360,14 +367,37 @@ Based on the scope determined in Step 1, evaluate the following additional crite
   - Backup configuration and monitoring records
   - Backup restoration test results (at least annual)
   - Redundancy configurations (multi-AZ, multi-region)
-- Common gaps: Backups are not monitored for success/failure; no restoration testing; single point of failure in architecture.
+  - Retention-lock, object-lock, vault-lock, offline-copy, or deletion-protection evidence
+  - Backup-job alert routing, escalation, and closure evidence
+  - Backup encryption-key custody and backup-admin separation records
+- Common gaps: Backups are not monitored for success/failure; no restoration testing; single point of failure in architecture; backup retention is mutable by production administrators; backup job failures have no ticketed escalation.
 
 **A1.3 -- The entity tests recovery plan procedures supporting system recovery to meet its objectives.**
 - Evidence to look for:
   - DR test plan and execution records
   - DR test results and findings
   - Remediation of issues found during DR testing
-- Common gaps: DR plan exists but has never been tested; DR tests do not cover all critical systems.
+  - Restore-drill scope showing production-like dependencies and representative data sets
+  - Measured restore duration and latest recoverable backup age compared to RTO/RPO
+  - Restored data integrity validation (checksums, record counts, application smoke tests, or reconciliation)
+  - Business-owner sign-off or management risk acceptance for unresolved recovery findings
+- Common gaps: DR plan exists but has never been tested; DR tests do not cover all critical systems; tests restore only a small dev sample; tests do not verify data integrity; failed DR test findings are not retested.
+
+#### Availability Backup Resilience Evidence Gate
+
+When Availability is in scope, use this gate before scoring CC7.5, A1.2, or A1.3 as Defined or Managed:
+
+| Evidence Area | Auditor-Verifiable Evidence | False Positive to Avoid |
+|---------------|-----------------------------|-------------------------|
+| RPO/RTO linkage | System-specific RPO/RTO mapped to backup frequency, backup age, restore duration, and customer commitments | Treating policy objectives as achieved outcomes |
+| Backup monitoring | Job success/failure history, alert rules, escalation tickets, and closure records | Relying on a green dashboard screenshot with no failure-handling evidence |
+| Deletion resistance | Immutable backup, object lock, vault lock, offline copy, retention lock, MFA delete, or documented compensating control | Accepting mutable snapshots controlled by the same production admin group |
+| Admin separation | Separate backup admin role, key custody, break-glass approval, and retention override logging | Allowing compromised production admins to erase recovery evidence |
+| Restore drill scope | Production-like dependency map, representative data sets, infrastructure/configuration restore, and known exclusions | Using a single dev-table restore to prove full service recovery |
+| Integrity validation | Checksums, record counts, application smoke tests, reconciliation, or business-owner sign-off | Marking a restore successful because data files were copied |
+| Finding remediation | DR findings, owners, due dates, retest evidence, and residual-risk acceptance | Leaving failed DR test findings open without management decision |
+
+Use `Not Evaluable` when the review lacks system-boundary, critical-data, backup-job, or restore-test evidence. Do not infer backup maturity from architecture claims, provider marketing pages, or policy text alone.
 
 ### Confidentiality Criteria (C1.1-C1.2)
 
@@ -550,13 +580,13 @@ After scoring, calculate:
 | CC7.2 | SIEM deployment evidence; log retention policy and compliance evidence; alert rules and escalation docs |
 | CC7.3 | Incident response plan; severity classification matrix; triage procedures |
 | CC7.4 | Tabletop exercise records; IR team roster; communication templates; post-incident review records |
-| CC7.5 | DR plan; BC plan; backup configs; backup restoration test records |
+| CC7.5 | DR plan; BC plan; backup configs; backup restoration test records; failed-backup alert tickets; immutable/deletion-resistant backup evidence; restore integrity validation |
 | CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; segregation of duties evidence |
 | CC9.1 | Risk treatment plans; business impact analysis; risk acceptance sign-off records |
 | CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs |
 | A1.1 | Capacity monitoring dashboards; auto-scaling configs; capacity planning documentation |
-| A1.2 | Backup policy with RPO/RTO; backup monitoring records; restoration test results; redundancy configs |
-| A1.3 | DR test plan; DR test execution records; DR test findings and remediation |
+| A1.2 | Backup policy with RPO/RTO; backup monitoring records; restoration test results; redundancy configs; backup retention/immutability evidence; backup-admin separation and encryption-key custody records |
+| A1.3 | DR test plan; DR test execution records; measured restore duration; latest recoverable backup age; restored data integrity validation; DR test findings, remediation, and retest evidence |
 | C1.1 | Data classification policy; confidential data inventory; classification labeling evidence |
 | C1.2 | Data retention and disposal policy; destruction certificates; automated lifecycle configs |
 | PI1.1-PI1.5 | Processing specifications; input validation rules; reconciliation procedures; output validation; storage integrity controls |

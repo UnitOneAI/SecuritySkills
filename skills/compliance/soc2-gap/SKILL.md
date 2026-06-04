@@ -6,7 +6,7 @@ description: >
   or security program maturity. Walks through all Common Criteria (CC1-CC9) plus
   selected additional criteria, identifies gaps, and produces a remediation
   roadmap with evidence requirements and 90-day action plan.
-tags: [compliance, soc2, audit]
+tags: [compliance, soc2, audit, availability, backup, disaster-recovery]
 role: [vciso, security-engineer]
 phase: [assess, operate]
 frameworks: [AICPA-TSC, NIST-CSF-2.0]
@@ -42,6 +42,7 @@ Before beginning the gap analysis, ensure the following are available:
 - CI/CD pipeline configurations
 - Logging and monitoring configurations
 - Incident response documentation
+- Backup, restoration-test, disaster recovery, and business continuity evidence
 - Vendor and third-party service inventory
 
 ## Constraints
@@ -297,6 +298,58 @@ For detailed Trust Services Criteria evaluation questions, evidence requirements
 
 ---
 
+### Step 5: Availability Backup and Restore Evidence Gate
+
+If Availability is in scope, do not score CC7.5, A1.2, or A1.3 as audit-ready from policy-only or schedule-only backup evidence. Require auditor-verifiable proof that recovery controls can meet the system description, customer commitments, and stated RPO/RTO.
+
+#### 5.1 Backup Resilience Evidence Matrix
+
+Collect the following evidence for each in-scope critical system, datastore, queue, object store, and configuration source:
+
+| System / Data Set | TSC Criteria | Stated RPO | Stated RTO | Latest Backup Age | Failed-Job Monitoring | Retention / Immutability | Backup Admin Separation | Restore Drill Scope | Measured Restore Time | Integrity Validation | Residual Finding |
+|-------------------|--------------|------------|------------|-------------------|-----------------------|--------------------------|-------------------------|---------------------|-----------------------|---------------------|------------------|
+|                   | CC7.5 / A1.2 / A1.3 |            |            |                   |                       |                          |                         |                     |                       |                     |                  |
+
+#### 5.2 Required Evidence
+
+- **RPO/RTO linkage** -- Backup frequency, retention, replication, and restore-test results must be mapped to stated recovery commitments.
+- **Backup monitoring** -- Evidence must show failed-job alerting, escalation, ticket closure, and trend review; a green dashboard alone is not enough.
+- **Deletion resistance** -- Look for immutable backups, object/vault lock, retention lock, offline copies, MFA delete, separate backup accounts, or documented compensating controls.
+- **Blast-radius separation** -- Confirm backup administrators, break-glass access, encryption keys, and retention overrides are separated from ordinary production admin paths.
+- **Restore drill scope** -- Restore tests must cover production-like dependencies, representative data classes, infrastructure configuration, and customer-impacting services. Dev-only or single-table tests need residual-risk notation.
+- **Integrity validation** -- Restored data should be reconciled with checksums, record counts, application smoke tests, or other objective validation.
+- **Finding remediation** -- DR or restore-test failures must have tracked owners, due dates, retest evidence, and management acceptance when residual risk remains.
+
+#### 5.3 Findings to Raise
+
+BACKUP-RES-01: Backup policy exists, but no recent successful backup evidence for one or more in-scope systems
+
+BACKUP-RES-02: Backup failures are not monitored, alerted, escalated, or ticketed
+
+BACKUP-RES-03: Restore test is missing, stale, or limited to a non-production sample without residual-risk documentation
+
+BACKUP-RES-04: Measured restore duration or latest backup age does not meet stated RTO/RPO
+
+BACKUP-RES-05: Backups are mutable or deletable by the same admin path that controls production
+
+BACKUP-RES-06: Backup retention or immutability settings conflict with privacy/disposal obligations and lack documented scope or expiry
+
+BACKUP-RES-07: Restore test lacks integrity validation, application smoke testing, or business-owner sign-off
+
+BACKUP-RES-08: DR test findings are not remediated, retested, or formally risk-accepted
+
+BACKUP-RES-09: Configuration, secrets, IaC state, or dependency artifacts needed for recovery are excluded from backup/restore scope
+
+#### 5.4 Scoring Guardrails
+
+- Score **0-1** for A1.2/A1.3 when backups are undocumented, unmonitored, untested, or only asserted in policy.
+- Score **2** when backups and restore tests exist but scope, integrity checks, immutable retention, or RPO/RTO measurement is incomplete.
+- Score **3** when backup/restore controls are documented, monitored, and recently tested for critical systems, but evidence does not cover the full observation period or all dependencies.
+- Score **4** only when backup monitoring, deletion resistance, restore drills, measured RPO/RTO, integrity validation, and test-finding remediation evidence are all current and cover the audit period.
+- Use **Not Evaluable** when the system boundary, critical data sets, backup job evidence, or restore-test evidence is unavailable.
+
+---
+
 ### Step 6: Remediation Roadmap
 
 Prioritize remediation by audit readiness impact. Items that would result in examination exceptions or qualifications take highest priority.
@@ -330,13 +383,14 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - [ ] Configure vulnerability scanning on a regular schedule (CC7.1, CC6.8)
 - [ ] Document system description and data flow diagrams (CC2.1)
 - [ ] Establish control monitoring and deficiency tracking (CC4.1, CC4.2)
-- [ ] Implement backup monitoring and conduct restoration test (A1.2, A1.3)
+- [ ] Implement backup monitoring, deletion-resistant retention, and restore testing for critical systems (CC7.5, A1.2, A1.3)
 - [ ] Complete vendor risk assessments for critical vendors (CC9.2)
 
 **Days 61-90: Maturation and Evidence Collection**
 - [ ] Conduct incident response tabletop exercise (CC7.4)
 - [ ] Perform second quarterly access review to establish pattern (CC6.1)
 - [ ] Complete business impact analysis (CC9.1)
+- [ ] Run production-like restore drill, measure RPO/RTO, validate restored data integrity, and close DR findings (CC7.5, A1.2, A1.3)
 - [ ] Establish annual policy review cycle with documented approvals (CC5.3)
 - [ ] Conduct fraud risk assessment (CC3.3)
 - [ ] Compile evidence binder for all in-scope criteria
@@ -352,7 +406,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - Perform annual security awareness training refresh
 - Review and update policies annually
 - Collect vendor SOC 2 reports annually
-- Conduct annual DR test
+- Conduct annual DR test and at least annual representative restore test with integrity validation
 - Perform annual incident response tabletop exercise
 
 ---
@@ -366,8 +420,9 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 3. **Category Summary**: Average maturity score per category with narrative assessment.
 4. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
-6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
-7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+6. **Backup Resilience Matrix**: For in-scope Availability, report RPO/RTO, backup age, failed-job monitoring, immutability, admin separation, restore drill scope, measured restore time, integrity validation, and residual findings.
+7. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
+8. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
 
 ## Prompt Injection Safety Notice
 
@@ -386,6 +441,7 @@ This skill processes user-supplied content including compliance documentation, p
 - **NIST CSF 2.0 Mapping**: CC1-CC2 maps to Govern (GV), CC3 to Identify (ID), CC5-CC6 to Protect (PR), CC7 to Detect (DE) and Respond (RS), CC7.5 to Recover (RC).
 - **ISO 27001:2022**: CC6 maps to Annex A.8 (Technology Controls), CC8 maps to Annex A.8.32 (Change Management), CC9.2 maps to Annex A.5.19-5.22 (Supplier Relationships).
 - **CIS Controls v8**: CC6.1 maps to CIS Control 6 (Access Control Management), CC6.8 maps to CIS Control 10 (Malware Defenses), CC7.1 maps to CIS Control 7 (Continuous Vulnerability Management).
+- **Recovery Evidence**: CC7.5, A1.2, and A1.3 should be supported by backup monitoring, deletion-resistant retention, restore-test results, measured RPO/RTO, and DR finding remediation evidence.
 
 ## Limitations
 
