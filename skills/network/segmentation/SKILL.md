@@ -2,18 +2,19 @@
 name: segmentation
 description: >
   Performs a structured network segmentation review against NIST SP 800-207
-  (Zero Trust Architecture) and CIS Controls v8 (Control 12 -- Network
-  Infrastructure Management). Auto-invoked when reviewing network architecture,
-  VLAN configurations, micro-segmentation policies, or DMZ designs. Produces a
-  segmentation maturity assessment with zone mapping, trust boundary analysis,
-  and remediation guidance.
-tags: [network, segmentation, micro-segmentation]
+  (Zero Trust Architecture), CIS Controls v8 (Control 12 -- Network
+  Infrastructure Management), and PCI DSS v4.0.1 CDE segmentation evidence
+  requirements. Auto-invoked when reviewing network architecture, VLAN
+  configurations, micro-segmentation policies, DMZ designs, or PCI CDE
+  segmentation. Produces a segmentation maturity assessment with zone mapping,
+  trust boundary analysis, and remediation guidance.
+tags: [network, segmentation, micro-segmentation, pci-dss, cde]
 role: [security-engineer, architect]
 phase: [design, operate]
-frameworks: [NIST-SP-800-207, CIS-Controls-v8]
+frameworks: [NIST-SP-800-207, CIS-Controls-v8, PCI-DSS-v4.0.1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -33,7 +34,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 - Architecture reviews for new or modified network designs.
 - Zero Trust readiness assessments.
-- PCI DSS scoping exercises requiring CDE segmentation validation (PCI DSS v4.0 Requirement 1.3).
+- PCI DSS scoping exercises requiring CDE segmentation validation (PCI DSS v4.0.1 Requirements 1.3, 11.4.5, and 11.4.6).
 - Post-incident reviews where lateral movement was observed or suspected.
 - Cloud migration planning requiring workload isolation design.
 - Merger/acquisition network integration planning.
@@ -219,15 +220,32 @@ If a DMZ is present, evaluate its architectural soundness:
 
 ---
 
-### Step 5: PCI CDE Segmentation Validation (PCI DSS v4.0 Requirement 1.3)
+### Step 5: PCI CDE Segmentation Validation (PCI DSS v4.0.1 Requirements 1.3, 11.4.5, and 11.4.6)
 
 If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
+- **Source/version gate:** Before assigning any PCI-specific pass/fail status, record `pci_dss_version`, `pci_dss_source_document`, `pci_dss_source_review_date`, and `pci_requirement_mapping_checked`. For assessments performed after 2024-12-31, require PCI DSS v4.0.1 or a documented assessor-approved basis for using a previous version. If source/version evidence is missing, stale, or unmapped, mark PCI DSS conclusions **Not Evaluable** instead of treating a successful network test as compliant.
 - CDE is isolated in dedicated subnets or VLANs with explicit boundary controls.
 - All traffic entering and leaving the CDE traverses a firewall or equivalent PEP.
 - Connected-to systems are identified and documented.
 - Out-of-scope systems cannot route directly to CDE systems.
 - Segmentation testing methodology exists and is executed at least annually (PCI DSS 11.4.5).
+- Service providers have explicit PCI DSS 11.4.6 applicability and evidence that segmentation penetration tests occur at least every six months and after any segmentation-control or segmentation-method change.
+- Significant network changes preserve retest evidence before segmentation is relied on for PCI scope reduction.
+
+#### 5.1 PCI Source and CDE Evidence Matrix
+
+Keep PCI source metadata separate from CDE effectiveness evidence. A current source document does not prove segmentation works, and one blocked connection does not prove the PCI requirement mapping is current.
+
+| Evidence Stream | Required Evidence | Missing or Stale Handling |
+|-----------------|-------------------|---------------------------|
+| **PCI source version** | PCI DSS version, source document URL, source review date, assessor or owner who verified mapping | Mark PCI DSS status **Not Evaluable** until current source/version evidence is recorded |
+| **Requirement mapping** | Explicit mapping to PCI DSS v4.0.1 Requirements 1.3, 11.4.5, and, when applicable, 11.4.6 | Do not reuse retired requirement IDs or generic "PCI segmentation" notes as pass evidence |
+| **CDE boundary** | CDE subnet/VLAN/system inventory, connected-to systems, security-impacting systems, and out-of-scope justification | Treat incomplete connected-to scope as **High** because the test boundary may be under-scoped |
+| **Traffic controls** | Firewall, ACL, security group, route, or policy evidence for every CDE ingress/egress path | Treat direct or uninspected paths into the CDE as **Critical** |
+| **Test scope and results** | Source/destination pairs, ports, methods, dates, tester identity, and blocked/allowed outcomes | Do not accept a single blocked flow as full segmentation validation |
+| **Cadence** | Merchant annual evidence for 11.4.5; service-provider six-month evidence for 11.4.6 | Mark service-provider cadence **Not Evaluable** when entity type or 11.4.6 applicability is missing |
+| **Change retest** | Retest records after firewall, routing, CDE boundary, segmentation-control, or segmentation-method changes | Treat missing post-change retest evidence as **High** for PCI scope-reduction claims |
 
 **Finding classification:** CDE not segmented from general corporate network is **Critical**. Missing segmentation testing is **High**.
 
@@ -242,6 +260,8 @@ Document or verify the existence of a segmentation testing process:
 3. **From the DMZ, attempt to reach internal zones** on unauthorized ports. Expected result: blocked.
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
+6. **Validate PCI cadence evidence** against entity type: at least annually for segmentation used to isolate the CDE, and at least every six months plus after changes for service providers under PCI DSS 11.4.6.
+7. **Trace each failed or skipped test** to a documented reason, owner, retest date, and whether the PCI conclusion is Pass, Fail, or Not Evaluable.
 
 ---
 
@@ -253,6 +273,8 @@ Document or verify the existence of a segmentation testing process:
 | **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic. |
 | **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation. |
 | **Low** | Suboptimal zone naming conventions; missing network diagrams; segmentation documentation out of date. |
+
+Use **Not Evaluable** rather than a severity rating when the only gap is missing PCI source/version metadata or requirement mapping. Escalate to **High** when stale or missing PCI evidence is used to assert CDE segmentation compliance or scope reduction.
 
 ---
 
@@ -301,6 +323,25 @@ Document or verify the existence of a segmentation testing process:
 - Automation: <Ready / Partial / Not Ready>
 - **Overall Readiness:** <Ready / Partial / Not Ready>
 
+### PCI CDE Source and Cadence Gate
+- PCI DSS version: <v4.0.1 / other / missing>
+- Source document: <URL or document ID>
+- Source review date: <date>
+- Requirement mapping checked: <yes / no>
+- Entity type: <merchant / service provider / unknown>
+- 11.4.6 applicability: <applies / does not apply / unknown>
+- Segmentation test cadence evidence: <annual / six-month / post-change / missing>
+- PCI conclusion: <Pass / Fail / Not Evaluable>
+
+| Evidence Stream | Status | Evidence | Gap |
+|-----------------|--------|----------|-----|
+| Source version | Current / Stale / Missing | <source> | <gap> |
+| Requirement mapping | Checked / Unchecked | <mapping> | <gap> |
+| CDE boundary | Complete / Partial / Missing | <systems and zones> | <gap> |
+| Test scope | Complete / Partial / Missing | <test set> | <gap> |
+| Cadence | Satisfied / Not Satisfied / Not Evaluable | <dates> | <gap> |
+| Change retest | Present / Missing / Not Applicable | <records> | <gap> |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -331,6 +372,14 @@ Document or verify the existence of a segmentation testing process:
 | 12.4 | Establish and Maintain Architecture Diagram(s) | Documented zone maps and data flow diagrams |
 | 12.8 | Establish and Maintain Dedicated Computing Resources for All Administrative Work | Privileged access workstations, jump boxes |
 
+### PCI DSS v4.0.1
+
+| Requirement | Topic | Relevance |
+|-------------|-------|-----------|
+| 1.3 | Network access to and from the CDE is restricted | CDE boundary controls and connected-to-system scope |
+| 11.4.5 | Segmentation penetration tests validate isolation when segmentation is used | Annual validation and post-change evidence for segmentation controls |
+| 11.4.6 | Additional service-provider segmentation testing cadence | Six-month and post-change testing for service providers |
+
 ---
 
 ## Common Pitfalls
@@ -344,6 +393,10 @@ Document or verify the existence of a segmentation testing process:
 4. **Overlooking service mesh bypass paths.** Istio and Linkerd enforce policy on mesh-enrolled workloads only. Pods that bypass the sidecar proxy (hostNetwork: true, or init container misconfiguration) are not subject to mesh policy. Verify sidecar injection is enforced.
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
+
+6. **Using stale PCI DSS source metadata as compliance evidence.** PCI-specific conclusions need current source/version metadata and requirement mapping before pass/fail classification. A retired PDF or missing source review date should produce Not Evaluable, not Pass.
+
+7. **Collapsing merchant and service-provider cadence.** PCI DSS 11.4.5 and 11.4.6 have different cadence expectations. Do not accept annual-only evidence for service-provider segmentation when 11.4.6 applies.
 
 ---
 
@@ -364,7 +417,7 @@ This skill processes network configurations that may contain user-supplied comme
 - NIST SP 800-207 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-207.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - CIS Control 12 -- Network Infrastructure Management: https://www.cisecurity.org/controls/network-infrastructure-management
-- PCI DSS v4.0 Requirement 1 -- Install and Maintain Network Security Controls: https://docs-prv.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0.pdf
+- PCI SSC Document Library -- PCI DSS v4.0.1 Standard: https://www.pcisecuritystandards.org/document_library
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Project Calico Documentation: https://docs.tigera.io/calico/latest/about/
 
@@ -372,4 +425,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.1.0** -- Added PCI DSS v4.0.1 source-version gates, CDE evidence matrix, service-provider 11.4.6 cadence handling, and Not Evaluable output fields.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
