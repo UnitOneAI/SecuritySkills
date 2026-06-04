@@ -45,14 +45,14 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-601 (Open Redirect)
 
 ### 2.1 Controls to Verify
 
 | ASVS Control | Description |
 |---|---|
 | V5.1.1 | Input validation is applied on a trusted service layer, not solely client-side |
-| V5.1.3 | All input is validated against an allowlist of permitted characters or patterns |
+| V5.1.3 | All input, including redirect destinations, is validated against allowlisted values, patterns, or framework local-only helpers |
 | V5.2.1 | All HTML form output is properly encoded to prevent reflected XSS |
 | V5.2.2 | Unstructured data is sanitized to enforce safety and allowed characters |
 | V5.3.1 | Output encoding is relevant for the interpreter context (HTML, JS, URL, CSS, SQL) |
@@ -102,6 +102,72 @@ FileInputStream fis = new FileInputStream(f);
 ```
 Remediation: Canonicalize the resolved path and verify it remains within the expected base directory.
 
+**JavaScript -- Open Redirect (CWE-601)**
+```javascript
+// VULNERABLE: user-controlled destination passed directly to redirect sink
+app.get("/login", (req, res) => {
+  const next = req.query.next || "/";
+  res.redirect(next);
+});
+```
+Remediation: Restrict redirects to local paths or exact parsed allowlist entries, and use a safe fallback for invalid destinations.
+
+```javascript
+// SECURE: canonical URL parsing plus same-origin fallback
+const safeLocalRedirect = (candidate) => {
+  const fallback = "/dashboard";
+  if (!candidate) return fallback;
+
+  try {
+    const parsed = new URL(candidate, "https://app.example.com");
+    if (parsed.origin !== "https://app.example.com") return fallback;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback;
+  }
+};
+
+app.get("/login", (req, res) => {
+  res.redirect(safeLocalRedirect(req.query.next));
+});
+```
+
+**JavaScript -- OAuth Callback Allowlist (CWE-601)**
+```javascript
+// VULNERABLE: suffix matching accepts attacker-controlled lookalike hosts
+app.get("/oauth/authorize", (req, res) => {
+  const redirectUri = req.query.redirect_uri;
+  if (redirectUri.endsWith("example.com")) {
+    res.redirect(redirectUri);
+  }
+});
+```
+Remediation: Parse and canonicalize the URL, require HTTPS, compare against exact origin and path allowlist entries, and route all failures to a known fallback.
+
+```javascript
+// SECURE: exact parsed origin/path allowlist with fallback
+const allowedCallbacks = new Set([
+  "https://app.example.com/oauth/callback",
+  "https://admin.example.com/oauth/callback",
+]);
+
+app.get("/oauth/authorize", (req, res) => {
+  let redirectUri;
+  try {
+    redirectUri = new URL(req.query.redirect_uri);
+  } catch {
+    return res.redirect("/login");
+  }
+
+  const canonical = `${redirectUri.origin}${redirectUri.pathname}`;
+  if (redirectUri.protocol !== "https:" || !allowedCallbacks.has(canonical)) {
+    return res.redirect("/login");
+  }
+
+  return res.redirect(redirectUri.toString());
+});
+```
+
 ### 2.3 Review Checklist
 
 - [ ] Every point where user input enters the system is identified.
@@ -110,6 +176,32 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+- [ ] Redirect sinks trace user-controlled destinations through source-to-sink data flow.
+- [ ] Local-only redirects use framework helpers such as `LocalRedirect`, `Url.IsLocalUrl`, or equivalent same-origin validation.
+- [ ] External redirects use exact parsed origin/path allowlists with documented business justification.
+- [ ] OAuth and SSO `redirect_uri`, callback, `next`, and `returnUrl` values reject prefix, suffix, substring, and regex-only trust checks.
+- [ ] Protocol-relative URLs (`//host`), encoded slashes or backslashes, punycode lookalikes, and double-encoded values are canonicalized or rejected before redirect.
+
+### 2.4 Open Redirect Decision Gate
+
+Only report an open redirect finding when all of the following are true:
+
+1. A redirect destination is influenced by user-controlled input such as query parameters, headers, form fields, cookies, route values, or OAuth client metadata.
+2. The value reaches a redirect sink such as `res.redirect`, `redirect_to`, `Redirect`, `LocalRedirect` misuse, `sendRedirect`, `window.location`, or a response `Location` header.
+3. The code lacks local-only validation, an exact parsed allowlist, or a framework helper proven to block external destinations.
+
+Do **not** report a finding for static URLs, destinations constructed from constants, framework-local helpers correctly guarded by `Url.IsLocalUrl`, or exact allowlist checks performed after URL parsing and canonicalization. Report string prefix, suffix, substring, or regex-only checks as unsafe unless surrounding code proves they operate on a canonical parsed URL and an exact allowed value.
+
+Common redirect sinks and safe signals to inspect:
+
+| Stack | Redirect sinks | Safe signals |
+|---|---|---|
+| Express / Node.js | `res.redirect`, `response.redirect`, `Location` header | Parsed URL, same-origin fallback, exact callback allowlist |
+| Rails | `redirect_to params[...]`, `redirect_back` fallback paths | `allow_other_host: false`, local fallback, exact host allowlist |
+| Django / Flask | `redirect(request.args.get(...))`, `HttpResponseRedirect`, `RedirectResponse` | `url_has_allowed_host_and_scheme`, same-host validation, safe fallback |
+| ASP.NET Core | `Redirect(returnUrl)`, `Response.Redirect`, response `Location` header | `Url.IsLocalUrl` plus `LocalRedirect`, exact parsed allowlist |
+| Java Servlet / Spring | `sendRedirect`, `RedirectView`, `Location` header | Canonical URI parsing, allowlisted host/path, local fallback |
+| Browser JavaScript | `window.location`, `location.href`, `location.assign` | Constant routes, same-origin URL parsing, reject protocol-relative input |
 
 ---
 
@@ -420,6 +512,9 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Source-to-sink path** | For data-flow findings, how untrusted input reaches the dangerous operation |
+| **Trust decision** | Validation, allowlist, authorization, or guard condition that failed or is absent |
+| **False-positive guard** | Safe helper, canonicalization, or surrounding context checked before reporting |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -462,6 +557,9 @@ The final review output must be structured as follows:
 - **ASVS Control:** V[x.y.z]
 - **Location:** [file:line]
 - **Description:** [explanation]
+- **Source-to-sink path:** [where untrusted data enters and where it is consumed]
+- **Trust decision:** [missing or insufficient validation/authorization/allowlist]
+- **False-positive guard:** [safe framework helper or contextual evidence checked]
 - **Evidence:**
   ```[language]
   [code snippet]
@@ -527,6 +625,12 @@ The final review output must be structured as follows:
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
+### Additional CWE Coverage
+
+| CWE ID | Name | Review Step |
+|---|---|---|
+| CWE-601 | URL Redirection to Untrusted Site ('Open Redirect') | Step 2 |
+
 ---
 
 ## Common Pitfalls
@@ -540,6 +644,8 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Flagging redirects without proving destination control.** Redirect calls are common in safe login and navigation flows. Before reporting CWE-601, prove that user-controlled data reaches the destination and that the code is missing local-only validation, exact parsed allowlists, or a safe framework helper.
 
 ---
 
@@ -560,6 +666,8 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
+- **CWE-601: URL Redirection to Untrusted Site:** https://cwe.mitre.org/data/definitions/601.html
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Unvalidated Redirects and Forwards Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf

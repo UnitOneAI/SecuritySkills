@@ -175,7 +175,75 @@ public IActionResult DownloadFile(string filename)
 
 ---
 
-#### 5. LDAP Injection (CWE-90)
+#### 5. Open Redirect (CWE-601)
+
+**ASVS Control:** V5.1.3
+
+```csharp
+// VULNERABLE: returnUrl is user-controlled and can point to an external site
+public IActionResult Login(string returnUrl)
+{
+    return Redirect(returnUrl);
+}
+```
+
+Remediation: Use ASP.NET Core's local URL helpers and fall back to a known internal route.
+
+```csharp
+// SECURE: local-only redirect guarded by framework validation
+public IActionResult Login(string? returnUrl)
+{
+    if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+        return LocalRedirect(returnUrl);
+
+    return RedirectToAction("Index", "Home");
+}
+```
+
+Do not report the secure pattern above as an open redirect finding. `Url.IsLocalUrl` rejects absolute external URLs and protocol-relative destinations, while `LocalRedirect` enforces a local path at the framework level.
+
+**OAuth callback -- suffix allowlist**
+
+```csharp
+// VULNERABLE: suffix matching can accept lookalike or attacker-controlled hosts
+public IActionResult CompleteOAuth(string redirectUri)
+{
+    if (redirectUri.EndsWith("example.com", StringComparison.OrdinalIgnoreCase))
+        return Redirect(redirectUri);
+
+    return RedirectToAction("Login", "Account");
+}
+```
+
+Remediation: Parse and canonicalize the URL, require HTTPS, compare exact origin/path allowlist entries, and use a safe fallback.
+
+```csharp
+// SECURE: exact parsed origin/path allowlist with canonical host comparison
+private static readonly HashSet<string> AllowedOAuthCallbacks =
+    new(StringComparer.OrdinalIgnoreCase)
+    {
+        "https://app.example.com/oauth/callback",
+        "https://admin.example.com/oauth/callback"
+    };
+
+public IActionResult CompleteOAuth(string redirectUri)
+{
+    if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri))
+        return RedirectToAction("Login", "Account");
+
+    var canonical = $"{uri.Scheme}://{uri.IdnHost}{uri.AbsolutePath}";
+    if (uri.Scheme != Uri.UriSchemeHttps || !AllowedOAuthCallbacks.Contains(canonical))
+        return RedirectToAction("Login", "Account");
+
+    return Redirect(uri.ToString());
+}
+```
+
+Reviewers should treat `StartsWith`, `EndsWith`, `Contains`, and regex-only checks on redirect URLs as insufficient unless the surrounding code first parses the URL and compares a canonical value to an exact allowlist.
+
+---
+
+#### 6. LDAP Injection (CWE-90)
 
 **ASVS Control:** V5.3.7
 
@@ -215,7 +283,7 @@ public SearchResult FindUser(string username)
 
 ---
 
-#### 6. XML External Entity -- XXE (CWE-611)
+#### 7. XML External Entity -- XXE (CWE-611)
 
 **ASVS Control:** V5.5.1
 
@@ -251,7 +319,7 @@ public XmlDocument ParseXml(Stream input)
 
 ---
 
-#### 7. Regular Expression Denial of Service -- ReDoS (CWE-1333)
+#### 8. Regular Expression Denial of Service -- ReDoS (CWE-1333)
 
 **ASVS Control:** V5.1.3
 
@@ -927,6 +995,9 @@ Use these regex patterns to locate potential vulnerabilities in C# source files.
 | XSS (Blazor) | `MarkupString\)` |
 | OS Command Injection | `Process\.Start\s*\(.*[\+\$]` |
 | Path Traversal | `Path\.Combine\s*\(.*Request` |
+| Open Redirect | `Redirect\s*\(\s*(returnUrl\|redirectUri\|.*Request\..*)` |
+| Open Redirect (weak allowlist) | `(returnUrl\|redirectUri).*\.(StartsWith\|EndsWith\|Contains)\s*\(` |
+| Safe local redirect guard | `Url\.IsLocalUrl\s*\(.*\).*LocalRedirect\s*\(` (do not report without contrary evidence) |
 | XXE | `XmlResolver\s*=\s*new\s+XmlUrlResolver` |
 | XXE (DTD) | `DtdProcessing\s*=\s*DtdProcessing\.Parse` |
 | LDAP Injection | `DirectorySearcher.*Filter\s*=.*[\+\$]` |
@@ -1070,6 +1141,8 @@ builder.Services.AddDataProtection()
 - **OWASP .NET Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html
 - **Microsoft Secure Coding Guidelines:** https://learn.microsoft.com/en-us/dotnet/standard/security/secure-coding-guidelines
 - **ASP.NET Core Security Documentation:** https://learn.microsoft.com/en-us/aspnet/core/security/
+- **ASP.NET Core prevent open redirect attacks:** https://learn.microsoft.com/en-us/aspnet/core/security/preventing-open-redirects
 - **BinaryFormatter Security Guide:** https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide
+- **CWE-601: URL Redirection to Untrusted Site:** https://cwe.mitre.org/data/definitions/601.html
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
