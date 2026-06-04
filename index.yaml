@@ -470,13 +470,13 @@ skills:
 
   - id: log-analysis
     name: "Security Log Analysis"
-    tags: [secops, logging, anomaly-detection]
+    tags: [secops, logging, anomaly-detection, privacy]
     role: [soc-analyst, security-engineer]
     phase: [operate]
     activity: [investigate, monitor]
-    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
+    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92, NIST-SP-800-122]
     difficulty: intermediate
-    time_estimate: "20-40min"
+    time_estimate: "25-45min"
     file: skills/secops/log-analysis/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
