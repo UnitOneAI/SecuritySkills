@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -174,6 +174,17 @@ RBAC-HIER-06: Admin roles permanently assigned instead of JIT-activated (link to
 RBAC-HIER-07: Role hierarchy does not reflect organizational structure or job functions
 ```
 
+#### Break-Glass Wildcard Role Calibration
+
+Do not score every wildcard permission as a standing god role. A break-glass role can be acceptable when the review can prove all of the following:
+
+- Activation requires an incident/change ticket, MFA, and multiple approvers.
+- Assignment is just-in-time, time-bound, and automatically revoked on expiry.
+- Session activity is recorded or command-logged, with alerting to security/on-call owners.
+- The role is excluded from normal daily workflows and periodically tested for revocation.
+
+If those controls are missing or unverifiable, report the role under `RBAC-HIER-04`, `RBAC-HIER-06`, or the relevant constraint finding instead of treating the emergency label as sufficient evidence.
+
 ---
 
 ### Step 3: Constraint Design (RBAC2)
@@ -299,6 +310,37 @@ RBAC-ABAC-07: Policy conflicts not detected — overlapping permit/deny without 
 RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
 ```
 
+#### Authorization Decision Assurance
+
+RBAC/ABAC designs are not proven only by the role model. The review must also verify how policy decisions behave when the PDP, PEP, cache, token claims, or policy-test pipeline fails.
+
+**Runtime evidence gates:**
+
+| Gate | Evidence to request |
+|---|---|
+| PDP/PEP failure mode | Timeout, network error, policy evaluation error, and `indeterminate` decisions deny by default or enter an explicitly approved degraded mode |
+| Enforcement-point coverage | Every service or route that protects the resource calls the central PDP or an equivalent local policy before side effects |
+| Cache and token staleness | Role, attribute, scope, and decision caches have TTLs matched to risk and are invalidated on revocation, transfer, policy change, and incident containment |
+| Decision logging | Logs include subject, resource, action, policy version, decision, reason, enforcement point, correlation ID, and cache hit/miss state |
+| Policy tests | Allow, deny, negative authorization, revocation-latency, and policy-diff tests exist before production rollout |
+
+**What to look for:**
+
+```
+RBAC-RUNTIME-01: PDP or PEP defaults to permit on timeout, network failure, policy exception, deny, or indeterminate decision
+RBAC-RUNTIME-02: Some services bypass the central PDP/PEP and enforce embedded role checks only
+RBAC-RUNTIME-03: No approved degraded mode for PDP outage or high-latency conditions
+RBAC-RUNTIME-04: Authorization decision logs omit subject, resource, action, policy version, decision, reason, or enforcement point
+RBAC-CACHE-01: Authorization decisions, roles, attributes, scopes, or session claims cached with no TTL
+RBAC-CACHE-02: Revocation, transfer, SoD exception expiry, or incident containment does not invalidate cached permits
+RBAC-CACHE-03: Cache TTL exceeds the risk tolerance for privileged, financial, tenant-isolation, or regulated-data actions
+RBAC-CACHE-04: Policy version changes do not flush or re-key cached decisions
+RBAC-TEST-01: No automated allow/deny and negative authorization tests for policy changes
+RBAC-TEST-02: No revocation-latency test proving access stops within the stated SLA
+RBAC-TEST-03: No decision-diff or dry-run testing before policy engine migration or major rule changes
+RBAC-TEST-04: No regression suite for known valid access paths and known forbidden cross-tenant or SoD paths
+```
+
 ---
 
 ### Step 6: Role Mining and Rationalization
@@ -341,8 +383,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | Severity | Definition | Examples |
 |---|---|---|
 | **Critical** | Authorization model allows privilege escalation or bypasses SoD | No permission boundaries; SSoD violations in production financial systems |
-| **High** | Significant design flaw creating excessive access risk | Role explosion (>0.7:1 ratio); no centralized PDP; wildcard boundaries |
-| **Medium** | Design deficiency undermining governance | No role lifecycle process; ABAC policies without testing; missing constraints |
+| **High** | Significant design flaw creating excessive access risk | Role explosion (>0.7:1 ratio); no centralized PDP; PDP/PEP fail-open behavior; wildcard boundaries |
+| **Medium** | Design deficiency undermining governance | No role lifecycle process; ABAC policies without testing; missing constraints; cache TTL exceeds revocation SLA |
 | **Low** | Design improvement opportunity | Naming inconsistencies; missing documentation; single-user roles < 5% |
 
 ---
@@ -360,6 +402,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Current State** | What exists today |
 | **Recommended State** | Target design |
 | **Remediation** | Steps to implement the design change |
+| **Runtime Evidence** | PDP/PEP behavior, cache TTL, revocation SLA, decision logs, and policy-test proof when applicable |
 | **Effort** | Low / Medium / High |
 
 ### Summary Report Structure
@@ -387,6 +430,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
+- Authorization Decision Assurance (Step 5): [count]
 - Role Mining (Step 6): [count]
 
 ### Detailed Findings
@@ -425,6 +469,15 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Interoperability** | Standards-based attribute formats (XACML, ALFA, OPA/Rego, Cedar) for portability |
 | **Auditability** | All policy evaluations logged with input attributes and decision rationale |
 
+### Policy Testing and Validation
+
+| Mechanism | Evidence |
+|---|---|
+| **OPA/Rego tests** | `opa test` or equivalent CI output proving expected allow/deny decisions, including negative authorization cases |
+| **Cedar validation** | Schema validation or policy validation output proving policies match the authorization schema before evaluation |
+| **Decision diff testing** | Old and new engines or policy versions evaluated against the same request corpus before cutover |
+| **Revocation-latency testing** | Test evidence that cached permits stop granting access within the documented SLA |
+
 ---
 
 ## Common Pitfalls
@@ -436,6 +489,10 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Fail-open PDP outage paths** — a correct policy set still fails if service timeouts, exceptions, or indeterminate results return permit.
+9. **Stale cached authorization** — cached roles, attributes, scopes, or decisions can preserve access after termination, transfer, or incident revocation.
+10. **Untested policy migrations** — running old and new policy engines in parallel without decision-diff tests can create silent authorization drift.
+11. **Uncontrolled break-glass roles** — wildcard emergency access is acceptable only when activation, expiry, recording, alerting, and revocation evidence are all present.
 
 ---
 
@@ -461,6 +518,8 @@ that may contain adversarial content.
 - NIST SP 800-53 Rev. 5, AC-6 (Least Privilege), AC-5 (Separation of Duties): https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
 - Cedar Policy Language (AWS): https://www.cedarpolicy.com
 - Open Policy Agent (OPA) / Rego: https://www.openpolicyagent.org
+- OPA Policy Testing: https://www.openpolicyagent.org/docs/policy-testing
+- Cedar Policy Validation: https://docs.cedarpolicy.com/policies/validation.html
 - XACML 3.0 (OASIS Standard): https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-os-en.html
 
 ---
@@ -481,4 +540,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-04 | Added PDP/PEP fail-closed, cache-staleness, revocation-latency, decision-log, policy-test, and break-glass evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
