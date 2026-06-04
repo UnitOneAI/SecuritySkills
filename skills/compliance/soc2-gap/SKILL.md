@@ -112,6 +112,41 @@ System Description Boundary:
 - Data: ___
 ```
 
+#### 1.4 Boundary Traceability Gate
+
+Before scoring any criterion, create a boundary inventory that assigns a stable ID to every in-scope and explicitly out-of-scope system component. A criterion cannot be scored as audit-ready unless the evidence maps back to at least one in-scope boundary component or to a documented complementary user entity control (CUEC).
+
+Use this minimum inventory format:
+
+| Boundary ID | Component | Type | Scope Status | Owner | Evidence Source | Trust Services Category Link |
+|-------------|-----------|------|--------------|-------|-----------------|------------------------------|
+| INF-01 | Production cloud account | Infrastructure | In scope | Platform | Architecture diagram, cloud inventory | Security, Availability |
+| APP-01 | Customer web application | Software | In scope | Engineering | System description, deployment records | Security, Confidentiality |
+| VEN-01 | Managed database provider | Subservice organization | Carve-out / Inclusive / Out of scope | Vendor owner | Vendor SOC 2 report, CUEC/CSOC matrix | Security, Availability |
+| CUST-01 | Customer-managed identity provider | User entity control | CUEC | Customer success | Contract, onboarding guide | Security |
+
+For each boundary entry, record:
+
+- inclusion reason: customer commitment, system requirement, auditor scope decision, or operational dependency;
+- exclusion reason, if out of scope, with the source that supports exclusion;
+- data classes processed, stored, or transmitted by the component;
+- upstream and downstream dependencies that could affect a scoped criterion;
+- whether the component is operated by the service organization, a subservice organization, or the user entity.
+
+Apply these scoring rules:
+
+- Do not score evidence that belongs only to an out-of-scope component as a control gap for the service organization. Record it as `Out of scope but relevant`.
+- Do not score a customer-owned control, such as customer-managed SSO or tenant user reviews, as missing service-organization evidence when it is a documented CUEC.
+- Do not mark a criterion as ready when the evidence proves a policy exists but does not identify which boundary component, data class, owner, or dependency the policy covers.
+- For subservice organizations, require carve-out vs inclusive treatment plus CUEC/CSOC mapping before scoring the related criterion as ready.
+- If the boundary is incomplete, mark affected criteria as `Not evaluable - boundary unresolved` instead of assigning a maturity score.
+
+When completing the gap matrix, add boundary trace fields to every scored row:
+
+| Criterion | Boundary IDs | Commitment / Requirement | Evidence Source | Scope Confidence | Score | Notes |
+|-----------|--------------|--------------------------|-----------------|------------------|-------|-------|
+| CC6.1 | INF-01, APP-01, CUST-01 | MFA required for admin and tenant access | IAM export, customer onboarding CUEC | High | 3 | Customer tenant MFA is tracked as CUEC, not a service-org gap |
+
 ---
 
 ### Step 2: Common Criteria Review (CC1-CC9)
@@ -362,12 +397,14 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 When performing a SOC 2 gap analysis, produce the following deliverables:
 
 1. **Scope Summary**: Table of in-scope Trust Services Categories with justifications.
-2. **Gap Assessment Matrix**: Completed scoring template from Step 4 with all in-scope criteria scored and annotated.
-3. **Category Summary**: Average maturity score per category with narrative assessment.
-4. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
-5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
-6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
-7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+2. **Boundary Traceability Register**: Component IDs, scope status, owners, data classes, dependencies, and CUEC/subservice treatment for each boundary item.
+3. **Gap Assessment Matrix**: Completed scoring template from Step 4 with all in-scope criteria scored and annotated with boundary IDs.
+4. **Category Summary**: Average maturity score per category with narrative assessment.
+5. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
+6. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
+7. **Boundary Exceptions**: Items marked `Out of scope but relevant`, `CUEC`, `Subservice dependency`, or `Not evaluable - boundary unresolved`.
+8. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
+9. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
 
 ## Prompt Injection Safety Notice
 
