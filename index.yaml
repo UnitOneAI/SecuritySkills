@@ -324,7 +324,7 @@ skills:
   # -- Incident Response ----------------------------------------------------
   - id: ir-playbook
     name: "Incident Response Playbook"
-    tags: [incident-response, ir, playbook]
+    tags: [incident-response, ir, playbook, csirt]
     role: [soc-analyst, security-engineer, vciso]
     phase: [respond, recover]
     activity: [investigate, remediate]

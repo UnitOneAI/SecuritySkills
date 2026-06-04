@@ -7,7 +7,7 @@ description: >
   classification, containment decisions, stakeholder notification, or evidence
   preservation. Produces an incident response plan with severity determination,
   containment decision tree, communication templates, and escalation criteria.
-tags: [incident-response, ir, playbook]
+tags: [incident-response, ir, playbook, csirt]
 role: [soc-analyst, security-engineer, vciso]
 phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
@@ -62,6 +62,7 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
+- [ ] **CSIRT service model source** -- If FIRST CSIRT terminology is used, record the Services Framework version, source URL, retrieval date, and mapped services.
 
 ---
 
@@ -444,6 +445,21 @@ During detection and analysis, map observed attacker techniques to the MITRE ATT
 - Standardized communication of attacker TTPs across teams and with external parties
 - Correlation with threat intelligence reports that reference ATT&CK technique IDs
 
+### FIRST CSIRT Services Framework Source Gate
+
+When an incident response plan uses FIRST CSIRT service terminology for escalation, handoffs, or service catalogues, require source-currency evidence before treating the mapping as authoritative.
+
+| Field | Required evidence |
+|-------|-------------------|
+| Framework | `FIRST CSIRT Services Framework` |
+| Version | Current version, such as `2.1` |
+| Source URL | Current FIRST standards URL, such as `https://www.first.org/standards/frameworks/csirts/csirt_services_framework_v2.1` |
+| Retrieved | Review date in YYYY-MM-DD format |
+| Source status | `reachable`, `redirected`, or `stale`; stale sources must be replaced |
+| Mapped services | Services used in the playbook, such as incident management, vulnerability response coordination, or information sharing |
+
+Do not rely on retired URLs such as `https://www.first.org/education/csirt` without recording the current final source. If the playbook uses FIRST terminology informally, note that no formal CSIRT service-catalogue mapping was claimed.
+
 ---
 
 ## 7. Common Pitfalls
@@ -493,7 +509,8 @@ This skill processes incident data that may include attacker-controlled content 
 7. **HIPAA Breach Notification Rule** -- 45 CFR 164.400-414 -- https://www.hhs.gov/hipaa/for-professionals/breach-notification/
 8. **SEC Cybersecurity Incident Disclosure (Item 1.05 Form 8-K)** -- https://www.sec.gov/rules/final/2023/33-11216.pdf
 9. **FBI Internet Crime Complaint Center (IC3)** -- https://www.ic3.gov/
-10. **FIRST CSIRT Framework** -- https://www.first.org/education/csirt
-11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
-12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
-13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+10. **FIRST CSIRT Services Framework v2.1** -- https://www.first.org/standards/frameworks/csirts/csirt_services_framework_v2.1
+11. **FIRST Services Frameworks Status Page** -- https://www.first.org/standards/frameworks/
+12. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
+13. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
+14. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
