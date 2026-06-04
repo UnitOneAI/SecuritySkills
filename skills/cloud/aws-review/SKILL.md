@@ -155,6 +155,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
+- **Linked Evidence:** <related resources that prove the control end-to-end>
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
@@ -197,9 +198,10 @@ Produce the final report using the structure defined in the Output Format sectio
 1. **Checking only Terraform state, not all resource definitions.** Security groups and IAM policies may be defined across dozens of files. Always use Glob to find all `.tf` files before evaluating.
 2. **Missing account-level vs. bucket-level S3 public access blocks.** CIS 2.1.4 requires both. An account-level block can override permissive bucket settings, but the bucket-level block should also be set.
 3. **Confusing CloudTrail multi-region with organization trail.** CIS 3.1 requires multi-region, not necessarily an organization trail. Both are valid, but the control checks `is_multi_region_trail`.
-4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
-5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
-6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+4. **Treating a CloudTrail resource as a complete logging chain.** A trail alone does not prove log integrity. Cross-reference the trail to its log S3 bucket, public access block, bucket policy, KMS key, CloudWatch Logs group, and event selectors before marking CIS 3.x controls as Pass.
+5. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
+6. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
+7. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
 
 ---
 

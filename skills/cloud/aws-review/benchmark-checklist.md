@@ -266,6 +266,26 @@ encrypted = true
 
 Evaluate logging configurations against Section 3 recommendations.
 
+### CloudTrail Integrity Evidence Chain
+
+For CIS 3.x CloudTrail controls, do not score each resource in isolation. A
+CloudTrail trail can exist while log integrity is still weak because the linked
+bucket, KMS key, CloudWatch Logs integration, or data event selectors are
+missing or misconfigured. Record the linked resources used to justify a Pass.
+
+| Evidence Gate | Pass Condition | Fail or Not Evaluable Condition |
+|---|---|---|
+| Trail coverage | `aws_cloudtrail` has `enable_logging = true` and `is_multi_region_trail = true`, or live export proves equivalent all-region coverage | Trail is single-region, disabled, absent, or only inferred from one provider alias |
+| Log validation | `enable_log_file_validation = true` is present on the same trail | Log validation missing, false, or not tied to the reviewed trail |
+| Log bucket controls | The trail `s3_bucket_name` resolves to an S3 bucket with public access block and a bucket policy that limits CloudTrail writes, enforces TLS, and avoids broad public principals | Bucket cannot be resolved, public access controls are missing, policy allows public access, or policy is not tied to CloudTrail source ARN/account |
+| KMS protection | The trail has `kms_key_id` and the referenced KMS key/policy permits CloudTrail encryption without broad decrypt/admin exposure | KMS key missing, key policy unavailable, or key policy grants broad access unrelated to CloudTrail logging |
+| CloudWatch integration | `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` are present and the referenced log group is available for CIS 4.x metric filters | CloudWatch fields are missing or filters point to a different/unresolved log group |
+| Object-level data events | Event selectors or advanced event selectors include required S3 read/write object data events for scoped buckets | Management events only, read or write events missing, or selectors cannot be tied to protected buckets |
+
+If any linked resource is absent from IaC or live evidence, mark the affected
+control `Not Evaluable` or `Fail` rather than assuming that a standalone
+CloudTrail declaration proves the full logging chain.
+
 ### CIS 3.1 -- Ensure CloudTrail is enabled in all regions
 
 **Grep patterns:**
