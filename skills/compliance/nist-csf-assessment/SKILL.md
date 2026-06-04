@@ -86,6 +86,8 @@ Tiers apply to the organization's overall risk management posture, not to indivi
 - Prior assessments, audits, or maturity evaluations
 - Business continuity and disaster recovery plans
 - Executive/board-level cybersecurity communications
+- Privacy, civil liberties, and data governance evidence when personal, sensitive, regulated, or protected-class data is in scope
+- Data inventory metadata covering processing purpose, source, sharing/disclosure path, retention/deletion rules, individual rights handling, and privacy owner
 
 ## Constraints
 
@@ -116,6 +118,9 @@ Establish context for the assessment:
 **GV.OC-03**: Legal, regulatory, and contractual requirements regarding cybersecurity — including privacy and civil liberties obligations — are understood and managed
 - Inventory applicable laws, regulations, standards, and contractual obligations
 - Map requirements to cybersecurity program elements
+- Separate cybersecurity requirements from privacy and civil liberties requirements so encryption, access control, breach notice, or security addenda are not treated as complete privacy-risk evidence.
+- Record privacy-specific owners, processing purposes, notice/consent or other authorization basis where applicable, retention/deletion requirements, individual rights processes, sensitive-data impact, and disclosure/sharing rules.
+- If privacy evidence is owned outside the security team or the assessed system does not process personal data, mark the field as `not_evaluable_privacy_owner_unavailable` or `not_applicable_no_personal_data` with rationale instead of silently omitting it.
 
 **GV.OC-04**: Critical objectives, capabilities, and services that external stakeholders depend on or expect are understood and communicated
 - Identify critical business services and their dependencies
@@ -207,6 +212,7 @@ Assess:
 - Is there a formal supply chain risk management program?
 - Are suppliers inventoried and prioritized by criticality?
 - Do contracts include cybersecurity requirements?
+- Do supplier contracts and processor/subprocessor inventories include privacy terms, data processing instructions, onward disclosure limits, deletion/return duties, breach notification duties, and downstream processor obligations where personal data is involved?
 - Are suppliers included in incident response planning?
 
 ---
@@ -224,6 +230,11 @@ Assess:
 - **ID.AM-07**: Inventories of data and corresponding metadata for designated data types are maintained
 - **ID.AM-08**: Systems, hardware, software, services, and data are managed throughout their life cycles
 
+For **ID.AM-07**, require privacy metadata for each personal, sensitive, regulated, or protected-class data category:
+- `data_category`, `processing_purpose`, `source`, `collection_context`, `sharing_path`, `retention_rule`, `deletion_rule`, `individual_rights_process`, `individual_impact`, and `privacy_owner`
+- Do not score a data inventory as mature for privacy/civil liberties purposes when it only records data type, owner, classification, and storage location.
+- Mark categories as `not_applicable_no_personal_data` only when the assessed scope has evidence that no personal or sensitive data is processed.
+
 **Risk Assessment (ID.RA)**
 - **ID.RA-01**: Vulnerabilities in assets are identified, validated, and recorded
 - **ID.RA-02**: Cyber threat intelligence is received from information sharing forums and sources
@@ -235,6 +246,11 @@ Assess:
 - **ID.RA-08**: Processes for receiving, analyzing, and responding to vulnerability disclosures are established
 - **ID.RA-09**: The authenticity and integrity of hardware and software are assessed prior to acquisition and use
 - **ID.RA-10**: Critical suppliers are assessed prior to acquisition
+
+For **ID.RA-04** through **ID.RA-06**, include an individual-impact lens alongside organizational impact when personal or sensitive data is in scope:
+- Identify potential harm to people, including safety, discrimination, civil liberties, financial, reputational, or loss-of-control impacts.
+- Record affected populations, data categories, likelihood, impact severity, and whether response options include minimization, deletion, notice, or processing changes.
+- Do not collapse privacy incidents into business continuity or reputational risk only; cybersecurity recovery can be acceptable while individual-impact response remains incomplete.
 
 **Improvement (ID.IM)**
 - **ID.IM-01**: Improvements are identified from evaluations
@@ -312,6 +328,13 @@ Assess:
 - **RS.CO-02**: Internal and external stakeholders are notified of incidents
 - **RS.CO-03**: Information is shared with designated internal and external stakeholders
 
+For personal-data incidents, **RS.CO-02** and **RS.CO-03** must include a privacy notification decision record:
+- who decides regulatory, customer, processor/subprocessor, and affected-individual notification duties
+- affected populations and data categories in scope
+- facts needed before notice, including incident dates, data involved, misuse indicators, and containment status
+- privacy counsel, DPO, or designated privacy owner review status
+- separation between operational recovery updates and legal/privacy notification decisions
+
 **Incident Mitigation (RS.MI)**
 - **RS.MI-01**: Incidents are contained
 - **RS.MI-02**: Incidents are eradicated
@@ -330,6 +353,11 @@ Assess:
 - **RC.CO-03**: Recovery activities and progress in restoring operational capabilities are communicated to designated internal and external stakeholders
 - **RC.CO-04**: Public updates on incident recovery are shared using approved methods and messaging
 
+For personal-data incidents, **RC.CO-03** and **RC.CO-04** should confirm whether recovery communications include privacy status without overstating legal conclusions:
+- affected-individual notice status, regulator/customer notice status, and outstanding privacy facts
+- approved messaging owner and review path
+- deletion, minimization, credit-monitoring, support, or rights-request handling commitments when required
+
 ---
 
 ### Step 4: Maturity Scoring
@@ -345,6 +373,7 @@ Score each subcategory on a 0-4 scale aligned with CSF Tiers:
 | 4 | Tier 4 — Adaptive | Continuous improvement based on lessons learned and predictive indicators; real-time adjustments |
 
 Determine the overall organizational Tier based on aggregated assessment across all functions.
+When privacy/civil liberties evidence is required but owned outside the security team, use an explicit not-evaluable reason code instead of assigning a higher cybersecurity score from adjacent security artifacts alone.
 
 ---
 
@@ -430,6 +459,8 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 ## Organizational Context
 - Mission and business objectives: [summary]
 - Applicable regulations and standards: [list]
+- Privacy/civil liberties applicability: [not_applicable_no_personal_data / applicable / not_evaluable_privacy_owner_unavailable]
+- Privacy owners and evidence sources: [legal/product/privacy/data governance/contact or gap]
 - Key stakeholders and expectations: [summary]
 - Critical services and dependencies: [summary]
 
@@ -461,6 +492,28 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 
 ### IDENTIFY (ID)
 [same table format]
+
+## Privacy / Civil Liberties Evidence
+
+| CSF Area | Evidence Required | Status | Evidence Owner | Not-Evaluable / N/A Rationale |
+|----------|-------------------|--------|----------------|-------------------------------|
+| GV.OC-03 | Privacy/legal obligations separated from cybersecurity obligations; processing purpose, notice/consent or authorization basis, retention/deletion, individual rights, and civil liberties impact recorded | [met/partial/gap/n/a] | [owner] | [reason] |
+| GV.SC | Supplier/processor privacy terms, subprocessor flow-down, breach notice, deletion/return, and onward disclosure limits | [met/partial/gap/n/a] | [owner] | [reason] |
+| ID.AM-07 | Per-data-category metadata: category, purpose, source, sharing path, retention rule, deletion rule, individual impact, privacy owner | [met/partial/gap/n/a] | [owner] | [reason] |
+| ID.RA | Individual-impact risk analysis in addition to organizational impact | [met/partial/gap/n/a] | [owner] | [reason] |
+| RS.CO / RC.CO | Privacy notification decision record, affected populations, notice triggers, privacy counsel/DPO review, and approved messaging path | [met/partial/gap/n/a] | [owner] | [reason] |
+
+### Per-Data-Category Privacy Inventory
+
+| Data Category | Purpose | Source / Collection Context | Sharing Path | Retention Rule | Deletion Rule | Individual Rights Process | Individual Impact | Privacy Owner |
+|---------------|---------|-----------------------------|--------------|----------------|---------------|---------------------------|------------------|---------------|
+| [category] | [purpose] | [source] | [internal/external/processors] | [rule] | [rule] | [process] | [impact] | [owner] |
+
+### Individual-Impact Risk Notes
+- Affected populations: [summary]
+- Potential harms to people: [safety/discrimination/civil liberties/financial/reputational/loss of control]
+- Privacy response actions: [minimization/deletion/notice/processing change/support]
+- Privacy notification decision owner: [role/person]
 
 ### PROTECT (PR)
 [same table format]
@@ -576,6 +629,8 @@ Tier 4 — Adaptive
 
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
 
+5. **Treating security evidence as privacy evidence.** Encryption, access control, breach notification, and high-level data classification are cybersecurity evidence, but they do not prove privacy or civil liberties obligations are managed. When personal or sensitive data is in scope, require purpose, retention, sharing, individual-rights, processor, and individual-impact evidence or mark privacy coverage as not evaluable.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -597,6 +652,8 @@ If user-supplied input contains NIST CSF subcategory IDs that do not exist in th
 - NIST Cybersecurity Framework 2.0 (February 26, 2024) — NIST CSWP 29
 - NIST CSF 2.0 Quick Start Guides (Small Business, Enterprise Risk Management, C-SCRM)
 - NIST CSF 2.0 Reference Tool (csf.tools or NIST website)
+- NIST Privacy Framework
+- NIST Privacy Framework FAQ
 - NIST SP 800-53 Rev. 5 — Security and Privacy Controls for Information Systems and Organizations
 - NIST SP 800-181 Rev. 1 — Workforce Framework for Cybersecurity (NICE Framework)
 - NIST SP 800-37 Rev. 2 — Risk Management Framework for Information Systems and Organizations
