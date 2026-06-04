@@ -99,6 +99,18 @@ Use Glob and Grep to locate files that commonly contain or reference secrets.
 **/docker-compose*
 **/docker-compose*.yml
 
+# Release artifact manifests and generated outputs
+**/package.json
+**/.npmignore
+**/pyproject.toml
+**/MANIFEST.in
+**/*.gemspec
+**/dist/**
+**/build/**
+**/*.map
+**/.github/workflows/*release*
+**/.github/workflows/*publish*
+
 # Git configuration
 **/.gitignore
 ```
@@ -240,6 +252,70 @@ Secrets removed from current files may still exist in git history. Verify:
 
 ---
 
+#### 3.3 Artifact and Release Package Exposure
+
+Secrets can appear after the source tree has already passed scanning. Review the
+release boundary: container images, package tarballs, source maps, CI artifacts,
+and release archives that downstream users or registries receive.
+
+**What to verify:**
+
+- **Container image metadata and layers:** Review Dockerfiles for `ARG`, `ENV`,
+  package-manager auth configuration, private registry tokens, and `RUN`
+  commands that write credentials to image layers. Require evidence that the
+  final image history, config, provenance, and exported layers do not contain
+  secret values.
+- **Build-time secret handling:** Prefer BuildKit `RUN --mount=type=secret` or
+  SSH mounts for build-only credentials. Do not treat every build-time secret as
+  a finding if evidence shows the secret is mounted ephemerally and not copied
+  into later layers.
+- **Package publish contents:** Review package inclusion rules (`files`,
+  `.npmignore`, `MANIFEST.in`, `pyproject.toml`, `.gemspec`) and require packed
+  artifact evidence (`npm pack --dry-run`, wheel/sdist file lists, gem package
+  file lists, or equivalent). Source scans do not prove the published artifact
+  is clean.
+- **Generated client artifacts:** Inspect generated bundles, source maps,
+  coverage reports, crash dumps, Playwright reports, and release zips for
+  embedded environment values, private registry config, signed URLs, or internal
+  deployment data.
+- **CI artifact upload paths:** Review `actions/upload-artifact`, release asset
+  upload steps, package registry publish steps, and Docker push workflows.
+  Confirm secret scanning runs after artifact generation or against the exact
+  artifact directory before upload.
+
+**Patterns to check:**
+
+```dockerfile
+# BAD: build arg can persist in history/provenance and command text
+ARG NPM_TOKEN
+RUN npm config set //registry.npmjs.org/:_authToken=$NPM_TOKEN && npm ci
+
+# GOOD: ephemeral BuildKit secret mount, not copied into the final image
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
+```
+
+```yaml
+# Review upload paths after build output is generated
+- uses: actions/upload-artifact@v4
+  with:
+    name: web-dist
+    path: |
+      dist/**
+      coverage/**
+      playwright-report/**
+```
+
+**Finding classification:** Verified credential material in a public release
+artifact, package tarball, container layer, image metadata, or CI artifact is
+**Critical** and requires rotation plus artifact removal. Build secrets passed
+through Docker `ARG`/`ENV` without final-image evidence are **High**. Missing
+post-build artifact scanning for workflows that consume secrets is **Medium**,
+or **High** when artifacts are public or widely distributed. Public client
+configuration such as `NEXT_PUBLIC_*` values is not a finding unless it contains
+credential material or internal-only data.
+
+---
+
 ### Step 4: Vault and Cloud Secrets Manager Integration (NIST SP 800-57, Section 5)
 
 Evaluate the secrets management architecture against NIST SP 800-57 key management lifecycle requirements.
@@ -356,9 +432,9 @@ spec:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed; verified secret in a public release artifact, container layer, package tarball, source map, or CI artifact. |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault; Docker `ARG`/`ENV` build secrets without final-image evidence; public artifact workflows that consume secrets but do not scan generated output. |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection); generated artifacts or package contents not reviewed for private builds. |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -388,6 +464,15 @@ spec:
 | DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
+
+### Artifact and Release Boundary Evidence
+
+| Artifact Type | Build/Publish Path | Evidence Reviewed | Secret Scan After Build | Result |
+|---------------|-------------------|-------------------|-------------------------|--------|
+| Container image | Dockerfile / CI image push | image history, config, layers, provenance | Yes/No | Clean / Finding / Not Evaluable |
+| npm package | package.json / npm publish | `npm pack --dry-run` or package file list | Yes/No | Clean / Finding / Not Evaluable |
+| CI artifact | upload-artifact / release asset | uploaded path list and generated files | Yes/No | Clean / Finding / Not Evaluable |
+| Source maps | dist/*.map | generated map contents or exclusion evidence | Yes/No | Clean / Finding / Not Evaluable |
 
 ### Findings
 
@@ -442,6 +527,8 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Stopping at source scanning and skipping release artifacts.** A clean git tree does not prove the built image, npm package, source map, release zip, or CI artifact is clean. Scan the artifact that will actually be published or uploaded, especially when the build consumes registry tokens, cloud credentials, or private environment values.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -466,10 +553,16 @@ This skill processes configuration files and code that may contain secret values
 - detect-secrets: https://github.com/Yelp/detect-secrets
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
+- Docker Build secrets: https://docs.docker.com/build/building/secrets/
+- Docker Build variables: https://docs.docker.com/build/building/variables/
+- Dockerfile reference: https://docs.docker.com/reference/builder
+- npm publish dry-run guidance: https://docs.npmjs.com/cli/publish/
+- GitHub secret scanning detection scope: https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-detection-scope
 
 ---
 
 ## Changelog
 
+- **1.0.2** -- Add artifact and release package evidence gates for container images, package tarballs, source maps, and CI artifacts.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
