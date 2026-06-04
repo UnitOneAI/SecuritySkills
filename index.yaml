@@ -104,7 +104,7 @@ skills:
 
   - id: rbac-design
     name: "RBAC/ABAC Design Patterns"
-    tags: [identity, rbac, abac, authorization]
+    tags: [identity, rbac, abac, authorization, sod]
     role: [security-engineer, architect]
     phase: [design]
     activity: [design, review]

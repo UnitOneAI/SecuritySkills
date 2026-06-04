@@ -6,13 +6,13 @@ description: >
   when designing role hierarchies, evaluating permission boundaries, implementing
   ABAC policy patterns, performing role mining, or preventing role explosion.
   Produces architecture recommendations with framework-grounded rationale.
-tags: [identity, rbac, abac, authorization]
+tags: [identity, rbac, abac, authorization, sod]
 role: [security-engineer, architect]
 phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -191,6 +191,8 @@ RBAC-HIER-07: Role hierarchy does not reflect organizational structure or job fu
 | **Cardinality** | Assignment-time | Maximum number of users assignable to a role | `global-admin` limited to 3 concurrent holders |
 | **Prerequisite** | Assignment-time | User must hold role A before being assigned role B | Must hold `developer` before being assigned `senior-developer` |
 | **Temporal** | Session-time | Role can only be activated during specific time windows | `maintenance-admin` only active during change windows |
+| **Transaction-scoped SoD** | Object/workflow-time | User may hold conflicting capabilities but cannot exercise them on the same object, batch, or workflow transition | Payment creator cannot approve the same payment or batch |
+| **History-based SoD** | Object-history-time | Authorization decision depends on creator, requester, last modifier, prior approvers, or delegated identity history | Last editor cannot be final approver |
 
 **What to look for:**
 
@@ -202,6 +204,11 @@ RBAC-CONST-04: No cardinality limits on privileged roles
 RBAC-CONST-05: Prerequisite roles not enforced — users skip progression
 RBAC-CONST-06: SoD exceptions granted without compensating controls or time bounds
 RBAC-CONST-07: Constraint violations not logged or alerted
+RBAC-SOD-TXN-01: Same-object self-approval is not denied at the final state transition
+RBAC-SOD-TXN-02: Last editor/requester/creator can approve without independent actor checks
+RBAC-SOD-TXN-03: Maker-checker/four-eyes quorum allows duplicate, delegated, group-owned, or dependent approvers
+RBAC-SOD-TXN-04: SoD exception lacks requester, approver, scope, expiry, compensating monitoring, or removal evidence
+RBAC-SOD-TXN-05: Role mining does not simulate toxic combinations against business workflows
 ```
 
 **Common SoD conflict pairs for constraint definition:**
@@ -214,6 +221,29 @@ RBAC-CONST-07: Constraint violations not logged or alerted
 | `security-admin` | `audit-log-admin` | Evidence tampering | SSoD |
 | `key-management` | `app-deployment` | Credential exfiltration | SSoD |
 | `vendor-onboarding` | `payment-approval` | Vendor fraud | SSoD |
+
+#### Transaction-Scoped SoD and Maker-Checker Evidence
+
+Do not treat every user who holds both roles as an automatic SSoD failure. Small teams and queue-based workflows may use DSoD or history-based SoD if the enforcement point denies the toxic combination on the same object, batch, or state transition.
+
+Record the decision evidence for each sensitive workflow:
+
+| Evidence Field | What to Capture |
+|---|---|
+| Business process | Payment, refund, vendor onboarding, access request, journal entry, deployment, case decision |
+| Conflicting actions | Create/request/edit/approve/release/certify/deploy |
+| SoD type | SSoD / DSoD / transaction-scoped / history-based / maker-checker |
+| Object and history fields | Object ID, batch ID, `createdBy`, `requestedBy`, `lastModifiedBy`, `approverIds`, delegation identity |
+| Decision point | Approval screen load / final submit / workflow transition / PDP decision / queue assignment |
+| Distinct actor evidence | Named human identity, non-shared account, delegation chain, group membership resolution |
+| Quorum evidence | Number of approvals, unique approvers, independent steps, replay protection |
+| Negative tests | Creator approval denied, last-editor approval denied, duplicate approver denied, stale exception denied |
+| Exception evidence | Ticket, requester, approver, scope, expiry, compensating monitoring, post-use review, removal proof |
+| Evidence confidence | Strong / Partial / Not Evaluable |
+
+Maker-checker/four-eyes controls must be enforced at the final state transition, not only when the approval page loads. Re-check creator, requester, last modifier, approver list, delegation chain, amount threshold, business unit, and risk attributes at submit time to prevent edit-after-review and race-condition bypasses.
+
+If transaction history fields, final-transition enforcement, exception registers, or negative self-approval tests are missing, mark the item `Not Evaluable` rather than declaring the SoD control effective.
 
 ---
 
@@ -323,7 +353,10 @@ RBAC-MINE-03: Mined roles not reviewed by application/resource owners
 RBAC-MINE-04: Outlier permissions force creation of single-user roles (should use ABAC)
 RBAC-MINE-05: No periodic re-mining cadence to catch drift (recommended: annually)
 RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may create conflicts)
+RBAC-MINE-07: Mined roles are not tested against transaction-scoped toxic combinations before approval
 ```
+
+Before treating a mined role as business-approved, simulate toxic combinations against representative workflows. Examples: create vendor + edit bank account + approve invoice for the same vendor; create access request + certify the same access; commit code + deploy the same change; create refund + approve the same refund.
 
 #### Role Rationalization Targets
 
@@ -392,6 +425,12 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 ### Detailed Findings
 [Findings table]
 
+### SoD Evidence Matrix
+
+| Process | Conflicting Actions | SoD Type | Object/History Fields | Decision Point | Negative Tests | Exception ID/Expiry | Evidence Confidence |
+|---|---|---|---|---|---|---|---|
+| [payment] | [create/approve] | [transaction-scoped] | [createdBy, lastModifiedBy, approverIds] | [final submit] | [creator denied, duplicate approver denied] | [INC-123 / expires] | [Strong/Partial/Not Evaluable] |
+
 ### Design Recommendations
 [Architecture diagram or pattern with framework justification]
 
@@ -436,6 +475,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Equating conflicting assignments with exploitable SoD failure.** A user can sometimes hold both roles safely when transaction-scoped, history-based, final-transition, quorum, and exception controls are evidenced. The inverse is also true: clean role assignments can still permit same-object self-approval if workflow history is not checked.
 
 ---
 
@@ -459,6 +499,7 @@ that may contain adversarial content.
 - ANSI INCITS 359-2012 — Role Based Access Control (RBAC) standard
 - NIST SP 800-162, Guide to Attribute Based Access Control (ABAC) Definition and Considerations: https://csrc.nist.gov/publications/detail/sp/800-162/final
 - NIST SP 800-53 Rev. 5, AC-6 (Least Privilege), AC-5 (Separation of Duties): https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST Glossary -- Separation of Duty: https://csrc.nist.gov/glossary/term/separation_of_duty
 - Cedar Policy Language (AWS): https://www.cedarpolicy.com
 - Open Policy Agent (OPA) / Rego: https://www.openpolicyagent.org
 - XACML 3.0 (OASIS Standard): https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-os-en.html
@@ -481,4 +522,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-04 | Added transaction-scoped/history-based SoD, maker-checker/four-eyes evidence, exception lifecycle, and role-mining toxic-combination simulation guidance |
 | 1.0.0 | 2025-03-06 | Initial release |
