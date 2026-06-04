@@ -370,7 +370,7 @@ findings requiring immediate action.]
 
 | CVE ID | Vendor Advisory URL | Format | Product ID Match | Installed Version | Status | Impact / Action Evidence | Fixed / Recommended Version | Document Version | Signature / Trust | Retrieved At | Confidence | Reason Codes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| [CVE-ID] | [URL] | [CSAF VEX] | [Exact/Fuzzy/None] | [version] | [known_not_affected/known_affected/fixed/under_investigation] | [Present/Missing] | [version] | [version] | [Verified/Unverified] | [timestamp] | [Strong/Partial/Not Evaluable] | [PATCH-NE-*] |
+| [CVE-ID] | [URL] | [CSAF VEX] | [Exact/Fuzzy/None] | [version] | [known_not_affected/known_affected/under_investigation/fixed/first_fixed/recommended] | [Present/Missing] | [version] | [version] | [Verified/Unverified] | [timestamp] | [Strong/Partial/Not Evaluable] | [PATCH-NE-*] |
 
 ### Prioritized Patch Schedule
 
