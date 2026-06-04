@@ -337,6 +337,64 @@ NuGet packages declare licenses in two ways:
 - Dual-licensed packages (e.g., `MIT OR Apache-2.0`) require verifying which license applies to your usage.
 - Some packages embed a `LICENSE.md` file in the `.nupkg` — verify its contents match the declared expression.
 
+### NuGet License Evidence Gates
+
+For every NuGet package with license risk or ambiguous metadata, record these fields before closing the finding:
+
+| Field | Required evidence |
+|---|---|
+| Package identity | Package ID, version, source feed, direct/transitive scope, and project or solution path |
+| License evidence source | `PackageLicenseExpression`, embedded license file, `licenseUrl`, SBOM component license, or scanner inference |
+| License evidence status | Verified, conflicting, URL-only, `NOASSERTION`, missing, or legal-review required |
+| Usage context | Runtime, build-only, test-only, distributed binary, internal service, hosted SaaS/API, or client-side component |
+| Decision record | Selected license branch, commercial entitlement, legal/security approver, approval date, and review expiry |
+
+Benign dual-license example:
+
+```json
+{
+  "package": "Example.Library",
+  "version": "3.4.5",
+  "license": "MIT OR Apache-2.0",
+  "license_evidence_source": "PackageLicenseExpression",
+  "license_evidence_status": "verified",
+  "usage_context": "runtime",
+  "decision_record": {
+    "selected_license": "MIT",
+    "approved_by": "security@example.invalid",
+    "approved_at": "2026-06-05"
+  }
+}
+```
+
+Vulnerable or unresolved examples:
+
+```json
+{
+  "package": "Contoso.ReportEngine",
+  "version": "4.2.0",
+  "license": "AGPL-3.0-only",
+  "usage_context": "hosted SaaS/API",
+  "decision_record": null
+}
+```
+
+```json
+{
+  "package": "Acme.LegacyParser",
+  "version": "2.9.1",
+  "license": "NOASSERTION",
+  "license_evidence_source": "scanner inference",
+  "license_evidence_status": "NOASSERTION"
+}
+```
+
+```xml
+<licenseUrl>https://example.invalid/license</licenseUrl>
+```
+
+Treat deprecated `licenseUrl` metadata as URL-only evidence until the package license file or a verified SPDX expression is captured. If NuGet registry metadata and the embedded `.nupkg` license file conflict, keep the finding open for legal review instead of choosing the more permissive value.
+
 ## .NET-Specific Transitive Dependency Analysis
 
 ### Viewing the Full Dependency Tree
@@ -407,6 +465,10 @@ Add these to the supply chain risk indicators when scanning a .NET project:
 - [ ] Central Package Management enabled via `Directory.Packages.props` for multi-project solutions
 - [ ] `<NuGetAudit>true</NuGetAudit>` set in `Directory.Build.props` or individual project files
 - [ ] NuGet audit warnings (NU1901-NU1904) treated as errors in CI builds
+- [ ] NuGet license findings include evidence source, evidence status, usage context, and decision record fields
+- [ ] Deprecated `licenseUrl`, `NOASSERTION`, and missing license metadata remain unresolved until verified by package file, SPDX expression, SBOM component, or legal approval
+- [ ] Dual-license packages record the selected branch, entitlement or approver, approval date, and review expiry
+- [ ] AGPL or strong-copyleft runtime dependencies in hosted SaaS/API paths have legal approval or source-disclosure decision evidence
 - [ ] SDK version pinned in `global.json` with `rollForward` set to `latestPatch` or `disable`
 - [ ] `<clear />` present in `nuget.config` `<packageSources>` to prevent config inheritance
 - [ ] No `<EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>` in any project file

@@ -141,6 +141,17 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 4. **Dual-licensed commercial packages**: Some packages offer open-source licenses for non-commercial use and require a commercial license otherwise (e.g., certain database drivers, UI component libraries). Verify that the usage context matches the chosen license.
 5. **No-license dependencies**: Packages without a declared license default to full copyright protection. They cannot be legally redistributed. Replace or obtain explicit permission.
 
+### License Evidence Gates
+
+Before downgrading license risk, preserve the evidence source and decision record instead of relying on a single scanner label:
+
+- **Evidence source:** Record whether the license came from SPDX expression metadata, registry metadata, embedded package license file, SBOM component license, deprecated license URL, or scanner inference.
+- **Evidence status:** Mark each finding as verified, conflicting, URL-only, NOASSERTION, missing, or requires legal review.
+- **Usage context:** Record runtime, build-only, test-only, distributed binary, internal service, hosted SaaS, or embedded/client-side use because copyleft obligations can depend on deployment context.
+- **Dual-license decision:** For expressions such as `MIT OR Apache-2.0`, `GPL-2.0-only OR commercial`, or `AGPL-3.0-only OR commercial`, record the selected branch, entitlement or approval evidence, approver, and date.
+- **Conflict handling:** If registry metadata and embedded license files disagree, treat the result as conflicting until reviewed. Do not suppress the finding based only on the more permissive source.
+- **Fail closed:** Treat deprecated URL-only license metadata, `NOASSERTION`, missing license fields, and unstructured scanner output as unresolved evidence until a verified license source or legal decision record exists.
+
 ### Tooling
 
 - `licensed` (GitHub): Caches and verifies dependency licenses in CI.
@@ -201,9 +212,9 @@ When performing a dependency scan, produce findings in the following structure:
 
 ### License Findings
 
-| # | Package | Version | License | Risk Level | Action Required |
-|---|---------|---------|---------|------------|-----------------|
-| 1 | ...     | ...     | ...     | ...        | ...             |
+| # | Package | Version | License | Evidence Source | Evidence Status | Usage Context | Decision Record | Risk Level | Action Required |
+|---|---------|---------|---------|-----------------|-----------------|---------------|-----------------|------------|-----------------|
+| 1 | ...     | ...     | ...     | SPDX expression / registry / embedded file / SBOM / URL-only / scanner inference | verified / conflicting / NOASSERTION / missing / legal-review | runtime / build / test / SaaS / distributed | selected branch, entitlement, approver, date | ... | ... |
 
 ### Supply Chain Risk Indicators
 
@@ -224,7 +235,7 @@ When performing a dependency scan, produce findings in the following structure:
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
+5. **License audit**: Extract license declarations from lockfiles, registry metadata, package license files, and SBOM components. Preserve evidence source/status, usage context, and decision records before accepting dual-license or URL-only metadata.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
 7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
 8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
