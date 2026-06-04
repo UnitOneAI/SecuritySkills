@@ -55,7 +55,7 @@ skills:
 
   - id: api-security
     name: "API Security Review"
-    tags: [appsec, api, rest, graphql]
+    tags: [appsec, api, rest, graphql, websocket, sse]
     role: [appsec-engineer, security-engineer]
     phase: [design, build, review]
     activity: [review, test]
