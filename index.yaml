@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -124,6 +124,18 @@ skills:
     difficulty: advanced
     time_estimate: "90-180min"
     file: skills/identity/zero-trust-assessment/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: oauth-oidc-security
+    name: "OAuth and OpenID Connect Security Review"
+    tags: [identity, oauth, oidc, authentication]
+    role: [appsec-engineer, security-engineer]
+    phase: [design, build, review]
+    activity: [review, test]
+    frameworks: [RFC-9700, OpenID-Connect-Core-1.0, RFC-7636, RFC-8414]
+    difficulty: advanced
+    time_estimate: "60-120min"
+    file: skills/identity/oauth-oidc-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: privileged-access
@@ -582,13 +594,13 @@ roles:
   - id: security-engineer
     name: "Security Engineer"
     description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review, oauth-oidc-security]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web, oauth-oidc-security]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
