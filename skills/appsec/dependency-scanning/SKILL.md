@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -250,4 +250,11 @@ This skill processes user-supplied content including package manifests, lockfile
 - [FIRST EPSS Model](https://www.first.org/epss/)
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
-- [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Executive Order 14028 - Improving the Nation's Cybersecurity](https://bidenwhitehouse.archives.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+
+---
+
+## Changelog
+
+- **1.0.1** -- Refresh archived official Executive Order 14028 source URL for supply-chain compliance references.
+- **1.0.0** -- Initial dependency-scanning skill with SLSA, CycloneDX, SPDX, KEV, EPSS, and NVD references.

@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -365,7 +365,7 @@ Vulnerability Exploitability eXchange (VEX) is a form of security advisory that 
 ### NTIA SBOM Minimum Elements
 Published by NTIA in July 2021 as part of Executive Order 14028 implementation. Defines the baseline data fields required for an SBOM to be considered useful. The seven elements are: Supplier Name, Component Name, Version, Unique Identifier, Dependency Relationship, Author of SBOM Data, and Timestamp.
 - Report: https://www.ntia.gov/sites/default/files/publications/sbom_minimum_elements_report_0.pdf
-- EO 14028: https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
+- EO 14028: https://bidenwhitehouse.archives.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
 
 ---
 
@@ -404,7 +404,14 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 - CSAF 2.0 (OASIS): https://docs.oasis-open.org/csaf/csaf/v2.0/csaf-v2.0.html
 - CISA VEX Minimum Requirements: https://www.cisa.gov/sites/default/files/2023-04/minimum-requirements-for-vex-508c.pdf
 - OpenVEX Specification: https://github.com/openvex/spec
-- Executive Order 14028: https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
+- Executive Order 14028: https://bidenwhitehouse.archives.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
 - EU Cyber Resilience Act: https://digital-strategy.ec.europa.eu/en/policies/cyber-resilience-act
 - OSV (Open Source Vulnerability Database): https://osv.dev/
 - GitHub Advisory Database: https://github.com/advisories
+
+---
+
+## Changelog
+
+- **1.0.1** -- Refresh archived official Executive Order 14028 source URL for SBOM regulatory references.
+- **1.0.0** -- Initial SBOM analysis skill with NTIA, CycloneDX, SPDX, CSAF/VEX, OpenVEX, CRA, OSV, and advisory database references.
