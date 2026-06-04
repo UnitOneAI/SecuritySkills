@@ -562,6 +562,9 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 - PDF generators, image resizers, link previewers, or import-from-URL features.
 - Lack of allowlist validation on destination URLs (scheme, host, port, path).
 - No blocking of requests to private/reserved IP ranges (127.0.0.0/8, 10.0.0.0/8, 169.254.169.254, 172.16.0.0/12, 192.168.0.0/16, fd00::/8).
+- HTTP clients that follow redirects without re-validating the final destination after every hop.
+- Validation that checks only the original hostname or URL string without resolving and checking the effective IP address immediately before the outbound request.
+- DNS rebinding exposure in webhook, import, preview, or callback flows where registration-time validation is not repeated at invocation time.
 
 **CWE Mappings:**
 
@@ -581,6 +584,20 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 169\.254\.169\.254|metadata\.google|metadata\.azure
 ```
 
+**Verification Evidence Gates:**
+
+Before clearing an SSRF candidate as safe, collect evidence for the effective destination, not only the user-supplied string. A wrapper named `safeFetch`, `validateUrl`, or similar is not enough unless it enforces these gates on the same path as the outbound request.
+
+| Gate | Required evidence | Treat as vulnerable when |
+|------|-------------------|--------------------------|
+| Scheme and host allowlist | The same code path restricts schemes, hosts, and ports to an explicit allowlist before the request is sent. | The allowlist is documented but not called by the sink, or it uses substring/regex matching that accepts attacker-controlled subdomains. |
+| DNS and IP range validation | The code resolves the destination hostname and rejects loopback, link-local, private, multicast, and cloud metadata ranges for every resolved address. | Only the raw hostname is checked, only IPv4 ranges are blocked, or the code assumes a public-looking hostname cannot resolve internally. |
+| Redirect final-destination validation | Redirects are disabled, or each redirect target is re-parsed, re-resolved, and checked with the same allowlist and IP-range rules before following it. | The initial URL is validated but the HTTP client follows redirects automatically to private, link-local, or metadata endpoints. |
+| Time-of-use validation | Webhook and callback invocations repeat destination validation at send time rather than relying only on registration-time approval. | A URL is approved once and later used without re-resolution, allowing DNS rebinding or host ownership changes. |
+| Network egress boundary | Runtime or infrastructure evidence blocks metadata and internal network access even if application validation fails. | The application server can reach cloud metadata services, pod/service CIDRs, or internal admin endpoints unrelated to the feature. |
+
+Record missing gates in the finding evidence so reviewers can distinguish "URL validation exists" from "the effective request destination is constrained."
+
 **Mitigations:**
 
 - Validate and allowlist destination URLs by scheme (https only), host, and port against a known-good list.
@@ -589,6 +606,8 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 - Disable HTTP redirects in server-side HTTP clients, or re-validate the destination after each redirect.
 - Deploy network-level segmentation so the application server cannot reach internal services it does not need.
 - For webhook features, validate callback URLs at registration time and again at invocation time (DNS rebinding defense).
+- Resolve and validate the effective IP immediately before the request is sent; do not cache validation decisions across requests or trust DNS answers obtained during registration.
+- Use a dedicated outbound proxy or egress gateway that enforces the same host and IP-range policy for SSRF-prone features.
 
 ---
 
@@ -601,6 +620,8 @@ Before finalizing findings, apply this verification checklist to each candidate 
 - [ ] **User input reaches the sink** — for injection findings, you traced that user-controlled input flows into the vulnerable function without adequate sanitization.
 - [ ] **No compensating control** — you checked for middleware, wrappers, or framework-level protections that neutralize the vulnerability.
 - [ ] **Not a test or example** — the code is production code, not a test fixture, documentation example, or intentionally vulnerable training sample.
+
+- [ ] **Effective destination constrained** -- for SSRF findings, redirects, DNS resolution, and invocation-time destination checks were verified on the same path as the outbound request.
 
 **Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
 
@@ -637,6 +658,7 @@ Present findings in this structure:
 - **Evidence:** [Code snippet or configuration excerpt]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
 - **Verification:** [How to confirm the fix is effective]
+- **Effective Destination Evidence:** [For SSRF: scheme/host allowlist, resolved IP checks, redirect policy, DNS rebinding/invocation-time validation, and egress controls]
 
 ---
 

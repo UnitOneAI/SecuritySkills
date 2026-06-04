@@ -1127,9 +1127,13 @@ public async Task<IActionResult> Fetch(
     if (!allowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
         return BadRequest("Host not in allowlist");
 
-    var client = httpClientFactory.CreateClient("external");
-    var response = await client.GetStringAsync(uri);
-    return Ok(response);
+    var client = httpClientFactory.CreateClient("external-no-redirects");
+    using var response = await client.GetAsync(uri);
+
+    if ((int)response.StatusCode is >= 300 and < 400)
+        return BadRequest("Redirects are not followed by this endpoint");
+
+    return Ok(await response.Content.ReadAsStringAsync());
 }
 
 private static bool IsPrivateOrReserved(IPAddress ip)
@@ -1144,6 +1148,14 @@ private static bool IsPrivateOrReserved(IPAddress ip)
         || (bytes[0] == 169 && bytes[1] == 254);                    // 169.254.0.0/16 (link-local / cloud metadata)
 }
 ```
+
+**SSRF final-destination review checklist:**
+
+- [ ] `HttpClientHandler.AllowAutoRedirect` is disabled for user-controlled destinations, or every redirect target is re-validated before following it.
+- [ ] Host allowlists are exact matches or controlled suffix matches; substring checks such as `Contains("example.com")` are not accepted.
+- [ ] DNS resolution happens immediately before the outbound request and every resolved IPv4 and IPv6 address is checked.
+- [ ] The runtime egress layer blocks loopback, link-local, private ranges, and cloud metadata endpoints even if application validation fails.
+- [ ] Webhook or callback URLs are re-resolved and re-validated when invoked, not only when registered.
 
 ---
 
