@@ -1,0 +1,59 @@
+name: smart-contract-security
+version: "1.0"
+author: minorstep
+category: appsec
+severity: high
+languages:
+  - solidity
+  - vyper
+  - json
+  - yaml
+description: |
+  Detects smart-contract security failures in Solidity and EVM code, including reentrancy and call-ordering bugs, unchecked low-level calls, unsafe upgrade/admin paths, stale or unbounded oracle usage, token accounting mistakes, replayable signatures, and unsafe cross-chain or automation trust boundaries.
+detection:
+  patterns:
+    - pattern: "external value transfer or token transfer occurs before balance, share, debt, nonce, or eligibility state is updated"
+      description: "Catches reentrancy and stale-state call-ordering bugs in asset-moving functions."
+    - pattern: ".call, .delegatecall, .staticcall, send, or ERC-20 transfer return value is ignored while protocol state is finalised"
+      description: "Catches unchecked dependency or payout failures treated as success."
+    - pattern: "upgradeTo, setImplementation, role grant, parameter setter, pause, rescue, or sweep path lacks explicit authorization, bounds, event trail, or implementation validation"
+      description: "Catches privileged controls that can become asset-transfer or logic-replacement paths."
+    - pattern: "oracle answer is used without freshness, positivity, round-completion, decimals, heartbeat, or bounds checks"
+      description: "Catches stale-price and manipulated-value paths in mint, borrow, liquidation, redemption, and settlement logic."
+    - pattern: "signature, permit, bridge, or automation message does not bind chain ID, contract address, action, parameters, signer, nonce, and expiry"
+      description: "Catches replayable signed or cross-chain actions."
+  exceptions:
+    - pattern: "pull-payment flow preserves claimable state on failed withdrawal and does not finalise failed transfers as success"
+      description: "Intentional pull payments can avoid push-payment blocking without creating unchecked-success state."
+    - pattern: "external call happens after all relevant state effects and uses a reentrancy guard or equivalent state lock"
+      description: "Checks-effects-interactions plus a guard mitigates ordinary and cross-function reentrancy."
+    - pattern: "oracle consumer validates updatedAt, answeredInRound, positive answer, decimals, heartbeat, and acceptable bounds before use"
+      description: "Freshness and bounds evidence reduces stale or manipulated price risk."
+    - pattern: "upgrade path is owner/role gated, validates nonzero implementation, emits events, and documents timelock or multisig custody for high-impact actions"
+      description: "Privileged upgrade functions can be acceptable when authorization and governance controls are explicit."
+remediation:
+  approach: |
+    Move state effects before external calls, add reentrancy guards for shared asset state, check every low-level call or token transfer result, route unsafe push payments into pull-payment flows, gate privileged operations with explicit roles and bounded parameters, validate oracle freshness and bounds, and bind signatures/messages to domain, nonce, expiry, action, and parameters.
+  automated: false
+  fix:
+    description: "Most smart-contract fixes require invariant-specific edits and tests. This skill provides review gates, vulnerable and benign fixtures, and exact remediation patterns rather than a blanket rewrite."
+references:
+  - url: "https://scs.owasp.org/"
+    description: "OWASP Smart Contract Security project."
+  - url: "https://docs.soliditylang.org/en/latest/security-considerations.html"
+    description: "Solidity security considerations."
+  - url: "https://swcregistry.io/"
+    description: "Smart Contract Weakness Classification registry."
+  - url: "https://cwe.mitre.org/data/definitions/841.html"
+    description: "CWE-841 improper enforcement of behavioral workflow."
+  - url: "https://cwe.mitre.org/data/definitions/252.html"
+    description: "CWE-252 unchecked return value."
+  - url: "https://cwe.mitre.org/data/definitions/284.html"
+    description: "CWE-284 improper access control."
+  - url: "https://cwe.mitre.org/data/definitions/362.html"
+    description: "CWE-362 race condition."
+metadata:
+  cwe: ["CWE-841", "CWE-252", "CWE-284", "CWE-362"]
+  owasp: ["OWASP-SCSVS"]
+  created: "2026-06-04"
+  last_updated: "2026-06-04"
