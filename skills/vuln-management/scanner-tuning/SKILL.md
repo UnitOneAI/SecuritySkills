@@ -91,13 +91,60 @@ False Positive Record:
 - Plugin/Check ID:     [ID]
 - CVE ID:              [CVE-YYYY-NNNNN or N/A]
 - CWE:                 [CWE-NNN or N/A]
+- Package Identity:    [purl or CPE; include ecosystem/package manager]
+- Affected Version:    [Exact version, fixed/backport advisory, or vulnerable range]
 - Affected Asset:      [hostname/IP]
+- Asset Scope:         [Host ID, image digest, container tag+digest, application, or service]
 - Scanner Severity:    [Critical/High/Medium/Low/Info]
 - FP Pattern:          [Version-based | Banner | Protocol | OS Misidentification | Container | Informational | Compensated]
 - Evidence:            [Specific evidence proving false positive]
 - Verification Method: [Package manager check | Authenticated re-scan | Manual testing | Configuration review]
 - Disposition:         [Confirmed FP -- suppress | Accepted Risk -- document | True Positive -- remediate]
+- Expiry / Review Date:[YYYY-MM-DD]
 ```
+
+#### Suppression Scope and Identity Binding
+
+Suppressions must be scoped narrowly enough that one safe finding cannot hide a true positive on another ecosystem, package identity, asset, or rebuild. A suppression is acceptable only when it is bound to the full finding identity and has evidence that can be revalidated.
+
+Required suppression fields:
+
+| Field | Requirement |
+|---|---|
+| Scanner and rule identity | Scanner name plus plugin, rule, or check ID |
+| Vulnerability identity | CVE, CWE, GHSA, vendor advisory, or explicit scanner finding ID |
+| Component identity | purl or CPE when available; otherwise package name plus registry or package manager |
+| Ecosystem and package manager | OS distribution, language ecosystem, container base, or package manager such as apk, deb, rpm, npm, pip, Maven, NuGet, Go, or Cargo |
+| Version scope | Exact version, fixed version, backport advisory, vulnerable range, or non-vulnerable patched build evidence |
+| Artifact scope | Host asset ID, application, image digest, SBOM component, lockfile path, or deployable artifact identity |
+| Reachability/context scope | Service, port, feature flag, route, runtime layer, or compensating control that makes the finding inapplicable |
+| Expiry and owner | Named owner, review date, expiry date, and ticket/change reference |
+| Verification evidence | Authenticated package query, vendor advisory, second-scanner result, SBOM record, or configuration evidence |
+
+Fail closed when identity fields are missing. Do not create a suppression if the finding only has a display name such as `openssl`, `jquery`, or `log4j` without ecosystem, package manager, version, and artifact scope. Re-run the scan with richer metadata or keep the finding active until identity is resolved.
+
+Valid narrow suppression example:
+
+```text
+scanner: Trivy
+finding: CVE-2024-12345
+component: pkg:apk/alpine/openssl@3.1.4-r6
+artifact: image sha256:abc... for registry.example.com/api@sha256:abc...
+evidence: Alpine backport advisory and authenticated package query
+scope: API container image digest only
+expires: 2026-07-01
+owner: platform-team
+```
+
+Invalid broad suppression example:
+
+```text
+component: openssl
+reason: false positive
+scope: all assets
+```
+
+This invalid form can suppress unrelated OpenSSL findings in Debian, Alpine, npm packages, or later image rebuilds. Keep it unsuppressed until the scanner result has enough identity metadata.
 
 ### Step 2: Scan Policy Configuration
 
@@ -199,6 +246,7 @@ Define criteria for overriding scanner-assigned severity ratings when they do no
 2. **Document both the original and overridden severity:** Maintain traceability from scanner-native severity to adjusted severity
 3. **Review overrides quarterly:** Severity overrides must be re-evaluated as deployment context changes (e.g., system moved from internal to internet-facing)
 4. **Override scope:** Overrides apply to a specific CVE + asset combination, not globally to a CVE across all assets
+5. **Suppression scope:** Suppressions apply to a specific finding identity + artifact + version scope, not globally to a package display name or CVE across all ecosystems
 
 ```
 Severity Override Record:
@@ -324,12 +372,18 @@ Highlight the most impactful tuning recommendations.]
 
 ### False Positive Analysis
 
-| Plugin/Check ID | CVE ID | FP Pattern | Affected Assets | Evidence | Recommendation |
-|---|---|---|---|---|---|
-| [ID] | [CVE-ID] | [Pattern] | [N assets] | [Brief evidence] | [Suppress / Re-scan authenticated / Investigate] |
+| Plugin/Check ID | CVE ID | Component Identity | Version Scope | Artifact Scope | FP Pattern | Evidence | Recommendation |
+|---|---|---|---|---|---|---|---|
+| [ID] | [CVE-ID] | [purl/CPE/ecosystem] | [exact/range/backport] | [host/image/app] | [Pattern] | [Brief evidence] | [Suppress narrowly / Re-scan authenticated / Investigate] |
 
 **Estimated False Positive Rate:** [N%]
 **Top FP Contributors:** [List top 3-5 plugins generating the most false positives]
+
+### Suppression Scope Review
+
+| Finding | Component Identity | Ecosystem | Version Scope | Artifact Scope | Owner | Expiry | Decision |
+|---|---|---|---|---|---|---|---|
+| [scanner + ID] | [purl/CPE/package] | [ecosystem/package manager] | [exact/range/backport] | [asset/image/app] | [team] | [date] | [Allow / Fail closed / Re-scan] |
 
 ### Severity Overrides
 
@@ -391,13 +445,15 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 1. **Suppressing findings instead of investigating root cause.** When scanner results contain noise, the temptation is to suppress plugins globally. This creates blind spots. Instead, identify the root cause of the false positive (e.g., unauthenticated scan misreading a banner) and fix the detection method (enable authentication) rather than hiding the symptom (disabling the plugin).
 
-2. **Running unauthenticated scans and trusting the severity ratings.** Unauthenticated scans miss 30-40% of vulnerabilities and generate higher false positive rates because they rely on banner grabbing and remote probes rather than verifying installed package versions. Severity ratings from unauthenticated scans are inherently less reliable. Always pursue credentialed scanning for production environments.
+2. **Using display-name-only suppressions.** Package names such as `openssl`, `jquery`, or `log4j` are not enough to suppress a finding. Bind every suppression to purl or CPE, ecosystem, package manager, exact version or fixed range, asset or image digest, owner, and expiry. If the scanner cannot provide that metadata, fail closed and investigate instead of suppressing globally.
 
-3. **Mixing vulnerability and compliance scan policies.** Running CIS Benchmark or DISA STIG compliance checks in the same policy as vulnerability scanning inflates finding counts, confuses triage teams, and blurs the line between configuration hardening and vulnerability remediation. Maintain separate scan policies for vulnerability assessment and compliance auditing.
+3. **Running unauthenticated scans and trusting the severity ratings.** Unauthenticated scans miss 30-40% of vulnerabilities and generate higher false positive rates because they rely on banner grabbing and remote probes rather than verifying installed package versions. Severity ratings from unauthenticated scans are inherently less reliable. Always pursue credentialed scanning for production environments.
 
-4. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
+4. **Mixing vulnerability and compliance scan policies.** Running CIS Benchmark or DISA STIG compliance checks in the same policy as vulnerability scanning inflates finding counts, confuses triage teams, and blurs the line between configuration hardening and vulnerability remediation. Maintain separate scan policies for vulnerability assessment and compliance auditing.
 
-5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
+5. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
+
+6. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
 ---
 
