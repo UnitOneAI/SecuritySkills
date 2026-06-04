@@ -209,14 +209,16 @@ Each finding must include:
 
 The skill must be tested against at least:
 
-- Three vulnerable samples:
+- Four vulnerable samples:
   - broad `host_permissions` plus high-risk permissions.
   - message handler that trusts sender-controlled URL or script input.
   - content script or extension page that renders untrusted HTML or stores tokens.
-- Three benign samples:
+  - external message handler that proxies unvalidated commands into a native messaging host.
+- Four benign samples:
   - scoped host permissions with user-triggered `activeTab`.
   - message handler with schema and sender allowlists.
   - safe DOM rendering and no long-lived extension-local secrets.
+  - native messaging command proxy constrained by sender, origin, and command allowlists.
 
 Pass condition: vulnerable samples produce findings with the expected boundary and CWE; benign samples do not produce high/medium findings.
 

@@ -16,14 +16,16 @@ The skill produces a structured report with extension inventory, high-risk permi
 
 ## Test Coverage
 
-The `tests/` directory includes three vulnerable examples and three benign examples:
+The `tests/` directory includes four vulnerable examples and four benign examples:
 
 - `vulnerable/broad-permissions.json`
 - `vulnerable/unsafe-message-handler.js`
 - `vulnerable/unsafe-content-script.js`
+- `vulnerable/native-host-proxy.js`
 - `benign/scoped-permissions.json`
 - `benign/validated-message-handler.js`
 - `benign/safe-content-rendering.js`
+- `benign/validated-native-host-command.js`
 
 Vulnerable examples should produce findings. Benign examples should not produce high or medium findings.
 
