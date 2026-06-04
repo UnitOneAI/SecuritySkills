@@ -146,6 +146,16 @@ aws_accessanalyzer_analyzer
 type = "ACCOUNT"
 ```
 
+**Access Analyzer external-access lifecycle checks:**
+
+- Verify analyzer coverage for every reviewed account and region that contains resource policies.
+- Capture active and archived findings for S3 buckets, KMS keys, SQS queues, Lambda functions, Secrets Manager secrets, IAM role trusts, and other resource policies.
+- Treat missing analyzer evidence as `Not Evaluable` for external-access conclusions, not as a pass.
+- For each active external finding, require intended principal, resource ARN, source policy statement, owner, business purpose, ticket, expiry, and last revalidation evidence.
+- For each archived finding, require archive rule/filter, archive reason, owner, ticket, next review date, and a revalidation trigger for policy/principal/OU changes.
+- Flag broad archive rules that suppress by wildcard principal, whole resource type, account, or tag without binding to a specific intended relationship and review cadence.
+- Do not flag controlled partner, AWS Organizations, CloudFront origin access, or AWS service-principal findings solely because they are external when source conditions and lifecycle evidence are current.
+
 ### CIS 1.21 -- Ensure IAM users are managed centrally via identity federation or AWS Organizations for multi-account environments
 
 Check for SSO/Identity Center configuration:

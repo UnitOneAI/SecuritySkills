@@ -141,13 +141,13 @@ skills:
   # -- Cloud ----------------------------------------------------------------
   - id: aws-review
     name: "AWS Security Posture Review"
-    tags: [cloud, aws, cis-benchmark]
+    tags: [cloud, aws, cis-benchmark, access-analyzer, external-access]
     role: [cloud-security-engineer, security-engineer]
     phase: [assess, operate]
     activity: [audit, review]
     frameworks: [CIS-AWS-v3.0.0]
     difficulty: intermediate
-    time_estimate: "60-90min"
+    time_estimate: "70-100min"
     file: skills/cloud/aws-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 

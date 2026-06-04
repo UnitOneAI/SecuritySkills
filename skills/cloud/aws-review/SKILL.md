@@ -5,15 +5,16 @@ description: >
   Foundations Benchmark v3.0.0. Auto-invoked when reviewing AWS infrastructure,
   IAM policies, S3 configurations, CloudTrail settings, VPC security groups, or
   RDS encryption. Walks through all five benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
+  recommendation, validates IAM Access Analyzer external-access evidence and
+  archive lifecycle, and produces a prioritized findings report with remediation
   guidance mapped to specific CIS control IDs.
-tags: [cloud, aws, cis-benchmark]
+tags: [cloud, aws, cis-benchmark, access-analyzer, external-access]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
-time_estimate: "60-90min"
-version: "1.0.0"
+time_estimate: "70-100min"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +56,7 @@ The CIS Amazon Web Services Foundations Benchmark v3.0.0 is a consensus-driven s
 - S3 bucket policies and ACL configurations
 - VPC, security group, and NACL definitions
 - CloudTrail and CloudWatch configuration files
+- IAM Access Analyzer analyzer scope, active findings, archive rules, or finding export evidence when reviewing live or exported accounts
 
 ---
 
@@ -85,13 +87,17 @@ Also locate supporting configuration:
 **/.aws/credentials
 **/aws-config-rules/**
 **/security-hub/**
+**/access-analyzer/**
+**/iam-access-analyzer/**
+**/*access-analyzer*.json
+**/*access-analyzer*.yaml
 ```
 
 Record all discovered files. If no AWS configurations are found, report that finding and halt.
 
 ---
 
-### Step 2 through Step 6: CIS Benchmark Evaluation (Sections 1-5)
+### Step 2: CIS Benchmark Evaluation (Sections 1-5)
 
 Evaluate all AWS configurations against CIS AWS v3.0.0 Sections 1 through 5, covering Identity and Access Management, Storage, Logging, Monitoring, and Networking.
 
@@ -99,7 +105,44 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 3: Access Analyzer External Access Evidence Gate
+
+For AWS accounts that contain IAM, S3, KMS, SQS, Lambda, Secrets Manager, or other resource policies, require current IAM Access Analyzer evidence before accepting external access as controlled.
+
+**Analyzer scope evidence**
+
+Capture whether the analyzer is account-level or organization-level, which accounts and regions it covers, and the configured zone of trust. If no analyzer evidence is available for a reviewed account or region, mark external-access conclusions as `Not Evaluable` instead of assuming policy review alone is complete.
+
+**Finding inventory**
+
+For every active or archived external-access finding, record:
+
+| Field | Required Evidence |
+|-------|-------------------|
+| Finding identity | Finding ID or ARN, resource ARN, resource type, account, region |
+| Principal | External account, organization, federated principal, service principal, or public `*` |
+| Source policy | Bucket/key/queue/function/secret/trust policy statement or IaC source |
+| Finding state | `ACTIVE`, `ARCHIVED`, or equivalent export state, plus first seen and last updated timestamps |
+| Intended access | Business purpose, intended external principal, owner, ticket, expiry, and last revalidation |
+| Archive quality | Archive rule/filter, archive reason, next review date, and trigger for revalidation |
+
+**Finding criteria**
+
+Flag a finding when any of the following are true:
+
+- No analyzer exists for a reviewed account or region that contains resource policies.
+- An active public or cross-account finding lacks an owner, intended principal, business reason, expiry, or last revalidation evidence.
+- An archive rule suppresses findings broadly by resource type, account, wildcard principal, or tag without binding to a specific intended relationship and review cadence.
+- An archived finding has no archive reason, ticket, next review date, or policy/principal change trigger.
+- A resource policy allows external access outside AWS Organizations, partner-account allowlists, `aws:SourceArn`/`aws:SourceAccount` constraints, or other documented trust boundaries.
+
+**False-positive guardrails**
+
+Do not flag controlled external access solely because Access Analyzer reported it. Treat the finding as acceptable when the evidence proves a specific intended principal, bounded resource policy, owner, business purpose, expiry/review cadence, and revalidation trigger. CloudFront origin access, AWS service principals, AWS Organizations sharing, and migration windows can be valid when source conditions and ownership evidence are current.
+
+---
+
+### Step 4: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -156,6 +199,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Access Analyzer Evidence:** <analyzer scope, finding ID/state, resource ARN, principal, archive reason, owner, expiry/revalidation if applicable>
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -200,6 +244,8 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Treating archived Access Analyzer findings as automatically safe.** Archived findings still need archive reason, owner, intended principal, expiry, and revalidation evidence; stale archive rules can hide newly risky resource policies.
+8. **Treating every external finding as public exposure.** Partner-account access, AWS Organizations sharing, CloudFront origin access, and service principals can be valid when resource policies are source-bound and the relationship is documented.
 
 ---
 
@@ -225,10 +271,13 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- AWS IAM Access Analyzer findings: https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-findings.html
+- AWS IAM Access Analyzer archive rules: https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-archive-rules.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Add Access Analyzer external-access evidence gate, archive lifecycle requirements, and reporting fields for controlled cross-account access.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
