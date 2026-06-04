@@ -189,6 +189,9 @@ environment:
 - Shared service accounts across environments.
 - Missing `CODEOWNERS` file or broad ownership patterns.
 - Workflows that do not pin the `GITHUB_TOKEN` to minimum required permissions.
+- OIDC trust policies that accept broad repository, branch, tag, or organization wildcards instead of exact subject claims.
+- Workflows with `id-token: write` on untrusted triggers (`pull_request`, broad `workflow_call`, fork paths) without matching cloud-side claim restrictions.
+- Missing cloud trust-policy checks for issuer, audience, repository owner, environment, branch/tag, and reusable workflow claims.
 
 **Specific patterns in GitHub Actions:**
 
@@ -207,7 +210,38 @@ permissions:
   packages: write
 ```
 
-**Finding format:** Report the effective permission model, whether least-privilege is enforced, and whether identity controls (CODEOWNERS, required reviewers) are in place.
+**OIDC trust-policy evidence to inspect:** When a pipeline exchanges CI tokens for cloud credentials, review both the workflow and the cloud identity-provider trust policy. OIDC is safer than long-lived secrets only when the trust boundary is narrow.
+
+```yaml
+# BAD: Workflow can mint an OIDC token, but the cloud role may trust too much
+on: [pull_request, push]
+permissions:
+  id-token: write
+  contents: read
+
+# GOOD: Production credential flow is tied to a protected environment
+on:
+  push:
+    branches: [main]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    environment: production
+```
+
+```json
+{
+  "StringEquals": {
+    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+    "token.actions.githubusercontent.com:repository_owner": "acme",
+    "token.actions.githubusercontent.com:sub": "repo:acme/payments-api:environment:production"
+  }
+}
+```
+
+**Finding format:** Report the effective permission model, whether least-privilege is enforced, whether identity controls (CODEOWNERS, required reviewers) are in place, and whether any OIDC trust policy binds issuer, audience, repository owner, subject, environment, and reusable workflow claims tightly enough for the credential being issued.
 
 ---
 
@@ -277,6 +311,8 @@ on: pull_request_target
 - Secrets available to all workflows rather than scoped to specific environments.
 - No conditional checks on branch or environment before accessing sensitive resources.
 - Self-hosted runners shared across repositories with different trust levels.
+- Cloud deployment roles that do not require protected-environment subjects such as `repo:org/repo:environment:production`.
+- Reusable workflows that can request deployment credentials without constraining `job_workflow_ref` or equivalent caller-workflow claims.
 
 **Grep patterns:**
 
@@ -290,9 +326,13 @@ if: github.ref == 'refs/heads/main'
 
 # Check for runner isolation
 runs-on: self-hosted  # Shared runners are a risk
+
+# Check for protected-environment OIDC subjects
+repo:org/repo:environment:production
+job_workflow_ref
 ```
 
-**Finding format:** Report whether secrets and deployment capabilities are scoped to appropriate environments and branches, and whether runner infrastructure is properly segmented.
+**Finding format:** Report whether secrets and deployment capabilities are scoped to appropriate environments and branches, whether OIDC-backed cloud roles require the expected protected environment or caller workflow, and whether runner infrastructure is properly segmented.
 
 ---
 
@@ -305,6 +345,8 @@ runs-on: self-hosted  # Shared runners are a risk
 - Secrets passed as command-line arguments (visible in process listings).
 - Hardcoded credentials in pipeline configuration files.
 - Missing secret rotation policies.
+- OIDC federation that is present in the workflow but not validated against cloud-side trust-policy constraints.
+- Missing timestamp/TTL, audience, issuer, subject, repository-owner, and branch/environment checks on workload identity federation.
 
 **Grep patterns:**
 
@@ -327,7 +369,9 @@ runs-on: self-hosted  # Shared runners are a risk
     DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 ```
 
-**Finding format:** Report credential types in use (long-lived vs. short-lived), whether OIDC/workload identity is used where available, and any secrets exposed in logs or command arguments.
+**OIDC false-positive guidance:** Do not flag every use of `id-token: write` as a credential leak. Treat it as controlled when the workflow runs from a trusted trigger, the job targets a protected environment for production credentials, and the cloud trust policy requires exact issuer, audience, repository owner, subject, and caller-workflow claims. Flag it when the trust policy uses broad patterns such as `repo:org/*`, accepts any branch/tag for production roles, omits audience validation, or lets fork or reusable-workflow paths mint credentials without additional claim checks.
+
+**Finding format:** Report credential types in use (long-lived vs. short-lived), whether OIDC/workload identity is used where available, whether cloud-side trust conditions actually constrain the token exchange, and any secrets exposed in logs or command arguments.
 
 ---
 
