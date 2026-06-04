@@ -331,7 +331,7 @@ ZAP Automation Framework context authentication methods do not include `header`.
 |----------------|----------------|
 | Header mechanism | `ZAP_AUTH_HEADER*`, Replacer, HTTP Sender script, browser/client auth plus header-based session management, or another supported method |
 | Token source and refresh model | Static token, generated-before-scan token, or refreshed-during-scan flow |
-| Scope control | `ZAP_AUTH_HEADER_SITE`, context URL constraints, or equivalent host restriction for injected headers |
+| Scope control | For `ZAP_AUTH_HEADER*`, require `ZAP_AUTH_HEADER_SITE`; for Replacer, scripts, or header-based session management, require rule/context host restrictions. Context URLs alone do not scope process-level auth env headers. |
 | Plan validation | `zap.sh -cmd -autocheck <plan>` or equivalent Automation Framework validation output |
 | Auth verification | Logged-in/logged-out response checks, auth statistics, or protected endpoint response samples |
 
@@ -341,7 +341,8 @@ ZAP Automation Framework context authentication methods do not include `header`.
 - [ ] Logged-out indicator regex is defined (detects session expiry during scan).
 - [ ] Credentials are injected via environment variables (never hardcoded in plan files).
 - [ ] API header injection uses a supported mechanism, not `authentication.method: "header"`.
-- [ ] Header values are scoped to the intended host or context and are not sent to discovered third-party hosts.
+- [ ] Process-level `ZAP_AUTH_HEADER_VALUE` usage also sets `ZAP_AUTH_HEADER_SITE`; do not treat context URLs as sufficient scoping for global auth env headers.
+- [ ] Replacer rules, HTTP Sender scripts, or header-based session management scope header values to the intended host or context and do not send credentials to discovered third-party hosts.
 - [ ] At least one protected API request proves the scanner sent the expected authenticated header.
 - [ ] Test user has sufficient permissions to access the application's full attack surface.
 - [ ] Test user does NOT have admin privileges (test with realistic user role).
