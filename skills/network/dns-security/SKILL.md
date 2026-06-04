@@ -384,7 +384,7 @@ Use `Not Evaluable` for registrar locks, registry locks, CA account controls, CT
 
 | Domain | Registrar | Registrar lock | Registry lock | Registrar MFA/change approval | Parent NS | Child NS | Provider zone/account evidence | DS status | CAA issue/issuewild/iodef | CT monitoring | Dangling records | Confidence |
 |--------|-----------|----------------|---------------|-------------------------------|-----------|----------|--------------------------------|-----------|---------------------------|---------------|------------------|------------|
-| example.com | Known/Unknown | Yes/No/Unknown | Yes/No/Unknown/Not applicable | Yes/No/Unknown | Pass/Fail/Unknown | Pass/Fail/Unknown | Verified/Not verified | Pass/Fail/Unknown | Pass/Fail/Unknown | Yes/No/Unknown | Yes/No/Unknown | Strong/Partial/Not Evaluable |
+| example.com | Known/Unknown | Yes/No/Unknown/Not Evaluable | Yes/No/Unknown/Not applicable/Not Evaluable | Yes/No/Unknown/Not Evaluable | Pass/Fail/Unknown/Not Evaluable | Pass/Fail/Unknown/Not Evaluable | Verified/Not verified/Not Evaluable | Pass/Fail/Unknown | Pass/Fail/Unknown/Not Evaluable | Yes/No/Unknown/Not Evaluable | Yes/No/Unknown/Not Evaluable | Strong/Partial/Not Evaluable |
 
 ### Resolver Security
 
