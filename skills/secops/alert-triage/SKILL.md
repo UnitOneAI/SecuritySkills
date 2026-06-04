@@ -1,12 +1,13 @@
 ---
 name: alert-triage
 description: >
-  Guides structured triage of security alerts using a four-phase methodology
-  (collect, correlate, classify, escalate) mapped to MITRE ATT&CK v16 and
-  aligned with NIST SP 800-61 Rev 2 incident handling guidelines. Auto-invoked
-  when the user discusses alert investigation, asks "is this a true positive?",
-  or shares alert data requiring disposition. Produces a triage decision with
-  priority assignment, disposition category, and escalation recommendation.
+  Guides structured triage of security alerts using a case-aware methodology
+  (group/deduplicate, collect, correlate, classify, escalate) mapped to MITRE
+  ATT&CK v16 and aligned with NIST SP 800-61 Rev 2 incident handling guidelines.
+  Auto-invoked when the user discusses alert investigation, asks "is this a true
+  positive?", or shares alert data requiring disposition. Produces a triage
+  decision with priority assignment, disposition category, and escalation
+  recommendation.
 tags: [secops, triage, soc]
 role: [soc-analyst]
 phase: [operate, respond]
@@ -25,8 +26,8 @@ argument-hint: "[CVE-ID-or-alert-ID]"
 
 > **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 > **Role:** SOC Analyst
-> **Time:** 10-20 min per alert
-> **Output:** Alert disposition (TP/BTP/FP), priority assignment (P1-P4), escalation decision
+> **Time:** 10-20 min per alert or grouped case
+> **Output:** Alert/case disposition (TP/BTP/FP), priority assignment (P1-P4), escalation decision
 
 ---
 
@@ -38,6 +39,7 @@ Invoke this skill when any of the following conditions are met:
 
 - **New alert received** -- A SIEM, EDR, or security tool has generated an alert that requires analyst investigation.
 - **Alert queue prioritization** -- Multiple alerts are pending and the analyst needs to determine the investigation order.
+- **Alert storm or duplicate cluster** -- Multiple alerts may represent the same underlying activity and need grouping before individual triage.
 - **True positive determination** -- The analyst needs a structured methodology to determine whether an alert represents a genuine threat, benign activity, or a false positive.
 - **Escalation decision** -- The analyst needs criteria to determine whether an alert should be escalated to Tier 2, the IR team, or management.
 - **Triage documentation** -- The analyst needs to produce a consistent, auditable record of triage decisions.
@@ -56,6 +58,7 @@ Before beginning triage, gather or confirm:
 - [ ] **Asset context:** What is the affected asset? (Server, workstation, cloud instance, network device.) What is its business criticality? (Revenue-generating, customer-facing, development, test.)
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
+- [ ] **Case context:** Is this alert already part of an existing case or duplicate cluster? Capture case ID, related alert count, first_seen/last_seen, and suppression state if available.
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
 
 If some context is unavailable, proceed with available information and note gaps as assumptions.
@@ -64,9 +67,31 @@ If some context is unavailable, proceed with available information and note gaps
 
 ## 3. Process
 
+### Phase 0: Group and Deduplicate
+
+Before treating an alert as a standalone triage item, determine whether it belongs to an existing case or duplicate cluster.
+
+**Case grouping checklist:**
+
+| Grouping Factor | What to Check | Why It Matters |
+|-----------------|---------------|----------------|
+| **Rule family** | Same detection rule, same analytic family, or same ATT&CK technique | Prevents one root cause from creating dozens of independent cases |
+| **Primary entities** | User, host, cloud account, workload, source IP, destination, process, file hash | Identifies repeated activity against the same target or by the same principal |
+| **Time window** | First seen, last seen, event time vs. ingestion time | Keeps related activity together while avoiding over-broad grouping |
+| **Source systems** | SIEM, EDR, identity provider, cloud security, IDS | Detects cross-tool duplicates for the same activity |
+| **Existing case state** | Open case ID, owner, disposition, suppression window, tuning request | Avoids repeated work and preserves audit trail |
+| **Material changes** | New privileged user, new critical host, new tactic, new IOC reputation, new data-access evidence | Breaks suppression when the risk meaningfully changes |
+
+**Grouping decisions:**
+
+- If related alerts share the same root cause and no material change is present, triage them as one case and document the related alert count.
+- If individually low-confidence alerts form an aggregate attack pattern (for example, password spray across many users), raise priority based on the grouped case.
+- If grouping is uncertain, keep the alert open as a separate case but document the candidate related cases and why they were not merged.
+- Do not use deduplication to close alerts automatically; it is a case-management decision that still requires evidence.
+
 ### Phase 1: Collect
 
-Gather all data associated with the alert. Do not make a disposition decision until collection is complete.
+Gather all data associated with the alert or grouped case. Do not make a disposition decision until collection is complete.
 
 **Data collection checklist:**
 
@@ -78,7 +103,7 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **EDR telemetry** | Process tree, file activity, network connections from the endpoint | CrowdStrike, Defender for Endpoint, SentinelOne |
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
-| **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
+| **Previous alerts and cases** | Historical alerts, open cases, duplicate clusters, suppression state | SIEM, case management |
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
 
@@ -93,6 +118,7 @@ Connect the alert data with surrounding context to build a picture of what happe
 3. **Behavioral correlation:** Does this activity match known ATT&CK technique patterns? Does it match the user's or system's normal behavior baseline?
 4. **Threat intel correlation:** Do any indicators match known threat actor infrastructure, malware campaigns, or published IOCs?
 5. **Kill chain correlation:** Where does this activity fall in the attack lifecycle? Is there evidence of preceding (reconnaissance, initial access) or subsequent (persistence, lateral movement, exfiltration) stages?
+6. **Aggregate pattern:** Do many low-signal alerts become high-signal when grouped by entity, rule family, tenant, or time window?
 
 **ATT&CK-based correlation framework:**
 
@@ -134,6 +160,7 @@ Assign a priority level based on the combination of asset criticality, threat se
 | Asset criticality | Crown jewel, revenue-generating, internet-facing | Development, test, non-production |
 | User privilege level | Domain admin, service account, C-suite | Standard user, contractor |
 | Threat intel match | IOCs match active campaign | No TI matches, known benign scanner |
+| Related alert volume | Repeated alerts with material risk changes, distributed activity across many users/assets | Duplicate cluster with verified benign root cause |
 | Kill chain stage | Late-stage (exfiltration, impact) | Early-stage (reconnaissance) |
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
 | Business context | During M&A, audit, or incident response | Normal operations |
@@ -202,11 +229,21 @@ Produce the triage decision as a structured report:
 | Field | Value |
 |-------|-------|
 | Alert ID | [SIEM alert ID] |
+| Case ID | [Case ID, if grouped or linked] |
 | Rule Name | [Detection rule name] |
 | Source System | [SIEM / EDR / IDS / Cloud Security] |
 | Timestamp | [YYYY-MM-DD HH:MM:SS UTC] |
 | ATT&CK Technique | [T1059.001 -- PowerShell or N/A] |
 | ATT&CK Tactic | [Execution (TA0002) or N/A] |
+
+### Case Context
+| Field | Value |
+|-------|-------|
+| Related Alert Count | [N, including this alert] |
+| Grouping Key | [Rule family + entity + time window + source system / other] |
+| First Seen / Last Seen | [YYYY-MM-DD HH:MM UTC / YYYY-MM-DD HH:MM UTC] |
+| Suppression State | [None / Active / Expired / Not applicable] |
+| Material Change Present | [Yes/No -- describe if yes] |
 
 ### Affected Entities
 | Entity | Value | Context |
@@ -242,7 +279,8 @@ Produce the triage decision as a structured report:
 ### Tuning Recommendation (if BTP or FP)
 [If disposition is BTP or FP, describe the recommended rule tuning
 to prevent recurrence -- e.g., add filter for specific parent process,
-exclude known-good IP range, adjust threshold.]
+exclude known-good IP range, adjust threshold. Include owner, expiration,
+and material-change triggers if suppression or deduplication is recommended.]
 ```
 
 ---
@@ -318,6 +356,10 @@ Investigating an alert in isolation without checking for activity before and aft
 ### Pitfall 5: Delaying Escalation While Seeking Perfect Information
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
+
+### Pitfall 6: Treating Every Alert as a Separate Case
+
+Alert storms and cross-tool duplicates can make one benign root cause look like dozens of independent investigations. Conversely, many individually weak alerts can become high priority when grouped across users, hosts, or source IPs. Always check existing cases, duplicate clusters, related alert counts, and suppression state before assigning final priority or disposition.
 
 ---
 
