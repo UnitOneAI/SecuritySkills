@@ -132,7 +132,7 @@ skills:
     role: [security-engineer, vciso]
     phase: [operate]
     activity: [audit, review]
-    frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
+    frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6, NIST-SP-800-53-CP-2, NIST-SP-800-53-CP-10]
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md

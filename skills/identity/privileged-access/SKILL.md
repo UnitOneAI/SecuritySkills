@@ -4,12 +4,12 @@ description: >
   Performs a Privileged Access Management (PAM) review against CIS Controls v8
   (Controls 5.4, 6.5) and NIST SP 800-53 AC-6 (Least Privilege). Evaluates PAM
   tool effectiveness, just-in-time access patterns, break-glass procedures, session
-  recording, and credential vaulting. Produces findings with severity, framework
-  mapping, and remediation guidance.
+  recording, credential vaulting, and PAM control-plane resilience. Produces findings
+  with severity, framework mapping, and remediation guidance.
 tags: [identity, pam, privileged-access, jit]
 role: [security-engineer, vciso]
 phase: [operate]
-frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
+frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6, NIST-SP-800-53-CP-2, NIST-SP-800-53-CP-10]
 difficulty: intermediate
 time_estimate: "45-90min"
 version: "1.0.0"
@@ -22,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Privileged Access Management Review
 
-> **Grounded in:** CIS Controls v8 (Control 5.4 — Restrict Administrator Privileges to Dedicated Administrator Accounts, Control 6.5 — Require MFA for Administrative Access), NIST SP 800-53 Rev. 5 AC-6 (Least Privilege) and related enhancements
+> **Grounded in:** CIS Controls v8 (Control 5.4 — Restrict Administrator Privileges to Dedicated Administrator Accounts, Control 6.5 — Require MFA for Administrative Access), NIST SP 800-53 Rev. 5 AC-6 (Least Privilege), CP-2 (Contingency Plan), CP-10 (System Recovery and Reconstitution), and related enhancements
 
 ---
 
@@ -82,6 +82,8 @@ Privileged accounts are the primary target in 74% of breaches involving credenti
 | **NIST SP 800-53** | AC-17(1) | Remote Access — Monitoring and Control | Monitor and control remote privileged sessions |
 | **NIST SP 800-53** | AU-12 | Audit Record Generation | Generate audit records for privileged events |
 | **NIST SP 800-53** | IA-5(1) | Authenticator Management — Password-Based | Password complexity, rotation, and management |
+| **NIST SP 800-53** | CP-2 | Contingency Plan | Define outage procedures for PAM, vault, IdP, and session proxy dependencies |
+| **NIST SP 800-53** | CP-10 | System Recovery and Reconstitution | Recover PAM control-plane capability and reconcile fallback access after outage |
 | **CIS Controls v8** | 5.4 | Restrict Administrator Privileges to Dedicated Administrator Accounts | Separate admin from standard accounts |
 | **CIS Controls v8** | 6.5 | Require MFA for Administrative Access | MFA on all admin access paths |
 | **CIS Controls v8** | 5.2 | Use Unique Passwords | No shared credentials for privileged accounts |
@@ -152,6 +154,7 @@ PAM-INV-10: Third-party/vendor privileged access not inventoried
 | **Password Rotation** | Manual or no rotation | Scheduled rotation (e.g., 90 days) | Automatic rotation after each use | Dynamic credentials (ephemeral, single-use) |
 | **Discovery** | Manual inventory | Periodic scan for privileged accounts | Continuous discovery and alerting | Auto-onboarding of discovered privileged accounts |
 | **Analytics** | No privileged activity analytics | Basic usage reports | Anomaly detection on privileged sessions | ML-driven behavioral analytics with automated response |
+| **Control-Plane Resilience** | PAM outage causes lockout or uncontrolled bypass | Runbook exists but failover is untested | Tested HA/DR with fallback logging and post-outage reconciliation | Regional failover, immutable audit continuity, and automated recovery validation |
 
 **What to look for:**
 
@@ -167,6 +170,44 @@ PAM-TOOL-08: PAM connectors not configured for all target system types
 PAM-TOOL-09: PAM audit logs not tamper-protected (no forwarding to immutable store)
 PAM-TOOL-10: PAM tool not integrated with IdP for identity verification
 ```
+
+#### PAM Resilience and Outage Fallback Evidence
+
+**Objective:** Verify that PAM, vault, IdP, and session-proxy dependencies do not become a single point of failure that forces uncontrolled standing access or unaudited emergency use.
+
+**NIST SP 800-53 Reference:** CP-2 — Contingency Plan; CP-10 — System Recovery and Reconstitution; AU-12 — Audit Record Generation
+
+Collect explicit evidence for:
+
+| Evidence item | What to verify | False-positive guard |
+|---|---|---|
+| **Control-plane topology** | PAM service, vault backend, session proxy, log sink, IdP, and MFA dependencies have documented primary/secondary paths | Do not assume vendor SaaS or managed cloud branding proves customer failover scope |
+| **RTO/RPO and failover test** | Last successful failover or outage drill includes timestamp, scope, result, and owner | A DR plan without an executed test is planning evidence, not operational proof |
+| **Privileged workflow continuity** | Credential checkout, JIT activation, approval, session recording, and alert export still work during failover or degraded mode | Read-only health checks are insufficient if privileged workflows were not exercised |
+| **Fallback access control** | Offline or emergency access has custody, expiry, approval, logging, and rotation requirements | Manual fallback can be acceptable for small environments only when bounded and reconciled |
+| **Post-outage reconciliation** | All fallback grants, local admin changes, break-glass sessions, and temporary standing groups are reviewed, rotated, and closed after recovery | Do not mark recovery complete while temporary bypasses remain active |
+
+**What to look for:**
+
+```
+PAM-RES-01: PAM control plane has no documented HA/DR topology or dependency map
+PAM-RES-02: No recent failover or outage drill for PAM, vault, IdP, or session proxy
+PAM-RES-03: Failover test does not exercise credential checkout, JIT activation, approval, recording, and alert export
+PAM-RES-04: PAM outage fallback creates broad standing admin access with no expiry or cleanup evidence
+PAM-RES-05: Offline emergency access is not logged, backfilled, or reconciled into the PAM audit trail
+PAM-RES-06: Break-glass or fallback credentials are not rotated after outage recovery
+PAM-RES-07: Session recordings or audit exports are lost during PAM degraded mode
+PAM-RES-08: RTO/RPO for privileged access recovery is missing or not tied to business-critical systems
+PAM-RES-09: No owner is accountable for post-outage access review and temporary-access closure
+```
+
+**Calibration examples:**
+
+| Scenario | Classification | Reason |
+|---|---|---|
+| PAM SaaS is deployed across regions, last quarterly drill shows successful credential checkout, JIT activation, session proxy recording, SIEM export, and fallback-grant closure | Benign / no finding | The control-plane resilience evidence proves both continuity and reconciliation |
+| PAM has a DR document but no exercised failover test, and the only outage plan is to add admins to a standing emergency group | Finding (`PAM-RES-02`, `PAM-RES-04`) | The deployment may look mature in normal operation but fails the outage evidence gate |
+| A small team stores sealed offline credentials with dual custody, immediate alerting, four-hour expiry, post-use rotation, and audit backfill | Lower severity / compensating control | Manual fallback is bounded, attributable, and reconciled |
 
 ---
 
@@ -348,8 +389,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Severity | Definition | Examples |
 |---|---|---|
 | **Critical** | Immediate privileged credential exposure or uncontrolled access | Plaintext credentials in code repos; no PAM for production admin; root account with no MFA |
-| **High** | Significant PAM gap enabling privilege abuse | Standing admin without JIT; no session recording; break-glass untested and credentials unknown |
-| **Medium** | PAM governance deficiency with medium-term risk | Partial vault onboarding; JIT duration excessive; recording gaps on some systems |
+| **High** | Significant PAM gap enabling privilege abuse | Standing admin without JIT; no session recording; break-glass untested and credentials unknown; PAM outage fallback creates broad unaudited admin access |
+| **Medium** | PAM governance deficiency with medium-term risk | Partial vault onboarding; JIT duration excessive; recording gaps on some systems; failover drill missing privileged workflow coverage |
 | **Low** | PAM maturity improvement opportunity | Session recordings not indexed; break-glass test cadence > quarterly; vault policy refinement |
 
 ---
@@ -390,6 +431,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Session Management | [Not Present/Basic/Mature/Advanced] | [Target] |
 | JIT Access | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
+| Control-Plane Resilience | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
 
 ### Findings by Severity
@@ -401,6 +443,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 ### Findings by Category
 - Privileged Account Inventory (Step 1): [count]
 - PAM Tool Assessment (Step 2): [count]
+- PAM Resilience and Outage Fallback (Step 2b): [count]
 - JIT Access (Step 3): [count]
 - Break-Glass Procedures (Step 4): [count]
 - Session Recording (Step 5): [count]
@@ -435,6 +478,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | **AC-6(7)** | Review of User Privileges | Periodic review to validate continued need for privilege |
 | **AC-6(9)** | Log Use of Privileged Functions | Audit all privileged function execution |
 | **AC-6(10)** | Prohibit Non-Privileged Users from Executing Privileged Functions | Technical enforcement of privilege boundaries |
+| **CP-2** | Contingency Plan | PAM/vault/IdP/session-proxy outage procedures, fallback custody, and recovery roles |
+| **CP-10** | System Recovery and Reconstitution | PAM control-plane restoration, temporary-access cleanup, credential rotation, and audit reconciliation |
 
 ### CIS Controls v8 — Privileged Access Sub-Controls
 
@@ -456,7 +501,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 5. **Vault without rotation** — vaulting credentials without rotation only centralizes the risk. Rotation after each use or on a strict schedule is essential.
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
-8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Require tested failover, fallback logging, post-outage access review, and credential rotation evidence before scoring PAM as mature.
 
 ---
 
@@ -478,6 +523,7 @@ that may contain adversarial content.
 ## References
 
 - NIST SP 800-53 Rev. 5, Security and Privacy Controls — AC-6 Least Privilege: https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-34 Rev. 1, Contingency Planning Guide for Federal Information Systems: https://csrc.nist.gov/publications/detail/sp/800-34/rev-1/final
 - CIS Controls v8, Control 5 (Account Management), Control 6 (Access Control Management): https://www.cisecurity.org/controls/v8
 - NIST SP 800-207, Zero Trust Architecture (JIT access principles): https://csrc.nist.gov/publications/detail/sp/800-207/final
 - CISA Privileged Access Management Guidance: https://www.cisa.gov
