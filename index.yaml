@@ -434,7 +434,7 @@ skills:
   # -- SecOps ---------------------------------------------------------------
   - id: detection-engineering
     name: "Detection Engineering & Sigma Rules"
-    tags: [secops, detection, sigma, mitre-attack]
+    tags: [secops, detection, sigma, correlation, mitre-attack]
     role: [soc-analyst, security-engineer]
     phase: [operate]
     activity: [design, monitor]

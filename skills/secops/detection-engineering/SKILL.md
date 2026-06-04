@@ -5,9 +5,9 @@ description: >
   Palantir Alerting and Detection Strategy (ADS) framework, mapped to MITRE
   ATT&CK v16 techniques. Auto-invoked when the user discusses detection logic,
   Sigma rules, ATT&CK coverage gaps, or asks "how do I detect this technique?"
-  Produces Sigma-formatted detection rules, ADS documentation, and coverage
-  heatmap methodology for systematic detection program management.
-tags: [secops, detection, sigma, mitre-attack]
+  Produces Sigma-formatted detection or correlation rules, ADS documentation,
+  and coverage heatmap methodology for systematic detection program management.
+tags: [secops, detection, sigma, correlation, mitre-attack]
 role: [soc-analyst, security-engineer]
 phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
@@ -26,7 +26,7 @@ argument-hint: "[technique-ID-or-log-source]"
 > **Frameworks:** MITRE ATT&CK v16, Sigma Rule Specification (sigmahq.io), Palantir Alerting and Detection Strategy (ADS)
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 30-60 min per detection
-> **Output:** Sigma detection rule, ADS documentation, ATT&CK coverage mapping
+> **Output:** Sigma detection/correlation rule, ADS documentation, ATT&CK coverage mapping
 
 ---
 
@@ -58,6 +58,8 @@ Before beginning, gather or confirm:
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
 - [ ] **Detection priority:** Is this for a known active threat, proactive coverage expansion, or compliance requirement?
 - [ ] **Organizational naming conventions:** Rule ID format, severity taxonomy, and tagging standards used by the detection engineering team.
+- [ ] **Correlation intent:** Whether the behavior requires count, distinct count, sequence, ordering, time-window, or multi-source relationship semantics.
+- [ ] **Backend correlation support:** Whether the target SIEM/backend can preserve the required grouping, timespan, aliases, ordering, and aggregation condition.
 
 If the ATT&CK technique is provided but other context is missing, proceed with conservative assumptions (Windows enterprise environment, Sysmon + Windows Security logs available) and note assumptions in the output.
 
@@ -107,9 +109,24 @@ Before writing the rule, enumerate:
 - Evasion techniques an adversary might use to avoid the detection (known blind spots)
 - Tuning parameters that can reduce false positives without creating blind spots
 
+#### Correlation Decision Gate
+
+Before authoring YAML, decide whether the detection is a single-event rule, a Sigma correlation rule, or a SIEM-native correlation handoff.
+
+| Question | If yes | Required evidence |
+|----------|--------|-------------------|
+| Does the strategy abstract require count, distinct count, sum, average, percentile, burst, or "within N minutes" behavior? | Use Sigma correlation (`event_count`, `value_count`, `value_sum`, `value_avg`, or `value_percentile`) or document a SIEM-native handoff. | Threshold field, `group-by`, `timespan`, `condition`, and backend support status. |
+| Does the detection require events before, after, or near other events? | Use `temporal` or `temporal_ordered`; do not encode sequence intent as plain `selection_a and selection_b`. | Related rule IDs/names, order requirement, `group-by`, `timespan`, and positive/negative sequence fixtures. |
+| Does the detection combine more than one log source or field taxonomy? | Add field alias mapping before claiming entity-level grouping. | Alias table for user, host, IP, process, session, or cloud principal fields across related rules. |
+| Does the target backend lack an aggregation, alias, timespan, or ordering feature required by the detection? | Mark the Sigma output as partial and include backend-specific implementation notes. | Backend support matrix with Pass/Partial/Unsupported and reason. |
+
+**Single-event rule is acceptable when:** the rule matches one event independently and does not rely on counts, ordering, time-window relationships, or cross-source entity joins. In that case, state "Correlation not required" in the ADS validation section.
+
+**Base rule plus handoff is acceptable when:** Sigma can express the base events, but the deployment backend must implement the correlation natively. Label the Sigma artifact as "base rule only" and include the exact missing portable correlation feature.
+
 ### Step 3: Author the Sigma Rule
 
-Write the detection rule following the Sigma specification (sigmahq.io).
+Write the detection or correlation rule following the Sigma specification (sigmahq.io).
 
 **Sigma Rule Structure:**
 
@@ -195,6 +212,53 @@ fields:
 | `|base64offset` | Base64 encoded value match | `CommandLine|base64offset|contains: 'IEX'` |
 | `condition` | Boolean logic | `selection_a and selection_b and not filter_main` |
 
+**Sigma correlation rule template (use when the decision gate requires correlation):**
+
+```yaml
+title: Failed Logons Followed by Successful Logon
+id: 0e95725d-7320-415d-80f7-004da920fc11
+status: experimental
+description: |
+    Correlates repeated failed logons followed by a successful logon for
+    the same account and source host within a bounded time window.
+correlation:
+    type: temporal_ordered
+    rules:
+        - many_failed_logons
+        - successful_logon
+    group-by:
+        - TargetUserName
+        - WorkstationName
+    timespan: 10m
+    condition:
+        gte: 1
+falsepositives:
+    - Password reset or helpdesk-assisted login recovery
+level: medium
+```
+
+**Correlation field requirements:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `correlation.type` | Yes | `event_count`, `value_count`, `temporal`, `temporal_ordered`, `value_sum`, `value_avg`, or `value_percentile`. |
+| `correlation.rules` | Yes | Related Sigma rule IDs or names; use names only when the pipeline can resolve them to IDs. |
+| `correlation.group-by` | Yes | Entity fields that must be equal across matched events, such as user, host, IP, or cloud principal. |
+| `correlation.timespan` | Yes | Time window such as `10m`, `1h`, or `1d`; record why the window matches the threat behavior. |
+| `correlation.condition` | Yes | Comparison such as `gte: 5`; value correlations must identify the counted or numeric field. |
+| `correlation.aliases` | Required when fields differ across rules | Maps a shared entity name to different field names across related rules. |
+| Backend support status | Yes | Pass, Partial, Unsupported, or Not Evaluable for each target backend. |
+
+**Backend support matrix:**
+
+| Backend | Count | Distinct count | Temporal | Ordered temporal | Multi-source aliases | Status |
+|---------|:-----:|:--------------:|:--------:|:----------------:|:--------------------:|--------|
+| Splunk | [yes/no] | [yes/no] | [yes/no] | [yes/partial/no] | [yes/partial/no] | [Pass/Partial/Unsupported] |
+| Microsoft Sentinel | [yes/no] | [yes/no] | [yes/no] | [yes/partial/no] | [yes/partial/no] | [Pass/Partial/Unsupported] |
+| Elastic | [yes/no] | [yes/no] | [yes/no] | [yes/partial/no] | [yes/partial/no] | [Pass/Partial/Unsupported] |
+
+If a backend can express temporal proximity but cannot preserve event order, mark `Ordered temporal` as Partial and explain the expected false-positive or false-negative effect. If a backend cannot apply the required grouping or aggregate condition, do not present the converted query as equivalent.
+
 ### Step 4: Build ADS Documentation
 
 Document the detection using the Palantir Alerting and Detection Strategy (ADS) framework. ADS ensures every detection has operational context beyond the rule itself.
@@ -258,6 +322,15 @@ Describe how to test that this detection works correctly.
 2. **True negative test:** Execute `powershell.exe -Command "Get-Process"` (no encoding). Verify no alert fires.
 3. **Filter validation:** If SCCM is in use, verify that SCCM client operations do not trigger the alert.
 4. **ATT&CK technique coverage:** Validate with atomic red team test `T1059.001` (https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1059.001/T1059.001.md).
+
+For correlation detections, include fixture coverage that proves the relationship semantics:
+
+1. **Matching sequence/count:** Events satisfy the threshold or sequence inside the configured `timespan`.
+2. **Outside timespan:** The same events occur outside the time window and must not match.
+3. **Reverse order:** For `temporal_ordered`, the same events appear in reverse order and must not match.
+4. **Entity mismatch:** Same user on different host, different user on same host, or different tenant/account must not match when `group-by` requires equality.
+5. **Alias coverage:** Related rules with different field names still group on the intended entity through `aliases`.
+6. **Backend conversion evidence:** Converted query preserves grouping, timespan, ordering, and aggregate condition; otherwise record a Partial/Unsupported handoff note.
 
 #### Response
 Define the analyst response procedure when this alert fires.
@@ -339,8 +412,8 @@ detections/
 **CI/CD pipeline stages:**
 
 1. **Lint:** Validate Sigma YAML syntax and required fields
-2. **Test:** Run Sigma rule against known-good and known-bad sample logs
-3. **Convert:** Use `sigma-cli` to convert Sigma to target SIEM query language
+2. **Test:** Run Sigma rule against known-good and known-bad sample logs, including correlation fixtures for matching, outside-timespan, reverse-order, and entity-mismatch cases
+3. **Convert:** Use `sigma-cli` to convert Sigma to target SIEM query language, and fail or mark partial when the backend cannot preserve required correlation semantics
 4. **Review:** Require peer review (pull request) before merge
 5. **Deploy:** Push converted rules to SIEM via API (Sentinel Analytics Rules API, Splunk REST API)
 6. **Monitor:** Track rule performance metrics (fire rate, TP rate, MTTD)
@@ -376,8 +449,22 @@ Produce detection engineering deliverables in this structure:
 | Tactic(s) | [Execution (TA0002)] |
 | Data Sources | [Process Creation, Command Execution] |
 
-### Sigma Rule
-[Full Sigma YAML rule]
+### Correlation Decision
+| Field | Value |
+|-------|-------|
+| Rule Type | [Single-event Sigma / Sigma correlation / Base Sigma + SIEM-native handoff] |
+| Correlation Required | [Yes/No -- explain count, distinct count, temporal, ordered, value aggregation, or multi-source need] |
+| Grouping Entity | [user / host / IP / cloud principal / none] |
+| Timespan | [e.g., 10m, 1h, n/a] |
+| Backend Support | [Pass / Partial / Unsupported / Not Evaluable] |
+
+### Sigma Rule(s)
+[Full Sigma YAML event rule(s); include correlation YAML when correlation is required]
+
+### Backend Support Matrix
+| Backend | Required Feature | Status | Notes |
+|---------|------------------|--------|-------|
+| [Splunk/Sentinel/Elastic/etc.] | [event_count / temporal_ordered / aliases / value_count] | [Pass/Partial/Unsupported/Not Evaluable] | [Conversion or handoff notes] |
 
 ### ADS Documentation
 [Complete ADS framework documentation per Step 4]
@@ -388,10 +475,12 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+| Correlation Fixtures | [matching / outside-timespan / reverse-order / entity-mismatch / alias / n/a] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
 - **Converted Query:** [KQL/SPL/EQL equivalent if requested]
+- **Correlation Conversion Status:** [Equivalent / Partial / Unsupported / Not Evaluable]
 - **Estimated False Positive Rate:** [Low / Medium / High]
 - **Tuning Recommendations:** [Specific filter additions]
 ```
@@ -494,6 +583,10 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
+### Pitfall 6: Hiding Correlation Intent in a Plain Rule
+
+A plain Sigma rule with `selection_a and selection_b` does not prove that multiple events occurred for the same entity, inside a time window, or in a specific order. Threshold, burst, sequence, distinct-count, and cross-source detections need a correlation decision. Use Sigma correlation when the backend supports the required semantics; otherwise mark the Sigma output as base rules plus a SIEM-native handoff. Always test reverse-order, outside-timespan, and entity-mismatch fixtures before claiming operational coverage.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -522,3 +615,4 @@ This skill processes user-supplied content that may include log samples, detecti
 10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
 11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
 12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+13. **Sigma Correlation Rules Specification v2.1.0** -- https://sigmahq.io/sigma-specification/specification/sigma-correlation-rules-specification.html
