@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-1321 (Prototype Pollution), CWE-915 (Improperly Controlled Modification of Dynamically-Determined Object Attributes)
 
 ### 2.1 Controls to Verify
 
@@ -81,6 +81,28 @@ app.get('/search', (req, res) => {
 ```
 Remediation: Use a templating engine with auto-escaping enabled, or explicitly escape with a library such as `he` or `DOMPurify`.
 
+**JavaScript/TypeScript -- Prototype Pollution via Unsafe Merge (CWE-1321, CWE-915)**
+```javascript
+// VULNERABLE: attacker-controlled keys are recursively assigned
+function merge(target, source) {
+  for (const key in source) {
+    if (source[key] && typeof source[key] === "object") {
+      target[key] = target[key] || {};
+      merge(target[key], source[key]);
+    } else {
+      target[key] = source[key];
+    }
+  }
+  return target;
+}
+
+app.post("/api/preferences", express.json(), (req, res) => {
+  merge(req.user.preferences, req.body);
+  res.json({ ok: true });
+});
+```
+Remediation: Reject dangerous property names (`__proto__`, `prototype`, `constructor`), avoid custom recursive merge of untrusted data, validate request bodies with a strict schema, and update only allowlisted fields.
+
 **Go -- OS Command Injection (CWE-78)**
 ```go
 // VULNERABLE: user input passed directly to shell execution
@@ -110,6 +132,8 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+- [ ] JavaScript/TypeScript object writes reject `__proto__`, `prototype`, and `constructor` keys before recursive merge, object spread, `Object.assign`, or ORM/model update sinks.
+- [ ] Request-body updates use strict schemas or DTO allowlists; unknown keys and privileged fields (`role`, `isAdmin`, `tenantId`, `ownerId`) cannot be assigned by clients.
 
 ---
 
@@ -214,6 +238,18 @@ http.HandleFunc("/transfer", func(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Require POST with a validated CSRF token. Use a CSRF middleware library (e.g., `gorilla/csrf`).
 
+**TypeScript -- Mass Assignment / Over-Posting (CWE-915)**
+```typescript
+// VULNERABLE: client controls every mutable field on the model
+app.patch("/api/users/:id", requireAuth, async (req, res) => {
+  const user = await User.findByPk(req.params.id);
+  Object.assign(user, req.body);
+  await user.save();
+  res.json(user);
+});
+```
+Remediation: Parse the request through a strict DTO or schema that allowlists only caller-editable fields, then apply those fields explicitly after authorization and ownership checks.
+
 ### 4.3 Review Checklist
 
 - [ ] Every API endpoint and data-access path enforces authorization server-side.
@@ -221,6 +257,7 @@ Remediation: Require POST with a validated CSRF token. Use a CSRF middleware lib
 - [ ] State-changing operations use anti-CSRF tokens or SameSite cookies.
 - [ ] Role/permission checks are centralized, not scattered across handlers.
 - [ ] Deny-by-default: all routes are denied unless explicitly permitted.
+- [ ] Create/update handlers do not bind raw request bodies directly to domain models, ORM entities, authorization objects, or tenant/account fields.
 
 ---
 
@@ -423,6 +460,16 @@ Each finding produced by this review must include the following fields:
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
+For JavaScript/TypeScript dynamic object-write findings, include these additional evidence fields:
+
+| Field | Description |
+|---|---|
+| **Object Write Source** | The untrusted source (`req.body`, query parser, webhook payload, JSON parser, GraphQL input) |
+| **Merge or Assignment Sink** | The dynamic write path (`Object.assign`, object spread, recursive merge, `for...in` assignment, ORM update) |
+| **Dangerous Key Handling** | Whether `__proto__`, `prototype`, and `constructor` are rejected before assignment |
+| **Privileged Fields Blocked** | Evidence that role, tenant, owner, balance, approval, or admin fields cannot be client-set |
+| **Schema or DTO Evidence** | Strict schema, DTO, serializer, `additionalProperties: false`, or equivalent allowlist on the same path as the sink |
+
 ### Severity Definitions
 
 | Severity | Criteria |
@@ -461,6 +508,11 @@ The final review output must be structured as follows:
 - **CWE:** CWE-[number] -- [name]
 - **ASVS Control:** V[x.y.z]
 - **Location:** [file:line]
+- **Object Write Source:** [for JS/TS prototype-pollution or mass-assignment findings]
+- **Merge or Assignment Sink:** [for JS/TS prototype-pollution or mass-assignment findings]
+- **Dangerous Key Handling:** [for JS/TS prototype-pollution or mass-assignment findings]
+- **Privileged Fields Blocked:** [for JS/TS prototype-pollution or mass-assignment findings]
+- **Schema or DTO Evidence:** [for JS/TS prototype-pollution or mass-assignment findings]
 - **Description:** [explanation]
 - **Evidence:**
   ```[language]
@@ -526,6 +578,8 @@ The final review output must be structured as follows:
 | CWE-798 | Use of Hard-coded Credentials | Step 3 |
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
+| CWE-915 | Improperly Controlled Modification of Dynamically-Determined Object Attributes | Step 2 / Step 4 |
+| CWE-1321 | Improperly Controlled Modification of Object Prototype Attributes | Step 2 |
 
 ---
 
@@ -540,6 +594,10 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Treating every object spread or `Object.assign` as vulnerable.** Dynamic object writes are only findings when untrusted keys can reach a merge/update sink without strict schema validation, dangerous-key rejection, or an explicit DTO allowlist. Accept `zod.strict()`, JSON Schema `additionalProperties: false`, Joi `allowUnknown(false)`, or equivalent evidence when it is enforced on the same code path.
+
+7. **Missing prototype pollution because the code is not deserialization.** JSON body parsing may be safe by itself, but a later recursive merge, `for...in` assignment, object spread into a shared config, or ORM update can turn attacker-controlled keys into authorization or configuration corruption.
 
 ---
 
@@ -560,6 +618,9 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
+- **CWE-1321 Prototype Pollution:** https://cwe.mitre.org/data/definitions/1321.html
+- **CWE-915 Dynamic Object Attribute Modification:** https://cwe.mitre.org/data/definitions/915.html
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Prototype Pollution Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
