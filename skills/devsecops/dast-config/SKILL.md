@@ -326,8 +326,53 @@ env:
 - [ ] Test user has sufficient permissions to access the application's full attack surface.
 - [ ] Test user does NOT have admin privileges (test with realistic user role).
 - [ ] Session management is configured (ZAP re-authenticates when logged-out indicator is detected).
+- [ ] Authenticated state is preserved across spider, Ajax Spider, API import, and active scan jobs.
+- [ ] Anti-CSRF token names are configured when login or mutation requests require fresh tokens.
+- [ ] State-changing authenticated requests are not silently failing with 401, 403, 419, or CSRF error bodies.
 
 **Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**.
+
+---
+
+#### 4.2 Authenticated Scan State and Anti-CSRF Evidence
+
+Authentication configuration is not sufficient by itself. A scan can log in
+successfully, then lose coverage when the target uses one-time anti-CSRF tokens,
+client-side session storage, expiring bearer tokens, or session handling that is
+available to the Ajax Spider but not to active scan requests. Record evidence
+that the scanner stayed authenticated for protected mutation routes.
+
+**Evidence to collect:**
+
+| Evidence | What to Verify |
+|----------|----------------|
+| Session mechanism | Cookie, bearer header, browser local storage, HTTP auth, custom script, or mixed mode |
+| Auth propagation | Same authenticated state works for spider, Ajax Spider, OpenAPI/GraphQL import, and active scan |
+| Verification URL | A protected page or endpoint proves the current user is still logged in |
+| Anti-CSRF token names | Framework-specific token names such as `__RequestVerificationToken`, `csrfmiddlewaretoken`, `authenticity_token`, `_csrf`, `_token`, or custom header tokens are configured |
+| Token source URL | The scanner knows which page or response generates each fresh token |
+| Token refresh behavior | Active scan can refresh per-request or one-time tokens before submitting payloads |
+| Auth failure rate | 401, 403, 419, redirect-to-login, and JSON/body CSRF errors are measured during authenticated jobs |
+| Thread safety | Scan threads do not race or reuse one-time tokens in ways that invalidate requests |
+
+**ZAP-specific checks:**
+
+- Configure anti-CSRF token names in ZAP options or the equivalent automation/API setup when the application uses framework-specific token names.
+- Enable and validate active-scan anti-CSRF handling when mutation requests need fresh tokens.
+- Use cookie or header session management when server-side session state is visible in HTTP messages.
+- Use browser-based authentication or custom session/authentication scripts when the application stores session state in the browser.
+- Add success/failure tags or post-scan checks for protected POST, PUT, PATCH, and DELETE routes so the report can distinguish "scanned while authenticated" from "requested but rejected."
+
+**Failure patterns to flag:**
+
+```text
+POST /account/email      403 {"error":"csrf_invalid"}
+PATCH /profile           419 "Page Expired"
+POST /api/billing/card   302 Location: /login
+PUT /api/settings        200 {"ok":false,"reason":"missing csrf token"}
+```
+
+**Finding classification:** Authenticated scan configured but protected mutation requests fail due to missing session or CSRF handling is **High**. Missing evidence that authenticated state is preserved across scan jobs is **Medium**. Anti-CSRF token names unknown for apps with state-changing forms is **Medium**. Reusing one privileged session across role-specific scans is **High** because it can hide authorization gaps.
 
 ---
 
@@ -514,6 +559,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Setting | Status | Evidence |
 |---------|--------|---------|
 | Authenticated scanning | Yes/No | <auth method> |
+| Authenticated state preserved | Yes/No/Not Evaluable | <protected URL and failure-rate evidence> |
+| Anti-CSRF token handling | Yes/No/Not Applicable | <token names and refresh evidence> |
 | Scope restrictions | Yes/No | <include/exclude paths> |
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
@@ -578,11 +625,13 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 2. **Skipping authenticated scanning because "it is hard to configure."** Unauthenticated DAST sees the login page and public content -- typically less than 10% of the application surface. The effort to configure authentication pays for itself immediately. Use browser-based authentication for SPAs and header-based for APIs.
 
-3. **Not excluding destructive endpoints from scan scope.** ZAP's spider will follow every link and form action it finds. If a "Delete Account" or "Reset Database" endpoint is in scope, the scanner will exercise it. Explicitly exclude destructive paths in the scan context.
+3. **Assuming login success means authenticated coverage.** A browser login can succeed while active scan requests later fail due to missing cookies, bearer headers, localStorage state, expired sessions, or anti-CSRF token refresh failures. Measure protected mutation-route success rates and inspect 401/403/419 or body-level CSRF errors before reporting authenticated scan coverage.
 
-4. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+4. **Not excluding destructive endpoints from scan scope.** ZAP's spider will follow every link and form action it finds. If a "Delete Account" or "Reset Database" endpoint is in scope, the scanner will exercise it. Explicitly exclude destructive paths in the scan context.
 
-5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
+5. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+
+6. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
 ---
 
@@ -605,6 +654,9 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP ZAP Documentation: https://www.zaproxy.org/docs/
 - ZAP Automation Framework: https://www.zaproxy.org/docs/automate/automation-framework/
 - ZAP GitHub Actions: https://www.zaproxy.org/docs/docker/github-actions/
+- ZAP Authentication Session Handling: https://www.zaproxy.org/docs/getting-further/authentication/session-handling/
+- ZAP Anti CSRF Handling: https://www.zaproxy.org/docs/desktop/start/features/anticsrf/
+- ZAP Active Scan Options: https://www.zaproxy.org/docs/desktop/ui/dialogs/options/ascan/
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
 - OWASP API Security Top 10: https://owasp.org/API-Security/
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
@@ -615,3 +667,4 @@ This skill processes DAST configuration files that may contain target URLs, auth
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
+- **1.0.1** -- Add authenticated scan state and anti-CSRF token refresh evidence for ZAP and CI DAST reviews.
