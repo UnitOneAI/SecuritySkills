@@ -87,10 +87,13 @@ Search for sensitive values stored outside platform-protected mechanisms.
 
 ```text
 SharedPreferences.*(token|secret|password|refresh|session|jwt)
+put(String|Long|Int|Boolean|Float|StringSet)\s*\([^)]*(token|secret|password|refresh|session|jwt)
 getExternalStorage|Environment.getExternalStorageDirectory
 android:allowBackup="true"
 Log\.(d|i|w|e)\(.*(token|secret|password|authorization)
 ```
+
+Review multi-line preference writes explicitly. Android code often splits `getSharedPreferences(...).edit()` and `putString("refresh_token", value)` across separate lines, so the sensitive-key sink may appear only on the `putString`/`put...` line rather than on the `SharedPreferences` line.
 
 **iOS patterns**
 
