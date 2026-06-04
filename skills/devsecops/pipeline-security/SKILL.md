@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -276,12 +276,14 @@ Treat dependency and build caches as pipeline inputs. Trace every explicit cache
 - Save conditions, especially `if:` guards and whether failed or untrusted jobs can still save a cache.
 - Restore consumers, including later jobs, release jobs, deployment jobs, and jobs with secrets, write tokens, or OIDC.
 - Whether cached paths can contain executable or build-influencing content such as `node_modules`, `.m2`, `.gradle`, `.cargo`, `.venv`, `.tox`, `.turbo`, `dist`, `build`, generated tools, or compiled objects.
+- Whether restore keys are scoped by lockfile hash, branch/ref, trusted event, or other high-entropy boundary rather than broad prefixes such as `npm-cache-`, `build-`, or `${{ runner.os }}-`.
 - Whether the workflow revalidates restored content with a locked reinstall, checksum verification, clean rebuild, signature/provenance check, or exact cache-hit requirement before use.
 
 **Dangerous patterns:**
 
 - `pull_request_target` or other privileged events checkout PR-controlled code and then save caches consumed by privileged jobs.
 - Broad `restore-keys` allow a privileged workflow to restore a cache written from a less-trusted branch, fork, or event.
+- Unscoped prefix-only restore keys are used for executable/build-influencing caches in privileged workflows without branch/ref or lockfile-hash scoping.
 - A workflow treats any `cache-hit` or partial restore as authoritative and skips install, build, test, checksum, or provenance validation.
 - Setup actions such as `actions/setup-node`, `actions/setup-python`, `actions/setup-java`, `actions/setup-go`, or `actions/setup-dotnet` enable package-manager caching in elevated workflows without bounding the cache key to trusted lock files and refs.
 
@@ -291,9 +293,9 @@ Treat dependency and build caches as pipeline inputs. Trace every explicit cache
 
 **Severity guidance:**
 
-- **High:** Untrusted or PR-controlled code can save executable, generated, or dependency caches that are later restored by privileged build, release, deployment, or secret-bearing jobs.
+- **High:** Untrusted or PR-controlled code can save executable, generated, or dependency caches that are later restored by privileged build, release, deployment, or secret-bearing jobs. Also high when privileged workflows restore executable/build-influencing caches with unscoped prefix-only restore keys and then skip exact-hit validation, locked reinstall, clean rebuild, or integrity checks.
 - **Medium:** Broad restore keys, implicit setup-action caching, or partial restore behavior crosses branches/events without enough evidence that restored content is revalidated before use.
-- **Low/Info:** PR workflows restore read-only dependency caches but immediately perform locked reinstall or integrity checks, have no secrets/write tokens, and do not feed privileged consumers.
+- **Low/Info:** PR workflows restore read-only dependency caches scoped to the same PR/merge ref or lockfile hash, immediately perform locked reinstall or integrity checks, have no secrets/write tokens, and do not feed privileged consumers.
 
 **Grep patterns:**
 
@@ -629,5 +631,6 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.1.1** -- Tightened restore-key scoping requirements and high-severity guidance for unscoped prefix-only restore keys in privileged executable/build cache paths.
 - **1.1.0** -- Added cache trust-boundary review guidance for dependency and build caches, restore-key evidence collection, severity triage, CICD-SEC-9 integrity validation linkage, and cache evidence reporting.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
