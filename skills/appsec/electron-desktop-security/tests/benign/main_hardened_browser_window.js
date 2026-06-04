@@ -11,6 +11,14 @@ function isAllowedExternalUrl(rawUrl) {
   }
 }
 
+function isTrustedAppUrl(rawUrl) {
+  try {
+    return new URL(rawUrl).origin === TRUSTED_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
 function createMainWindow() {
   const win = new BrowserWindow({
     webPreferences: {
@@ -25,7 +33,7 @@ function createMainWindow() {
   win.loadURL(TRUSTED_ORIGIN);
 
   win.webContents.on("will-navigate", (event, targetUrl) => {
-    if (!targetUrl.startsWith(TRUSTED_ORIGIN)) {
+    if (!isTrustedAppUrl(targetUrl)) {
       event.preventDefault();
     }
   });

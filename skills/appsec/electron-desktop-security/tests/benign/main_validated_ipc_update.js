@@ -8,7 +8,18 @@ const UPDATE_FEED = "https://updates.example.com/desktop/stable";
 
 function assertTrustedSender(event) {
   const senderUrl = event.senderFrame && event.senderFrame.url;
-  if (!senderUrl || !senderUrl.startsWith(TRUSTED_ORIGIN)) {
+  if (!senderUrl) {
+    throw new Error("untrusted sender");
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(senderUrl);
+  } catch {
+    throw new Error("untrusted sender");
+  }
+
+  if (parsedUrl.origin !== TRUSTED_ORIGIN) {
     throw new Error("untrusted sender");
   }
 }
