@@ -12,7 +12,7 @@ phase: [protect, detect]
 frameworks: [OWASP-Top-10, OWASP-ASVS-4.0.3, OWASP-API-Security-2023]
 difficulty: intermediate
 time_estimate: "varies by engagement"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -212,6 +212,11 @@ Security-Relevant Files: [count]
 REVIEW SCOPE
   [Description of what the PR changes and why it is security-relevant]
 
+FRAMEWORK SOURCE CHECK
+  OWASP Top 10 Source: [URL]
+  Source Date Checked: [YYYY-MM-DD]
+  Source Status: [Current / Stale / Unavailable]
+
 VERDICT: [Approved / Approved with Conditions / Changes Requested / Blocked]
 
 FINDINGS
@@ -357,9 +362,16 @@ IMPORTANT: This role bundle is designed to be injection-hardened.
 
 ## References
 
-- **OWASP Top 10 (2021)** — https://owasp.org/www-project-top-10/ — Primary web application vulnerability classification. Used as the structured checklist in PR reviews and application assessments.
+- **OWASP Top 10 (2021)** — https://owasp.org/www-project-top-ten/ — Primary web application vulnerability classification. Used as the structured checklist in PR reviews and application assessments.
 - **OWASP Application Security Verification Standard (ASVS) 4.0.3** — https://owasp.org/www-project-application-security-verification-standard/ — Comprehensive security requirements standard. Defines the depth of verification expected at each assurance level.
 - **OWASP API Security Top 10 (2023)** — https://owasp.org/www-project-api-security/ — API-specific vulnerability classification used in API security assessments.
 - **OWASP Top 10 for LLM Applications** — https://owasp.org/www-project-top-10-for-large-language-model-applications/ — LLM-specific risk framework used in AI feature reviews.
 - **CWE (Common Weakness Enumeration)** — https://cwe.mitre.org/ — Vulnerability classification system used to categorize code review findings.
 - **OWASP Threat Modeling** — https://owasp.org/www-community/Threat_Modeling — Methodology reference for the threat modeling step in new application reviews.
+
+---
+
+## Changelog
+
+- **1.0.1** — Refresh the OWASP Top 10 source URL and require source-status evidence in PR review outputs.
+- **1.0.0** — Initial role bundle for AppSec design, PR, API, and AI feature reviews.
