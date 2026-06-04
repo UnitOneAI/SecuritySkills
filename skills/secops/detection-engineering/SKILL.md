@@ -7,7 +7,7 @@ description: >
   Sigma rules, ATT&CK coverage gaps, or asks "how do I detect this technique?"
   Produces Sigma-formatted detection rules, ADS documentation, and coverage
   heatmap methodology for systematic detection program management.
-tags: [secops, detection, sigma, mitre-attack]
+tags: [secops, detection, sigma, mitre-attack, source-validation]
 role: [soc-analyst, security-engineer]
 phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
@@ -110,6 +110,17 @@ Before writing the rule, enumerate:
 ### Step 3: Author the Sigma Rule
 
 Write the detection rule following the Sigma specification (sigmahq.io).
+
+Before claiming Sigma conformance, record the current source evidence used for the rule review:
+
+| Source evidence | Required value |
+|-----------------|----------------|
+| `sigma_specification_source` | Current Sigma rules documentation, such as `https://sigmahq.io/docs/basics/rules.html` |
+| `sigma_rule_convention_source` | Current SigmaHQ rule convention source, such as `https://sigmahq.io/sigma-specification/sigmahq/sigmahq-rule-convention.html` |
+| `source_reviewed_at` | Review date in YYYY-MM-DD format |
+| `source_status` | `reachable`, `redirected`, or `stale`; stale sources must be replaced before final approval |
+
+Do not treat a rule as Sigma-conformant when the only supporting source is stale, unreachable, or a redirected URL whose final target was not recorded.
 
 **Sigma Rule Structure:**
 
@@ -367,6 +378,7 @@ Produce detection engineering deliverables in this structure:
 **Date:** [YYYY-MM-DD]
 **Skill:** detection-engineering v1.0.0
 **Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
+**Sigma source evidence:** [specification source URL, convention source URL, reviewed date, source status]
 
 ### ATT&CK Technique Summary
 | Field | Value |
@@ -430,6 +442,8 @@ Key ATT&CK tactics relevant to detection engineering:
 Sigma is a generic and open signature format for SIEM systems. It allows writing detection rules in a platform-agnostic YAML format that can be converted to the query language of any supported SIEM backend.
 
 - **Specification:** https://sigmahq.io/docs/guide/getting-started.html
+- **Rule structure documentation:** https://sigmahq.io/docs/basics/rules.html
+- **SigmaHQ rule conventions:** https://sigmahq.io/sigma-specification/sigmahq/sigmahq-rule-convention.html
 - **Rule repository:** https://github.com/SigmaHQ/sigma (4000+ community rules)
 - **Conversion tool:** `sigma-cli` (https://github.com/SigmaHQ/sigma-cli) converts Sigma to KQL, SPL, EQL, Lucene, and other query languages
 - **Backends:** pySigma backends exist for Splunk, Microsoft Sentinel, Elasticsearch, Chronicle, QRadar, and others
@@ -521,4 +535,5 @@ This skill processes user-supplied content that may include log samples, detecti
 9. **Atomic Red Team** -- https://github.com/redcanaryco/atomic-red-team
 10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
 11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
-12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+12. **Sigma Rules Documentation** -- https://sigmahq.io/docs/basics/rules.html
+13. **SigmaHQ Rule Conventions** -- https://sigmahq.io/sigma-specification/sigmahq/sigmahq-rule-convention.html
