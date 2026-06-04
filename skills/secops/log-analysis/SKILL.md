@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -108,7 +108,8 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | Log Source | Platform | Key Events | ATT&CK Data Source |
 |------------|----------|------------|-------------------|
 | Sysmon (Windows) | Windows | Process creation (1), network connection (3), file creation (11), registry (12/13/14), DNS query (22) | Process (DS0009), File (DS0022), Windows Registry (DS0024) |
-| Windows Security 4688 | Windows | Process creation with command line (requires audit policy) | Process (DS0009) |
+| Windows Security 4688 | Windows | Process creation; command line only when Audit Process Creation and Include command line in process creation events are enabled | Process (DS0009) |
+| PowerShell Operational logs | Windows / cross-platform | Script block logging, module logging, provider and command lifecycle events; channel depends on Windows PowerShell, PowerShell 7, Linux, or macOS | Command (DS0017), Process (DS0009) |
 | EDR telemetry | Endpoint | Process tree, file modifications, network connections, loaded modules | Process (DS0009), File (DS0022), Module (DS0011) |
 | Linux auditd | Linux | Syscall logging, file access, process execution, user commands | Process (DS0009), File (DS0022) |
 
@@ -189,6 +190,33 @@ Sysmon (System Monitor) provides enhanced endpoint telemetry beyond native Windo
 | **22** | DNSEvent | DNS queries with process context -- C2 domain resolution |
 | **23** | FileDelete | File deletion with archiving -- anti-forensics detection |
 | **25** | ProcessTampering | Process image change -- process hollowing/herpaderping |
+
+### Step 3A: Windows Command-Line and PowerShell Evidence Gates
+
+Windows process and PowerShell logs can be over-interpreted when analysts treat a process name as proof of command or script content. Before assigning high confidence to `cmd.exe`, `powershell.exe`, or `pwsh` activity, verify collection state and evidence completeness.
+
+**Required evidence checks:**
+
+| Gate | Evidence to record | Confidence rule |
+|------|--------------------|-----------------|
+| 4688 collection state | Whether Audit Process Creation is enabled and whether Include command line in process creation events is enabled | If Event 4688 exists but `Process Command Line` is absent, report a visibility gap and do not claim full command evidence |
+| Command-line field presence | Process name, parent process, PID, logon/session identifiers, and exact command-line field status | Process name plus parent-child chain is context, not proof of arguments; downgrade unless corroborated |
+| PowerShell version and channel | Windows PowerShell 5.1 `Microsoft-Windows-PowerShell/Operational`, PowerShell 7 `PowerShellCore/Operational`, Linux journald/syslog, or macOS unified log | Name the channel and version before comparing event IDs or assuming 4104 availability |
+| Script Block Logging | Whether Event ID 4104 or equivalent script block telemetry is enabled, collected, and reviewed | If 4104 or equivalent script content is missing, do not infer executed script content from 4688 alone |
+| 4688 to 4104 correlation | Host, user, process ID, logon/session ID, time window, ScriptBlockId, and collector source | Treat uncorrelated script blocks as supporting context, not definitive evidence for the process event |
+| Sysmon or EDR fallback | Sysmon Event ID 1 or EDR process tree, command line, parent, hashes, signatures, and collection coverage | Use as enrichment only after verifying deployment and central collection state |
+| Sensitive data handling | Redaction status for command lines, ScriptBlockText, tokens, passwords, URLs, and user data; Protected Event Logging or collector-side controls where available | Never paste secrets into findings; unprotected sensitive telemetry is both evidence and a handling risk |
+
+**What to look for:**
+
+```
+LOG-WINPROC-01: Event 4688 treated as full command-line evidence without proving command-line auditing policy and field presence
+LOG-WINPROC-02: PowerShell, cmd, or pwsh process name treated as high-confidence malicious evidence without command-line, script block, Sysmon, EDR, network, file, or baseline corroboration
+LOG-PWSH-01: PowerShell process creation reviewed without checking Script Block Logging Event ID 4104 or equivalent script-content telemetry
+LOG-PWSH-02: PowerShell version, platform, or log channel unspecified, causing Windows PowerShell 5.1, PowerShell 7, Linux, or macOS telemetry to be conflated
+LOG-PWSH-03: Command-line or ScriptBlockText evidence included in reports without redacting passwords, tokens, private URLs, or user data
+LOG-EDR-01: Sysmon or EDR process telemetry assumed available without verifying deployment, collector coverage, or the relevant event fields
+```
 
 ### Step 4: Linux Authentication Log Patterns
 
@@ -337,7 +365,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.1.0
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -351,18 +379,22 @@ Produce log analysis findings in this structure:
 | Systems | [Hostnames, IPs, or network segments] |
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
+| Telemetry State | [Collection policies, enabled channels, known gaps] |
 
 ### Findings Summary
-| # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
-|---|---------|----------|-------------------|------------|----------|
-| 1 | [Description] | [P1-P4] | [T1078 or N/A] | [Source] | [Key event reference] |
-| 2 | [Description] | [P1-P4] | [T1078 or N/A] | [Source] | [Key event reference] |
+| # | Finding | Severity | Confidence | ATT&CK Technique | Log Source | Evidence |
+|---|---------|----------|------------|-------------------|------------|----------|
+| 1 | [Description] | [P1-P4] | [High / Medium / Low] | [T1078 or N/A] | [Source] | [Key event reference] |
+| 2 | [Description] | [P1-P4] | [High / Medium / Low] | [T1078 or N/A] | [Source] | [Key event reference] |
 
 ### Detailed Findings
 #### Finding 1: [Title]
 **Severity:** [P1-P4]
+**Confidence:** [High / Medium / Low, with reason]
 **ATT&CK Mapping:** [Technique ID -- Name]
 **Log Source:** [Source]
+**Evidence Completeness:** [Command-line present? Script block present? Sysmon/EDR enrichment?]
+**Sensitive Data Handling:** [Redacted / Protected logging / Not applicable]
 **Evidence:**
 [Relevant log entries, timestamps, and entity details]
 
@@ -376,6 +408,12 @@ Produce log analysis findings in this structure:
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
+
+### Windows Process and PowerShell Evidence
+| Source | Channel | Event ID | Command Line Present | Script Block Present | Collection Policy Verified | Correlation | Redaction / Protection | Confidence Impact |
+|--------|---------|----------|----------------------|----------------------|----------------------------|-------------|------------------------|-------------------|
+| [Windows Security] | [Security] | [4688] | [Yes / No / Unknown] | [N/A] | [Yes / No / Unknown] | [PID/logon/time] | [Redacted / N/A] | [Impact] |
+| [PowerShell] | [Operational] | [4104] | [N/A] | [Yes / No / Unknown] | [Yes / No / Unknown] | [ScriptBlockId/PID/time] | [Protected / Redacted / Gap] | [Impact] |
 
 ### Visibility Gaps
 [Log sources that were not available but would have provided relevant data]
@@ -451,6 +489,14 @@ A single Event ID can have very different meanings depending on the context. Eve
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
+### Pitfall 6: Treating PowerShell Process Names as Script Evidence
+
+`powershell.exe`, `pwsh`, or `cmd.exe` process creation is not enough to prove malicious command content. Event 4688 may be missing command-line arguments, and script content may be unavailable unless Script Block Logging or equivalent telemetry is enabled and collected. Classify missing command-line or 4104 data as a visibility gap, then use Sysmon, EDR, network, file, baseline, or administrator-change evidence to raise confidence.
+
+### Pitfall 7: Reporting Command-Line Secrets Without Redaction
+
+Command lines and PowerShell script blocks can contain passwords, bearer tokens, private URLs, user data, and internal system details. Redact sensitive values in findings and note whether Protected Event Logging or equivalent collector-side controls protect high-detail script telemetry.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -478,3 +524,8 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+12. **Microsoft -- Command line process auditing** -- https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/command-line-process-auditing
+13. **Microsoft -- about_Logging for Windows PowerShell 5.1** -- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging?view=powershell-5.1
+14. **Microsoft -- about_Logging_Windows for PowerShell 7** -- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_windows?view=powershell-7.6
+15. **Microsoft -- about_Logging_Non-Windows** -- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_non-windows?view=powershell-7.6
+16. **MITRE ATT&CK Data Component DC0032 -- Process Creation** -- https://attack.mitre.org/datacomponents/DC0032/
