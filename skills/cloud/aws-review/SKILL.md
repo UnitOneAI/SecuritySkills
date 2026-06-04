@@ -3,10 +3,10 @@ name: aws-review
 description: >
   Performs an AWS security posture review against the CIS Amazon Web Services
   Foundations Benchmark v3.0.0. Auto-invoked when reviewing AWS infrastructure,
-  IAM policies, S3 configurations, CloudTrail settings, VPC security groups, or
-  RDS encryption. Walks through all five benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
+  IAM policies, S3 configurations, CloudFront-backed S3 origins, CloudTrail
+  settings, VPC security groups, or RDS encryption. Walks through all five
+  benchmark sections, evaluates each recommendation, and produces a prioritized
+  findings report with remediation guidance mapped to specific CIS control IDs.
 tags: [cloud, aws, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
@@ -38,7 +38,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Reviewing AWS infrastructure-as-code before deployment
 - Assessing an existing AWS environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
-- Evaluating IAM policies, S3 bucket configurations, CloudTrail settings, VPC security groups, or RDS encryption configurations
+- Evaluating IAM policies, S3 bucket configurations, CloudFront-backed S3 origins, CloudTrail settings, VPC security groups, or RDS encryption configurations
 - Onboarding a new AWS account into a security program
 
 ---
@@ -53,6 +53,9 @@ The CIS Amazon Web Services Foundations Benchmark v3.0.0 is a consensus-driven s
 - AWS CLI output or configuration exports (if reviewing a live environment)
 - IAM policy documents (JSON)
 - S3 bucket policies and ACL configurations
+- CloudFront distribution, origin access control (OAC), origin access identity
+  (OAI), and S3 origin bucket policy definitions when S3 content is served
+  through CloudFront
 - VPC, security group, and NACL definitions
 - CloudTrail and CloudWatch configuration files
 
@@ -76,6 +79,11 @@ Use Glob to locate all AWS-related infrastructure definitions.
 **/terraform/**/*.tf
 **/iam-policies/**/*.json
 **/policies/**/*.json
+**/cloudfront*
+**/distributions/**/*.json
+**/cdn/**/*.tf
+**/cdn/**/*.yaml
+**/cdn/**/*.json
 ```
 
 Also locate supporting configuration:
@@ -199,7 +207,8 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **Confusing CloudTrail multi-region with organization trail.** CIS 3.1 requires multi-region, not necessarily an organization trail. Both are valid, but the control checks `is_multi_region_trail`.
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
-6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+6. **Treating CloudFront as proof that an S3 bucket is private.** A bucket served through CloudFront still needs a private S3 origin posture: OAC or legacy OAI evidence, bucket policy scoped to the distribution, and no public website endpoint exposure. Block Public Access alone does not prove CloudFront is the only access path.
+7. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
 
 ---
 
@@ -223,6 +232,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS Security Best Practices: https://docs.aws.amazon.com/security/
 - AWS IAM Best Practices: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
+- Amazon CloudFront: Restrict access to an Amazon S3 origin: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html
+- Amazon S3: Blocking public access to your Amazon S3 storage: https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs

@@ -215,6 +215,53 @@ Also verify account-level public access block:
 aws_s3_account_public_access_block
 ```
 
+### Supplemental S3/CloudFront origin access evidence
+
+When an S3 bucket is used as a CloudFront origin, do not mark the storage posture as passing solely because a distribution exists or because bucket-level Block Public Access is configured. Verify that CloudFront is the only intended read path and that direct S3 access remains blocked.
+
+**Pass evidence for private S3 origins behind CloudFront:**
+
+```hcl
+resource "aws_cloudfront_origin_access_control" "site" {
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_distribution" "site" {
+  origin {
+    domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.site.id
+  }
+}
+```
+
+Bucket policy evidence should grant CloudFront access through the service principal and scope access to the distribution ARN:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {"Service": "cloudfront.amazonaws.com"},
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::example-bucket/*",
+  "Condition": {
+    "StringEquals": {
+      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EDFDVBD6EXAMPLE"
+    }
+  }
+}
+```
+
+**Fail or not-evaluable evidence:**
+
+- The CloudFront origin points at an S3 website endpoint. Website endpoints are custom origins and cannot use OAC or OAI.
+- The distribution has an S3 origin but no `origin_access_control_id`, no `origin_access_identity`, and no equivalent CloudFormation `OriginAccessControlId`.
+- The bucket policy grants `Principal: "*"` or broad account access for `s3:GetObject` without a CloudFront `AWS:SourceArn` condition.
+- OAC `signing_behavior` is `never`, because the S3 origin must then be publicly accessible for CloudFront to read it.
+- Legacy OAI is present but the review involves SSE-KMS, dynamic S3 requests, or newer opt-in Regions. Flag this as a migration or hardening finding and prefer OAC.
+
+**Finding classification:** Public S3 read access for a CloudFront-backed origin is **Critical** when sensitive data may be exposed, otherwise **High**. Missing or ambiguous OAC/OAI evidence is **Medium** until direct S3 access can be ruled out.
+
 ### CIS 2.2.1 -- Ensure EBS Volume Encryption is Enabled in all Regions
 
 Check for default EBS encryption:
