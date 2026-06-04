@@ -6,14 +6,14 @@ description: >
   Key Management). Auto-invoked when reviewing secret handling patterns, vault
   configurations, .env files, or credential rotation policies. Produces a secrets
   management assessment covering detection patterns, rotation automation, vault
-  integration, and agent-specific credential handling.
+  integration, release artifact exposure, and agent-specific credential handling.
 tags: [devsecops, secrets, vault, rotation]
 role: [security-engineer, devsecops]
 phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Secrets Management Review
 
-A structured, repeatable process for evaluating secrets management practices against the OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for Key Management). This skill covers secret detection patterns, rotation automation, vault and cloud secrets manager integration, agent-specific credential handling, .env file exposure, and git history secret leaks. All findings reference framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating secrets management practices against the OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for Key Management). This skill covers secret detection patterns, rotation automation, vault and cloud secrets manager integration, agent-specific credential handling, .env file exposure, git history secret leaks, and release artifact exposure in packages, container images, CI uploads, source maps, and release bundles. All findings reference framework controls with severity ratings and actionable remediation.
 
 **Important:** This skill analyzes detection patterns and configuration practices. It never extracts, logs, or displays actual secret values. All regex patterns shown are for detection tooling configuration, not for secret extraction.
 
@@ -36,6 +36,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Security review of application repositories for hardcoded credentials.
 - Evaluation of secrets management architecture (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault).
 - CI/CD pipeline credential hygiene assessment.
+- Release artifact review for packages, container images, source maps, CI uploads, installers, and support bundles.
 - Incident response after a secret exposure event.
 - Compliance audits requiring NIST SP 800-57 key management alignment.
 - Architecture review of agentic systems that require credential access.
@@ -98,6 +99,16 @@ Use Glob and Grep to locate files that commonly contain or reference secrets.
 **/Dockerfile*
 **/docker-compose*
 **/docker-compose*.yml
+
+# Package and release artifact definitions
+**/package.json
+**/.npmignore
+**/pyproject.toml
+**/MANIFEST.in
+**/setup.cfg
+**/setup.py
+**/*.nuspec
+**/release*
 
 # Git configuration
 **/.gitignore
@@ -173,6 +184,8 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
+**Release artifact false-positive calibration:** Public build arguments, `NEXT_PUBLIC_*` browser configuration, static release channels, and BuildKit `--mount=type=secret` references are not findings by themselves. Flag them only when evidence shows credential material is persisted in a released package, image config/history/layer, source map, CI artifact, release archive, or uploaded support bundle.
+
 #### 2.3 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
@@ -240,11 +253,64 @@ Secrets removed from current files may still exist in git history. Verify:
 
 ---
 
-### Step 4: Vault and Cloud Secrets Manager Integration (NIST SP 800-57, Section 5)
+### Step 4: Release Artifact and Package Exposure
+
+Secrets can leave the source tree through generated artifacts even when the checked-in repository looks clean. Review the build and release boundary when the project publishes packages, container images, source maps, release zips, installers, CI artifacts, or support bundles.
+
+#### 4.1 Container Image and Build Metadata Exposure
+
+Check Dockerfiles, compose files, and available image evidence for secrets that persist beyond the build step:
+
+- `ARG` or `ENV` values that carry tokens, passwords, signing keys, registry credentials, cloud keys, or license keys.
+- `RUN` commands that write credentials into package manager configs (`.npmrc`, `.pypirc`, `pip.conf`, `nuget.config`, `.netrc`) or shell history.
+- Multi-stage builds that copy credential files from builder stages into final images.
+- Missing `.dockerignore` entries for `.env`, `.npmrc`, private keys, credentials files, and local config.
+- Available image history, config, layer scan, or provenance evidence that includes credential material.
+
+**Finding classification:** Verified credential material in a public or customer-facing image config, history, provenance, or layer is **Critical**. Secret-consuming Docker builds with no final-artifact evidence are **Medium** by default and **High** when the image is published publicly or used in production. BuildKit secret mounts with no persistence evidence are **Not a Finding**.
+
+#### 4.2 Published Package and Release Archive Exposure
+
+Review package manifests and release definitions for files that can be shipped even if the source tree is otherwise clean:
+
+- npm: `package.json` `files`, `.npmignore`, `.gitignore`, generated `dist/**`, source maps, `.npmrc`, `.env.*`, and registry-token config.
+- Python: `pyproject.toml`, `setup.cfg`, `setup.py`, `MANIFEST.in`, wheel/sdist include rules, and generated package data.
+- NuGet/Ruby/Java or other ecosystems: package spec include/exclude rules, generated resources, and private registry configs.
+- Release zips, installers, app bundles, crash reports, coverage reports, Playwright reports, and support bundles uploaded by CI.
+
+If packed-artifact evidence is unavailable, record `Not Evaluable` rather than inventing a finding. Escalate only when source package rules or CI upload paths make inclusion likely and the release channel is public or customer-facing.
+
+**Finding classification:** Verified real credential material in a published package, release zip, installer, generated source map, or uploaded CI artifact is **Critical**. Secret-adjacent files included in package rules without actual credential evidence are **Medium**. Intentionally public config files or placeholder examples are **Not a Finding**.
+
+#### 4.3 CI Artifact and Post-Build Secret Scanning
+
+Check whether the build produces artifacts after the normal repository scan boundary:
+
+- `actions/upload-artifact`, GitLab artifacts, Jenkins archives, release uploads, coverage reports, test reports, build logs, source maps, and crash dumps.
+- Build steps that run with secrets in the environment and then upload generated directories.
+- Secret scanning that runs only before build but not on generated artifacts.
+- Artifact retention, visibility, and access controls.
+
+**Finding classification:** A generated artifact containing real unredacted credentials is **Critical**. Public or broadly shared artifacts generated from secret-bearing builds without post-build scan evidence are **High**. Private artifacts with limited access and no credential evidence are **Medium** as a process gap, not a numbered secret finding unless a credential is present.
+
+#### 4.4 Release Artifact Evidence Table
+
+When release artifacts are in scope, include this table in the report:
+
+| Artifact Type | Evidence Reviewed | Secret-Bearing Inputs | Scan Scope | Result | Confidence | Not Evaluable Reason |
+|---------------|-------------------|-----------------------|------------|--------|------------|----------------------|
+| Docker image | Dockerfile + image config/history/layer scan, if available | ARG/ENV/secrets used in build | Final image + published metadata | Clean / Finding / Not Evaluable | High/Med/Low | <reason> |
+| npm/PyPI package | package manifest + pack/wheel/sdist contents, if available | Build env, registry config, generated files | Packed artifact contents | Clean / Finding / Not Evaluable | High/Med/Low | <reason> |
+| CI upload | workflow upload paths + generated directories, if available | CI secrets used before upload | Uploaded artifact paths | Clean / Finding / Not Evaluable | High/Med/Low | <reason> |
+| Release archive | release definition + archive contents, if available | Build-time config, source maps, installers | Public/customer release | Clean / Finding / Not Evaluable | High/Med/Low | <reason> |
+
+---
+
+### Step 5: Vault and Cloud Secrets Manager Integration (NIST SP 800-57, Section 5)
 
 Evaluate the secrets management architecture against NIST SP 800-57 key management lifecycle requirements.
 
-#### 4.1 Centralized Secrets Manager Deployment
+#### 5.1 Centralized Secrets Manager Deployment
 
 Verify that a centralized secrets manager is deployed:
 
@@ -277,7 +343,7 @@ resource "vault_audit" "syslog" {
 
 ---
 
-#### 4.2 Rotation Automation (NIST SP 800-57, Section 5.3 -- Cryptoperiods)
+#### 5.2 Rotation Automation (NIST SP 800-57, Section 5.3 -- Cryptoperiods)
 
 NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key type. For authentication secrets:
 
@@ -300,17 +366,17 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 
 ---
 
-### Step 5: Agent-Specific Secrets Management
+### Step 6: Agent-Specific Secrets Management
 
 For agentic systems (AI agents, automation bots, CI/CD agents), evaluate credential handling patterns.
 
-#### 5.1 Short-Lived Tokens
+#### 6.1 Short-Lived Tokens
 
 - Agents should use short-lived tokens (OAuth2 client credentials with short TTL, Vault dynamic secrets, STS temporary credentials).
 - Token TTL should match task duration (not 24 hours for a 5-minute task).
 - Token scope should be minimized to only required permissions.
 
-#### 5.2 Just-In-Time (JIT) Credentials
+#### 6.2 Just-In-Time (JIT) Credentials
 
 - Agents should request credentials at execution time, not store them at rest.
 - Vault AppRole or Kubernetes service account token injection is preferred over static API keys.
@@ -356,9 +422,9 @@ spec:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **Critical** | Committed secrets in current codebase or git history (unrotated); real credentials in public packages, release archives, source maps, CI artifacts, or container image metadata/layers; no secret detection tooling; .env with production credentials committed. |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault; public release artifacts generated from secret-bearing builds without post-build scan evidence. |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection); package or CI artifact include rules that are secret-adjacent but lack packed-artifact evidence. |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -380,6 +446,14 @@ spec:
 |------|----------|-----------|-------------|--------------|-------------|
 | Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
 | detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
+
+### Release Artifact Exposure Evidence
+
+| Artifact Type | Evidence Reviewed | Secret-Bearing Inputs | Scan Scope | Result | Confidence | Not Evaluable Reason |
+|---------------|-------------------|-----------------------|------------|--------|------------|----------------------|
+| Docker image | Dockerfile + image history/layers | NPM_TOKEN during build | Final image | Clean | Medium | Layer scan unavailable |
+| npm package | package.json + npm pack output | Registry config | Packed tarball | Finding / Clean / Not Evaluable | High/Med/Low | <reason> |
+| CI upload | workflow upload paths | API_TOKEN env in build step | dist/**, reports/** | Finding / Clean / Not Evaluable | High/Med/Low | <reason> |
 
 ### Secrets Inventory (by type, NOT values)
 
@@ -442,6 +516,8 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Scanning source but not release artifacts.** Secret scanners run before the build can miss generated source maps, packaged `.npmrc` files, container image history, provenance metadata, coverage reports, and CI-uploaded support bundles. Treat the published artifact as a separate evidence boundary.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -466,10 +542,16 @@ This skill processes configuration files and code that may contain secret values
 - detect-secrets: https://github.com/Yelp/detect-secrets
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
+- Docker Build secrets: https://docs.docker.com/build/building/secrets/
+- Docker Build variables: https://docs.docker.com/build/building/variables/
+- npm package publishing: https://docs.npmjs.com/cli/publish/
+- GitHub secret scanning detection scope: https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-detection-scope
+- GitHub Actions artifact uploads: https://github.com/actions/upload-artifact
 
 ---
 
 ## Changelog
 
+- **1.0.2** -- Add release artifact exposure coverage for container images, package tarballs, CI uploads, source maps, and release archives, including false-positive calibration and Not Evaluable reporting.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
