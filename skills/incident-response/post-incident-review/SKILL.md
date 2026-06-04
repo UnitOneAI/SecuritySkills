@@ -5,15 +5,17 @@ description: >
   Post-Incident Activity guidance. Auto-invoked when an incident has been
   resolved and the team needs to conduct a blameless retrospective, reconstruct
   the timeline, perform root cause analysis, document lessons learned, and
-  track remediation actions. Produces a PIR report with metrics (MTTD, MTTR,
-  MTTC), control failure mapping, and actionable improvement plan.
+  track remediation actions. Produces a PIR report with per-incident durations
+  (TTD, TTC, TTR), timestamp provenance and uncertainty, aggregate mean metrics
+  only when an incident population is provided, control failure mapping, and
+  actionable improvement plan.
 tags: [incident-response, pir, lessons-learned]
 role: [soc-analyst, security-engineer, vciso]
 phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -26,7 +28,7 @@ argument-hint: "[target-file-or-directory]"
 > **Framework:** NIST SP 800-61 Rev 2 (Section 3.4: Post-Incident Activity)
 > **Role:** SOC Analyst, Security Engineer, vCISO
 > **Time:** 30-60 min
-> **Output:** Post-incident review report with blameless retrospective, root cause analysis, control failure mapping, metrics (MTTD, MTTR, MTTC), lessons learned, and remediation tracking plan
+> **Output:** Post-incident review report with blameless retrospective, root cause analysis, control failure mapping, per-incident durations (TTD, TTC, TTR), timestamp provenance and uncertainty, aggregate metrics when applicable, lessons learned, and remediation tracking plan
 
 ---
 
@@ -57,7 +59,9 @@ Before conducting the PIR, gather or confirm:
 - [ ] **Evidence and forensic findings** -- Summary of forensic analysis results, root cause indicators, and attacker TTPs identified.
 - [ ] **Existing controls** -- Documentation of security controls that were in place at the time of the incident (detection rules, access controls, network segmentation, patching cadence).
 - [ ] **Previous PIR reports** -- Any prior post-incident reviews for similar incident types, to identify recurring patterns.
-- [ ] **Metrics data** -- Timestamps needed to compute MTTD, MTTR, and MTTC (see Step 4).
+- [ ] **Metrics data** -- Timestamps and endpoint definitions needed to compute per-incident Time to Detect (TTD), Time to Contain (TTC), and Time to Recover (TTR); reserve MTTD, MTTC, and MTTR for aggregate reporting across multiple incidents (see Step 4).
+- [ ] **Timestamp quality** -- Source system, source timezone, clock synchronization notes, and confidence level for each timestamp (`Exact`, `Estimated`, `Bounded range`, or `Unknown`).
+- [ ] **Recovery objective** -- The recovery milestone selected for TTR (for example, customer traffic restored, business function restored, data integrity validation complete, or heightened monitoring ended).
 
 ---
 
@@ -93,21 +97,30 @@ The PIR must follow a blameless methodology. The objective is to understand what
 
 ### Step 2: Timeline Reconstruction
 
-Build a comprehensive timeline of the incident from initial compromise through closure. Include attacker actions, defender actions, and key decision points.
+Build a comprehensive timeline of the incident from initial compromise through closure. Include attacker actions, defender actions, and key decision points. Preserve timestamp uncertainty instead of converting estimates into exact timestamps.
 
 **Timeline template:**
 
-| # | Timestamp (UTC) | Event Type | Description | Source | Actor |
-|---|---|---|---|---|---|
-| 1 | [YYYY-MM-DD HH:MM] | **Compromise** | Initial access achieved by attacker | [Log source / forensic finding] | Attacker |
-| 2 | [YYYY-MM-DD HH:MM] | **Attacker Action** | Lateral movement / privilege escalation / persistence / exfiltration | [Log source] | Attacker |
-| 3 | [YYYY-MM-DD HH:MM] | **Detection** | Alert triggered / anomaly observed / user report received | [Detection source] | Defender |
-| 4 | [YYYY-MM-DD HH:MM] | **Triage** | Initial analysis and incident classification | [Analyst notes] | Defender |
-| 5 | [YYYY-MM-DD HH:MM] | **Escalation** | Incident escalated to [team/management/external] | [Communication log] | Defender |
-| 6 | [YYYY-MM-DD HH:MM] | **Containment** | Containment action implemented | [Action log] | Defender |
-| 7 | [YYYY-MM-DD HH:MM] | **Eradication** | Root cause removed, persistence mechanisms eliminated | [Action log] | Defender |
-| 8 | [YYYY-MM-DD HH:MM] | **Recovery** | Systems restored to normal operations | [Action log] | Defender |
-| 9 | [YYYY-MM-DD HH:MM] | **Closure** | Incident declared resolved | [IR report] | Defender |
+| # | Timestamp or Range (UTC) | Confidence | Event Type | Description | Source / Time Basis | Actor |
+|---|---|---|---|---|---|---|
+| 1 | [YYYY-MM-DD HH:MM or bounded range] | [Exact/Estimated/Bounded/Unknown] | **Compromise** | Initial access achieved by attacker | [Log source / forensic finding / last-known-clean and first-known-bad] | Attacker |
+| 2 | [YYYY-MM-DD HH:MM] | [Confidence] | **Attacker Action** | Lateral movement / privilege escalation / persistence / exfiltration | [Log source, source timezone, clock-skew note] | Attacker |
+| 3 | [YYYY-MM-DD HH:MM] | [Confidence] | **External Notification** | Customer, partner, or third party reported suspicious activity | [Notification source] | External |
+| 4 | [YYYY-MM-DD HH:MM] | [Confidence] | **Internal Detection** | Alert triggered / anomaly observed by internal control | [Detection source] | Defender |
+| 5 | [YYYY-MM-DD HH:MM] | [Confidence] | **Acknowledgement** | Analyst acknowledged and began triage | [Analyst notes] | Defender |
+| 6 | [YYYY-MM-DD HH:MM] | [Confidence] | **Declaration** | Incident formally declared and classified | [IR report] | Defender |
+| 7 | [YYYY-MM-DD HH:MM] | [Confidence] | **Escalation** | Incident escalated to [team/management/external] | [Communication log] | Defender |
+| 8 | [YYYY-MM-DD HH:MM] | [Confidence] | **Containment** | Effective containment action implemented | [Action log] | Defender |
+| 9 | [YYYY-MM-DD HH:MM or multiple milestones] | [Confidence] | **Recovery** | Selected recovery objective reached; secondary recovery milestones listed separately | [Action log] | Defender |
+| 10 | [YYYY-MM-DD HH:MM] | [Confidence] | **Closure** | Incident declared resolved | [IR report] | Defender |
+
+**Timestamp handling rules:**
+- Use UTC in the PIR output, but retain source timezone and clock-skew notes when evidence comes from systems with uncertain synchronization.
+- If compromise time is bounded by `last-known-clean` and `first-known-bad`, carry the range into TTD instead of selecting one endpoint without justification.
+- If an endpoint is unknown, report the related metric as `Unknown` or `Not computable`; do not replace the missing endpoint with detection time or zero.
+- If the event was prevented before compromise, TTD and dwell-time style measurements are `Not applicable`, not zero.
+- For externally detected incidents, distinguish external notification, first internal signal, analyst acknowledgement, and incident declaration.
+- For recovery, name the selected recovery objective and preserve secondary milestones such as service restoration, backlog drain, data integrity validation, and end of heightened monitoring.
 
 **Key decision points to highlight:**
 - When and why was the incident classified at a particular severity?
@@ -184,48 +197,68 @@ Organize contributing factors into categories to ensure comprehensive analysis:
 
 ### Step 4: Incident Metrics
 
-Compute the following metrics for the incident. These metrics enable trend analysis across incidents and benchmark against industry data.
+Compute per-incident durations for a single PIR. Do not label single-incident values as means. Use MTTD, MTTC, and MTTR only when calculating averages across a defined population of multiple incidents and a reporting period.
 
-#### Mean Time to Detect (MTTD)
+#### Timestamp Confidence Gate
 
-```
-MTTD = Time of Detection - Time of Initial Compromise
-     = [Detection Timestamp] - [Compromise Timestamp]
-     = [Result in hours/days]
-```
+Before computing any duration, classify each endpoint:
 
-MTTD measures how long the attacker operated undetected. Industry benchmarks (IBM Cost of a Data Breach Report, Mandiant M-Trends):
-- Median dwell time (all industries): ~10 days (improving annually)
-- Internally detected incidents: typically shorter MTTD than externally notified
+| Confidence | Use in Metrics | Required Evidence |
+|---|---|---|
+| **Exact** | May compute an exact duration | Timestamped source record with known timezone and no material clock-skew issue |
+| **Estimated** | Report an approximate duration and mark it approximate | Analyst estimate with rationale and source evidence |
+| **Bounded range** | Report a duration range | Earliest and latest plausible endpoint, such as last-known-clean and first-known-bad |
+| **Unknown** | Report `Unknown` or `Not computable` | Missing endpoint; state what evidence would narrow it |
 
-#### Mean Time to Contain (MTTC)
+#### Per-Incident Durations
 
-```
-MTTC = Time of Containment - Time of Detection
-     = [Containment Timestamp] - [Detection Timestamp]
-     = [Result in hours/days]
-```
-
-MTTC measures how quickly the team moved from detection to effective containment. A long MTTC relative to MTTD indicates response process bottlenecks.
-
-#### Mean Time to Recover (MTTR)
+Use these labels for a single incident:
 
 ```
-MTTR = Time of Recovery - Time of Detection
-     = [Recovery Timestamp] - [Detection Timestamp]
-     = [Result in hours/days]
+TTD = Time to Detect
+    = Detection Endpoint - Initial Compromise Endpoint
+
+TTC = Time to Contain
+    = Effective Containment Endpoint - Detection or Declaration Endpoint
+
+TTR = Time to Recover
+    = Selected Recovery Objective Endpoint - Detection or Declaration Endpoint
 ```
 
-MTTR measures the total response duration from detection through return to normal operations.
+Endpoint rules:
+
+- **TTD:** If the compromise endpoint is a range, calculate `TTD range = Detection - Latest Plausible Compromise` through `Detection - Earliest Plausible Compromise`. Do not report a single exact TTD when the compromise timestamp is interval-censored.
+- **Detection endpoint:** State whether the endpoint is external notification, first internal detection, analyst acknowledgement, or incident declaration. Use one consistently and include the others as timeline milestones when available.
+- **TTC:** Use the time when containment was effective, not merely when a containment task was opened.
+- **TTR:** Name the selected recovery objective. If service restoration, business recovery, validation, and monitoring end at different times, report the selected objective and list the other milestones separately.
+- **Dwell time:** If used, define it as the attacker access window from initial compromise to detection. Do not report both dwell time and TTD as duplicate rows with the same formula; use `TTD / Dwell Time` when they refer to the same endpoint pair.
+
+#### Aggregate Mean Metrics
+
+Only calculate mean metrics when the PIR includes multiple incidents or an organizational reporting period:
+
+```
+MTTD = mean(TTD values across the incident population)
+MTTC = mean(TTC values across the incident population)
+MTTR = mean(TTR values across the incident population)
+```
+
+For aggregate metrics, state:
+
+- Reporting period and incident count
+- Inclusion and exclusion criteria
+- Whether externally detected incidents are separated from internally detected incidents
+- How unknown, approximate, or bounded timestamps were handled
+- Baseline source, publication date, and methodology when comparing to external benchmarks
 
 #### Additional Metrics
 
 | Metric | Formula | What It Measures |
 |--------|---------|-----------------|
-| **Dwell Time** | Detection - Compromise | Total time attacker had access |
-| **Containment Efficiency** | MTTC / MTTR | Proportion of response time spent on containment vs. full recovery |
-| **Escalation Time** | Escalation - Detection | Time from detection to appropriate escalation |
-| **Notification Time** | Notification - Detection | Time from detection to stakeholder/regulatory notification |
+| **Containment Efficiency** | TTC / TTR | Proportion of response time spent on containment vs. full recovery |
+| **Escalation Time** | Escalation - Detection or Declaration | Time from detection/declaration to appropriate escalation |
+| **Notification Time** | Notification - Detection or Declaration | Time from detection/declaration to stakeholder/regulatory notification |
+| **Acknowledgement Time** | Acknowledgement - Detection | Time from first signal to analyst acknowledgement |
 | **Recurrence Rate** | Count of similar incidents in last 12 months | Whether root causes from prior incidents were effectively addressed |
 
 ### Step 5: Control Failure Mapping
@@ -302,7 +335,7 @@ Produce the post-incident review report with these exact sections:
 ## Post-Incident Review: [Incident ID]
 **Date of Review:** [YYYY-MM-DD]
 **Date of Incident:** [YYYY-MM-DD]
-**Skill:** post-incident-review v1.0.0
+**Skill:** post-incident-review v1.1.0
 **Framework:** NIST SP 800-61 Rev 2
 **PIR Facilitator:** [Name or "AI-assisted -- human facilitator required"]
 
@@ -322,18 +355,37 @@ root cause, and the number/priority of remediation actions identified.]
 | Data Impact | [Description or "None confirmed"] |
 
 ### Timeline
-| # | Timestamp (UTC) | Event Type | Description | Source |
-|---|---|---|---|---|
-| 1 | [timestamp] | [type] | [description] | [source] |
+| # | Timestamp or Range (UTC) | Confidence | Event Type | Description | Source / Time Basis |
+|---|---|---|---|---|---|
+| 1 | [timestamp or bounded range] | [Exact/Estimated/Bounded/Unknown] | [type] | [description] | [source, source timezone, clock-skew note] |
 
-### Metrics
-| Metric | Value | Benchmark |
-|---|---|---|
-| Dwell Time (Compromise to Detection) | [duration] | [industry benchmark] |
-| MTTD (Initial Compromise to Detection) | [duration] | [comparison to org average] |
-| MTTC (Detection to Containment) | [duration] | [comparison to org average] |
-| MTTR (Detection to Recovery) | [duration] | [comparison to org average] |
-| Escalation Time | [duration] | [SLA target] |
+### Timestamp Quality and Recovery Basis
+| Field | Value |
+|---|---|
+| Compromise Time Basis | [Exact timestamp / last-known-clean to first-known-bad range / Unknown] |
+| Detection Endpoint Used | [External notification / Internal detection / Analyst acknowledgement / Incident declaration] |
+| Containment Endpoint Used | [Effective containment event and source] |
+| Recovery Objective Used for TTR | [Service restored / business function restored / validation complete / monitoring ended / other] |
+| Secondary Recovery Milestones | [Milestone list or "None"] |
+| Clock Synchronization Notes | [Known skew, source timezone, or "No material issue identified"] |
+
+### Single-Incident Durations
+| Metric | Value or Range | Endpoint Basis | Confidence | Benchmark or Target |
+|---|---|---|---|---|
+| TTD / Dwell Time (Compromise to Detection) | [duration, range, Unknown, or Not applicable] | [compromise endpoint -> detection endpoint] | [Exact/Estimated/Bounded/Unknown] | [org target or source-dated benchmark] |
+| TTC (Detection/Declaration to Containment) | [duration, range, Unknown, or Not applicable] | [detection/declaration endpoint -> effective containment] | [confidence] | [org target] |
+| TTR (Detection/Declaration to Recovery Objective) | [duration, range, Unknown, or Not applicable] | [detection/declaration endpoint -> named recovery objective] | [confidence] | [org target] |
+| Escalation Time | [duration] | [detection/declaration endpoint -> escalation] | [confidence] | [SLA target] |
+| Notification Time | [duration] | [detection/declaration endpoint -> notification] | [confidence] | [SLA or legal target] |
+
+### Aggregate Metrics
+Include this section only when reporting across multiple incidents.
+
+| Aggregate Metric | Population / Period | Incident Count | Value | Method |
+|---|---|---|---|---|
+| MTTD | [scope and dates] | [count] | [mean duration] | [handling of unknown/ranged timestamps] |
+| MTTC | [scope and dates] | [count] | [mean duration] | [handling of unknown/ranged timestamps] |
+| MTTR | [scope and dates] | [count] | [mean duration] | [handling of unknown/ranged timestamps] |
 
 ### Root Cause Analysis
 **Method:** [5 Whys / Fishbone / Both]
@@ -420,6 +472,14 @@ Documenting lessons learned and remediation actions in a PIR report that is then
 
 NIST recommends conducting the PIR within several days of incident closure. Waiting weeks or months causes participants to forget critical details, misremember the sequence of events, and lose the emotional context that drives honest reflection. Schedule the PIR meeting before the incident is closed, ideally within 3-5 business days of recovery completion.
 
+### Pitfall 6: Reporting Single-Incident Durations as Mean Metrics
+
+MTTD, MTTC, and MTTR are aggregate mean metrics. A single incident should report TTD, TTC, and TTR, with the endpoint basis stated. Labeling one incident's duration as a mean can make a PIR look comparable to organizational reporting-period metrics when it is not.
+
+### Pitfall 7: Collapsing Timestamp Uncertainty Into False Precision
+
+Many incidents have estimated compromise windows, externally reported detection, or multiple recovery milestones. Selecting one timestamp without the source, confidence, and objective can make an SLA appear met or missed incorrectly. Preserve ranges, report unknown endpoints as not computable, and name the recovery objective used for TTR.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -445,3 +505,5 @@ This skill processes incident response data including timelines, forensic findin
 7. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
 8. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
 9. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
+10. **CISA Metrics for Measuring the Efficacy of Cybersecurity Information Sharing** -- defines mean time to incident detection as an average across detected incidents -- https://www.cisa.gov/sites/default/files/publications/metrics_for_measuring_the_efficacy_of_cyber_info_sharing.pdf
+11. **CISA FY2019 FISMA CIO Metrics** -- uses organizational mean-time incident metrics over a reporting period -- https://www.cisa.gov/sites/default/files/publications/FY%202019%20FISMA%20CIO%20Metrics_V1_Final.pdf
