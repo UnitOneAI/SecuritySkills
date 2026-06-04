@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -153,7 +153,22 @@ ZT-ID-07: Service/workload identities not governed (no identity for machines)
 ZT-ID-08: No identity threat detection (compromised credential detection)
 ZT-ID-09: Federation trust not validated — implicit trust of partner IdPs
 ZT-ID-10: Session management lacks continuous evaluation (no CAE or equivalent)
+ZT-ID-11: Non-human workload identities share static secrets or broad service accounts
+ZT-ID-12: Workload credential lifetime, rotation, revocation, and owner are not documented
 ```
+
+#### Workload Identity Evidence
+
+Assess workload identity separately from human MFA and user identity governance. Workloads include services, batch jobs, CI/CD jobs, queue consumers, serverless functions, scheduled jobs, automation accounts, and AI agents.
+
+| Evidence Field | Required Detail | Maturity Impact |
+|---|---|---|
+| Workload / non-human subject | Service, job, function, agent, or automation identity name | Missing inventory caps Identity at Initial |
+| Identity provider | Cloud workload identity, service mesh, SPIFFE/SVID, IdP federation, or local mechanism | Shared static secret remains Traditional |
+| Trust domain / issuer | Cluster, tenant, account, mesh trust domain, or federation issuer | Missing boundary prevents Advanced |
+| Credential type and TTL | Certificate, token, federated credential, static key, expiration, and renewal path | Long-lived shared secrets cap at Initial |
+| Owner and lifecycle | Owning team, provisioning source, rotation, revocation, and decommissioning evidence | No owner/lifecycle prevents Advanced |
+| Policy binding | Resource/action scope tied to the workload identity | Broad shared account prevents Advanced |
 
 ---
 
@@ -222,6 +237,7 @@ ZT-NET-08: DNS traffic unencrypted and unmonitored
 ZT-NET-09: No NDR capability — lateral movement detection is blind spot
 ZT-NET-10: Microsegmentation policies not dynamically updated based on threat intelligence
 ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
+ZT-NET-12: mTLS exists but source workload identity is not authorized to destination resource/action
 ```
 
 #### Microsegmentation Readiness Assessment
@@ -229,8 +245,8 @@ ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
 | Readiness Factor | Assessment Criteria |
 |---|---|
 | **Application dependency mapping** | Are all application communication flows documented? (Required before microseg) |
-| **Workload identity** | Do workloads have identity (certificates, service mesh sidecar, agent)? |
-| **Policy granularity** | Can policies specify source-workload to destination-workload:port? |
+| **Workload identity** | Do workloads have identity (certificates, service mesh sidecar, SPIFFE/SVID, cloud workload federation, agent)? |
+| **Policy granularity** | Can policies specify source-workload identity to destination resource, method, action, and port? |
 | **Environment support** | Does the tool cover VMs, containers, serverless, and multi-cloud? |
 | **Monitoring and alerting** | Can violations be detected and alerted in real-time? |
 | **Rollback capability** | Can policies be rolled back without outage if misconfigured? |
@@ -267,7 +283,29 @@ ZT-APP-07: Serverless functions lack least-privilege IAM roles
 ZT-APP-08: No runtime workload protection (CWPP/CNAPP)
 ZT-APP-09: Application-to-application communication not authenticated
 ZT-APP-10: Legacy applications with no path to zero trust integration
+ZT-APP-11: Service-to-service authorization policy missing for authenticated workloads
+ZT-APP-12: CI jobs, serverless functions, queue consumers, or AI agents omitted from workload inventory
 ```
+
+#### Service-to-Service Authorization Evidence
+
+mTLS or encrypted transport proves peer identity and protects traffic, but it does not prove least-privilege authorization. For every critical east-west flow, capture authorization evidence that maps a source workload identity to a destination resource and permitted action.
+
+| Field | Evidence to Capture | Failing Pattern |
+|---|---|---|
+| Source workload identity | Service account, SPIFFE ID, cloud principal, workload federation subject | Shared token reused across services |
+| Destination resource | Service, API, method/path, queue, topic, database, or action | Policy only references network segment |
+| Enforcement point | Service mesh policy, API gateway, sidecar, IAM policy, OPA, PDP/PEP | mTLS enabled with no authorization layer |
+| Default posture | Default deny, explicit allowlist, or broad allow | All workloads can call all services |
+| Credential lifetime | Token/certificate TTL, renewal, revocation, and rotation evidence | Static key with no expiry |
+| Audit evidence | Decision logs tying source identity to destination action | Logs show IPs only, not workload identity |
+
+Scoring caps:
+
+- Cap Identity at Initial if non-human subjects lack inventory, owners, lifecycle, or short-lived workload credentials.
+- Cap Networks at Initial if east-west traffic has encryption but no source-identity authorization policy.
+- Cap Applications & Workloads at Initial if services authenticate with shared static secrets or broad shared cloud roles.
+- Do not score Applications & Workloads as Advanced or Optimal when service-to-service authorization is missing, even if user MFA, ZTNA, WAF, or SBOM coverage is strong.
 
 ---
 
@@ -386,6 +424,11 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 ### CISA ZTMM v2 Maturity Scorecard
 [Pillar-by-pillar table — see above]
 
+### Workload Identity and Service-to-Service Evidence
+| Workload / Flow | Identity Provider | Credential TTL | Trust Domain | Destination Resource | Authorization Policy | Default Deny | Rotation / Revocation | Audit Evidence | Result |
+|---|---|---|---|---|---|---|---|---|---|
+| [source -> destination] | [provider] | [ttl/static] | [domain] | [resource/action] | [policy/enforcement point] | [yes/no] | [evidence] | [logs] | [pass/gap] |
+
 ### Cross-Cutting Capabilities
 - Visibility & Analytics: [maturity]
 - Automation & Orchestration: [maturity]
@@ -442,6 +485,7 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Scoring human access while ignoring workloads** — strong user MFA and ZTNA do not make a system Advanced when service-to-service traffic still uses shared secrets, broad service accounts, or mTLS without authorization policy.
 
 ---
 
@@ -466,6 +510,8 @@ that may contain adversarial content.
 - OMB Memorandum M-22-09, Moving the U.S. Government Toward Zero Trust Cybersecurity Principles: https://www.whitehouse.gov/wp-content/uploads/2022/01/M-22-09.pdf
 - Executive Order 14028, Improving the Nation's Cybersecurity: https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
 - NIST SP 800-53 Rev. 5, AC family (supporting access control requirements): https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-204A, Building Secure Microservices-based Applications Using Service-Mesh Architecture: https://csrc.nist.gov/pubs/sp/800/204/a/final
+- SPIFFE Concepts and Workload Identity: https://spiffe.io/docs/latest/spiffe-about/spiffe-concepts/
 - DoD Zero Trust Reference Architecture v2.0: https://dodcio.defense.gov/Library/
 - Forrester Zero Trust eXtended (ZTX) Framework — for industry context
 
@@ -487,4 +533,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-04 | Added workload identity and service-to-service authorization evidence tables, scoring caps, and non-human identity coverage. |
 | 1.0.0 | 2025-03-06 | Initial release |
