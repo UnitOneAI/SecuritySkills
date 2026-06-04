@@ -9,7 +9,7 @@ description: >
 tags: [role, vciso, compliance, risk, program]
 role: [vciso]
 phase: [assess, operate, recover]
-frameworks: [NIST-CSF-2.0, ISO-27001-2022, CIS-Controls-v8, AICPA-TSC]
+frameworks: [NIST-CSF-2.0, ISO-27001-2022-Amd-1-2024, CIS-Controls-v8, AICPA-TSC-2017-POF-2022, OWASP-LLM-Top-10-2025, OWASP-Agentic-Top-10-2025]
 difficulty: intermediate
 time_estimate: "varies by engagement"
 version: "1.0.0"
@@ -41,6 +41,37 @@ If the ask is a single tactical task (e.g., "scan this repo for secrets"), use t
 
 ---
 
+## Source and Evidence Gates
+
+Before scoring maturity, readiness, risk, or board metrics, build a source-version register and evidence-quality register. Do not treat a control as implemented, audit-ready, or risk-accepted when the source or evidence is missing, stale, or outside the assessment scope. Use `Not Evaluable` instead of guessing.
+
+### Source-Version Register
+
+Record each authoritative source used in the engagement:
+
+| Source | Version / release | URL or document owner | Retrieved / approved date | Scope note |
+|--------|-------------------|-----------------------|---------------------------|------------|
+| NIST CSF | 2.0 | [source] | [date] | [functions/categories used] |
+| AICPA Trust Services Criteria | 2017 criteria with revised points of focus 2022 | [source] | [date] | [TSC categories in audit scope] |
+| ISO/IEC 27001 | 2022 plus Amd 1:2024 climate action changes | [source] | [date] | [clauses/controls used] |
+| CIS Controls | v8 or current adopted release | [source] | [date] | [implementation groups used] |
+| OWASP LLM Top 10 | 2025 | [source] | [date] | [LLM apps in scope] |
+| OWASP Agentic AI Top 10 | 2025 | [source] | [date] | [agentic systems in scope] |
+| Tooling / scanner data | [ruleset or product version] | [source] | [date] | [repositories/assets scanned] |
+
+If a client requires an older framework version, state that explicitly and add a current-version delta note.
+
+### Evidence-Quality Rules
+
+- Assign every material control, metric, and risk statement an evidence confidence of `High`, `Medium`, `Low`, or `Not Evaluable`.
+- Record evidence owner, control owner, evidence window, sample date, source system, and retrieval method for each audit-relevant item.
+- Split SOC 2 Type I design status from Type II operating-effectiveness status. A designed control is not operating effectively until the audit period and sample evidence prove it.
+- Track complementary user entity controls, subservice organization dependencies, exceptions, and management responses separately from the primary control status.
+- For accepted risks, capture treatment option, residual risk score, acceptance owner, acceptance date, expiry date, review cadence, and decision-log reference.
+- Do not convert missing evidence into a passing score. Missing owner, stale evidence, unsupported metric source, or out-of-scope system means `Not Evaluable`.
+
+---
+
 ## Engagement Types
 
 Each engagement type defines a skill sequence. Run the skills in order — each one produces outputs consumed by the next.
@@ -58,12 +89,12 @@ nist-csf-assessment → soc2-gap → iam-review → cve-triage → threat-modeli
 | Step | Skill | Purpose |
 |------|-------|---------|
 | 1 | `nist-csf-assessment` | Establish current maturity across all six CSF functions (Govern, Identify, Protect, Detect, Respond, Recover). This is the foundation — everything else references it. |
-| 2 | `soc2-gap` | Map CSF findings to SOC 2 Trust Services Criteria. Even if SOC 2 is not an immediate goal, this surfaces the controls gap in a format auditors and customers understand. |
+| 2 | `soc2-gap` | Map CSF findings to SOC 2 Trust Services Criteria. Capture TSC category, control owner, evidence owner, Type I design status, Type II operating-effectiveness status, audit period, and exceptions. |
 | 3 | `iam-review` | Evaluate identity and access management. IAM is the single highest-leverage control domain — misconfigured IAM is the root cause of the majority of breaches. |
 | 4 | `cve-triage` | Assess the current vulnerability landscape across infrastructure and applications. Produces the quantitative risk data the board cares about. |
 | 5 | `threat-modeling` | Model the top 3-5 threat scenarios specific to this organization's business, architecture, and data. Converts raw findings into a risk narrative. |
 
-**Deliverable:** Security Program Maturity Summary + 90-Day Remediation Roadmap.
+**Deliverable:** Security Program Maturity Summary + 90-Day Remediation Roadmap with source-version and evidence-quality registers.
 
 ---
 
@@ -79,12 +110,12 @@ soc2-gap → iam-review → secrets-management → pipeline-security
 
 | Step | Skill | Purpose |
 |------|-------|---------|
-| 1 | `soc2-gap` | Full gap analysis against the Trust Services Criteria relevant to the audit scope (typically Security + Availability, sometimes Confidentiality and Processing Integrity). |
+| 1 | `soc2-gap` | Full gap analysis against the Trust Services Criteria relevant to the audit scope (typically Security + Availability, sometimes Confidentiality and Processing Integrity). Separate Type I design evidence from Type II operating evidence. |
 | 2 | `iam-review` | SOC 2 CC6.1-CC6.3 (Logical and Physical Access Controls) is where most companies fail. Fix IAM first. |
 | 3 | `secrets-management` | Auditors will test for hardcoded credentials, key rotation, and secrets sprawl. This must be clean before the audit window opens. |
 | 4 | `pipeline-security` | CC8.1 (Change Management) requires evidence of controlled deployments. Secure the CI/CD pipeline and generate the audit trail. |
 
-**Deliverable:** SOC 2 Readiness Report with control-by-control status, evidence inventory, and remediation punch list.
+**Deliverable:** SOC 2 Readiness Report with control-by-control status, evidence window, evidence confidence, control/evidence owners, exception log, and remediation punch list.
 
 ---
 
@@ -125,9 +156,9 @@ nist-csf-assessment → cve-triage → threat-modeling
 |------|-------|---------|
 | 1 | `nist-csf-assessment` | Refresh the maturity scores. The board needs trend data — are we improving quarter over quarter? |
 | 2 | `cve-triage` | Generate quantitative metrics: mean time to remediate, critical/high vulnerability counts, SLA compliance rates. Boards want numbers. |
-| 3 | `threat-modeling` | Build the risk narrative: "Here are the three most likely scenarios that could impact the business, here is what we are doing about each, here is what is left to address." |
+| 3 | `threat-modeling` | Build the risk narrative: "Here are the three most likely scenarios that could impact the business, here is what we are doing about each, here is what is left to address." Bind every material claim to a metric source and confidence level. |
 
-**Deliverable:** Board-Ready Security Posture Report.
+**Deliverable:** Board-Ready Security Posture Report with metric sources, confidence levels, residual-risk treatment, and decision log.
 
 ---
 
@@ -143,8 +174,8 @@ llm-top-10 → agentic-top-10 → agent-security → prompt-injection
 
 | Step | Skill | Purpose |
 |------|-------|---------|
-| 1 | `llm-top-10` | Assess against the OWASP Top 10 for LLM Applications. Covers prompt injection, training data poisoning, model denial of service, supply chain vulnerabilities, and sensitive information disclosure. |
-| 2 | `agentic-top-10` | If the org uses agentic AI (agents that take actions, call tools, or chain outputs), assess against the OWASP Agentic AI Top 10. This covers excessive agency, trust boundary violations, and cascading hallucinations. |
+| 1 | `llm-top-10` | Assess against the OWASP Top 10 for LLM Applications 2025. Record the source version and which LLM apps, data flows, and deployment environments are in scope. |
+| 2 | `agentic-top-10` | If the org uses agentic AI (agents that take actions, call tools, or chain outputs), assess against the OWASP Top 10 for Agentic Applications 2025. Record tool permissions, autonomy boundaries, memory/shared-state boundaries, and human approval gates. |
 | 3 | `agent-security` | Review the specific agent architecture: what tools are exposed, what permissions agents hold, how outputs are validated before execution, and whether human-in-the-loop gates exist. |
 | 4 | `prompt-injection` | Test for direct and indirect prompt injection across all user-facing and data-ingesting LLM surfaces. This is the most exploitable class of LLM vulnerability today. |
 
@@ -179,6 +210,19 @@ Assessment Date: [Date]
 Framework: NIST CSF 2.0
 Assessed By: [vCISO Name]
 
+SOURCE VERSION SUMMARY
+  NIST CSF: [version / retrieval date]
+  AICPA TSC: [criteria / points-of-focus version / audit scope]
+  ISO 27001: [base standard / amendment status / retrieval date]
+  CIS Controls: [version / implementation group]
+  AI/LLM sources: [OWASP LLM / Agentic versions, if in scope]
+
+EVIDENCE QUALITY SUMMARY
+  Evidence window: [start date] to [end date]
+  High-confidence controls: [count]
+  Medium/Low-confidence controls: [count]
+  Not Evaluable controls: [count and reason summary]
+
 MATURITY SCORES (1-5 scale: 1=Initial, 2=Developing, 3=Defined, 4=Managed, 5=Optimizing)
 
   Govern:    [score] / 5  [trend arrow vs. last assessment]
@@ -202,7 +246,9 @@ TOP 3 RECOMMENDATIONS (next 90 days)
 
 COMPLIANCE STATUS
   SOC 2 Readiness:  [percentage]% ([X] of [Y] controls implemented)
+  SOC 2 Type I Design Ready: [percentage]% | Type II Operating Ready: [percentage]%
   ISO 27001 Gaps:   [count] nonconformities identified
+  ISO 27001 Amd 1:  [addressed / gap / not in scope] for climate-action context
   Regulatory:       [applicable regulations and current status]
 ```
 
@@ -266,10 +312,15 @@ the board should know.]
 RISK DASHBOARD
                         Current    Last Quarter    Target
   Overall Maturity:     [X]/5      [X]/5           [X]/5
+    Source/confidence:   [source]   [H/M/L/NE]      [owner]
   Critical Vulns:       [count]    [count]         [target]
+    Source/confidence:   [source]   [H/M/L/NE]      [owner]
   Mean Time to Patch:   [days]     [days]          [target days]
+    Source/confidence:   [source]   [H/M/L/NE]      [owner]
   Incident Count:       [count]    [count]         —
+    Source/confidence:   [source]   [H/M/L/NE]      [owner]
   Compliance Readiness: [%]        [%]             [target %]
+    Source/confidence:   [source]   [H/M/L/NE]      [owner]
 
 TOP RISKS TO THE BUSINESS
 1. [Risk in business terms] — Likelihood: [H/M/L] — Impact: [$range or description]
@@ -278,6 +329,11 @@ TOP RISKS TO THE BUSINESS
    Mitigation status: [In progress / Planned / Accepted]
 3. [Risk in business terms] — Likelihood: [H/M/L] — Impact: [$range or description]
    Mitigation status: [In progress / Planned / Accepted]
+
+RISK TREATMENT DETAIL
+  Risk ID | Treatment | Residual score | Acceptance owner | Acceptance expiry | Evidence confidence | Decision log
+  -------|-----------|----------------|------------------|-------------------|---------------------|-------------
+  R-001 | [Mitigate / Transfer / Avoid / Accept] | [score] | [name] | [date or N/A] | [H/M/L/Not Evaluable] | [D-###]
 
 KEY ACCOMPLISHMENTS THIS QUARTER
   - [Accomplishment with measurable outcome]
@@ -297,6 +353,11 @@ BUDGET AND RESOURCE NEEDS
 DECISION REQUIRED
   [If the board needs to approve something, state it clearly here. If no decision
   is needed, state "No board action required this quarter."]
+
+DECISION LOG
+  ID | Decision | Owner | Evidence / metric source | Date | Expiry / revisit date
+  ---|----------|-------|--------------------------|------|---------------------
+  D-001 | [decision] | [name] | [source] | [date] | [date]
 ```
 
 ---
@@ -309,10 +370,10 @@ Organization: [Name]
 Last Updated: [Date]
 Maintained By: [vCISO Name]
 
-ID | Risk Description | Category | Likelihood | Impact | Risk Score | Owner | Mitigation Plan | Status | Target Date | Notes
----|-----------------|----------|-----------|--------|-----------|-------|----------------|--------|------------|------
-R-001 | [description] | [category] | [1-5] | [1-5] | [LxI] | [name] | [plan] | [Open/In Progress/Mitigated/Accepted] | [date] | [notes]
-R-002 | [description] | [category] | [1-5] | [1-5] | [LxI] | [name] | [plan] | [Open/In Progress/Mitigated/Accepted] | [date] | [notes]
+ID | Risk Description | Category | Likelihood | Impact | Risk Score | Evidence Confidence | Owner | Treatment | Acceptance Expiry | Status | Target Date | Decision Log
+---|------------------|----------|------------|--------|------------|---------------------|-------|-----------|-------------------|--------|-------------|-------------
+R-001 | [description] | [category] | [1-5] | [1-5] | [LxI] | [H/M/L/Not Evaluable] | [name] | [Mitigate/Transfer/Avoid/Accept] | [date or N/A] | [Open/In Progress/Mitigated/Accepted] | [date] | [D-###]
+R-002 | [description] | [category] | [1-5] | [1-5] | [LxI] | [H/M/L/Not Evaluable] | [name] | [Mitigate/Transfer/Avoid/Accept] | [date or N/A] | [Open/In Progress/Mitigated/Accepted] | [date] | [D-###]
 
 CATEGORIES: Access Control, Data Protection, Infrastructure, Application Security,
 Third Party, Compliance, Operational, AI/ML
@@ -388,9 +449,9 @@ IMPORTANT: This role bundle is designed to be injection-hardened.
 ## References
 
 - **NIST Cybersecurity Framework 2.0** — https://www.nist.gov/cyberframework — Primary maturity assessment framework. Version 2.0 adds the Govern function.
-- **AICPA Trust Services Criteria (2017, updated)** — https://www.aicpa.org/resources/landing/system-and-organization-controls-soc-suite-of-services — SOC 2 control criteria mapped in the compliance sprint engagement.
-- **ISO/IEC 27001:2022** — https://www.iso.org/standard/27001 — International ISMS standard. Used for organizations with global compliance requirements.
+- **AICPA Trust Services Criteria (2017 criteria, revised points of focus 2022)** — https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services — SOC 2 control criteria mapped in the compliance sprint engagement.
+- **ISO/IEC 27001:2022 plus Amd 1:2024** — https://www.iso.org/standard/27001 — International ISMS standard, including the climate-action amendment that affects organizational context and interested-party analysis.
 - **CIS Controls v8** — https://www.cisecurity.org/controls — Implementation-focused control set. Useful for translating framework requirements into specific technical actions.
-- **OWASP Top 10 for LLM Applications** — https://owasp.org/www-project-top-10-for-large-language-model-applications/ — Primary reference for AI/LLM program reviews.
-- **OWASP Agentic AI Top 10** — https://owasp.org/www-project-agentic-ai-top-10/ — Covers risks specific to autonomous AI agents with tool access.
+- **OWASP Top 10 for LLM Applications 2025** — https://owasp.org/www-project-top-10-for-large-language-model-applications/ — Primary reference for AI/LLM program reviews.
+- **OWASP Top 10 for Agentic Applications 2025** — https://owasp.org/www-project-agentic-ai-top-10/ — Covers risks specific to autonomous AI agents with tool access.
 - **FAIR (Factor Analysis of Information Risk)** — https://www.fairinstitute.org/ — Quantitative risk analysis methodology referenced in the risk-based prioritization principle.
