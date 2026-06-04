@@ -5,15 +5,16 @@ description: >
   Physical, and Technical Safeguards defined in 45 CFR Part 164, Subpart C.
   Auto-invoked when discussing healthcare data security, ePHI protection,
   HIPAA audit readiness, or business associate compliance. Evaluates required
-  and addressable implementation specifications, identifies gaps, and produces
-  a remediation roadmap aligned to HHS enforcement priorities.
-tags: [compliance, hipaa, healthcare]
+  and addressable implementation specifications, validates BAA and downstream
+  subprocessor evidence for ePHI processor chains, identifies gaps, and
+  produces a remediation roadmap aligned to HHS enforcement priorities.
+tags: [compliance, hipaa, healthcare, baa, ephi]
 role: [vciso, security-engineer]
 phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
-time_estimate: "60-120min"
-version: "1.0.1"
+time_estimate: "75-135min"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -69,6 +70,7 @@ The HIPAA Security Rule (45 CFR Part 164, Subpart C) establishes national standa
 - Current risk analysis documentation (or confirmation none exists)
 - Security policies and procedures documentation
 - Business Associate Agreements (BAAs) inventory
+- Covered services schedules, subprocessor lists, ePHI data flows, and termination/offboarding evidence for vendors that create, receive, maintain, or transmit ePHI
 - Incident response and breach notification procedures
 - Access control configurations and user provisioning processes
 - Backup and disaster recovery documentation
@@ -125,7 +127,38 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 ---
 
-### Step 2: Administrative Safeguards (45 CFR 164.308)
+### Step 2: BAA and Subprocessor Evidence Gate
+
+Before scoring safeguards, map every third party that creates, receives, maintains, transmits, stores, supports, exports, backs up, or analyzes ePHI on behalf of the covered entity or business associate.
+
+**Processor chain inventory**
+
+| Field | Evidence Required |
+|-------|-------------------|
+| Vendor / subprocessor | Legal entity name, parent entity, service name/SKU, account/tenant/region |
+| ePHI role | Creates, receives, maintains, transmits, stores, supports, exports, backs up, or analyzes ePHI |
+| Data flow | Source system, destination system, ePHI class, region, retention class, and support/export path |
+| Contract coverage | BAA ID/date, master agreement, service schedule, covered services list, renewal/expiry status |
+| Downstream coverage | Subprocessor annex/list, downstream BAA or equivalent flow-down terms, change-notice/opt-out handling |
+| Termination/offboarding | Return/destroy workflow, retained backups/logs/support exports, infeasibility rationale, residual protections |
+
+**Finding criteria**
+
+Flag a BAA/subprocessor finding when any of the following are true:
+
+- A vendor or downstream service creates, receives, maintains, transmits, stores, supports, exports, backs up, or analyzes ePHI without a current BAA or equivalent arrangement.
+- A master BAA exists but the service, SKU, product, region, tenant, or subprocessor actually processing ePHI is excluded from the covered services schedule.
+- A primary vendor BAA is present, but downstream analytics, cloud, support, backup, logging, or ticketing processors that handle ePHI are not listed or covered by flow-down restrictions.
+- Termination/offboarding evidence does not show how ePHI in backups, logs, support bundles, exports, and retained archives is returned, destroyed, or protected when destruction is infeasible.
+- A de-identification claim is used to remove a processor from scope without expert determination, safe-harbor evidence, or an explicit data-element mapping showing no reasonable basis to identify an individual.
+
+**False-positive guardrails**
+
+Do not require a separate product-level BAA artifact when a current master BAA, service schedule, covered-services list, region/tenant evidence, and subprocessor annex clearly bind the actual ePHI processor. Do not treat treatment disclosures between covered providers as business associate processing solely because PHI is exchanged; document why the disclosure is treatment-related and outside the BA workflow being reviewed.
+
+---
+
+### Step 3: Administrative Safeguards (45 CFR 164.308)
 
 #### 164.308(a)(1) — Security Management Process (Standard)
 
@@ -245,7 +278,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 ---
 
-### Step 3: Physical Safeguards (45 CFR 164.310)
+### Step 4: Physical Safeguards (45 CFR 164.310)
 
 #### 164.310(a)(1) — Facility Access Controls (Standard)
 
@@ -288,7 +321,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 ---
 
-### Step 4: Technical Safeguards (45 CFR 164.312)
+### Step 5: Technical Safeguards (45 CFR 164.312)
 
 #### 164.312(a)(1) — Access Control (Standard)
 
@@ -336,7 +369,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 ---
 
-### Step 5: Organizational Requirements (45 CFR 164.314)
+### Step 6: Organizational Requirements (45 CFR 164.314)
 
 #### 164.314(a)(1) — Business Associate Contracts or Other Arrangements (Standard)
 
@@ -358,7 +391,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 ---
 
-### Step 6: Policies, Procedures, and Documentation (45 CFR 164.316)
+### Step 7: Policies, Procedures, and Documentation (45 CFR 164.316)
 
 #### 164.316(a) — Policies and Procedures (Standard, R)
 
@@ -379,7 +412,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 ---
 
-### Step 7: Breach Notification Assessment (45 CFR 164.400-414)
+### Step 8: Breach Notification Assessment (45 CFR 164.400-414)
 
 While breach notification is technically a separate rule (Subpart D), evaluate readiness:
 
@@ -456,6 +489,10 @@ Assess:
 - BAA Inventory: [count of BAs, count with BAAs in place]
 - Missing BAAs: [list]
 - BAA Deficiencies: [missing required provisions]
+- Processor Chain Coverage: [covered / gaps / not evaluable]
+- Covered Services Evidence: [master BAA, schedule, SKU/service, region, tenant]
+- Downstream Subprocessors: [current list, data flow, flow-down terms, change notice]
+- Termination / Return / Destroy Evidence: [backups, logs, exports, support attachments, infeasible retention protections]
 
 ## Breach Notification Readiness
 [Assessment of breach response procedures, notification capability, HHS reporting readiness]
@@ -567,9 +604,15 @@ Policies, Procedures, and Documentation — 164.316
 
 3. **Missing or deficient Business Associate Agreements.** Organizations frequently fail to identify all Business Associates (cloud providers, IT support, shredding companies, EHR vendors, billing services) or execute BAAs that meet the minimum requirements of 164.314(a)(2)(i). Every entity that creates, receives, maintains, or transmits ePHI on behalf of the CE must have a BAA.
 
-4. **Confusing HIPAA Security Rule with HIPAA Privacy Rule.** The Security Rule (Subpart C) applies only to ePHI and focuses on technical, physical, and administrative safeguards. The Privacy Rule (Subpart E) covers all PHI including paper records and addresses permitted uses and disclosures. A Security Rule review does not satisfy Privacy Rule obligations and vice versa.
+4. **Accepting a master BAA without service-scope evidence.** A parent-company BAA can be valid, but only when the service schedule, covered services list, region, tenant, and subprocessor annex bind the actual product processing ePHI. Product-name-only evidence is not enough when the schedule excludes the SKU or geography in use.
 
-5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
+5. **Missing downstream subprocessors.** A SaaS may have a signed BAA while its analytics, cloud hosting, ticketing, support, backup, or logging vendors also handle ePHI. Require current subprocessor evidence and flow-down restrictions before marking the processor chain covered.
+
+6. **Confusing HIPAA Security Rule with HIPAA Privacy Rule.** The Security Rule (Subpart C) applies only to ePHI and focuses on technical, physical, and administrative safeguards. The Privacy Rule (Subpart E) covers all PHI including paper records and addresses permitted uses and disclosures. A Security Rule review does not satisfy Privacy Rule obligations and vice versa.
+
+7. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
+
+8. **Treating termination as complete when app access is disabled.** Offboarding must address ePHI retained in backups, logs, exports, support attachments, and archives. If return or destruction is infeasible, residual BAA protections and limited-use evidence must remain in force.
 
 ---
 
@@ -596,6 +639,16 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - NIST SP 800-66 Rev. 2 — Implementing the Health Insurance Portability and Accountability Act (HIPAA) Security Rule: A Cybersecurity Resource Guide (February 2024)
 - HHS OCR Breach Portal and Resolution Agreements archive
 - HITECH Act, Section 13401-13411 — Security provisions and enforcement
+- 45 CFR 164.314 — Organizational requirements for business associate contracts and other arrangements: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.314
+- 45 CFR 164.504(e) — Business associate contracts and other arrangements: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-E/section-164.504
+- 45 CFR 164.514 — De-identification and other requirements relating to uses and disclosures of PHI: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-E/section-164.514
 - H-ISAC (Health Information Sharing and Analysis Center) — https://h-isac.org/
 - CISA Healthcare and Public Health Sector Guidance — https://www.cisa.gov/topics/critical-infrastructure-security-and-resilience/critical-infrastructure-sectors/healthcare-and-public-health-sector
 - KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026) — https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+
+---
+
+## Changelog
+
+- **1.0.2** -- Add BAA/subprocessor evidence gate, processor chain coverage fields, termination/offboarding checks, and de-identification false-positive guardrails.
+- **1.0.1** -- Add destructive/wiper malware threat guidance for healthcare risk analysis, training, and contingency planning.

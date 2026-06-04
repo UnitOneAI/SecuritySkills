@@ -409,13 +409,13 @@ skills:
 
   - id: hipaa-review
     name: "HIPAA Security Rule Review"
-    tags: [compliance, hipaa, healthcare]
+    tags: [compliance, hipaa, healthcare, baa, ephi]
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
     frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
     difficulty: intermediate
-    time_estimate: "60-120min"
+    time_estimate: "75-135min"
     file: skills/compliance/hipaa-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
