@@ -1,0 +1,4 @@
+Authorization: Bearer IHsiYWxnIjoiUlMyNTYiLCJ0eXAiOiJKV1QifQ.eyJzdWIiOiIxMjMifQ.fabricatedSignature
+
+Expected classification: active-looking bearer credential candidate.
+Rationale: three compact JWT/JWS segments are present in bearer context even though the header prefix is not eyJ.

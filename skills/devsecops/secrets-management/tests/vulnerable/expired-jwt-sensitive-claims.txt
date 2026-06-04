@@ -1,0 +1,4 @@
+X-Debug-Token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lkcC5leGFtcGxlLmludGVybmFsIiwic3ViIjoidXNlci0xMjMiLCJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwic2NvcGUiOiJyZWFkOmJpbGxpbmciLCJleHAiOjB9.expiredFixtureSignature
+
+Expected classification: expired but sensitive claim exposure.
+Rationale: this fabricated token is expired, but the decoded payload still carries email, subject, issuer, and scope metadata.

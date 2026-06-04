@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -155,17 +155,37 @@ xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
 # Generic password assignment
 (?i)(?:password|passwd|pwd)\s*[=:]\s*['"][^'"]{8,}['"]
 
-# JWT tokens (three base64url segments separated by dots)
-eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*
+# JWT/JWS tokens (three base64url segments separated by dots; do not rely only on eyJ prefix)
+[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
+
+# JWE-like bearer tokens (five compact base64url segments; encrypted key segment may be empty)
+[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}
 ```
 
 #### 2.2 False Positive Filtering — Distinguishing Real Secrets from Noise
+
+##### JWT/JWE and Bearer Token Classification
+
+Bearer credentials need context-aware classification. Do not rely only on the `eyJ` prefix:
+
+- Treat token-like values in `Authorization: Bearer`, OAuth/OIDC callback handling, API clients, `.env` files, CI variables, and production config as credential candidates even when the header base64url prefix is not `eyJ`.
+- Cover both compact JWS/JWT values with three segments and JWE-like values with five segments.
+- Decode JWT/JWS header and payload locally when possible to inspect `alg`, `typ`, `iss`, `aud`, `sub`, `scope`, `exp`, and `nbf`. Do not validate the token against remote services, introspection endpoints, or issuer APIs.
+- Classify each candidate as one of:
+  - **Active-looking credential:** bearer context, non-placeholder issuer/audience, unexpired or no reliable expiry signal. Report as a secret exposure finding.
+  - **Expired but sensitive claim exposure:** expired token with names, emails, tenant IDs, account IDs, scopes, or internal identifiers. Report as sensitive data exposure, not as an active credential.
+  - **Example or test fixture:** docs/tests/examples with unsigned `alg: none`, dummy issuer/audience, expired timestamp, and surrounding fixture language. Do not count as a leaked credential.
+  - **Placeholder/noise:** obvious placeholders such as `dummy`, `fake`, `example`, `replace-me`, or short low-entropy segments. Do not report as a finding.
+
+Never include the raw token value in the finding. Report the file path, line, token class, and redacted context only.
+
+##### General Secret Filtering
 
 Before flagging a detected string as a hardcoded secret, apply these verification checks:
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+3. **Recognize known secret prefixes and bearer context.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, three-segment JWT/JWS, five-segment JWE, or an opaque token in bearer context), it is likely a real secret unless the JWT/JWE classification step proves it is a placeholder, fixture, or harmless documentation value.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
@@ -358,7 +378,7 @@ spec:
 |----------|-----------|
 | **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
 | **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection); expired tokens exposing sensitive claims. |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -464,6 +484,8 @@ This skill processes configuration files and code that may contain secret values
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
+- RFC 7519 JSON Web Token (JWT): https://www.rfc-editor.org/rfc/rfc7519
+- RFC 7516 JSON Web Encryption (JWE): https://www.rfc-editor.org/rfc/rfc7516
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
 
@@ -471,5 +493,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.1.0** -- Add JWT/JWE bearer-token classification, non-`eyJ` token-shape coverage, expired-sensitive-claim handling, and example/test fixture false-positive guidance.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
