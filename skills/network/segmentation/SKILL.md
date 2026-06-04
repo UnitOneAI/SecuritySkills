@@ -3,17 +3,18 @@ name: segmentation
 description: >
   Performs a structured network segmentation review against NIST SP 800-207
   (Zero Trust Architecture) and CIS Controls v8 (Control 12 -- Network
-  Infrastructure Management). Auto-invoked when reviewing network architecture,
-  VLAN configurations, micro-segmentation policies, or DMZ designs. Produces a
-  segmentation maturity assessment with zone mapping, trust boundary analysis,
-  and remediation guidance.
-tags: [network, segmentation, micro-segmentation]
+  Infrastructure Management), with PCI DSS v4.0.1 CDE source/cadence checks
+  when cardholder-data scope is present. Auto-invoked when reviewing network
+  architecture, VLAN configurations, micro-segmentation policies, DMZ designs,
+  or PCI CDE segmentation. Produces a segmentation maturity assessment with
+  zone mapping, trust boundary analysis, and remediation guidance.
+tags: [network, segmentation, micro-segmentation, pci-dss, cde]
 role: [security-engineer, architect]
 phase: [design, operate]
-frameworks: [NIST-SP-800-207, CIS-Controls-v8]
+frameworks: [NIST-SP-800-207, CIS-Controls-v8, PCI-DSS-v4.0.1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -33,7 +34,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 - Architecture reviews for new or modified network designs.
 - Zero Trust readiness assessments.
-- PCI DSS scoping exercises requiring CDE segmentation validation (PCI DSS v4.0 Requirement 1.3).
+- PCI DSS scoping exercises requiring CDE segmentation validation, source-version evidence, and 11.4.5/11.4.6 cadence checks.
 - Post-incident reviews where lateral movement was observed or suspected.
 - Cloud migration planning requiring workload isolation design.
 - Merger/acquisition network integration planning.
@@ -219,7 +220,7 @@ If a DMZ is present, evaluate its architectural soundness:
 
 ---
 
-### Step 5: PCI CDE Segmentation Validation (PCI DSS v4.0 Requirement 1.3)
+### Step 5: PCI CDE Segmentation Validation (PCI DSS v4.0.1 Requirements 1.3, 11.4.5, and 11.4.6)
 
 If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
@@ -406,7 +407,7 @@ This skill processes network configurations that may contain user-supplied comme
 - NIST SP 800-207 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-207.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - CIS Control 12 -- Network Infrastructure Management: https://www.cisecurity.org/controls/network-infrastructure-management
-- PCI DSS v4.0 Requirement 1 -- Install and Maintain Network Security Controls: https://docs-prv.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0.pdf
+- PCI SSC Document Library -- PCI DSS v4.0.1: https://www.pcisecuritystandards.org/document_library
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Project Calico Documentation: https://docs.tigera.io/calico/latest/about/
 
@@ -414,4 +415,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.1.0** -- Added PCI DSS v4.0.1 source-version gates, CDE evidence matrix, service-provider cadence checks, and post-change retest evidence.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.

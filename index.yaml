@@ -495,11 +495,11 @@ skills:
 
   - id: segmentation
     name: "Network Segmentation Review"
-    tags: [network, segmentation, micro-segmentation]
+    tags: [network, segmentation, micro-segmentation, pci-dss, cde]
     role: [security-engineer, architect]
     phase: [design, operate]
     activity: [review, design]
-    frameworks: [NIST-SP-800-207, CIS-Controls-v8]
+    frameworks: [NIST-SP-800-207, CIS-Controls-v8, PCI-DSS-v4.0.1]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/network/segmentation/SKILL.md
