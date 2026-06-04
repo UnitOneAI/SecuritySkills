@@ -14,7 +14,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8, PCI-DSS-v4.0.1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -415,5 +415,6 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.1.1** -- Added PCI CDE source/cadence fixtures for verified v4.0.1 evidence, stale source metadata, and missing service-provider cadence.
 - **1.1.0** -- Added PCI DSS v4.0.1 source-version gates, CDE evidence matrix, service-provider cadence checks, and post-change retest evidence.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
