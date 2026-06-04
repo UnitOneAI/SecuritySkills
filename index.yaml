@@ -495,13 +495,13 @@ skills:
 
   - id: segmentation
     name: "Network Segmentation Review"
-    tags: [network, segmentation, micro-segmentation]
+    tags: [network, segmentation, micro-segmentation, ipv6, dual-stack]
     role: [security-engineer, architect]
     phase: [design, operate]
     activity: [review, design]
     frameworks: [NIST-SP-800-207, CIS-Controls-v8]
     difficulty: intermediate
-    time_estimate: "30-60min"
+    time_estimate: "35-70min"
     file: skills/network/segmentation/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 

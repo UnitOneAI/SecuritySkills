@@ -5,15 +5,15 @@ description: >
   (Zero Trust Architecture) and CIS Controls v8 (Control 12 -- Network
   Infrastructure Management). Auto-invoked when reviewing network architecture,
   VLAN configurations, micro-segmentation policies, or DMZ designs. Produces a
-  segmentation maturity assessment with zone mapping, trust boundary analysis,
-  and remediation guidance.
-tags: [network, segmentation, micro-segmentation]
+  segmentation maturity assessment with zone mapping, IPv4/IPv6 address-family
+  evidence, trust boundary analysis, and remediation guidance.
+tags: [network, segmentation, micro-segmentation, ipv6, dual-stack]
 role: [security-engineer, architect]
 phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
-time_estimate: "30-60min"
-version: "1.0.0"
+time_estimate: "35-70min"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Network Segmentation Review
 
-A structured, repeatable process for evaluating network segmentation architecture against NIST SP 800-207 (Zero Trust Architecture) and CIS Controls v8 Control 12 (Network Infrastructure Management). This skill produces a segmentation maturity assessment with zone mapping, trust boundary analysis, east-west traffic control evaluation, and prioritized remediation guidance.
+A structured, repeatable process for evaluating network segmentation architecture against NIST SP 800-207 (Zero Trust Architecture) and CIS Controls v8 Control 12 (Network Infrastructure Management). This skill produces a segmentation maturity assessment with zone mapping, IPv4/IPv6 address-family evidence, trust boundary analysis, east-west traffic control evaluation, and prioritized remediation guidance.
 
 ---
 
@@ -43,6 +43,8 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 ## Context
 
 Network segmentation is the foundational control that limits blast radius. NIST SP 800-207 Section 2 defines Zero Trust Architecture as requiring "no implicit trust granted to assets or user accounts based solely on their physical or network location." CIS Controls v8 Control 12 requires enterprises to "establish, implement, and actively manage network devices, in order to prevent attackers from exploiting vulnerable network services and access points." Effective segmentation moves beyond flat VLANs to enforce policy at the workload level, restricting east-west traffic between systems that have no legitimate communication requirement.
+
+Dual-stack networks require address-family-specific evidence. An IPv4-only route, firewall, security-group, or segmentation test does not prove IPv6 isolation. Record each zone pair as `IPv4 tested`, `IPv6 tested`, `IPv6 not enabled`, or `IPv6 Not Evaluable` instead of collapsing both families into one pass/fail result.
 
 ---
 
@@ -77,6 +79,13 @@ Use Glob and Grep to locate network configuration files, diagrams-as-code, and i
 **/vlan*
 **/*.acl
 **/interfaces*
+
+# IPv6 / dual-stack indicators
+**/*ipv6*
+**/*dual-stack*
+**/*route*
+**/*egress-only*
+**/*networkpolicy*
 ```
 
 Catalog all discovered files by layer:
@@ -105,9 +114,11 @@ Identify and document all network zones present in the configuration:
 | **IoT / OT** | Untrusted device zones | Sensors, embedded devices, industrial control subnets |
 
 For each zone, record:
-- Subnet CIDR ranges.
+- IPv4 CIDR ranges and IPv6 CIDR ranges.
+- Whether IPv6 is enabled, disabled, or unknown for the zone.
 - Associated security group or ACL identifiers.
 - Routing relationships to other zones.
+- Address-family-specific enforcement evidence.
 
 ---
 
@@ -143,7 +154,55 @@ route {
 
 ---
 
-#### 2.3 VLAN Design Review (CIS Control 12.2)
+#### 2.3 Address-Family Route and Policy Parity
+
+For every trust boundary, record whether IPv4 and IPv6 follow the same intended policy enforcement point.
+
+**Cloud and IaC patterns to search:**
+
+```
+# AWS / Terraform
+destination_cidr_block
+destination_ipv6_cidr_block
+ipv6_cidr_block
+assign_ipv6_address_on_creation
+egress_only_gateway_id
+aws_egress_only_internet_gateway
+::/0
+0.0.0.0/0
+
+# Google Cloud / Terraform
+IPV4_IPV6
+ipv6_access_type
+stack_type
+destination_ranges
+source_ranges
+
+# Kubernetes dual-stack
+ipFamilyPolicy
+ipFamilies
+podCIDR
+podCIDRs
+serviceCIDR
+serviceCIDRs
+2001:
+fd00:
+```
+
+For each zone pair, verify:
+
+- **IPv4 and IPv6 CIDRs:** Both address families are listed when enabled.
+- **Default routes:** `0.0.0.0/0` and `::/0` have separate route targets recorded.
+- **Local routes:** IPv6 local route behavior is identified for VPC/subnet-to-subnet traffic.
+- **Egress controls:** IPv6 egress-only internet gateway paths are not treated as equivalent to NAT, proxy, or inspection unless route evidence proves the same enforcement point.
+- **Firewall/security rules:** IPv4 and IPv6 CIDR fields are both reviewed; `::/0` rules are not missed when `0.0.0.0/0` is restricted.
+- **Flow/test evidence:** Segmentation test results identify the address family tested.
+
+**Finding classification:** An enabled IPv6 route that bypasses the intended policy enforcement point is **High** or **Critical** depending on the protected zone. Missing IPv6 route/firewall/test evidence for material zones is **Medium**. If source artifacts cannot prove whether IPv6 is enabled, mark `IPv6 Not Evaluable`.
+
+---
+
+#### 2.4 VLAN Design Review (CIS Control 12.2)
 
 CIS Control 12.2 requires establishing and maintaining a secure network architecture. Evaluate VLAN design:
 
@@ -206,6 +265,18 @@ Evaluate the environment's readiness for workload-level segmentation:
 | **Enforcement mode** | Policies enforcing (deny unauthorized) | Policies in audit/monitor mode | No policies defined |
 | **Automation** | Policy changes via GitOps/IaC | Some manual policy management | Fully manual |
 
+#### 3.3 Kubernetes and CNI Dual-Stack Policy Evidence
+
+For Kubernetes, service mesh, Calico, Cilium, or cloud CNI environments, verify that selected-policy and runtime evidence covers dual-stack paths when enabled:
+
+- Pod and service CIDRs include IPv4 and IPv6 ranges where dual-stack is configured.
+- `NetworkPolicy` `ipBlock.cidr` rules are reviewed for IPv4 and IPv6 CIDRs.
+- `ipFamilyPolicy` and `ipFamilies` are recorded for services that cross trust boundaries.
+- Runtime probes or flow logs distinguish IPv4 and IPv6 attempts.
+- CNI enforcement mode applies to both families, or the unsupported family is marked `Not Evaluable`.
+
+**Finding classification:** A Kubernetes policy that restricts an IPv4 destination while leaving an enabled IPv6 path untested or unrestricted is **High** for protected services. Missing dual-stack runtime evidence is **Medium** unless there is direct bypass evidence.
+
 ---
 
 ### Step 4: DMZ Architecture Review (NIST SP 800-41, Section 4.1; CIS Control 12.2)
@@ -242,6 +313,7 @@ Document or verify the existence of a segmentation testing process:
 3. **From the DMZ, attempt to reach internal zones** on unauthorized ports. Expected result: blocked.
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
+6. **Run separate IPv4 and IPv6 probes** for every material zone pair. Expected result: the same allow/deny decision and policy enforcement point, or a documented `IPv6 not enabled` / `IPv6 Not Evaluable` status.
 
 ---
 
@@ -249,10 +321,12 @@ Document or verify the existence of a segmentation testing process:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Flat network with no segmentation; missing enforcement points between security zones; CDE not isolated; direct external-to-internal routing. |
-| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic. |
-| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation. |
+| **Critical** | Flat network with no segmentation; missing enforcement points between security zones; CDE not isolated; direct external-to-internal routing; IPv6 path that bypasses the intended PEP into a high-value or regulated zone. |
+| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic; enabled IPv6 route or firewall rule that bypasses an IPv4-only segmentation control. |
+| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation; IPv6 enabled but route, firewall, CNI, or test evidence missing for material zones. |
 | **Low** | Suboptimal zone naming conventions; missing network diagrams; segmentation documentation out of date. |
+
+Use `Not Evaluable` when source artifacts cannot prove whether IPv6 is enabled, whether an IPv6 policy exists, or whether IPv6 runtime testing was performed.
 
 ---
 
@@ -269,20 +343,21 @@ Document or verify the existence of a segmentation testing process:
 
 ### Zone Map
 
-| Zone | Subnet(s) | Enforcement Mechanism | Trust Level |
-|------|-----------|----------------------|-------------|
-| DMZ  | 10.1.0.0/24 | External FW + SG | Low |
-| App  | 10.2.0.0/16 | Internal FW + NP | Medium |
-| Data | 10.3.0.0/16 | Internal FW + NP | High |
-| Mgmt | 10.4.0.0/24 | Bastion + SG | High |
+| Zone | IPv4 CIDR(s) | IPv6 CIDR(s) | IPv6 Enabled? | Enforcement Mechanism | Trust Level |
+|------|--------------|--------------|---------------|----------------------|-------------|
+| DMZ  | 10.1.0.0/24 | 2001:db8:1::/64 | Yes/No/Unknown | External FW + SG | Low |
+| App  | 10.2.0.0/16 | 2001:db8:2::/56 | Yes/No/Unknown | Internal FW + NP | Medium |
+| Data | 10.3.0.0/16 | None/Unknown | No/Unknown | Internal FW + NP | High |
+| Mgmt | 10.4.0.0/24 | None/Unknown | No/Unknown | Bastion + SG | High |
 
 ### Trust Boundary Matrix
 
-| Source Zone | Dest Zone | Enforcement | Status | Finding |
-|-------------|-----------|-------------|--------|---------|
-| DMZ         | App       | Firewall    | Restricted | Pass |
-| App         | Data      | SG only     | Overly permissive | F-002 |
-| User        | Data      | None        | No control | F-001 |
+| Source Zone | Dest Zone | Address Family | Route Target | Policy Rule Evidence | Flow/Test Evidence | Status | Confidence | Finding |
+|-------------|-----------|----------------|--------------|----------------------|-------------------|--------|------------|---------|
+| DMZ         | App       | IPv4           | Firewall ENI | Restricted tcp/443   | Tested            | Pass | Strong | None |
+| DMZ         | App       | IPv6           | Unknown      | Missing              | Not tested        | Not Evaluable | Low | F-IPv6-001 |
+| App         | Data      | IPv4           | SG only      | Overly permissive    | Tested            | Fail | Strong | F-002 |
+| User        | Data      | IPv6           | ::/0 egress-only gateway | No matching deny | Not tested | Fail | Medium | F-001 |
 
 ### Findings
 
@@ -345,6 +420,10 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Testing only IPv4 paths in a dual-stack environment.** A blocked IPv4 probe does not prove that IPv6 routes, security-group rules, firewall rules, or CNI policy enforce the same boundary.
+
+7. **Applying IPv4 NAT assumptions to IPv6 egress.** NAT gateway, proxy, or inspection evidence for IPv4 does not automatically cover IPv6. Record the `::/0` route target and enforcement point separately.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -365,6 +444,12 @@ This skill processes network configurations that may contain user-supplied comme
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - CIS Control 12 -- Network Infrastructure Management: https://www.cisecurity.org/controls/network-infrastructure-management
 - PCI DSS v4.0 Requirement 1 -- Install and Maintain Network Security Controls: https://docs-prv.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0.pdf
+- AWS VPC route table examples: https://docs.aws.amazon.com/vpc/latest/userguide/route-table-options.html
+- AWS VPC IPv6 migration guide: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-migrate-ipv6-add.html
+- AWS security group rule basics: https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html
+- Google Cloud VPC firewall rules: https://docs.cloud.google.com/firewall/docs/firewalls
+- Google Cloud VPC IPv6 support: https://docs.cloud.google.com/vpc/docs/ipv6-support
+- Kubernetes NetworkPolicy API reference: https://kubernetes.io/docs/reference/kubernetes-api/networking/network-policy-v1/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Project Calico Documentation: https://docs.tigera.io/calico/latest/about/
 
@@ -372,4 +457,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.1.0** -- Added dual-stack IPv4/IPv6 route, firewall, Kubernetes/CNI, segmentation-test, confidence, and `Not Evaluable` evidence gates.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
