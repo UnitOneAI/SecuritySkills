@@ -1,0 +1,3 @@
+auth:
+  header: "Bearer <token>"
+  description: "Placeholder used by local setup documentation."

@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -155,8 +155,14 @@ xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
 # Generic password assignment
 (?i)(?:password|passwd|pwd)\s*[=:]\s*['"][^'"]{8,}['"]
 
-# JWT tokens (three base64url segments separated by dots)
-eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*
+# JWS/JWT compact tokens (three base64url segments; do not require eyJ prefix)
+[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
+
+# JWE compact tokens (five base64url segments, often used as bearer credentials)
+[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
+
+# Bearer-context compact tokens, including non-eyJ JWT headers and opaque providers
+[Bb]earer\s+[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]*){1,4}
 ```
 
 #### 2.2 False Positive Filtering — Distinguishing Real Secrets from Noise
@@ -165,7 +171,7 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+3. **Recognize known secret prefixes and token shapes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, or compact bearer/JWT/JWE token shapes), it is likely a real secret and should be reviewed with the token classification checks below.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
@@ -173,7 +179,44 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
-#### 2.3 Detection Tool Configuration Review
+#### 2.3 JWT, JWE, and Bearer Token Classification
+
+JWT-like values need additional classification because the same compact shape appears in real bearer credentials, expired test fixtures, and documentation examples. Decode only the header and payload locally for classification. Never send a token to an external verification service, introspection endpoint, decoder website, or log sink.
+
+**Token-shape checks:**
+
+1. **Three segments:** Treat `header.payload.signature` as a JWS/JWT candidate even when it does not start with `eyJ`. Pretty-printed or differently serialized JSON headers can begin with other base64url prefixes.
+2. **Five segments:** Treat `protected.encrypted_key.iv.ciphertext.tag` as a JWE candidate. A JWE can be a bearer credential even though the payload is encrypted and cannot be decoded.
+3. **Bearer context:** Elevate any compact token-like value found in `Authorization: Bearer`, OAuth callback handling, API client configuration, cookies, CI variables, or environment files. Bearer context can make opaque provider tokens sensitive even when they are not JWTs.
+4. **Local decoding:** Base64url-decode JWT header and payload locally where possible. Use decoded metadata only to classify the finding; do not reproduce claim values in output.
+
+**Classification tiers:**
+
+| Tier | Conditions | Finding Treatment |
+|------|------------|-------------------|
+| Active-looking credential | Bearer/storage context plus future `exp`, missing `exp`, issuer/audience/client metadata, signed/encrypted token shape, or production-like variable name | Report as a secret finding without displaying the value |
+| Expired but sensitive claim exposure | Expired JWT in code/logs with user identifiers, email, subject, roles, tenant, or issuer/audience claims | Report as sensitive data exposure, not as an active credential, and require log/code cleanup |
+| Example or test fixture | Documentation/test path or surrounding text says example, dummy, fixture, unsigned, `alg: none`, expired at `0` or clearly synthetic, and no production context | Do not count as a leaked credential; mention only if examples are confusing scanners |
+| Placeholder | Values like `your-jwt-here`, `Bearer <token>`, `dummy.jwt.signature`, or all-zero/example segments | Exclude from findings |
+
+**False-positive guards:**
+
+- Do not classify every `eyJ...` value as a live credential. The `eyJ` prefix only indicates a common base64url-encoded JSON start.
+- Do not downgrade a token solely because it is expired. Expired tokens can still expose PII or authorization metadata in claims.
+- Do not require a token to start with `eyJ`. Header whitespace, serialization differences, and encrypted/opaque token formats can produce other prefixes.
+- Allowlist documentation and test fixtures narrowly by file path and context, not by broad token regex suppression.
+
+**Report fields to include for token findings:**
+
+```
+Token Classification: Active-looking credential / Expired sensitive claims / Example fixture / Placeholder
+Token Shape: JWS/JWT three-part / JWE five-part / Opaque bearer
+Context: Authorization header / cookie / environment variable / documentation / test fixture
+Decoded Metadata Reviewed: header only / header+payload / not decodable
+External Validation Performed: No
+```
+
+#### 2.4 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
@@ -471,5 +514,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.1.0** -- Add JWT/JWE and bearer-token classification, reduce JWT example/test false positives, and expand token-shape coverage beyond `eyJ` three-part tokens.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
