@@ -427,26 +427,21 @@ metadata:
 ```
 
 ```yaml
-# BAD: broad policy exception with mutable image tag and no lifecycle evidence
-apiVersion: kyverno.io/v2
+# BAD: broad image exception with mutable tag and no lifecycle evidence
+apiVersion: policies.kyverno.io/v1beta1
 kind: PolicyException
 metadata:
   name: allow-unsigned-tools
   namespace: policy-exceptions
 spec:
-  exceptions:
-    - policyName: require-signed-images
-      ruleNames:
-        - "*"
-  match:
-    any:
-      - resources:
-          namespaces:
-            - "*"
-          kinds:
-            - Pod
-          images:
-            - "registry.example.com/tools/*:latest"
+  policyRefs:
+    - name: require-signed-images
+      kind: ImageValidatingPolicy
+  images:
+    - "registry.example.com/tools/*:latest"
+  matchConditions:
+    - name: broad-production-tools
+      expression: "object.metadata.namespace.startsWith('prod')"
 ```
 
 ```yaml
@@ -477,7 +472,7 @@ metadata:
     security.example.com/owner: incident-commander
     security.example.com/ticket: INC-2026-0605
     security.example.com/reason: "4h privileged debug pod on tainted IR node"
-    security.example.com/expires-at: "2026-06-05T08:00:00Z"
+    security.example.com/expires-at: "<incident-start + 4h RFC3339>"
     security.example.com/cleanup-required: "delete debug pod and exception after incident"
 spec:
   exceptions:

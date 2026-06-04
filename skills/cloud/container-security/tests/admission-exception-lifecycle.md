@@ -31,23 +31,20 @@ Expected finding:
 ## Should Trigger: Broad Unsigned Image Policy Exception
 
 ```yaml
-apiVersion: kyverno.io/v2
+apiVersion: policies.kyverno.io/v1beta1
 kind: PolicyException
 metadata:
   name: unsigned-tools
   namespace: policy-exceptions
 spec:
-  exceptions:
-    - policyName: require-signed-images
-      ruleNames:
-        - "*"
-  match:
-    any:
-      - resources:
-          namespaces:
-            - "*"
-          images:
-            - "registry.example.com/tools/*:latest"
+  policyRefs:
+    - name: require-signed-images
+      kind: ImageValidatingPolicy
+  images:
+    - "registry.example.com/tools/*:latest"
+  matchConditions:
+    - name: broad-production-tools
+      expression: "object.metadata.namespace.startsWith('prod')"
 ```
 
 Expected finding:
@@ -71,7 +68,7 @@ metadata:
     security.example.com/owner: incident-commander
     security.example.com/ticket: INC-2026-0605
     security.example.com/reason: "4h privileged debug pod on tainted IR node"
-    security.example.com/expires-at: "2026-06-05T08:00:00Z"
+    security.example.com/expires-at: "<incident-start + 4h RFC3339>"
     security.example.com/cleanup-required: "delete debug pod and exception after incident"
 spec:
   exceptions:
