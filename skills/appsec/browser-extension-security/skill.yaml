@@ -1,0 +1,62 @@
+name: browser-extension-security
+version: "1.0"
+author: minorstep
+category: other
+severity: high
+languages:
+  - javascript
+  - typescript
+  - json
+description: |
+  Detects browser-extension security failures in Chrome Manifest V3 and Mozilla WebExtensions, including overbroad host permissions, unsafe message trust boundaries, external-connectable exposure, dynamic code execution, unsafe DOM rendering, and sensitive data stored in extension-local storage.
+detection:
+  patterns:
+    - pattern: "host_permissions or content_scripts.matches contains <all_urls>, *://*/*, http://*/*, or https://*/*"
+      description: "Catches broad page reach that needs strong justification and compensating controls."
+    - pattern: "chrome.runtime.onMessage or onMessageExternal handler performs privileged action without sender and schema validation"
+      description: "Catches message handlers that let content scripts or external pages trigger privileged extension behaviour."
+    - pattern: "chrome.scripting.executeScript receives target, function, args, or code from untrusted messages"
+      description: "Catches message-triggered page injection and dynamic execution paths."
+    - pattern: "innerHTML, outerHTML, insertAdjacentHTML, eval, new Function, or remote script import receives page, message, or network data"
+      description: "Catches unsafe rendering and dynamic code execution in content scripts or extension pages."
+    - pattern: "chrome.storage.local, chrome.storage.sync, IndexedDB, or logs store tokens, API keys, sessions, cookies, or private keys"
+      description: "Catches long-lived sensitive data stored in extension-local state."
+  exceptions:
+    - pattern: "activeTab with user-triggered action and no persistent broad host permissions"
+      description: "User-triggered activeTab access is narrower than persistent all-site access."
+    - pattern: "message handler validates sender.id or sender.origin, validates schema, and allowlists privileged actions"
+      description: "Typed and allowlisted message boundaries reduce content-script and external sender risk."
+    - pattern: "textContent or equivalent safe text rendering for untrusted content"
+      description: "Plain text rendering avoids DOM XSS sinks."
+remediation:
+  approach: |
+    Reduce persistent browser and host permissions to the minimum required, move privileged operations behind validated background-worker handlers, validate message senders and schemas, reject unknown actions, avoid dynamic execution, render untrusted values as text, and keep long-lived secrets out of extension-local storage.
+  automated: false
+  fix:
+    description: "Most fixes require design-specific permission minimisation and typed message contracts. The skill provides exact review gates and remediation patterns, not a one-size automatic rewrite."
+references:
+  - url: "https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions"
+    description: "Chrome Extensions permissions and host permissions."
+  - url: "https://developer.chrome.com/docs/extensions/reference/manifest/externally-connectable"
+    description: "Chrome Extensions externally connectable messaging."
+  - url: "https://developer.chrome.com/docs/extensions/reference/api/scripting"
+    description: "Chrome Extensions scripting API."
+  - url: "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions"
+    description: "Mozilla WebExtensions manifest permissions."
+  - url: "https://cwe.mitre.org/data/definitions/79.html"
+    description: "CWE-79 cross-site scripting."
+  - url: "https://cwe.mitre.org/data/definitions/94.html"
+    description: "CWE-94 code generation control."
+  - url: "https://cwe.mitre.org/data/definitions/200.html"
+    description: "CWE-200 sensitive information exposure."
+  - url: "https://cwe.mitre.org/data/definitions/284.html"
+    description: "CWE-284 improper access control."
+  - url: "https://cwe.mitre.org/data/definitions/862.html"
+    description: "CWE-862 missing authorization."
+  - url: "https://cwe.mitre.org/data/definitions/922.html"
+    description: "CWE-922 insecure storage of sensitive information."
+metadata:
+  cwe: ["CWE-79", "CWE-94", "CWE-200", "CWE-284", "CWE-862", "CWE-922"]
+  owasp: ["OWASP-ASVS"]
+  created: "2026-06-04"
+  last_updated: "2026-06-04"

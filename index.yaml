@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-04"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -63,6 +63,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/appsec/api-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: browser-extension-security
+    name: "Browser Extension Security Review"
+    tags: [appsec, browser-extension, chrome-extension, webextensions, manifest-v3]
+    role: [appsec-engineer, security-engineer]
+    phase: [design, build, review]
+    activity: [review, test]
+    frameworks: [Chrome-Extension-MV3, Mozilla-WebExtensions, OWASP-ASVS, CWE]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/browser-extension-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning

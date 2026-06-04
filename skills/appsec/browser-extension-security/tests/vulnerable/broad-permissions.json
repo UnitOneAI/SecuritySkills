@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Universal Helper",
+  "version": "1.0.0",
+  "permissions": ["cookies", "tabs", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "externally_connectable": {
+    "matches": ["*://*/*"]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true
+    }
+  ]
+}
