@@ -230,12 +230,12 @@ correlation:
         - TargetUserName
         - WorkstationName
     timespan: 10m
-    condition:
-        gte: 1
 falsepositives:
     - Password reset or helpdesk-assisted login recovery
 level: medium
 ```
+
+For `temporal` and `temporal_ordered`, do not add a threshold condition just to prove all referenced rule types occurred. Use the ordered/temporal relationship itself for the sequence, and put thresholds such as "many failed logons" in a separate related `event_count` correlation rule before the ordered correlation references it.
 
 **Correlation field requirements:**
 
@@ -245,7 +245,7 @@ level: medium
 | `correlation.rules` | Yes | Related Sigma rule IDs or names; use names only when the pipeline can resolve them to IDs. |
 | `correlation.group-by` | Yes | Entity fields that must be equal across matched events, such as user, host, IP, or cloud principal. |
 | `correlation.timespan` | Yes | Time window such as `10m`, `1h`, or `1d`; record why the window matches the threat behavior. |
-| `correlation.condition` | Yes | Comparison such as `gte: 5`; value correlations must identify the counted or numeric field. |
+| `correlation.condition` | Required for count and value correlations | Comparison such as `gte: 5`; value correlations must identify the counted or numeric field. For `temporal` and `temporal_ordered`, include a condition only when intentionally counting distinct matched rule types; otherwise rely on the temporal relationship and related-rule list. |
 | `correlation.aliases` | Required when fields differ across rules | Maps a shared entity name to different field names across related rules. |
 | Backend support status | Yes | Pass, Partial, Unsupported, or Not Evaluable for each target backend. |
 
