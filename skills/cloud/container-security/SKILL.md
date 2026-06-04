@@ -7,7 +7,7 @@ description: >
   or container orchestration configurations. Evaluates image security, runtime
   hardening, RBAC, Pod Security Standards, network policies, and secrets
   management. Produces a prioritized findings report with remediation guidance.
-tags: [cloud, containers, kubernetes, docker]
+tags: [cloud, containers, kubernetes, docker, admission-control]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
@@ -61,6 +61,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
+- Admission-control exception records for Pod Security Admission, Kyverno, Gatekeeper, image signing, or break-glass debug access
 - Container registry configurations (if available)
 
 ---
@@ -248,6 +249,38 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ---
 
+### Admission Exception Lifecycle Review
+
+Admission-control exceptions can be valid during incident response, platform migrations, or system-agent operations, but they must be narrow, temporary, and owned. Treat an undocumented exception as a policy bypass, not as a compensating control.
+
+Record these fields for each exception:
+
+| Field | Required evidence |
+|-------|-------------------|
+| Policy control | Pod Security Admission, Kyverno, Gatekeeper, image signature, or custom admission webhook rule being bypassed |
+| Scope | Namespace, service account, workload name, container, image digest, and registry path where applicable |
+| Owner | Individual or team accountable for the exception and its removal |
+| Reason | Incident ticket, migration ticket, vendor requirement, or system-agent justification |
+| Expiry | Expiration timestamp or TTL; production exceptions without expiry are high risk |
+| Compensating controls | Node taints, network isolation, audit logging, read-only mounts, restricted RBAC, or post-incident review |
+| Cleanup evidence | Evidence that expired exceptions are removed or re-approved through a tracked process |
+
+Use these review rules:
+
+- Prefer image-digest exceptions over tag or registry-prefix exceptions. A broad `registry/*` signature bypass should be treated as high risk unless a short TTL and strong owner evidence exist.
+- Scope privileged or host-access exceptions to exact workloads and namespaces. Namespace-wide labels that disable Pod Security Admission require owner, TTL, and review cadence.
+- System namespaces, CNI, CSI, and monitoring agents may need special access, but they still need documented scope and periodic review.
+- Break-glass debug pods should be tied to an incident ticket, isolated with node taints or namespace controls, audited, and deleted after expiry.
+- Flag stale exceptions when expiry is missing, expiry has passed, owner is unknown, or compensating controls are not evidenced.
+
+Add an exception table to the report when any admission bypass exists:
+
+| Policy | Namespace | Workload/Image | Owner | Expiry/TTL | Scope Quality | Compensating Controls | Status |
+|--------|-----------|----------------|-------|------------|---------------|-----------------------|--------|
+| <policy> | <namespace> | <workload or digest> | <owner> | <date/time> | Exact / Broad | <controls> | Accepted / Stale / High Risk |
+
+---
+
 ## Common Pitfalls
 
 1. **Init containers and sidecar containers are often missed.** Pod Security Standards apply to ALL containers in a pod, including init containers and ephemeral containers. Check every container spec.
@@ -257,6 +290,7 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Temporary admission exceptions become permanent quickly.** A privileged debug pod, unsigned-image bypass, or namespace-wide policy exemption without owner and TTL should be reported as a stale exception even if the original reason was valid.
 
 ---
 
