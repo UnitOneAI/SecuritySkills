@@ -602,7 +602,7 @@ app.post("/webhooks/billing", express.raw({ type: "application/json" }), async (
 ### Remediated Pattern
 
 ```javascript
-app.post("/webhooks/provider", express.raw({ type: "application/json" }), async (req, res) => {
+app.post("/tenants/:tenantId/webhooks/provider", express.raw({ type: "application/json" }), async (req, res) => {
   const signature = req.get("X-Provider-Signature");
   const timestamp = Number(req.get("X-Provider-Timestamp"));
 
@@ -633,6 +633,7 @@ app.post("/webhooks/provider", express.raw({ type: "application/json" }), async 
 - Enforce the provider's timestamp, nonce, delivery ID, or event ID replay window; reject stale, future-skewed, missing-signature, and duplicate deliveries.
 - Persist idempotency state with a unique constraint before running state-changing side effects.
 - Bind the event account, installation, organization, or tenant identifier to the destination tenant/resource before applying changes.
+- Derive tenant context from a route parameter, authenticated integration record, or provider account mapping before calling tenant-binding checks.
 - Model retry behavior explicitly: duplicate valid deliveries should return success or no-op without repeating side effects.
 - Document secret rotation overlap, owner, audit trail, and expiry; do not leave multiple active secrets without an end date.
 
