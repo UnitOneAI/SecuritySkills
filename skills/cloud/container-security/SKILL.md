@@ -113,6 +113,15 @@ Evaluate all container and Kubernetes configurations against CIS Docker Benchmar
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
+Before assigning severity for host namespaces, elevated capabilities, privileged mode, or mutable image findings, collect exception and enforcement evidence:
+
+- **System workload exception gate** -- if a workload runs in `kube-system` or a platform namespace as CNI, CSI, kube-proxy, node exporter, logging, EDR, or other node-level infrastructure, record component role, namespace boundary, RBAC scope, image provenance, owner, change-control ticket, and compensating controls before rating it as an application workload violation.
+- **Application namespace denial** -- verify the same host namespace, privileged, or elevated-capability pattern is denied for ordinary application namespaces through Pod Security Admission, Kyverno, Gatekeeper, or equivalent policy.
+- **Image provenance enforcement** -- distinguish CI signing from cluster enforcement. Record digest pinning, attestor identity, policy mode, admission controller, and denial evidence for unsigned, mutable-tag, or untrusted images.
+- **Rendered manifest evidence** -- for Helm or Kustomize reviews, state whether rendered manifests were reviewed and which values or overlays were used. Template-only review is incomplete when environment values can override security settings.
+- **Ephemeral container inventory** -- include `ephemeralContainers` alongside `containers` and `initContainers` in PSS, capability, host namespace, image, and provenance checks.
+- **Effective NetworkPolicy review** -- verify default-deny plus broad allow/egress policies together; do not treat the presence of one NetworkPolicy as proof of segmentation.
+
 ---
 
 ### Step 7: Compile Assessment Report
@@ -132,6 +141,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
 | **Informational** | Observation with no direct security impact | Image size optimization, multi-stage build suggestions, label recommendations |
 
+For platform/system workloads, do not downgrade automatically. Reclassify only when the exception gate proves infrastructure role, least-privilege RBAC, admission denial for app namespaces, signed/digest-pinned image provenance, owner, review date, and compensating controls. Missing exception evidence remains High/Critical.
+
 ---
 
 ## Output Format
@@ -144,6 +155,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Frameworks: CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, NIST SP 800-190
 - Files reviewed: <N Dockerfiles, N K8s manifests, N Helm charts>
+- Rendered manifests reviewed: <yes/no; command, values files, overlays>
 
 ### Executive Summary
 - Total checks evaluated: <N>
@@ -174,16 +186,20 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
 - **Container:** <container name>
+- **Container kind:** <container / initContainer / ephemeralContainer>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
+- **Exception evidence:** <system workload role, owner, RBAC scope, compensating controls, or none>
+- **Image provenance evidence:** <digest, signature/attestor, admission policy mode, denial test>
+- **Effective policy evidence:** <PSA/Kyverno/Gatekeeper/NetworkPolicy effective result>
 - **Remediation:** <fix with code example>
 
 ### Pod Security Standards Compliance Matrix
 
-| Workload | Namespace | PSS Level | Violations |
-|----------|-----------|-----------|------------|
-| deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
-| deploy/worker | production | Privileged | privileged: true |
+| Workload | Namespace | Containers Reviewed | PSS Level | Exceptions | Violations |
+|----------|-----------|---------------------|-----------|------------|------------|
+| deploy/app | production | app, init, ephemeral | Baseline (not Restricted) | none | runAsRoot, no seccomp |
+| daemonset/cilium | kube-system | cilium-agent | Privileged | system workload exception evidence required | hostNetwork, NET_ADMIN |
 
 ### Prioritized Remediation Plan
 
@@ -257,6 +273,9 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **System workloads are not ordinary app pods.** CNI, CSI, kube-proxy, and node security agents may require host access, but they still need exception evidence, scoped RBAC, image provenance, and app-namespace denial controls.
+9. **Signing is not enforcement.** A CI job that signs images does not prove the cluster rejects unsigned or mutable images. Require admission-time denial evidence.
+10. **Template-only Helm reviews miss production overrides.** Render charts with the relevant values files or clearly mark the assessment incomplete.
 
 ---
 

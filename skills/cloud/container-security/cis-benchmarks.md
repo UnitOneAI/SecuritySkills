@@ -592,7 +592,7 @@ Evaluate container runtime configurations against NIST SP 800-190 countermeasure
 |---------------|---------------|
 | **CM-1:** Use minimal base images | Verify Alpine, Distroless, or slim variants in FROM |
 | **CM-2:** Scan images for vulnerabilities | Check for Trivy, Grype, Snyk in CI pipeline |
-| **CM-3:** Sign and verify images | Check for Cosign signatures, Notary, or admission webhooks |
+| **CM-3:** Sign and verify images | Check digest pinning, Cosign/Notary/Sigstore attestors, admission policy mode, and denial evidence proving unsigned or untrusted images are rejected |
 | **CM-4:** Use immutable tags or digests | `image: nginx@sha256:...` preferred over `image: nginx:1.25` |
 | **CM-5:** Remove unnecessary packages | No curl, wget, netcat, or shells in production images |
 
