@@ -56,6 +56,7 @@ Before beginning, gather or confirm:
 - [ ] **Environment baseline:** Normal volume and patterns for the data source (e.g., average daily failed logon count, typical admin logon hours).
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
+- [ ] **Scheduling and ingestion delay:** Expected source latency, query frequency, lookback period, platform delay, event-time vs ingestion/index-time choice, suppression window, deduplication key, and backfill posture.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
 
 ---
@@ -456,6 +457,50 @@ Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
 
+#### Scheduling and Ingestion Delay Evidence
+
+Scheduled SIEM rules must account for late-arriving events. A rule can have correct query logic and still miss attacks when the schedule looks back only over the same interval as its run frequency while the connector or indexer commonly receives events late.
+
+Record scheduling evidence before marking a rule production-ready:
+
+| Evidence Field | What to Capture | Review Handling |
+|---|---|---|
+| Data source latency | Expected p50/p95/p99 delay from event generation to SIEM ingestion/indexing | If unknown, require a conservative overlap or mark readiness Partial |
+| Query frequency | How often the rule runs | Must be less than or equal to lookback |
+| Lookback period | Event-time range searched by each run | Should cover frequency plus expected lag, with overlap documented |
+| Platform delay | Built-in or configured delay before the scheduled query runs | Microsoft Sentinel scheduled analytics rules run with a built-in five-minute delay |
+| Time basis | Event time vs ingestion/index time | Must match detection intent and late-event behavior |
+| Deduplication key | Entity fields used to suppress duplicate alerts from overlapping windows | Required when lookback exceeds frequency |
+| Backfill posture | Whether missed/partial runs are backfilled or durable | Required for high-value detections |
+| Late-event test | Synthetic or replayed event with old event time and later ingestion/index time | Required before Strong production readiness |
+
+**Microsoft Sentinel guidance:**
+
+- Compare the rule's `Run query every` value to `Lookup data from the last`. The query interval must not exceed the lookback period; when the lookback is longer than the interval, document overlap and duplicate handling.
+- For SaaS, cloud control-plane, identity, EDR, and firewall batch sources, use a lookback longer than the rule frequency when connector latency is expected.
+- Do not rely only on `TimeGenerated > ago(frequency)` for delayed sources. Record whether the rule needs `ingestion_time()`, an explicit delayed schedule, a broader event-time window, or entity-based suppression.
+- When broadening lookback, group by stable incident keys such as account, IP, host, technique, and event bucket so late data is captured without producing repeated incidents.
+
+**Splunk guidance:**
+
+- `_time` is event time; `_indextime` is when Splunk indexed the event. Late-arriving events can fall outside a narrow `_time` search window even though they were just indexed.
+- For late-prone sources, decide whether the correlation search should use event-time windows, `_index_earliest` / `_index_latest`, durable search, lag time, or a wider event-time window plus deduplication.
+- When using `_index_earliest` or `_index_latest`, keep an event-time window broad enough to retrieve the relevant events, because index-time modifiers filter within the searched event-time range.
+- Durable scheduled reports can track `_time` or `_indextime`; choose the cursor based on whether completeness should follow event occurrence time or indexing time.
+
+**Late-arriving validation case:**
+
+```
+Late Event Validation:
+- Rule frequency:              [5m / 10m / 15m / other]
+- Lookback period:             [Xm/h]
+- Expected source latency:     [p95 Xm, p99 Xm, source]
+- Test event time:             [timestamp inside previous run window]
+- Test ingestion/index time:   [timestamp after first scheduled run]
+- Expected result:             [Captured once / captured with suppression / intentionally excluded]
+- Actual result:               [Pass / Fail / Not tested]
+```
+
 ### Step 5: Detection Rule Lifecycle Management
 
 **Lifecycle stages:**
@@ -532,7 +577,19 @@ Produce SIEM rule deliverables in this structure:
 | Count threshold | [N] | [Why this value] |
 | Time window | [Xm/h] | [Why this window] |
 | Frequency | [Xm/h] | [How often to run] |
+| Lookback period | [Xm/h] | [How late-event coverage is preserved] |
 | Suppression | [Xh] | [Cooldown period] |
+
+### Scheduling and Ingestion Delay Evidence
+| Field | Value | Evidence / Rationale |
+|-------|-------|----------------------|
+| Expected source latency | [p50/p95/p99 or Unknown] | [Connector/indexer evidence] |
+| Platform scheduling delay | [Sentinel 5m / Splunk lag time / Other / None] | [Configured or built-in behavior] |
+| Time basis | [Event time / Ingestion time / Index time / Hybrid] | [Why this basis is correct] |
+| Overlap strategy | [Lookback > frequency / durable search / backfill / none] | [Gap and duplicate handling] |
+| Deduplication key | [Fields] | [How duplicate alerts are suppressed] |
+| Late-event validation | [Pass / Fail / Not tested] | [Synthetic/replayed late-event result] |
+| Backfill posture | [Enabled / Manual / Not supported / Not configured] | [How missed runs are handled] |
 
 ### Entity Mapping
 | Entity Type | Source Field |
@@ -549,6 +606,7 @@ Produce SIEM rule deliverables in this structure:
 
 ### Validation
 - [How to test the rule produces a true positive]
+- [How to test a late-arriving true positive whose event time is inside a prior window but whose ingestion/index time occurs after the first scheduled run]
 ```
 
 ---
@@ -632,6 +690,10 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
+### Pitfall 6: Ignoring Ingestion Delay and Late-Arriving Events
+
+A scheduled rule that runs every 5 minutes and searches only the last 5 minutes can miss cloud, SaaS, EDR, or firewall events that arrive after the run completes. Widening the lookback without deduplication can then create repeated alerts. Capture data-source latency, event-time vs ingestion/index-time choice, overlap, suppression key, and a late-event validation case before calling a scheduled rule production-ready.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -658,3 +720,6 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 8. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 9. **Sentinel Entity Mapping** -- https://learn.microsoft.com/en-us/azure/sentinel/map-data-fields-to-entities
 10. **Splunk CIM (Common Information Model)** -- https://docs.splunk.com/Documentation/CIM/latest/User/Overview
+11. **Microsoft Sentinel Scheduled Analytics Rules and Ingestion Delay** -- https://learn.microsoft.com/en-us/azure/sentinel/scheduled-rules-overview
+12. **Splunk Durable Scheduled Reports** -- https://help.splunk.com/splunk-enterprise/create-dashboards-and-reports/reporting-manual/9.4/report-management/make-scheduled-reports-durable-to-prevent-event-loss
+13. **Splunk Time Modifiers (`_time`, `_index_earliest`, `_index_latest`)** -- https://help.splunk.com/?resourceId=SplunkCloud_SearchReference_SearchTimeModifiers
