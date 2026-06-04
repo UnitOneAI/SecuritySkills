@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -215,6 +215,33 @@ RBAC-CONST-07: Constraint violations not logged or alerted
 | `key-management` | `app-deployment` | Credential exfiltration | SSoD |
 | `vendor-onboarding` | `payment-approval` | Vendor fraud | SSoD |
 
+#### Transaction-Scoped and History-Based SoD
+
+Static SoD prevents conflicting assignments. Dynamic SoD prevents conflicting role activation in the same session. Some business processes also need **history-based SoD**, where the decision depends on the protected object or workflow history. This is common in maker-checker, four-eyes approval, finance, procurement, access request, deployment, and case-management systems.
+
+Treat a role pair as acceptable only when the workflow proves that the same actor cannot perform conflicting actions on the same object, batch, ticket, or state transition.
+
+| Control | Evidence to Request | Example Failure |
+|---|---|---|
+| **Self-approval denial** | `createdBy`, `requestedBy`, `lastModifiedBy`, and `approvedBy` are checked at final approval | User creates a vendor and approves payment to that vendor |
+| **Approver distinctness** | Approval quorum requires distinct named actors, not the same user through aliases or delegated identities | Two approvals both come from `alex@example.com` |
+| **Final-transition enforcement** | SoD check runs when the state changes, not only when the approval screen opens | User edits amount after review, then submits stale approval |
+| **Exception lifecycle** | Exception has requester, approver, scope, expiry, monitoring, and removal evidence | Temporary code-commit + prod-deploy exception never expires |
+| **Immutable workflow log** | Decision log records subject, object, action, prior actor, policy version, and outcome | Audit cannot show why approval was permitted |
+
+**What to look for:**
+
+```
+RBAC-SOD-TXN-01: No same-object self-approval check for sensitive workflow transitions
+RBAC-SOD-TXN-02: Approval quorum permits duplicate approver identities
+RBAC-SOD-TXN-03: Delegated or group-owned approvers are not attributable to named humans
+RBAC-SOD-TXN-04: SoD check happens only at page/view load, not at final state transition
+RBAC-SOD-TXN-05: Last editor/requester/creator fields are ignored by approval policy
+RBAC-SOD-TXN-06: SoD exception register lacks expiry, compensating control, or removal evidence
+RBAC-SOD-TXN-07: Sensitive batches can be approved by someone who modified any item in the batch
+RBAC-SOD-TXN-08: No negative tests for self-approval, duplicate quorum, or exception expiry
+```
+
 ---
 
 ### Step 4: Permission Boundary Design
@@ -323,6 +350,7 @@ RBAC-MINE-03: Mined roles not reviewed by application/resource owners
 RBAC-MINE-04: Outlier permissions force creation of single-user roles (should use ABAC)
 RBAC-MINE-05: No periodic re-mining cadence to catch drift (recommended: annually)
 RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may create conflicts)
+RBAC-MINE-07: Mining does not simulate toxic combinations on the same object or workflow
 ```
 
 #### Role Rationalization Targets
@@ -392,6 +420,11 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 ### Detailed Findings
 [Findings table]
 
+### SoD Evidence Matrix
+| Business process | Conflicting actions | Control type (SSoD / DSoD / history-based) | Object or workflow history fields | Decision point | Negative tests run | Exception ID / expiry | Evidence confidence |
+|---|---|---|---|---|---|---|---|
+| [payment approval] | [create payment / approve payment] | [history-based] | [createdBy, lastModifiedBy, approvedBy] | [final approval submit] | [self-approval, duplicate quorum] | [EX-123 / expires YYYY-MM-DD] | [High / Medium / Low / Not Evaluable] |
+
 ### Design Recommendations
 [Architecture diagram or pattern with framework justification]
 
@@ -436,6 +469,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Treating DSoD as session-only** — maker-checker systems often need object history checks, distinct approvers, and final-transition enforcement.
+9. **Approving SoD exceptions without lifecycle evidence** — temporary exceptions become standing conflicts unless expiry, monitoring, and removal are proven.
 
 ---
 
@@ -482,3 +517,4 @@ that may contain adversarial content.
 | Version | Date | Changes |
 |---|---|---|
 | 1.0.0 | 2025-03-06 | Initial release |
+| 1.1.0 | 2026-06-04 | Added transaction-scoped SoD, maker-checker evidence, exception lifecycle, and toxic-combination simulation guidance |
