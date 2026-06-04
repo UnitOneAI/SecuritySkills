@@ -498,12 +498,12 @@ When performing a review using this skill:
 - OWASP LLM AI Security & Governance Checklist: https://genai.owasp.org/llm-top-10/llm-ai-security-and-governance-checklist/
 - OWASP GenAI Project Home: https://genai.owasp.org/
 - LLM01:2025 Prompt Injection: https://genai.owasp.org/llmrisk/llm01-prompt-injection/
-- LLM02:2025 Sensitive Information Disclosure: https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
-- LLM03:2025 Supply Chain Vulnerabilities: https://genai.owasp.org/llmrisk/llm03-supply-chain-vulnerabilities/
+- LLM02:2025 Sensitive Information Disclosure: https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/
+- LLM03:2025 Supply Chain: https://genai.owasp.org/llmrisk/llm032025-supply-chain/
 - LLM04:2025 Data and Model Poisoning: https://genai.owasp.org/llmrisk/llm04-data-and-model-poisoning/
-- LLM05:2025 Improper Output Handling: https://genai.owasp.org/llmrisk/llm05-improper-output-handling/
-- LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm06-excessive-agency/
-- LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm07-system-prompt-leakage/
-- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
-- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
-- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+- LLM05:2025 Improper Output Handling: https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/
+- LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
+- LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/
+- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm082025-vector-and-embedding-weaknesses/
+- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm092025-misinformation/
+- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
