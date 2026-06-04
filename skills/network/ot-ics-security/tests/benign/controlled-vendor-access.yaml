@@ -1,0 +1,21 @@
+remote_access:
+  vendor: acme-controls
+  path: approved-jump-host
+  destination_zone: industrial_dmz
+  mfa_required: true
+  approval_required: true
+  session_recording: true
+  expires_after_minutes: 120
+  jump_host: jump-host-01
+  allowed_targets:
+    - engineering-workstation-01
+  blocked_targets:
+    - plc-line-1
+    - safety-controller-01
+accounts:
+  type: named
+  privileged_access: just_in_time
+  password_rotation_days: 30
+emergency_review:
+  required: true
+  reviewer: operations-manager

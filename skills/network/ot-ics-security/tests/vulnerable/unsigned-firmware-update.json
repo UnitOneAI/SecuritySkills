@@ -1,0 +1,13 @@
+{
+  "asset": "plc-line-1",
+  "firmware_update": {
+    "source_url": "http://updates.example.invalid/plc/firmware.bin",
+    "transport": "http",
+    "signature_required": false,
+    "hash_validation": false,
+    "approved_vendor_source": false,
+    "maintenance_window": "not_required",
+    "rollback_package": null,
+    "pre_update_backup": false
+  }
+}

@@ -1,0 +1,56 @@
+name: ot-ics-security
+version: "1.0"
+author: minorstep
+category: network
+severity: high
+languages:
+  - yaml
+  - json
+  - text
+description: |
+  Detects OT/ICS security failures in plant-network architectures, industrial remote access, protocol exposure, firmware/update paths, engineering workstation governance, and monitoring design. The skill emphasises safety, availability, process integrity, zones and conduits, and controlled remediation.
+detection:
+  patterns:
+    - pattern: "enterprise, vendor, or internet-connected network can directly reach PLC, RTU, IED, HMI, safety controller, or industrial protocol port"
+      description: "Catches missing zones/conduits and direct exposure of control assets."
+    - pattern: "vendor remote access lacks MFA, approval, jump host, session recording, expiry, or emergency review"
+      description: "Catches persistent third-party access paths into OT environments."
+    - pattern: "firmware, logic, HMI project, or update package is transferred over HTTP, shared folder, removable media, or unsigned path without integrity validation"
+      description: "Catches unauthenticated change and update workflows."
+    - pattern: "industrial protocol gateway permits write commands from a monitoring, enterprise, vendor, or unmanaged zone"
+      description: "Catches unsafe command authority across OT trust boundaries."
+    - pattern: "active scanning, reboot, isolation, or containment is recommended without operational approval and process-safety review"
+      description: "Catches unsafe remediation guidance for fragile OT systems."
+  exceptions:
+    - pattern: "read-only historian or monitoring conduit with explicit source, destination, protocol, owner, and firewall rule"
+      description: "Documented telemetry-only conduits are not the same as control exposure."
+    - pattern: "vendor access is time-bound, MFA-protected, approved per session, recorded, routed through a jump host, and reviewed after use"
+      description: "Controlled remote support can be acceptable for OT maintenance."
+    - pattern: "firmware/update package is source-approved, signed or hashed, backed up, versioned, tested in a maintenance window, and rollback-ready"
+      description: "Validated change workflows reduce update-path risk."
+    - pattern: "passive discovery sensor cannot transmit industrial commands"
+      description: "Passive monitoring should not be flagged as write-capable exposure."
+remediation:
+  approach: |
+    Define OT zones and conduits, restrict enterprise/vendor access through controlled industrial DMZ or jump-host paths, allowlist industrial protocols by source and destination, enforce MFA and session recording for remote access, validate firmware and logic integrity, maintain restorable backups, deploy passive OT-aware monitoring, and coordinate remediation with operations and safety owners.
+  automated: false
+  fix:
+    description: "OT/ICS fixes require site-specific operational approval. The skill provides review gates, fixture calibration, and safe remediation patterns rather than automated network or device changes."
+references:
+  - url: "https://csrc.nist.gov/pubs/sp/800/82/r3/final"
+    description: "NIST SP 800-82 Rev. 3 guide to OT security."
+  - url: "https://attack.mitre.org/matrices/ics/"
+    description: "MITRE ATT&CK for ICS matrix."
+  - url: "https://www.isa.org/standards-and-publications/isa-standards/isa-iec-62443-series-of-standards"
+    description: "ISA/IEC 62443 standards series overview."
+  - url: "https://cwe.mitre.org/data/definitions/306.html"
+    description: "CWE-306 missing authentication for critical function."
+  - url: "https://cwe.mitre.org/data/definitions/319.html"
+    description: "CWE-319 cleartext transmission of sensitive information."
+  - url: "https://cwe.mitre.org/data/definitions/284.html"
+    description: "CWE-284 improper access control."
+metadata:
+  cwe: ["CWE-306", "CWE-319", "CWE-284"]
+  frameworks: ["NIST-SP-800-82", "ISA-IEC-62443", "MITRE-ATTACK-ICS"]
+  created: "2026-06-04"
+  last_updated: "2026-06-04"

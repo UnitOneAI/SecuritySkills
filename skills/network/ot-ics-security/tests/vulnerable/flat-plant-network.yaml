@@ -1,0 +1,31 @@
+site: example-plant
+zones:
+  enterprise:
+    vlan: 10
+    users:
+      - office-workstations
+      - finance-laptops
+  control:
+    vlan: 10
+    assets:
+      - hmi-01
+      - historian-01
+      - plc-line-1
+      - plc-line-2
+conduits:
+  - name: enterprise-to-control
+    source: enterprise
+    destination: control
+    protocol: any
+    ports:
+      - any
+    approval: missing
+industrial_protocols:
+  - name: Modbus TCP
+    port: 502
+    reachable_from:
+      - enterprise
+  - name: EtherNet/IP
+    port: 44818
+    reachable_from:
+      - enterprise

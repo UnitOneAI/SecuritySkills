@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-04"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -389,7 +389,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md
@@ -515,6 +515,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/network/dns-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: ot-ics-security
+    name: "OT/ICS Security Review"
+    tags: [network, ot, ics, scada, segmentation]
+    role: [security-engineer, vciso]
+    phase: [design, operate, review]
+    activity: [review, assess]
+    frameworks: [NIST-SP-800-82, ISA-IEC-62443, MITRE-ATTACK-ICS, CWE]
+    difficulty: advanced
+    time_estimate: "60-120min"
+    file: skills/network/ot-ics-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- DevSecOps ------------------------------------------------------------

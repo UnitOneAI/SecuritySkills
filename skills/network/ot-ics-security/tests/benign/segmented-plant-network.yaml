@@ -1,0 +1,44 @@
+site: example-plant
+zones:
+  enterprise:
+    vlan: 10
+  industrial_dmz:
+    vlan: 20
+    assets:
+      - historian-replica
+      - patch-staging
+      - jump-host-01
+  control:
+    vlan: 30
+    assets:
+      - hmi-01
+      - historian-01
+      - plc-line-1
+      - plc-line-2
+conduits:
+  - name: historian-replication
+    source: control
+    destination: industrial_dmz
+    protocol: opc-ua
+    ports:
+      - 4840
+    direction: outbound-from-control
+    owner: operations
+    ticket: CHG-1024
+  - name: jump-host-engineering
+    source: industrial_dmz
+    destination: control
+    protocol: rdp
+    ports:
+      - 3389
+    direction: approved-session-only
+    owner: controls-engineering
+    ticket: CHG-1040
+industrial_protocols:
+  - name: Modbus TCP
+    port: 502
+    reachable_from:
+      - control
+    blocked_from:
+      - enterprise
+      - vendor

@@ -1,0 +1,15 @@
+{
+  "asset": "plc-line-1",
+  "firmware_update": {
+    "source_url": "https://vendor.example.invalid/plc/firmware.bin",
+    "transport": "https",
+    "signature_required": true,
+    "trusted_signer": "vendor-release-key-2026",
+    "hash_validation": "sha256",
+    "approved_vendor_source": true,
+    "maintenance_window": "MW-2026-06-12",
+    "rollback_package": "firmware-previous-signed.bin",
+    "pre_update_backup": true,
+    "change_ticket": "CHG-1102"
+  }
+}

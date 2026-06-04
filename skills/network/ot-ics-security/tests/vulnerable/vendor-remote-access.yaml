@@ -1,0 +1,19 @@
+remote_access:
+  vendor: acme-controls
+  path: always-on-vpn
+  destination_zone: control
+  mfa_required: false
+  approval_required: false
+  session_recording: false
+  expires_after_minutes: null
+  jump_host: none
+  allowed_targets:
+    - hmi-01
+    - engineering-workstation-01
+    - plc-line-1
+accounts:
+  type: shared
+  name: vendor_admin
+  password_rotation_days: unknown
+emergency_review:
+  required: false

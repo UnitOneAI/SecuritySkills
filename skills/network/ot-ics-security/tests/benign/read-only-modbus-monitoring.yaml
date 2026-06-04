@@ -1,0 +1,23 @@
+gateway: modbus-monitor-01
+source_zone: industrial_dmz
+destination_zone: control
+protocol: modbus-tcp
+port: 502
+authentication: network-allowlist
+encryption: conduit-vpn
+allowed_function_codes:
+  - 1
+  - 2
+  - 3
+  - 4
+blocked_function_codes:
+  - 5
+  - 6
+  - 15
+  - 16
+write_functions_allowed: false
+allowed_sources:
+  - 10.20.4.12
+monitoring_only: true
+owner: operations-monitoring
+change_ticket: CHG-1077
