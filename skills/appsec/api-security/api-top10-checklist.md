@@ -17,6 +17,7 @@ BOLA occurs when an API endpoint accepts an object identifier from the client an
 - Authorization logic that checks only whether the user is authenticated, not whether they own or have access to the specific object.
 - Sequential or predictable resource identifiers (auto-increment integers) that enable enumeration.
 - Batch or list endpoints that return objects without filtering by the caller's permissions.
+- WebSocket, SSE, or GraphQL subscription handlers that accept tenant IDs, account IDs, room names, channels, topics, or symbols without verifying the caller's right to that stream.
 
 ### REST Vulnerable Patterns
 
@@ -80,6 +81,38 @@ const resolvers = {
 };
 ```
 
+### Streaming BOLA Vulnerable Patterns
+
+```javascript
+// VULNERABLE: Any authenticated user can subscribe to any tenant channel
+wss.on("connection", (socket, req) => {
+  const session = requireSession(req);
+
+  socket.on("message", raw => {
+    const { tenantId, channel } = JSON.parse(raw);
+    subscribe(socket, `tenant:${tenantId}:${channel}`);  // No tenant membership check
+  });
+});
+```
+
+Remediation:
+
+```javascript
+// SECURE: Authorize each tenant/channel subscription, not just the connection
+wss.on("connection", (socket, req) => {
+  const session = requireSession(req);
+
+  socket.on("message", async raw => {
+    const { tenantId, channel } = JSON.parse(raw);
+    if (!(await canSubscribe(session.userId, tenantId, channel))) {
+      socket.close(1008, "not authorized");
+      return;
+    }
+    subscribe(socket, `tenant:${tenantId}:${channel}`);
+  });
+});
+```
+
 ### BOLA vs BFLA Distinction
 
 BOLA and BFLA (API5:2023) are frequently confused. The distinction is critical for accurate findings:
@@ -101,6 +134,8 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] WebSocket messages, SSE streams, and GraphQL subscriptions enforce per-message or per-subscription tenant/channel authorization.
+- [ ] Long-lived streams revalidate access or disconnect when tenant membership, account status, role, or token state changes.
 
 ---
 
@@ -116,6 +151,9 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 - Authentication endpoints without brute-force protection (rate limiting, account lockout, CAPTCHA).
 - JWT validation that is missing or incomplete -- no signature verification, no expiration check, acceptance of the `none` algorithm.
 - API keys transmitted in URL query strings (logged in server access logs, browser history, proxies).
+- WebSocket/SSE tokens transmitted in query strings without short lifetime, replay controls, cache controls, or access-log redaction.
+- Cookie-authenticated browser WebSockets that accept any `Origin` or do not record an explicit non-browser exception.
+- `Sec-WebSocket-Protocol` bearer token handling that is not parsed, allowlisted, or redacted from logs.
 - Missing or weak token rotation -- refresh tokens that never expire or are not rotated on use.
 - Password reset or account recovery flows that leak tokens or allow enumeration.
 - Micro-service-to-service communication without authentication (implicit trust based on network location).
@@ -149,11 +187,36 @@ paths:
           in: query  # Should be in header
 ```
 
+```javascript
+// VULNERABLE: Cookie-authenticated WebSocket accepts any browser Origin
+const wss = new WebSocketServer({ server, path: "/account/events" });
+
+wss.on("connection", (socket, req) => {
+  const session = parseCookieSession(req.headers.cookie);
+  if (!session?.userId) {
+    socket.close();
+    return;
+  }
+  socket.on("message", msg => handleAccountCommand(session.userId, msg));
+});
+```
+
+```javascript
+// VULNERABLE: SSE bearer token is placed in a long-lived query string
+app.get("/events", (req, res) => {
+  const claims = verifyJwt(req.query.token);
+  streamTenantEvents(res, req.query.tenantId, claims.sub);
+});
+```
+
 ### Remediation Guidance
 
 - Enforce rate limiting on all authentication endpoints (e.g., 5 attempts per minute per IP/account).
 - Validate JWT signatures using a strong algorithm (RS256, ES256). Reject `none` and `HS256` if RSA is expected (algorithm confusion attack).
 - Transmit API keys and tokens in HTTP headers (`Authorization` header), never in URL query strings.
+- For browser-exposed cookie-authenticated WebSockets, validate the handshake `Origin` against an explicit allowlist. For non-browser clients that omit `Origin`, require a separate strong authentication policy instead of a blanket exception.
+- If SSE or WebSocket compatibility requires query tokens, use short-lived single-purpose tokens, avoid caching, avoid referrer leakage, and redact query strings from logs.
+- When using `Sec-WebSocket-Protocol` for bearer material, parse only expected subprotocol values and redact token-like values from telemetry and errors.
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
 - Authenticate service-to-service calls with mTLS or signed tokens, not network-based trust.
@@ -164,6 +227,9 @@ paths:
 - [ ] JWTs are validated for signature, expiration (`exp`), issuer (`iss`), and audience (`aud`).
 - [ ] The `none` algorithm and algorithm confusion attacks are prevented by explicit algorithm allowlisting.
 - [ ] API keys and tokens are transmitted in headers, not query strings.
+- [ ] Browser-exposed cookie-authenticated WebSockets validate `Origin` during the handshake.
+- [ ] SSE and WebSocket query tokens are short-lived, scoped, non-cacheable, and redacted from logs.
+- [ ] `Sec-WebSocket-Protocol` token/subprotocol handling is explicitly parsed, allowlisted, and redacted.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
 
@@ -267,6 +333,16 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```javascript
+// VULNERABLE: No connection, message, or subscription limits on a stream
+wss.on("connection", socket => {
+  socket.on("message", raw => {
+    const { topic } = JSON.parse(raw);
+    subscribe(socket, topic); // Unlimited topics and unbounded message size
+  });
+});
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
@@ -275,6 +351,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
+- For streaming APIs, enforce maximum concurrent connections per user/IP, maximum subscriptions per connection, message size limits, message rate limits, idle timeouts, and server-side backpressure.
 
 ### Review Checklist
 
@@ -282,6 +359,8 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] WebSocket, SSE, and GraphQL subscription endpoints enforce connection, message, subscription, and idle-time limits.
+- [ ] Streaming handlers reject oversized messages and close abusive connections predictably.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 
@@ -453,10 +532,12 @@ Document doc = builder.parse(request.getInputStream());
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
+- Configure browser WebSocket `Origin` checks separately from CORS. Do not assume CORS middleware protects WebSocket handshakes.
 - Set security response headers on all API responses:
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
   - `X-Content-Type-Options: nosniff`
   - `Cache-Control: no-store` on sensitive responses
+- For authenticated SSE responses, set `Cache-Control: no-store`, avoid sensitive tokens in URLs where possible, and ensure access logs and referrers do not expose bearer material.
 - Return generic error messages in production. Log detailed errors server-side with correlation IDs.
 - Disable unnecessary HTTP methods. Return `405 Method Not Allowed` for unsupported methods.
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
@@ -466,6 +547,8 @@ Document doc = builder.parse(request.getInputStream());
 ### Review Checklist
 
 - [ ] CORS is configured with an explicit origin allowlist; wildcard is not used with credentials.
+- [ ] Browser WebSocket handshakes enforce an explicit `Origin` policy when cookies or browser sessions are accepted.
+- [ ] Authenticated SSE responses are non-cacheable and do not expose bearer material through logs, referrers, or shared URLs.
 - [ ] Security headers are present on all API responses.
 - [ ] Error responses in production are generic; no stack traces, SQL queries, or internal paths.
 - [ ] Only required HTTP methods are enabled per endpoint.
@@ -485,6 +568,7 @@ Document doc = builder.parse(request.getInputStream());
 - Multiple API versions running simultaneously (`/api/v1/`, `/api/v2/`, `/api/v3/`) where older versions lack security patches.
 - Debug or test endpoints present in production (`/api/debug/`, `/api/test/`, `/api/internal/`, `/graphql/playground`).
 - Undocumented endpoints that exist in code but are absent from the OpenAPI specification.
+- Undocumented WebSocket upgrade routes, `socket.io` namespaces, SSE routes, `text/event-stream` responses, or GraphQL subscriptions that are absent from API inventory.
 - API endpoints exposed to the public internet that should be internal-only.
 - Deprecated endpoints that remain functional after the announced retirement date.
 - Different security configurations between environments (staging allows unauthenticated access, production does not, but staging is publicly accessible).
@@ -498,6 +582,7 @@ Document doc = builder.parse(request.getInputStream());
 4. Flag any endpoint marked as deprecated that is still reachable.
 5. Check for environment-specific routes (debug, test, internal) that should not exist in production.
 6. Verify that older API versions have equivalent security controls to current versions.
+7. Search streaming indicators such as `new WebSocketServer`, `ws`, `socket.io`, `EventSource`, `text/event-stream`, `SseEmitter`, `Sec-WebSocket-Protocol`, and GraphQL subscription definitions.
 ```
 
 ### Remediation Guidance
@@ -511,6 +596,7 @@ Document doc = builder.parse(request.getInputStream());
 ### Review Checklist
 
 - [ ] The API inventory is documented and matches the actual deployed endpoints.
+- [ ] WebSocket, SSE, and GraphQL subscription endpoints are included in the same inventory as request/response APIs.
 - [ ] Deprecated API versions are retired or have equivalent security controls.
 - [ ] No debug, test, or playground endpoints are accessible in production.
 - [ ] Internal APIs are not reachable from external networks.
