@@ -32,7 +32,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
 1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, subscriptions, and enabled transports or middleware such as JSON POST, GET queries, WebSocket subscriptions, SSE streams, and multipart upload handlers.
 3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
@@ -199,6 +199,18 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 **Mitigation:** Count aliased operations against rate limits. Limit the number of aliases per request.
 
+### Multipart Upload CSRF and Validation
+
+GraphQL file upload support is usually implemented as an HTTP `multipart/form-data` transport layered onto a mutation. Reviewers must separate JSON-only GraphQL endpoints from upload-enabled endpoints before reporting a CSRF issue.
+
+Treat the endpoint as higher risk when evidence shows all of the following:
+
+- An upload parser or `Upload` scalar is enabled, such as `graphqlUploadExpress`, `graphql-upload`, `apollo-upload-client`, `multipart_uploads_enabled`, or framework-specific multipart GraphQL middleware.
+- The endpoint authenticates browser users with cookies or ambient session credentials.
+- Multipart upload mutations can execute without a CSRF token, same-site/origin enforcement, or a required non-simple custom header such as `Apollo-Require-Preflight`.
+
+Do not report a multipart upload CSRF finding when evidence shows the GraphQL endpoint accepts only `application/json`, uses bearer-token authorization without ambient cookies, or keeps upload clients behind enforced CSRF prevention/preflight headers. For upload-enabled endpoints, also collect file validation evidence: maximum file size and count, allowed content types verified by server-side sniffing, filename/path normalization, malware scanning where appropriate, quarantine or object-store isolation, and resolver-level authorization for the target object receiving the file.
+
 ---
 
 ## Common Pitfalls
@@ -209,11 +221,13 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 3. **Treating GraphQL as inherently different from REST for security.** GraphQL shares all the same authorization, authentication, and injection risks as REST. The query language adds additional concerns (depth attacks, introspection, alias abuse) but does not eliminate any REST security requirements.
 
-4. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification.
+4. **Treating every GraphQL endpoint as upload-capable.** A JSON-only GraphQL API with CSRF prevention is not the same risk as a cookie-authenticated multipart upload mutation. Confirm upload middleware, credential type, and preflight/CSRF controls before writing a finding.
 
-5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
+5. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification.
 
-6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+6. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
+
+7. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
 ---
 
@@ -237,5 +251,8 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **OWASP Cross-Site Request Forgery Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+- **OWASP File Upload Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
+- **Apollo Server CSRF prevention guidance:** https://www.apollographql.com/docs/apollo-server/security/cors/#preventing-cross-site-request-forgery-csrf
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final

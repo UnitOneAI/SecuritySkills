@@ -119,6 +119,7 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 - Missing or weak token rotation -- refresh tokens that never expire or are not rotated on use.
 - Password reset or account recovery flows that leak tokens or allow enumeration.
 - Micro-service-to-service communication without authentication (implicit trust based on network location).
+- Cookie-authenticated browser API endpoints, including GraphQL multipart uploads, that lack CSRF tokens, origin checks, SameSite controls, or required non-simple preflight headers.
 
 ### Vulnerable Patterns
 
@@ -157,6 +158,7 @@ paths:
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
 - Authenticate service-to-service calls with mTLS or signed tokens, not network-based trust.
+- For browser session APIs, require CSRF protection or explicit preflight/origin validation before state-changing requests, including GraphQL upload mutations.
 
 ### Review Checklist
 
@@ -166,6 +168,7 @@ paths:
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
+- [ ] Cookie-authenticated browser APIs enforce CSRF/origin/preflight protections for state-changing JSON and multipart requests.
 
 ---
 
@@ -267,12 +270,34 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```javascript
+// VULNERABLE: Cookie-authenticated GraphQL uploads without CSRF/preflight checks
+app.use(cookieParser());
+app.use(session({ secret: process.env.SESSION_SECRET }));
+app.use(graphqlUploadExpress({ maxFileSize: 100_000_000, maxFiles: 10 }));
+app.use("/graphql", expressMiddleware(server, { context }));
+```
+
+### GraphQL Multipart Upload Evidence Matrix
+
+| Evidence | Safe signal | Finding signal |
+|---|---|---|
+| Transport/content type | GraphQL accepts only `application/json`, or upload routes are isolated from browser cookies | `multipart/form-data` upload middleware is enabled on the same cookie-authenticated GraphQL endpoint |
+| Credential type | Bearer token, mTLS, or non-browser client auth with no ambient cookies | Session cookies or other ambient browser credentials authorize upload mutations |
+| CSRF/preflight control | CSRF token, SameSite enforcement plus origin checks, or required custom header such as `Apollo-Require-Preflight` | Multipart upload mutation executes with no CSRF token, origin check, or non-simple required header |
+| Upload limits | Server-enforced max file size, max file count, timeout, and storage quota | Large or unlimited `maxFileSize`, `maxFiles`, streaming, or temporary storage consumption |
+| File validation | Server-side MIME sniffing, extension allowlist, filename normalization, quarantine/object-store isolation | Trusts client filename or `Content-Type`, writes directly under a served path, or skips malware/content checks |
+| Resolver authorization | Upload resolver re-checks target object ownership/role before attaching a file | Upload resolver trusts a client-supplied object ID or only checks authentication |
+
+Do not flag a JSON-only GraphQL endpoint as a multipart upload CSRF issue. First prove that upload middleware or an `Upload` scalar is reachable and that browser ambient credentials can authorize the mutation.
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
+- For GraphQL uploads: prefer direct-to-object-storage uploads with short-lived signed URLs. If multipart GraphQL uploads are required, keep CSRF prevention enabled and require a non-simple preflight header, validate origin/session binding, enforce max file size/count, and run server-side file validation before the resolver attaches the file to a domain object.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
 
@@ -282,6 +307,9 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] GraphQL upload middleware, `Upload` scalars, or multipart transports are inventoried separately from JSON-only endpoints.
+- [ ] Cookie-authenticated GraphQL upload mutations require CSRF/preflight protection, origin/session checks, and resolver-level authorization for the target object.
+- [ ] Uploaded files have server-enforced size/count limits, content validation, safe filenames/paths, and isolated storage or quarantine.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 
