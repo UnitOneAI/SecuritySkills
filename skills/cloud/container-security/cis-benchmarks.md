@@ -254,6 +254,65 @@ spec:
   automountServiceAccountToken: false
 ```
 
+Do not stop at the default automount setting. Reviewers must also look for explicitly projected service-account tokens and verify their audience, lifetime, mount scope, and RBAC blast radius.
+
+**Discovery patterns:**
+
+```yaml
+serviceAccountName:
+automountServiceAccountToken:
+serviceAccountToken:
+audience:
+expirationSeconds:
+volumeMounts:
+```
+
+**Projected token evidence matrix:**
+
+| Evidence | Safe signal | Finding signal |
+|----------|-------------|----------------|
+| Automount level | `automountServiceAccountToken: false` at ServiceAccount or Pod level when default token is not needed | Default automount left enabled for an app that does not call the Kubernetes API |
+| Token type | Short-lived projected `serviceAccountToken` volume used intentionally | Legacy Secret-backed token or unclear token source |
+| Audience | Narrow audience for Kubernetes API or documented external STS/workload identity | Generic audience such as `api`, wildcard-like usage, or no audience evidence |
+| Expiration | Short lifetime appropriate for the workload, such as minutes to one hour | Long-lived projected token or missing `expirationSeconds` evidence |
+| Mount scope | Token mounted only into the container that needs API access | Token volume mounted into unrelated app, sidecar, init, debug, or ephemeral containers |
+| RBAC scope | Namespaced Role with least-privilege verbs/resources | ClusterRole or wildcard verbs/resources not justified by the workload |
+| External identity | Issuer, audience, namespace, service account, and subject are bound in the external trust policy | Kubernetes token can be exchanged for cloud credentials without subject/audience restrictions |
+
+**Severity guidance:**
+
+- **High:** Broad or long-lived token mounted into unnecessary containers with privileged RBAC or external workload-identity trust.
+- **Medium:** Projected token lacks clear audience, expiration, or per-container mount evidence.
+- **Low/Informational:** Intentional short-lived projected token, mounted read-only into one controller container, with namespace-scoped RBAC and documented workload-identity conditions.
+
+**Remediation examples:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: namespace-controller
+spec:
+  template:
+    spec:
+      serviceAccountName: namespace-controller
+      automountServiceAccountToken: false
+      containers:
+        - name: controller
+          volumeMounts:
+            - name: k8s-api-token
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
+      volumes:
+        - name: k8s-api-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: https://kubernetes.default.svc
+                  expirationSeconds: 600
+```
+
 ### CIS 5.2 -- Pod Security Standards
 
 Evaluate workload configurations against Kubernetes Pod Security Standards. The three levels are:

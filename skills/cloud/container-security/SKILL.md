@@ -185,6 +185,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
 
+### Service Account Token Evidence
+
+| Workload | ServiceAccount | SA Automount | Pod Automount | Token Type | Audience | Expiration | Mounted Containers | RBAC Scope | External Trust | Risk |
+|----------|----------------|--------------|---------------|------------|----------|------------|--------------------|------------|----------------|------|
+| deploy/controller | namespace-controller | false | false | projected | `https://kubernetes.default.svc` | 600s | controller only | Role in namespace | none | Low |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** <finding> -- <action>
@@ -257,6 +263,7 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **`automountServiceAccountToken: false` is not the whole story.** A pod can disable default automount and still explicitly mount a projected service-account token. Record token audience, expiration, mount path, mounted containers, RBAC scope, and any external workload-identity trust policy before deciding severity.
 
 ---
 
@@ -285,6 +292,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Kubernetes Service Accounts: https://kubernetes.io/docs/concepts/security/service-accounts/
+- Configure Service Accounts for Pods: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+- Kubernetes TokenRequest API: https://kubernetes.io/docs/reference/kubernetes-api/authentication-resources/token-request-v1/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
