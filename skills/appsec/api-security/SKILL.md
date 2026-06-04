@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -31,13 +31,13 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
-1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
-3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
-4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
+1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, streaming APIs (WebSocket/SSE), or hybrid. Each style has distinct attack patterns.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, subscriptions, enabled upload transports, and persisted-query behavior. For WebSocket/SSE, list handshake routes, event types, and whether the channel is read-only or accepts commands.
+3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, custom tokens, or browser cookies used during upgraded/streaming connections. Note which endpoints require authentication and which are public.
+4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made, including resolver-level checks and message-handler checks.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
-6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, cost-control, upload-size, connection-count, and message-rate controls at the gateway or application layer.
+7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, webhooks, file-processing services, and event consumers that the API consumes.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -62,7 +62,7 @@ Each finding produced by this review must include the following fields:
 | **OWASP API Risk** | API1:2023 through API10:2023 identifier |
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
-| **API Style** | REST, GraphQL, gRPC, or General |
+| **API Style** | REST, GraphQL, gRPC, WebSocket/SSE, or General |
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
@@ -118,7 +118,7 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|General]
+- **API Style:** [REST|GraphQL|gRPC|WebSocket/SSE|General]
 - **Location:** [file:line or spec path]
 - **Description:** [explanation]
 - **Evidence:**
@@ -199,6 +199,66 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 **Mitigation:** Count aliased operations against rate limits. Limit the number of aliases per request.
 
+### Multipart Upload CSRF and File Validation
+
+GraphQL endpoints that enable multipart uploads introduce different risks than JSON-only GraphQL APIs. Browser `multipart/form-data` submissions can be sent cross-site, so cookie-authenticated upload mutations need explicit CSRF prevention and upload validation evidence.
+
+When reviewing GraphQL upload support, record:
+
+- Whether the endpoint accepts only `application/json` or also parses `multipart/form-data` / `graphql-upload` requests.
+- Whether authentication is bearer-token based or cookie/session based.
+- Whether CSRF prevention rejects simple cross-site form submissions before upload parsing.
+- File size, file count, MIME sniffing, extension allow-list, malware scanning, storage location, and object ACL controls.
+- Resolver-level authorization for every upload mutation and ownership checks on uploaded objects.
+
+```ts
+// Risk pattern: cookie-authenticated multipart upload without CSRF or limits.
+app.use(cookieParser());
+app.use(session({ secret: process.env.SESSION_SECRET }));
+app.use(graphqlUploadExpress({ maxFileSize: 100_000_000, maxFiles: 10 }));
+app.use("/graphql", expressMiddleware(server, { context }));
+```
+
+**Mitigation:** Prefer JSON-only GraphQL unless uploads are required. If uploads are required, require CSRF prevention, reject unexpected content types, enforce strict upload size/count/type limits before storage, scan files, store outside the web root with private ACLs, and authorize each upload resolver against the target object or tenant.
+
+---
+
+## WebSocket and Server-Sent Events Review
+
+WebSocket and SSE endpoints are API surface even when they are not represented in OpenAPI documents. Treat each handshake route and event stream as an endpoint with authentication, authorization, origin, rate-limit, and inventory evidence.
+
+### Credential and Origin Boundary
+
+Browser WebSocket handshakes include cookies, but the same-origin policy does not protect WebSocket connections like normal XHR/fetch responses. Cookie-authenticated WebSockets must validate `Origin` and bind the connection to the authenticated session before accepting account data or commands.
+
+```ts
+// Risk pattern: cookie-authenticated command channel without Origin validation.
+const wss = new WebSocketServer({ server, path: "/account/events" });
+
+wss.on("connection", (socket, req) => {
+  const session = parseCookieSession(req.headers.cookie);
+  if (!session?.userId) socket.close();
+  socket.on("message", msg => handleAccountCommand(session.userId, msg));
+});
+```
+
+**Mitigation:** Validate `Origin` for browser clients, require a fresh authenticated session or token at handshake time, reject unauthenticated upgrades before registering message handlers, and re-check authorization inside command handlers using server-side object ownership.
+
+### Streaming Data Classification
+
+Classify each stream before assigning severity:
+
+| Stream type | Examples | Required evidence |
+|---|---|---|
+| Public read-only | service status, public market ticks | Explicit public classification, no cookies/tokens required, no command handlers |
+| Authenticated read-only | account notifications, order status | Session binding, tenant/object filtering, disconnect on session revocation where feasible |
+| Authenticated command channel | chat moderation, trade/order commands, admin actions | Origin validation, per-message authorization, schema validation, message-rate limits, audit logging |
+| Internal/event bus bridge | backend event fan-out to clients | Producer trust model, event filtering, no raw internal payload leakage |
+
+### Resource Exhaustion Controls
+
+Record connection limits, idle timeouts, heartbeat/ping behavior, maximum message size, subscription-count limits, per-user message-rate limits, and backpressure handling. Map missing controls to API4:2023 (Unrestricted Resource Consumption) and API8:2023 (Security Misconfiguration).
+
 ---
 
 ## Common Pitfalls
@@ -214,6 +274,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Treating browser streaming APIs as backend-only channels.** WebSocket and SSE routes can carry browser credentials and sensitive tenant data even when they are absent from REST/GraphQL specs. Review the handshake, origin policy, per-message authorization, and connection limits instead of assuming the route inherits normal HTTP protections.
+
+8. **Assuming GraphQL upload risks match JSON GraphQL risks.** Multipart upload support changes CSRF and resource-consumption assumptions. Verify content-type restrictions, CSRF defenses, upload limits, file validation, storage ACLs, and resolver authorization before marking upload mutations safe.
 
 ---
 
@@ -237,5 +301,8 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **OWASP WebSocket Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html
+- **GraphQL multipart request specification:** https://github.com/jaydenseric/graphql-multipart-request-spec
+- **Apollo Server CSRF prevention:** https://www.apollographql.com/docs/apollo-server/security/cors#preventing-cross-site-request-forgery-csrf
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
