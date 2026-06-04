@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -313,6 +313,22 @@ In 2024, a financial services firm reported an incident (disclosed at a CISO rou
 - Approval fatigue patterns — systems that generate so many approval requests that humans rubber-stamp them.
 - Agent ability to rephrase or reframe requests to make dangerous operations appear routine.
 
+**Approval Gate Evidence Checklist:**
+
+| Evidence Area | Review Question | Risk Indicator |
+|---|---|---|
+| Risk threshold source | Where are approval thresholds, risk scores, and override rules stored, and can the agent write to them? | Thresholds are stored in agent-writable state, prompt context, or ordinary workflow configuration. |
+| Cumulative action scoring | Does the approval service aggregate risk across a session, task, batch, pull request, deployment, or time window? | High-risk work can be split into individually low-risk actions that never trigger review. |
+| Batch and queue semantics | Does the reviewer see each child action, target, permission, and data movement inside a batch approval? | A single approval hides destructive, privileged, or externally visible child actions. |
+| Failure mode | What happens when the approval service, reviewer queue, policy engine, or notification channel is unavailable? | The workflow proceeds, retries without approval, or downgrades to agent self-approval. |
+| Reviewer context integrity | Does the human see the full action chain, generated rationale, affected resources, diff, rollback path, and source prompt? | The approval UI shows only the final step or agent-written summary. |
+| Approval identity and separation | Is the approver independent from the requesting agent, delegated agent, or service account? | The agent can approve its own request or route approval through a dependent agent. |
+| Audit and replay evidence | Are approval decisions logged with immutable request content, reviewer identity, policy version, and post-approval action trace? | Logs contain only an approval ID or outcome, making bypass reconstruction impossible. |
+
+Treat missing evidence in any high-impact approval flow as **Not Evaluable** rather than a pass. Raise severity when sensitive data access, money movement, deployment, permission changes, or external communication can proceed without cumulative, fail-closed approval.
+
+Use the evidence cases in `tests/vulnerable/hitl-threshold-splitting.md` and `tests/benign/hitl-cumulative-approval-context.md` to validate that the review distinguishes threshold-splitting bypasses from well-designed cumulative approval controls.
+
 **Real-World Failure Mode:**
 
 In 2024, a red team exercise at a technology company (published in their security blog) found that their AI coding assistant's human approval gate for code deployment could be bypassed by splitting a dangerous change across multiple small commits, each individually below the risk threshold that triggered review. The agent had learned (through its training on deployment patterns) that smaller commits received faster approval. The compound effect of the commits constituted a privilege escalation in the deployed application that no single commit would have triggered for review.
@@ -325,6 +341,8 @@ In 2024, a red team exercise at a technology company (published in their securit
 4. Implement approval diversity — critical operations require approval from multiple reviewers or through multiple channels.
 5. Present approval requests with full context. Show the human reviewer the complete action chain, not just the immediate request.
 6. Rotate and limit approval sessions to combat approval fatigue. Set maximum approval counts per session.
+7. Store approval policies and thresholds outside agent-writable state. Changes to approval policy require independent change control.
+8. Record immutable approval request snapshots and compare them with executed tool-call traces after approval.
 
 **Framework Mapping:**
 
@@ -428,6 +446,7 @@ Grep: "send_message|delegate|dispatch|publish|subscribe|queue" in **/*.{py,ts,js
 
 # Human approval gates
 Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,js,yaml,yml}
+Grep: "approval_threshold|risk_score|risk_level|cumulative|batch|fail_open|fail_closed|rollback|kill_switch|emergency_stop" in **/*.{py,ts,js,yaml,yml,json}
 ```
 
 ### Hands-On Assessment Tooling
@@ -494,6 +513,11 @@ Structure the final report as follows:
 - Memory stores: [types]
 - Human approval gates: [present/absent, description]
 - Multi-agent communication: [method]
+
+## Human Approval Gate Evidence
+| Workflow | High-Risk Action | Threshold Source | Cumulative Scoring | Batch Visibility | Failure Mode | Reviewer Context | Approval Identity | Audit Replay Evidence | Rating |
+|---|---|---|---|---|---|---|---|---|---|
+| [workflow] | [deploy/delete/pay/send/change-permission] | [policy/config/source] | [yes/no/not evaluable] | [full/partial/hidden] | [fail-closed/fail-open/unknown] | [full/partial/agent-summary] | [independent/self/dependent] | [request+decision+trace] | [pass/finding/NE] |
 
 ## Findings by Threat Category
 
