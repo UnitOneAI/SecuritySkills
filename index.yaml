@@ -470,7 +470,7 @@ skills:
 
   - id: log-analysis
     name: "Security Log Analysis"
-    tags: [secops, logging, anomaly-detection]
+    tags: [secops, logging, anomaly-detection, privacy, retention]
     role: [soc-analyst, security-engineer]
     phase: [operate]
     activity: [investigate, monitor]
