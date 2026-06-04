@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,7 +56,7 @@ Simon Willison's prompt injection taxonomy further refines these categories by d
 Identify every point where user-supplied or externally sourced content reaches the language model. Produce a complete interaction map covering:
 
 1. **User input channels** — Chat interfaces, form fields, API parameters, file uploads, voice input transcriptions, and any other path where a user directly provides text that is included in an LLM prompt.
-2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
+2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time. For RAG systems, record each source's immutable source ID, canonical URL or repository path, trust tier, retrieval timestamp, and allowed citation IDs.
 3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
 4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
 5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
@@ -86,7 +86,7 @@ For each user input channel identified in Step 1, determine whether an attacker 
 
 For each external content source identified in Step 1, determine whether an adversary could plant instructions in that source that the LLM would later follow. Examine:
 
-- **RAG pipeline inputs** — Documents, web pages, or knowledge base entries that are retrieved and inserted into the LLM context. Can an attacker contribute content to these sources?
+- **RAG pipeline inputs** — Documents, web pages, or knowledge base entries that are retrieved and inserted into the LLM context. Can an attacker contribute content to these sources? Does each retrieved chunk carry a canonical source ID that cannot be confused with display titles, PDF metadata, redirects, or attacker-controlled labels?
 - **Email and messaging integrations** — If the LLM processes emails or messages, an attacker can send a message containing hidden instructions.
 - **Web browsing and scraping** — If the LLM fetches web content, any page it visits could contain injected instructions (including in HTML comments, hidden text, or metadata).
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
@@ -97,6 +97,8 @@ For each external content source identified in Step 1, determine whether an adve
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
 - Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
+- Citation renderers that trust model-written citations, markdown links, or source labels without checking them against the retrieved source IDs
+- Source normalization that collapses distinct documents by title, filename, URL text, Unicode-homoglyph display names, or redirect target without retaining the canonical source identifier
 
 ---
 
@@ -151,6 +153,23 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 - Are those constraints enforced only through prompt instructions or also through output validation?
 - Does the application handle edge cases where the model might produce disallowed content?
 
+### 4.6 RAG Citation and Source-Boundary Spoofing
+
+The attacker causes a RAG application to cite, link, or badge a source that was not actually retrieved, or to swap a trusted-looking display label onto an attacker-controlled source. This turns provenance into model-authored text instead of a backend-enforced control.
+
+**What to evaluate:**
+- Does the retriever return immutable source IDs, trust tiers, canonical URLs, and allowed citation IDs alongside chunk text?
+- Does the response renderer validate every model citation against the retrieved source set before showing markdown links, source badges, or footnotes?
+- Can a retrieved document instruct the model to cite a different trusted document that was not retrieved for this answer?
+- Can duplicate titles, PDF metadata titles, redirects, mixed-case URLs, or Unicode-homoglyph names cause two sources to share the same display identity?
+- Are source URLs rendered only from trusted metadata, or can the model emit arbitrary href values under approved-looking link text?
+- Is the answer rejected, downgraded, or marked unsupported when cited source IDs are missing, duplicated, outside the retrieval set, or mismatched to the rendered URL?
+
+**False-positive guidance:**
+- It is acceptable for a document title or human-readable label to be duplicated when the backend still uses immutable source IDs and validates citations by ID.
+- A model may mention uncited background knowledge if the product clearly labels it as uncited and does not attach a trusted source badge.
+- Redirected or moved URLs are acceptable when the canonical source record stores both the original retrieval URL and the approved canonical URL, and citation validation compares against that record rather than model text.
+
 ---
 
 ## Step 5: Defense Evaluation
@@ -192,7 +211,15 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Is the system prompt structurally separated from user input (e.g., via the API's system message role) rather than concatenated in a single string?
 - Are retrieved documents and external content clearly demarcated as data, not instructions?
 
-### 5.7 Adaptive Attack Resilience
+### 5.7 RAG Source-Boundary Enforcement
+
+- Does the application preserve a source manifest for each answer with `source_id`, canonical URL or path, trust tier, retrieval timestamp, chunk IDs, and allowed citation IDs?
+- Is citation validation performed server-side after model generation and before rendering, independent of the model's self-reported citations?
+- Does validation reject fabricated citations, swapped URLs, duplicate title collisions, stale retrieved-vs-cited mismatches, and links whose href was authored by the model instead of source metadata?
+- Are source badges and markdown links rendered from validated metadata instead of raw model output?
+- Are unsupported claims handled explicitly, for example by removing the badge, marking the answer as unsupported, or requiring retrieval to be repeated?
+
+### 5.8 Adaptive Attack Resilience
 
 > **Warning:** Static prompt injection defenses (hardcoded system prompts, simple keyword filtering) are demonstrably insufficient against adaptive attackers. PISmith (Yin et al. 2026) achieved highest attack success rates across 13 benchmarks using RL-optimized adaptive black-box attacks.
 
@@ -248,6 +275,9 @@ Each finding should be assigned a severity based on potential impact:
 ### Defense Posture Summary
 [Table summarizing which defenses from Step 5 are present, partially present, or absent]
 
+### RAG Source and Citation Integrity
+[For RAG systems, include the retrieved source manifest, citation validation result, rejected citation IDs or URLs, and whether rendered links came from validated metadata or model-authored text.]
+
 ### Recommendations
 [Prioritized list of defensive improvements]
 ```
@@ -274,6 +304,8 @@ Each finding should be assigned a severity based on potential impact:
 4. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
+
+6. **Trusting model-authored citations as provenance.** A model can fabricate a source label, swap link text and hrefs, or follow a poisoned document's instruction to cite a trusted policy that was never retrieved. Citation badges should be rendered from validated backend metadata, not from the model's markdown.
 
 ---
 
