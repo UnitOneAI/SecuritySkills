@@ -66,7 +66,7 @@ ignore:
       - apk_info: "openssl-3.1.4-r6 installed"
     owner: platform-security
     ticket: SEC-2026-0142
-    expires_at: "2026-07-01"
+    expires_at: "<suppression-created + 30d RFC3339>"
     fail_closed_if_missing:
       - purl
       - ecosystem
