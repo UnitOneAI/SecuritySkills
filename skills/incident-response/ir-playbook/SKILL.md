@@ -444,6 +444,10 @@ During detection and analysis, map observed attacker techniques to the MITRE ATT
 - Standardized communication of attacker TTPs across teams and with external parties
 - Correlation with threat intelligence reports that reference ATT&CK technique IDs
 
+### FIRST CSIRT Services Framework v2.1 -- Service Catalogue and Handoffs
+
+When documenting CSIRT responsibilities, external handoffs, or service-catalogue assumptions, cite the current FIRST CSIRT Services Framework v2.1 source rather than retired FIRST education URLs. Record the framework version, retrieval date, and the specific service area used (for example incident management, vulnerability response coordination, or information sharing) so incident roles and escalation assumptions remain traceable during audits and post-incident review.
+
 ---
 
 ## 7. Common Pitfalls
@@ -493,7 +497,7 @@ This skill processes incident data that may include attacker-controlled content 
 7. **HIPAA Breach Notification Rule** -- 45 CFR 164.400-414 -- https://www.hhs.gov/hipaa/for-professionals/breach-notification/
 8. **SEC Cybersecurity Incident Disclosure (Item 1.05 Form 8-K)** -- https://www.sec.gov/rules/final/2023/33-11216.pdf
 9. **FBI Internet Crime Complaint Center (IC3)** -- https://www.ic3.gov/
-10. **FIRST CSIRT Framework** -- https://www.first.org/education/csirt
+10. **FIRST CSIRT Services Framework v2.1** -- https://www.first.org/standards/frameworks/csirts/csirt_services_framework_v2.1
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
 13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
