@@ -7,7 +7,7 @@ description: >
   Covers permission models, tool security, memory integrity, trust boundaries,
   and human oversight. Produces a structured assessment with risk ratings and
   architectural recommendations.
-tags: [ai-security, agentic-ai, agents]
+tags: [ai-security, agentic-ai, agents, handoff-validation]
 role: [appsec-engineer, security-engineer, architect, vciso]
 phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
@@ -293,6 +293,31 @@ In 2024, a financial services firm reported an incident (disclosed at a CISO rou
 5. Set hard limits on chain depth. Define maximum pipeline length and require human review for chains exceeding the limit.
 6. Implement structured error propagation — agents must explicitly signal uncertainty rather than passing through low-confidence outputs as if they were facts.
 
+**Uncertainty and Handoff Validation Evidence:**
+
+For multi-agent chains, do not treat authenticated messages, JSON schema validity, or audit logging as sufficient proof that a handoff is safe. Verify that each downstream agent receives machine-checkable evidence quality fields before it can take state-changing, external-communication, financial, identity, or infrastructure actions.
+
+| Field | Required evidence |
+|---|---|
+| Upstream agent | Agent identity and role that produced the handoff |
+| Output schema version | Versioned structure consumed by the downstream agent |
+| Confidence / uncertainty | Numeric or categorical confidence field that is preserved through summarization |
+| Completeness | `complete`, `partial`, `unknown`, or explicit missing-record counts |
+| Provenance / source coverage | Source classes checked, source coverage, and unavailable sources |
+| Fallback path | Timeout, stale cache, narrower corpus, weaker model, or heuristic mode if used |
+| Downstream semantic threshold | Minimum confidence, completeness, source coverage, and freshness required to proceed |
+| Conflict handling | Halt, escalation, tie-breaker policy, or human review when agents disagree |
+| Result | `proceed`, `degraded`, `blocked`, or `human-review-required` |
+
+Apply these review rules:
+
+- Do not let natural-language summaries flatten `unknown`, `partial`, or `low confidence` into authoritative instructions.
+- Require downstream agents to consume structured evidence-quality fields, not only a prose summary, before state-changing actions.
+- Treat timeout fallback, stale cache, partial retrieval, and source unavailability as actionability downgrades.
+- Treat disagreement between risk, policy, retrieval, and execution-prep agents as a stop condition unless an explicit tie-breaker policy exists.
+- Distinguish schema-valid output from semantically sufficient output. A well-formed `{ "approved": true }` response is still unsafe when evidence quality is missing or below threshold.
+- For read-only advisory workflows, preserved uncertainty may justify a lower finding severity. For financial, identity, account, customer-communication, or infrastructure actions, missing handoff evidence is Medium to High, and conflict flattened into `proceed` can be Critical.
+
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM09 — Misinformation (hallucination propagation)
@@ -428,6 +453,9 @@ Grep: "send_message|delegate|dispatch|publish|subscribe|queue" in **/*.{py,ts,js
 
 # Human approval gates
 Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,js,yaml,yml}
+
+# Uncertainty and handoff validation
+Grep: "confidence|certainty|uncertainty|partial|complete|fallback|stale cache|timeout fallback|source coverage|unknown|proceed|approve" in **/*.{py,ts,js,yaml,yml,json}
 ```
 
 ### Hands-On Assessment Tooling
@@ -513,6 +541,12 @@ Structure the final report as follows:
 |---|---|---|---|
 | AG01 | [rating] | [one-line summary] | [priority] |
 | ... | ... | ... | ... |
+
+## Uncertainty and Handoff Validation
+
+| Chain Step | Upstream Agent | Downstream Agent | Confidence/Completeness Preserved | Fallback Used | Semantic Threshold | Conflict Handling | Result |
+|---|---|---|---|---|---|---|---|
+| [step] | [agent] | [agent] | [yes/no + field names] | [none/cache/timeout/etc.] | [rule] | [halt/escalate/tie-breaker/none] | [proceed/degraded/blocked/human-review] |
 
 ## Recommendations
 1. [Highest priority recommendation]
