@@ -38,7 +38,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 Invoke this skill when any of the following conditions are met:
 
 - **Active security incident detected** -- An alert, anomaly, or user report indicates a potential or confirmed security event requiring coordinated response.
-- **Incident classification needed** -- An event has been detected and needs to be categorized by type (malware, unauthorized access, data exfiltration, denial of service, insider threat) and severity.
+- **Incident classification needed** -- An event has been detected and needs to be categorized by type (malware, unauthorized access, data exfiltration, denial of service, insider threat, business email compromise / SaaS identity compromise) and severity.
 - **Containment decision required** -- The responder needs guidance on whether to isolate, quarantine, or monitor the affected system based on business impact and threat severity.
 - **Stakeholder notification planning** -- The incident requires communication to internal leadership, legal counsel, regulators, law enforcement, or affected customers.
 - **Evidence preservation guidance** -- Digital evidence must be collected and preserved before containment or eradication actions alter the environment.
@@ -51,7 +51,56 @@ Invoke this skill when any of the following conditions are met:
 
 ## 2. Context the Agent Needs
 
-Before beginning, gather or confirm the following. Mark each item as obtained or missing and proceed with available information, noting gaps as assumptions.
+Before beginning, gather or confirm the following:
+
+- [ ] **Incident source** -- How the incident was detected (SIEM alert, user report, threat intelligence, third-party notification, security tool).
+- [ ] **Affected systems and accounts** -- Hostnames, IP addresses, usernames, SaaS tenants, email addresses involved.
+- [ ] **Incident type indicators** -- Observable characteristics that suggest incident category:
+  - **Malware / Ransomware** -- Suspicious processes, file encryption, ransom notes, C2 callbacks
+  - **Unauthorized Access** -- Failed/successful authentication from anomalous locations, privilege escalation
+  - **Data Exfiltration** -- Large data transfers, database dumps, cloud storage access spikes
+  - **Denial of Service** -- Service degradation, resource exhaustion, volumetric attacks
+  - **Insider Threat** -- Authorized user accessing unauthorized data, policy violations
+  - **Business Email Compromise (BEC) / SaaS Identity Compromise** -- Mailbox forwarding rules, inbox rules hiding messages, OAuth app grants, password resets from anomalous locations, wire transfer requests, supplier email spoofing, mailbox delegation changes, suspicious calendar invites with external attendees
+- [ ] **Timeline** -- When the incident was first detected, estimated compromise window, earliest indicator timestamp.
+- [ ] **Business context** -- Affected business units, data sensitivity, operational impact, compliance scope.
+
+---
+
+## 3. Step-by-Step Execution
+
+### Step 3.1: Initial Classification
+
+**Objective:** Categorize the incident type and assign preliminary severity.
+
+**Incident Type Decision Tree:**
+
+1. **Business Email Compromise (BEC) / SaaS Identity Compromise**
+   - Indicators: Mailbox forwarding or inbox rules created, OAuth tokens granted to unknown apps, password reset from anomalous IP, mailbox delegation added, suspicious wire transfer or invoice requests, supplier impersonation emails, calendar invites with malicious links or external-only attendees
+   - Primary containment needs: Credential revocation, OAuth token revocation, mailbox rule removal, MFA enforcement, session termination
+   - **Do NOT default to network isolation** -- BEC persistence lives in email rules, OAuth grants, and forwarding configurations, not endpoint malware
+
+2. **Malware / Ransomware**
+   - Indicators: Suspicious processes, file encryption, ransom note, C2 beaconing, lateral movement
+   - Primary containment needs: Network isolation, endpoint quarantine, credential revocation
+
+3. **Unauthorized Access**
+   - Indicators: Anomalous authentication, privilege escalation, unusual administrative actions
+   - Primary containment needs: Credential revocation, session termination, access review
+
+4. **Data Exfiltration**
+   - Indicators: Large outbound transfers, database dumps, cloud storage bulk downloads
+   - Primary containment needs: Network egress restrictions, credential revocation, data source access removal
+
+5. **Denial of Service**
+   - Indicators: Service degradation, resource exhaustion, volumetric traffic
+   - Primary containment needs: Traffic filtering, rate limiting, upstream provider coordination
+
+6. **Insider Threat**
+   - Indicators: Authorized user accessing unauthorized data, policy violations, data hoarding
+   - Primary containment needs: Access revocation, monitoring escalation, HR coordination
+
+**Severity Assignment (NIST Functional Impact Categories):**ng. Mark each item as obtained or missing and proceed with available information, noting gaps as assumptions.
 
 - [ ] **Incident trigger** -- What alert, report, or observation initiated the response? (SIEM alert, EDR detection, user report, external notification, threat intel)
 - [ ] **Affected systems** -- Hostnames, IP addresses, cloud resources, applications, and services impacted or suspected of compromise.

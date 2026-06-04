@@ -38,7 +38,7 @@ Invoke this skill when any of the following conditions are met:
 - **Active incident requires isolation** -- A confirmed security incident is in progress and affected systems must be contained to prevent further damage or lateral movement.
 - **Containment strategy selection** -- The responder needs to choose between network isolation, credential revocation, DNS sinkholing, or other containment mechanisms based on incident type and business constraints.
 - **Business impact vs. security risk trade-off** -- The containment action may disrupt business operations and the team needs a structured framework to evaluate the trade-off.
-- **Attacker technique requires specific countermeasure** -- The identified ATT&CK technique dictates a particular containment approach (e.g., credential theft requires credential revocation, not just network isolation).
+- **Attacker technique requires specific countermeasure** -- The identified ATT&CK technique dictates a particular containment approach (e.g., credential theft requires credential revocation, not just network isolation; BEC/SaaS identity compromise requires mailbox rule removal and OAuth token revocation, not endpoint isolation).
 - **Containment effectiveness validation** -- Previous containment actions may have been insufficient and the team needs to assess and escalate containment measures.
 
 **Do not use when:** The task is initial incident triage and classification (use ir-playbook), forensic evidence collection (use forensics-checklist), or post-incident review (use post-incident-review).
@@ -51,7 +51,36 @@ Before selecting a containment strategy, gather or confirm:
 
 - [ ] **Incident classification and severity** -- From the ir-playbook assessment (category, SEV level).
 - [ ] **Affected systems inventory** -- Hostnames, IPs, cloud resource IDs, services running on affected systems, and their business function.
-- [ ] **Attack vector and techniques** -- Known MITRE ATT&CK techniques in use (initial access, lateral movement, persistence, C2).
+- [ ] **Attack vector and techniques** -- Known MITRE ATT&CK techniques in use (initial access, lateral movement, persistence, C2). For BEC/SaaS identity incidents, document email rule persistence (T1114.003 - Email Forwarding Rule), OAuth application persistence (T1528 - Steal Application Access Token), and mailbox access methods.
+- [ ] **Attacker objectives** -- Known or suspected attacker goals (ransomware, data theft, business disruption, financial fraud, wire transfer fraud).
+- [ ] **Current attacker position** -- Systems or accounts the attacker currently controls, lateral movement indicators, persistence mechanisms (including non-host persistence like email forwarding rules or OAuth grants).
+- [ ] **Business impact** -- Services affected, data at risk, operational constraints (e.g., cannot isolate email server during business hours).
+- [ ] **Legal/regulatory constraints** -- Evidence preservation requirements, law enforcement involvement, breach notification timelines.
+
+---
+
+## 3. Containment Decision Framework
+
+### Step 3.1: Map Incident Type to Primary Containment Strategy
+
+**Business Email Compromise (BEC) / SaaS Identity Compromise:**
+- **Primary actions:**
+  1. Revoke compromised credentials immediately
+  2. Terminate all active sessions for affected accounts
+  3. Remove malicious mailbox forwarding rules (Inbox rules, forwarding addresses, SMTP forwarding)
+  4. Revoke OAuth tokens for unknown or suspicious applications
+  5. Remove suspicious mailbox delegations (full access grants, send-as permissions)
+  6. Enable MFA if not already enforced
+  7. Review and remove suspicious calendar invites or external meeting organizers
+  8. Check for email auto-reply rules used for reconnaissance
+  9. Audit mailbox folder permissions (shared folder grants to external users)
+- **Secondary actions:**
+  - Network isolation is typically NOT needed unless lateral movement to endpoints is confirmed
+  - Monitor for additional compromised accounts (check sign-in logs for same source IP)
+  - Alert finance/accounting teams to validate wire transfer requests
+- **ATT&CK mapping:** T1114.003 (Email Forwarding Rule), T1528 (Steal Application Access Token), T1098.002 (Exchange Email Delegate Permissions), T1566.002 (Spearphishing Link)
+
+**Malware / Ransomware:**ck vector and techniques** -- Known MITRE ATT&CK techniques in use (initial access, lateral movement, persistence, C2).
 - [ ] **Attacker access scope** -- What accounts, systems, and network segments has the attacker accessed or potentially compromised?
 - [ ] **Business criticality of affected systems** -- Revenue impact, customer impact, SLA obligations, regulatory implications of downtime.
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
