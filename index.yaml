@@ -31,7 +31,7 @@ skills:
 
   - id: secure-code-review
     name: "Secure Code Review"
-    tags: [appsec, code-review, sast]
+    tags: [appsec, code-review, sast, open-redirect, oauth]
     role: [appsec-engineer, security-engineer]
     phase: [build, review]
     activity: [review, assess]

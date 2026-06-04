@@ -3,16 +3,16 @@ name: secure-code-review
 description: >
   Performs a structured security code review against OWASP ASVS 4.0.3 verification
   requirements and CWE Top 25. Auto-invoked on pull request reviews, when code
-  touching authentication, authorization, cryptography, or input handling is shared.
-  Produces findings mapped to ASVS controls and CWE identifiers with severity
-  ratings and specific remediation guidance.
-tags: [appsec, code-review, sast]
+  touching authentication, authorization, redirects, cryptography, or input
+  handling is shared. Produces findings mapped to ASVS controls and CWE
+  identifiers with severity ratings and specific remediation guidance.
+tags: [appsec, code-review, sast, open-redirect, oauth]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -177,8 +177,8 @@ Remediation: Use the framework's built-in session management (e.g., `HttpSession
 
 ## Step 4: Authorization Review
 
-**ASVS Reference:** V4 -- Access Control
-**CWE Coverage:** CWE-862 (Missing Authorization), CWE-352 (Cross-Site Request Forgery)
+**ASVS Reference:** V4 -- Access Control, V5 -- Validation, Sanitization and Encoding
+**CWE Coverage:** CWE-862 (Missing Authorization), CWE-352 (Cross-Site Request Forgery), CWE-601 (URL Redirection to Untrusted Site)
 
 ### 4.1 Controls to Verify
 
@@ -224,12 +224,84 @@ Remediation: Require POST with a validated CSRF token. Use a CSRF middleware lib
 
 ---
 
-## Step 5: Cryptography Review
+## Step 5: Redirect and OAuth Callback Review
+
+**ASVS Reference:** V2 -- Authentication, V4 -- Access Control, V5 -- Validation
+**CWE Coverage:** CWE-601 (URL Redirection to Untrusted Site), CWE-20 (Improper Input Validation)
+
+Open redirects are security findings when user-controlled destinations reach redirect sinks without local-only validation, canonical URL parsing, or exact allowlist checks. Redirect calls by themselves are not findings: framework-safe local redirects and fixed internal destinations should be recorded as pass evidence.
+
+### 5.1 Redirect Sinks and Input Sources
+
+Trace user-controlled parameters such as `next`, `returnUrl`, `redirect`, `redirect_uri`, `callback`, `continue`, `url`, `target`, and `RelayState` into redirect helpers.
+
+| Framework | Redirect Sinks to Review | Safe Evidence |
+|-----------|--------------------------|---------------|
+| Express / Node.js | `res.redirect(...)`, `reply.redirect(...)`, `ctx.redirect(...)` | Parsed URL allowlist or local-path enforcement before redirect |
+| Rails | `redirect_to params[...]`, `redirect_back`, custom callback params | `allow_other_host: false` or exact allowlist for external hosts |
+| Django / Flask | `redirect(request.GET[...])`, `HttpResponseRedirect`, `redirect(next_url)` | `url_has_allowed_host_and_scheme` or app-specific exact allowlist |
+| ASP.NET / ASP.NET Core | `Redirect(returnUrl)`, `Response.Redirect`, OAuth `RedirectUri` handlers | `Url.IsLocalUrl(returnUrl)` with `LocalRedirect`, or exact allowlist |
+| Generic OAuth / SSO | `redirect_uri`, `callback_url`, SAML `RelayState` destination handling | Exact registered origin/path match after parsing and canonicalization |
+
+### 5.2 Vulnerable Patterns by Language
+
+**JavaScript -- Express Open Redirect (CWE-601)**
+```javascript
+// VULNERABLE: user-controlled next parameter reaches redirect sink
+app.get("/login", (req, res) => {
+  const next = req.query.next || "/";
+  res.redirect(next);
+});
+```
+Remediation: Parse the destination, require a same-origin relative path or exact allowlist entry, and fall back to a fixed internal route when validation fails.
+
+**JavaScript -- OAuth Callback Suffix Allowlist Bypass**
+```javascript
+// VULNERABLE: suffix matching accepts attacker-example.com and encoding variants
+const redirectUri = req.query.redirect_uri;
+if (redirectUri.endsWith("example.com")) {
+  res.redirect(redirectUri);
+}
+```
+Remediation: Register exact callback URLs and compare parsed `scheme`, canonical `host`, normalized `port`, and expected `pathname`. Do not use `contains`, `startsWith`, or `endsWith` as OAuth allowlist controls.
+
+**C# -- Safe Local Redirect Evidence**
+```csharp
+// SAFE: local-only validation prevents external redirects
+if (Url.IsLocalUrl(returnUrl))
+{
+    return LocalRedirect(returnUrl);
+}
+return RedirectToAction("Index", "Home");
+```
+Do not report this as open redirect when the local-only helper is present and the fallback is fixed.
+
+### 5.3 Bypass Cases to Test
+
+- Protocol-relative URLs: `//evil.example/path`
+- Encoded or mixed slash/backslash forms: `%2f%2fevil.example`, `\evil.example`, `%5c%5cevil.example`
+- Double-encoded destinations that become external after decoding
+- Punycode, Unicode lookalike hosts, and case-normalization mismatches
+- Suffix traps: `attacker-example.com`, `example.com.evil.test`
+- Open partner redirects without a business-approved exact allowlist entry
+
+### 5.4 Review Checklist
+
+- [ ] Redirect destinations from query strings, form fields, headers, cookies, OAuth parameters, and SAML RelayState are traced to sinks.
+- [ ] Local-only redirects use framework helpers such as `LocalRedirect`, `Url.IsLocalUrl`, or equivalent same-origin validation.
+- [ ] External redirects require exact parsed allowlist matches for scheme, host, port, and path.
+- [ ] OAuth/OIDC callback validation uses registered redirect URIs, not substring, prefix, suffix, wildcard, or regex-only checks.
+- [ ] Invalid destinations fall back to a fixed internal route instead of reflecting the original input.
+- [ ] Bypass cases for protocol-relative, encoded slash/backslash, punycode, and double-encoding are covered by tests.
+
+---
+
+## Step 6: Cryptography Review
 
 **ASVS Reference:** V6 -- Stored Cryptography
 **CWE Coverage:** CWE-798 (Hard-coded Credentials -- cryptographic keys)
 
-### 5.1 Controls to Verify
+### 6.1 Controls to Verify
 
 | ASVS Control | Description |
 |---|---|
@@ -241,7 +313,7 @@ Remediation: Require POST with a validated CSRF token. Use a CSRF middleware lib
 | V6.3.1 | All random numbers and strings are generated using a cryptographically secure PRNG |
 | V6.4.1 | A key management solution is in place to create, distribute, rotate, and revoke keys |
 
-### 5.2 Vulnerable Patterns by Language
+### 6.2 Vulnerable Patterns by Language
 
 **Python -- Weak Cryptography**
 ```python
@@ -261,7 +333,7 @@ function generateToken() {
 ```
 Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.getRandomValues()` (browser).
 
-### 5.3 Review Checklist
+### 6.3 Review Checklist
 
 - [ ] No use of deprecated algorithms: MD5, SHA-1 (for security purposes), DES, RC4, ECB mode.
 - [ ] Passwords hashed with Argon2id, bcrypt, or scrypt -- never SHA-256 alone.
@@ -271,11 +343,11 @@ Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.g
 
 ---
 
-## Step 6: Error Handling and Logging
+## Step 7: Error Handling and Logging
 
 **ASVS Reference:** V7 -- Error Handling and Logging
 
-### 6.1 Controls to Verify
+### 7.1 Controls to Verify
 
 | ASVS Control | Description |
 |---|---|
@@ -287,7 +359,7 @@ Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.g
 | V7.4.1 | A generic error message is shown to users; detailed errors are only logged server-side |
 | V7.4.3 | Error handling logic denies access by default |
 
-### 6.2 Vulnerable Patterns by Language
+### 7.2 Vulnerable Patterns by Language
 
 **Java -- Verbose Error Disclosure**
 ```java
@@ -306,7 +378,7 @@ logger.info(f"Login attempt for {username} with password {password}")
 ```
 Remediation: Never log secrets. Log only the username and the outcome -- `logger.info(f"Login attempt for {username}: {'success' if ok else 'failure'}")`.
 
-### 6.3 Review Checklist
+### 7.3 Review Checklist
 
 - [ ] Stack traces and internal error details are never returned in HTTP responses.
 - [ ] Credentials, tokens, PII, and payment data are never written to logs.
@@ -316,11 +388,11 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 
 ---
 
-## Step 7: Data Protection
+## Step 8: Data Protection
 
 **ASVS Reference:** V8 -- Data Protection
 
-### 7.1 Controls to Verify
+### 8.1 Controls to Verify
 
 | ASVS Control | Description |
 |---|---|
@@ -330,7 +402,7 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 | V8.3.4 | Sensitive information in autocomplete fields is disabled |
 | V8.3.6 | Sensitive information in memory is overwritten as soon as it is no longer needed |
 
-### 7.2 Review Checklist
+### 8.2 Review Checklist
 
 - [ ] Sensitive data (tokens, PII) is not passed in URL query strings.
 - [ ] Cache-Control headers prevent caching of authenticated or sensitive responses.
@@ -340,12 +412,12 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 
 ---
 
-## Step 8: Deserialization and File Handling
+## Step 9: Deserialization and File Handling
 
 **ASVS Reference:** V12 -- Files and Resources
 **CWE Coverage:** CWE-502 (Deserialization of Untrusted Data), CWE-434 (Unrestricted Upload of File with Dangerous Type), CWE-918 (Server-Side Request Forgery)
 
-### 8.1 Controls to Verify
+### 9.1 Controls to Verify
 
 | ASVS Control | Description |
 |---|---|
@@ -357,7 +429,7 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 | V12.4.2 | Files obtained from untrusted sources are scanned by antivirus or verified by content type |
 | V12.6.1 | The web server only processes requests to specified and permitted file types |
 
-### 8.2 Vulnerable Patterns by Language
+### 9.2 Vulnerable Patterns by Language
 
 **Python -- Unsafe Deserialization (CWE-502)**
 ```python
@@ -396,7 +468,7 @@ func fetchURL(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
 
-### 8.3 Review Checklist
+### 9.3 Review Checklist
 
 - [ ] No use of native deserialization (pickle, ObjectInputStream, Marshal.load) on untrusted data.
 - [ ] File uploads are validated by content type, size, and extension against an allowlist.
@@ -445,7 +517,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.1.0
 
 ### Summary
 - Critical: [count]
@@ -491,7 +563,7 @@ The final review output must be structured as follows:
 | V2 | Authentication | Identity verification |
 | V3 | Session Management | Session token lifecycle |
 | V4 | Access Control | Authorization enforcement |
-| V5 | Validation, Sanitization and Encoding | Input/output safety |
+| V5 | Validation, Sanitization and Encoding | Input/output and redirect destination safety |
 | V6 | Stored Cryptography | Encryption and hashing |
 | V7 | Error Handling and Logging | Safe failure and audit trails |
 | V8 | Data Protection | Data-at-rest and in-transit controls |
@@ -515,17 +587,23 @@ The final review output must be structured as follows:
 | CWE-125 | Out-of-bounds Read | Step 2 (memory-safe language check) |
 | CWE-22 | Path Traversal | Step 2 |
 | CWE-352 | Cross-Site Request Forgery | Step 4 |
-| CWE-434 | Unrestricted Upload of File with Dangerous Type | Step 8 |
+| CWE-434 | Unrestricted Upload of File with Dangerous Type | Step 9 |
 | CWE-862 | Missing Authorization | Step 4 |
-| CWE-476 | NULL Pointer Dereference | Step 6 (error handling) |
+| CWE-476 | NULL Pointer Dereference | Step 7 (error handling) |
 | CWE-287 | Improper Authentication | Step 3 |
 | CWE-190 | Integer Overflow or Wraparound | Step 2 (memory-safe language check) |
-| CWE-502 | Deserialization of Untrusted Data | Step 8 |
+| CWE-502 | Deserialization of Untrusted Data | Step 9 |
 | CWE-77 | Command Injection | Step 2 |
 | CWE-119 | Improper Restriction of Operations within Memory Buffer | Step 2 (memory-safe language check) |
 | CWE-798 | Use of Hard-coded Credentials | Step 3 |
-| CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
+| CWE-918 | Server-Side Request Forgery (SSRF) | Step 9 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
+
+### Additional CWE Coverage
+
+| CWE ID | Name | Review Step |
+|---|---|---|
+| CWE-601 | URL Redirection to Untrusted Site | Step 5 |
 
 ---
 
@@ -540,6 +618,10 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Flagging every redirect call as vulnerable.** A finding needs user-controlled destination input and missing validation. Framework local-only helpers and fixed internal fallbacks are safe evidence.
+
+7. **Using string matching for OAuth callbacks.** `contains`, `startsWith`, `endsWith`, broad regexes, and wildcard domains are not exact redirect URI validation. Parse and canonicalize before comparing exact registered destinations.
 
 ---
 
@@ -562,4 +644,11 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Unvalidated Redirects and Forwards Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+
+---
+
+## Changelog
+
+- **1.1.0** -- Added open redirect and OAuth callback allowlist review gates, redirect sink patterns, false-positive guidance, bypass cases, and CWE-601 coverage.
