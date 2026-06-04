@@ -68,7 +68,7 @@ A Software Bill of Materials (SBOM) is a machine-readable inventory of every com
 
 Package-manager SBOM tools can miss components that are copied into the repository, generated into build output, bundled into minified assets, or checked in as WebAssembly. When those paths exist, run at least one directory or filesystem scanner against the full repository or release artifact, not only the manifest file. Treat `vendor/`, `third_party/`, `externals/`, `generated/`, `dist/`, `public/vendor/`, `*.min.js`, `*.wasm`, and embedded `LICENSE`, `NOTICE`, or provenance files as explicit SBOM scope.
 
-Every undeclared component should either appear in the SBOM with a stable component identity or have a documented exclusion reason. Prefer Package URL (purl) identifiers when a registry package can be mapped; otherwise record upstream URL, source commit or version, checksum, license, owner, and update cadence.
+Classify each scoped asset before raising provenance findings. First-party build output is covered when it can be traced to local source inputs, a generator command, and the repository revision. Third-party copied code, external runtime helpers, and assets that cannot be traced to local source should either appear in the SBOM with a stable component identity or have a documented exclusion reason. Prefer Package URL (purl) identifiers when a registry package can be mapped; otherwise record upstream URL, source commit or version, checksum, license, owner, and update cadence.
 
 ### SLSA v1.0 Alignment
 
@@ -118,7 +118,7 @@ Review the repository and release artifact for:
 
 ### Required Component Identity
 
-For each undeclared component, require enough data to tie the copied artifact back to an upstream source:
+For each undeclared third-party or externally sourced component, require enough data to tie the copied artifact back to an upstream source:
 
 | Field | Evidence to Capture |
 |---|---|
@@ -131,17 +131,19 @@ For each undeclared component, require enough data to tie the copied artifact ba
 | Update cadence | Scheduled refresh interval, upstream release tracking, or documented exception |
 | SBOM status | Included as a component, included as a relationship, or excluded with rationale |
 
+For first-party generated or bundled output, capture the local source input, generator or build command, repository revision, owner, and SBOM relationship instead of demanding an external upstream URL.
+
 ### Finding Criteria
 
 Flag a supply chain finding when any of the following are true:
 
-- A vendored, generated, bundled, minified, or WASM component has no upstream source or version/commit evidence.
-- A component is omitted from the SBOM and lacks a documented exclusion reason.
+- A vendored, generated, bundled, minified, or WASM asset is copied third-party code, contains an external runtime helper, or cannot be traced to local source, and has no upstream source or version/commit evidence.
+- A third-party or externally sourced component is omitted from the SBOM and lacks a documented exclusion reason.
 - A minified or bundled asset contains a known vulnerable library version that is absent from the declared dependency graph.
 - License files or third-party notices indicate copied dependencies that are not inventoried.
 - No owner or update cadence exists for copied third-party code, making patch response impossible to assign.
 
-Do not flag a high-risk finding when the component has complete provenance, is represented in the SBOM, has no known vulnerabilities or license conflicts, and has an accountable owner with a documented refresh process. In that case, record it as covered evidence in the assessment.
+Do not flag a high-risk finding when a first-party generated or bundled asset is traceable to local source inputs and build steps, or when a third-party component has complete provenance, is represented in the SBOM, has no known vulnerabilities or license conflicts, and has an accountable owner with a documented refresh process. In that case, record it as covered evidence in the assessment.
 
 ## Vulnerability Triage: EPSS + CVSS + CISA KEV
 
