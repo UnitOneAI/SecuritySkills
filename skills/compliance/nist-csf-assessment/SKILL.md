@@ -116,6 +116,9 @@ Establish context for the assessment:
 **GV.OC-03**: Legal, regulatory, and contractual requirements regarding cybersecurity — including privacy and civil liberties obligations — are understood and managed
 - Inventory applicable laws, regulations, standards, and contractual obligations
 - Map requirements to cybersecurity program elements
+- Separate cybersecurity obligations from privacy and civil liberties obligations instead of treating security control evidence as sufficient for both.
+- Identify the privacy or legal owner for each privacy obligation, and record whether evidence is direct, interview-only, not applicable, or not evaluable.
+- For personal, sensitive, regulated, or protected-class data, verify evidence for processing purpose, notice/consent or other authorization basis where applicable, retention/deletion rules, disclosure/sharing constraints, individual rights handling, and civil-liberties impact.
 
 **GV.OC-04**: Critical objectives, capabilities, and services that external stakeholders depend on or expect are understood and communicated
 - Identify critical business services and their dependencies
@@ -224,6 +227,17 @@ Assess:
 - **ID.AM-07**: Inventories of data and corresponding metadata for designated data types are maintained
 - **ID.AM-08**: Systems, hardware, software, services, and data are managed throughout their life cycles
 
+For **ID.AM-07**, do not stop at data type, owner, classification, and storage location. When the data can identify, affect, or be linked to individuals, capture privacy metadata:
+
+- data category and sensitivity (PII, PHI, financial, biometric, employee, child, location, protected-class, customer content, telemetry)
+- processing purpose and collection context
+- data source and downstream sharing or disclosure paths
+- retention and deletion rules
+- notice, consent, contract, or other authorization basis where applicable
+- individual rights workflow coverage (access, correction, deletion, portability, objection, opt-out where applicable)
+- privacy owner or evidence owner
+- individual-impact relevance if misused, exposed, inferred, or retained beyond purpose
+
 **Risk Assessment (ID.RA)**
 - **ID.RA-01**: Vulnerabilities in assets are identified, validated, and recorded
 - **ID.RA-02**: Cyber threat intelligence is received from information sharing forums and sources
@@ -235,6 +249,16 @@ Assess:
 - **ID.RA-08**: Processes for receiving, analyzing, and responding to vulnerability disclosures are established
 - **ID.RA-09**: The authenticity and integrity of hardware and software are assessed prior to acquisition and use
 - **ID.RA-10**: Critical suppliers are assessed prior to acquisition
+
+For systems that process personal, sensitive, or regulated data, require risk entries to distinguish organizational impact from individual impact. A complete risk entry should record:
+
+- business impact and mission impact
+- affected individuals or populations
+- privacy or civil-liberties harm scenario
+- sensitive inference, discrimination, safety, or chilling-effect concern where relevant
+- breach/privacy incident notification decision owner
+- minimization, deletion, access restriction, or disclosure-control response option
+- residual individual-impact risk after the cybersecurity response
 
 **Improvement (ID.IM)**
 - **ID.IM-01**: Improvements are identified from evaluations
@@ -312,6 +336,15 @@ Assess:
 - **RS.CO-02**: Internal and external stakeholders are notified of incidents
 - **RS.CO-03**: Information is shared with designated internal and external stakeholders
 
+For incidents involving personal, sensitive, regulated, or protected-class data, include a privacy notification decision record:
+
+- whether privacy counsel, DPO, legal, or data-governance owner reviewed the facts
+- affected data categories and affected populations
+- regulator, customer, partner, and individual-notice triggers
+- facts still needed before notice can be decided
+- approved message owner and channel
+- separation between service-recovery communications and privacy/regulatory notices
+
 **Incident Mitigation (RS.MI)**
 - **RS.MI-01**: Incidents are contained
 - **RS.MI-02**: Incidents are eradicated
@@ -329,6 +362,8 @@ Assess:
 **Incident Recovery Communication (RC.CO)**
 - **RC.CO-03**: Recovery activities and progress in restoring operational capabilities are communicated to designated internal and external stakeholders
 - **RC.CO-04**: Public updates on incident recovery are shared using approved methods and messaging
+
+For recovery after a privacy-impacting incident, confirm that public or stakeholder recovery updates do not imply privacy obligations are complete unless the notification decision record is closed. Track privacy-specific recovery commitments such as deletion confirmation, corrected disclosures, restored privacy controls, individual-rights backlog handling, and post-incident retention changes.
 
 ---
 
@@ -355,8 +390,10 @@ Determine the overall organizational Tier based on aggregated assessment across 
 Document the current state for each function/category/subcategory:
 
 ```
-| Function | Category | Subcategory | Current Score | Evidence | Gaps |
+| Function | Category | Subcategory | Current Score | Evidence | Privacy/Civil-Liberties Evidence | Evidence Confidence | Not-Evaluable Reason | Gaps |
 ```
+
+Use `not_applicable` only when the scoped system does not process data that can identify, affect, or be linked to individuals, and include the rationale. Use `not_evaluable` when evidence exists outside the security team's access, such as legal, HR, data-governance, supplier, or processor records that were not available for assessment.
 
 #### 5.2 Target Profile
 
@@ -454,10 +491,10 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 
 ### GOVERN (GV)
 
-| Subcategory | Description | Current | Target | Gap | Priority | Informative Refs |
-|-------------|-------------|---------|--------|-----|----------|-----------------|
-| GV.OC-01 | Organizational mission informs CSRM | [0-4] | [0-4] | [delta] | [H/M/L] | [refs] |
-| ... | ... | ... | ... | ... | ... | ... |
+| Subcategory | Description | Current | Target | Gap | Priority | Privacy/Civil-Liberties Evidence | Informative Refs |
+|-------------|-------------|---------|--------|-----|----------|-------------------------------|-----------------|
+| GV.OC-01 | Organizational mission informs CSRM | [0-4] | [0-4] | [delta] | [H/M/L] | [N/A or evidence summary] | [refs] |
+| ... | ... | ... | ... | ... | ... | ... | ... |
 
 ### IDENTIFY (ID)
 [same table format]
@@ -479,6 +516,14 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 - Average gap magnitude: [score]
 - Functions with largest gaps: [list]
 - Quick wins (low effort, high impact): [list]
+
+## Privacy and Civil-Liberties Evidence
+
+| Data Category / Obligation | CSF Subcategory | Evidence Owner | Purpose / Authorization | Retention / Deletion | Sharing / Disclosure | Individual Impact | Status |
+|----------------------------|-----------------|----------------|-------------------------|----------------------|----------------------|------------------|--------|
+| [category or obligation] | [GV.OC-03 / ID.AM-07 / ID.RA-* / RS.CO-* / RC.CO-*] | [owner] | [summary] | [summary] | [summary] | [summary] | [met / gap / N/A / not evaluable] |
+
+Use this section to prevent strong cybersecurity evidence from masking missing privacy-risk evidence.
 
 ## Remediation Roadmap
 
@@ -575,6 +620,8 @@ Tier 4 — Adaptive
 3. **Assessing subcategories in isolation without considering dependencies.** CSF functions are interdependent. Detection capabilities (DE) are meaningless without response capabilities (RS). Protection (PR) without asset identification (ID.AM) leaves gaps. The assessment must consider the maturity chain across functions, not just individual subcategory scores.
 
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
+
+5. **Treating security control maturity as privacy maturity.** Encryption, access control, logging, and breach response can be strong while privacy/civil-liberties evidence is still incomplete. When GV.OC-03, ID.AM-07, ID.RA, RS.CO, or RC.CO involve personal or sensitive data, require purpose, retention, disclosure, individual-rights, notification, and individual-impact evidence instead of inferring privacy readiness from cybersecurity controls alone.
 
 ---
 
