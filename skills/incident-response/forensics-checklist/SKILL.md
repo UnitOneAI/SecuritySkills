@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -62,6 +62,7 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Reference source status** -- Confirm the current NIST SP 800-86 and RFC 3227 source URLs, source owner, and review date before citing framework guidance in a legal, regulatory, or executive-facing report.
 
 ---
 
@@ -397,6 +398,12 @@ the order of collection, and any evidence that could not be obtained.]
 ### Evidence Gaps
 [List any evidence that could not be collected and the reason]
 
+### Source Verification
+| Source | URL | Date Checked | Status | Notes |
+|---|---|---|---|---|
+| NIST SP 800-86 | [URL] | [YYYY-MM-DD] | [Current/Stale/Unavailable] | [Notes] |
+| RFC 3227 | [URL] | [YYYY-MM-DD] | [Current/Stale/Unavailable] | [Notes] |
+
 ### Cloud Evidence (if applicable)
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
@@ -478,7 +485,7 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 ## 9. References
 
 1. **NIST SP 800-86** -- Guide to Integrating Forensic Techniques into Incident Response -- https://csrc.nist.gov/publications/detail/sp/800-86/final
-2. **RFC 3227** -- Guidelines for Evidence Collection and Archiving -- https://www.rfc-editor.org/rfc/rfc3227
+2. **RFC 3227** -- Guidelines for Evidence Collection and Archiving -- https://datatracker.ietf.org/doc/rfc3227/
 3. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
 4. **ISO/IEC 27037:2012** -- Guidelines for Identification, Collection, Acquisition and Preservation of Digital Evidence -- https://www.iso.org/standard/44381.html
 5. **SANS Digital Forensics and Incident Response** -- https://www.sans.org/digital-forensics-incident-response/
@@ -487,3 +494,10 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
 9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
 10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Refresh RFC 3227 source URL to the IETF Datatracker record and require source-verification status in forensic reports.
+- **1.0.0** -- Initial release. NIST SP 800-86 and RFC 3227 evidence collection checklist with cloud forensics coverage.
