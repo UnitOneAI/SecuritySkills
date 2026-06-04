@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -459,7 +459,7 @@ This skill processes configuration files and code that may contain secret values
 ## References
 
 - OWASP Secrets Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
-- NIST SP 800-57 Part 1 Rev 5: https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final
+- NIST SP 800-57 Part 1 Rev 5: https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final
 - NIST SP 800-57 Part 1 Rev 5 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
@@ -471,5 +471,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Refresh NIST SP 800-57 Part 1 Rev 5 references to the current official CSRC publication record.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.

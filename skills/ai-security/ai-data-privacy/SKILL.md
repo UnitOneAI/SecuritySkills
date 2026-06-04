@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -485,5 +485,12 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
 - Ippolito, D. et al. (2023). "Preventing Verbatim Memorization in Language Models Gives a False Sense of Privacy." arXiv:2210.17546
 - Microsoft Presidio (PII detection and anonymization) -- https://github.com/microsoft/presidio
-- NIST SP 800-188, De-Identifying Government Datasets -- https://csrc.nist.gov/publications/detail/sp/800-188/final
+- NIST SP 800-188, De-Identifying Government Datasets -- https://csrc.nist.gov/pubs/sp/800/188/final
 - Article 29 Working Party, Guidelines on Data Protection Impact Assessment (WP 248) -- https://ec.europa.eu/newsroom/article29/items/611236
+
+---
+
+## Changelog
+
+- **1.0.1** -- Refresh NIST SP 800-188 reference to the current official CSRC publication record.
+- **1.0.0** -- Initial AI data privacy and governance skill with NIST AI RMF, OWASP LLM02, GDPR, CCPA/CPRA, and EU AI Act references.

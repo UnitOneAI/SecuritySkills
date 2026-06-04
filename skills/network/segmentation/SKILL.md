@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -360,7 +360,7 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## References
 
-- NIST SP 800-207, Zero Trust Architecture: https://csrc.nist.gov/publications/detail/sp/800-207/final
+- NIST SP 800-207, Zero Trust Architecture: https://csrc.nist.gov/pubs/sp/800/207/final
 - NIST SP 800-207 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-207.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - CIS Control 12 -- Network Infrastructure Management: https://www.cisecurity.org/controls/network-infrastructure-management
@@ -372,4 +372,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.0.1** -- Refresh NIST SP 800-207 references to the current official CSRC publication record.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.

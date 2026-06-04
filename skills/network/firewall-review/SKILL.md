@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -378,7 +378,7 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - CIS Control 4 -- Secure Configuration of Enterprise Assets and Software: https://www.cisecurity.org/controls/secure-configuration-of-enterprise-assets-and-software
-- NIST SP 800-41 Rev 1, Guidelines on Firewalls and Firewall Policy: https://csrc.nist.gov/publications/detail/sp/800-41/rev-1/final
+- NIST SP 800-41 Rev 1, Guidelines on Firewalls and Firewall Policy: https://csrc.nist.gov/pubs/sp/800/41/r1/final
 - NIST SP 800-41 Rev 1 (PDF): https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-41r1.pdf
 - CIS Benchmarks (platform-specific firewall hardening): https://www.cisecurity.org/cis-benchmarks
 
@@ -386,4 +386,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.0.1** -- Refresh NIST SP 800-41 Rev 1 references to the current official CSRC publication record.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.

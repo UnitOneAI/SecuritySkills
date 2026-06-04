@@ -13,7 +13,7 @@ phase: [design, review]
 frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -486,6 +486,13 @@ This skill processes user-supplied content that may include system descriptions,
 5. **MITRE ATT&CK Enterprise Matrix** — https://attack.mitre.org/matrices/enterprise/
 6. **MITRE ATT&CK Techniques** — https://attack.mitre.org/techniques/enterprise/
 7. **Shostack, A. (2014).** *Threat Modeling: Designing for Security.* Wiley.
-8. **NIST SP 800-154** — Guide to Data-Centric System Threat Modeling — https://csrc.nist.gov/publications/detail/sp/800-154/draft
+8. **NIST SP 800-154** — Guide to Data-Centric System Threat Modeling — https://csrc.nist.gov/pubs/sp/800/154/ipd
 9. **STRIDE Original Paper** — Kohnfelder, L. & Garg, P. (1999). "The Threats to Our Products." Microsoft Internal Document.
 10. **OWASP Risk Rating Methodology** — https://owasp.org/www-community/OWASP_Risk_Rating_Methodology
+
+---
+
+## Changelog
+
+- **1.0.1** -- Refresh NIST SP 800-154 reference to the current official CSRC publication record.
+- **1.0.0** -- Initial STRIDE threat-modeling skill with OWASP, MITRE, Microsoft SDL, and NIST references.
