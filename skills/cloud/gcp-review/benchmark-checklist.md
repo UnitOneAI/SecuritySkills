@@ -152,7 +152,7 @@ Check Dataproc clusters for CMEK configuration.
 
 ### CIS 1.18 -- Ensure Secrets Are Not Stored in Cloud Functions Environment Variables by Using Secret Manager
 
-Check Cloud Functions for secrets in environment variables vs. Secret Manager references:
+Check Cloud Functions for secrets in environment variables vs. Secret Manager references. Include both first-generation `google_cloudfunctions_function` resources and second-generation `google_cloudfunctions2_function` resources.
 
 ```hcl
 # BAD: Secret in env var
@@ -170,7 +170,146 @@ resource "google_cloudfunctions_function" {
     version = "latest"
   }
 }
+
+# BAD: Cloud Functions v2 literal secret in service_config
+resource "google_cloudfunctions2_function" "webhook" {
+  service_config {
+    environment_variables = {
+      STRIPE_WEBHOOK_SECRET = "whsec_plaintext_value"
+    }
+  }
+}
 ```
+
+For Cloud Functions v2, also evaluate the underlying Cloud Run service behavior: runtime service account, ingress, invoker IAM, and Secret Manager permissions.
+
+### Supplemental -- Cloud Run and Cloud Functions v2 Serverless IAM and Secrets
+
+Review Cloud Run v2 services, Cloud Functions v2, and Cloud Run functions even when the CIS checklist item does not name them directly.
+
+**Discovery patterns:**
+
+```hcl
+resource "google_cloud_run_v2_service"
+resource "google_cloud_run_service_iam_member"
+resource "google_cloud_run_service_iam_binding"
+resource "google_cloudfunctions2_function"
+resource "google_cloudfunctions2_function_iam_member"
+resource "google_iam_workload_identity_pool_provider"
+resource "google_service_account_iam_member"
+```
+
+**Public invocation and ingress checks:**
+
+```hcl
+# BAD: Public Cloud Run invoker
+resource "google_cloud_run_service_iam_member" "public" {
+  role   = "roles/run.invoker"
+  member = "allUsers"
+}
+
+# BAD: Public internet ingress for an internal/admin service
+resource "google_cloud_run_v2_service" "admin_api" {
+  ingress = "INGRESS_TRAFFIC_ALL"
+}
+
+# GOOD: Private ingress plus named invoker
+resource "google_cloud_run_v2_service" "checkout_api" {
+  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+}
+
+resource "google_cloud_run_service_iam_member" "private_invoker" {
+  role   = "roles/run.invoker"
+  member = "serviceAccount:edge-proxy@example.iam.gserviceaccount.com"
+}
+```
+
+Flag public invocation as **Critical** for admin, internal, payment, customer-data, or privileged automation APIs. Public unauthenticated access can be acceptable for public web frontends only when the report records data classification, authentication expectations, ingress, and backend authorization evidence.
+
+**Cloud Run and Functions v2 secret checks:**
+
+```hcl
+# BAD: Literal secret value in Cloud Run env
+resource "google_cloud_run_v2_service" "api" {
+  template {
+    containers {
+      env {
+        name  = "PAYMENT_API_KEY"
+        value = "plain-text-secret"
+      }
+    }
+  }
+}
+
+# GOOD: Secret Manager reference with pinned version
+resource "google_cloud_run_v2_service" "api" {
+  template {
+    service_account = google_service_account.runtime.email
+
+    containers {
+      env {
+        name = "PAYMENT_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.payment_api_key.secret_id
+            version = "2"
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "runtime_can_read_key" {
+  secret_id = google_secret_manager_secret.payment_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+```
+
+Do not flag a Secret Manager-backed `secret_key_ref` as plaintext merely because the environment variable name contains `KEY`, `TOKEN`, or `SECRET`. Do flag literal values, broad `roles/secretmanager.secretAccessor` grants, default runtime service accounts, cross-project secret access without justification, and unpinned `latest` versions for environment-variable secrets.
+
+**Workload Identity Federation checks:**
+
+```hcl
+# BAD: Missing attribute_condition for GitHub OIDC provider
+resource "google_iam_workload_identity_pool_provider" "github" {
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+  }
+}
+
+# GOOD: Provider scoped to the expected organization/repository
+resource "google_iam_workload_identity_pool_provider" "github" {
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+  }
+
+  attribute_condition = "attribute.repository == 'example/checkout-api'"
+}
+```
+
+Verify issuer, audience if configured, subject mapping, provider-specific attributes, `attribute_condition`, and the service-account impersonation binding. Treat keyless federation as lower risk than user-managed service account keys only when these trust constraints are present.
+
+**Serverless evidence matrix:**
+
+| Evidence Area | Pass Evidence | Fail / Not Evaluable Indicator |
+|---|---|---|
+| Runtime identity | Dedicated non-default service account with scoped IAM | Default service account, broad project role, or missing runtime identity |
+| Public invocation | Restricted invoker IAM or documented public frontend rationale | `allUsers`, `allAuthenticatedUsers`, disabled invoker IAM check, or unknown invoker policy |
+| Ingress | Internal, internal-load-balancer, or documented public ingress | Internet ingress for internal/admin service or missing ingress evidence |
+| Secret source | Secret Manager env/volume reference with scoped accessor IAM | Literal secret values, broad accessor IAM, unpinned `latest`, or unknown secret source |
+| WIF trust | Issuer, mapping, conditions, and impersonation scope are constrained | Missing `attribute_condition`, broad subject trust, or project-wide impersonation |
 
 ---
 

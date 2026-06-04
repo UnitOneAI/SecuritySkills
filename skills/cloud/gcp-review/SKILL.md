@@ -3,7 +3,8 @@ name: gcp-review
 description: >
   Performs a GCP security posture review against the CIS Google Cloud Platform
   Foundation Benchmark v2.0.0. Auto-invoked when reviewing GCP infrastructure,
-  IAM bindings, VPC firewall rules, Cloud Audit Logs, or GCS bucket security.
+  IAM bindings, VPC firewall rules, Cloud Run and Cloud Functions v2 settings,
+  Cloud Audit Logs, or GCS bucket security.
   Walks through all seven benchmark sections, evaluates each recommendation,
   and produces a prioritized findings report with remediation guidance mapped
   to specific CIS control IDs.
@@ -13,7 +14,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,7 +39,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Reviewing GCP infrastructure-as-code before deployment
 - Assessing an existing GCP environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
-- Evaluating IAM bindings, org policies, VPC firewall rules, Cloud Audit Logs, or GCS bucket configurations
+- Evaluating IAM bindings, org policies, VPC firewall rules, Cloud Run and Cloud Functions v2 settings, Cloud Audit Logs, or GCS bucket configurations
 - Onboarding a new GCP project or organization into a security program
 
 ---
@@ -53,6 +54,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - gcloud CLI output or configuration exports (if reviewing a live environment)
 - IAM policy bindings and org policy definitions
 - VPC and firewall rule definitions
+- Cloud Run services, Cloud Functions v1/v2 resources, runtime service accounts, Secret Manager references, and Workload Identity Federation providers
 - Cloud Audit Logs configuration
 
 ---
@@ -88,6 +90,25 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Step 8.5: Supplemental Serverless Identity and Secrets Review
+
+Cloud Run and Cloud Functions v2 are not covered as deeply as VM and Cloud SQL controls in the CIS GCP v2.0.0 section map, but they can expose public endpoints, service-account permissions, and secrets without VM public IP or firewall evidence. Review serverless resources before closing a GCP posture assessment.
+
+**What to verify:**
+
+- Cloud Run v2 services and Cloud Functions v2 resources are inventoried separately from Cloud Functions v1.
+- Public invocation evidence is explicit: `roles/run.invoker` or Cloud Functions invoker bindings for `allUsers` / `allAuthenticatedUsers`, disabled invoker IAM checks, and ingress mode.
+- Runtime service accounts are not default service accounts and have only the roles needed by the serverless workload.
+- Secret Manager references are distinguished from literal secret values in environment variables; pinned versions are preferred over `latest` for environment-variable secrets.
+- Cross-project secret access is justified and scoped to the runtime service account.
+- Workload Identity Federation providers include issuer, audience, subject mapping, attribute conditions, and service-account impersonation scope.
+
+Treat missing serverless IAM, ingress, or secret-source evidence as **Not Evaluable** rather than inferring safety from the absence of VM, firewall, or public-IP findings.
+
+Use `tests/vulnerable/serverless-public-secret-wif.md` and `tests/benign/serverless-private-secret-wif.md` as evidence fixtures for this supplemental review.
+
+---
+
 ### Step 9: Compile Assessment Report
 
 
@@ -99,8 +120,8 @@ Produce the final report using the structure defined in the Output Format sectio
 
 | Severity | Definition | Examples |
 |----------|-----------|----------|
-| **Critical** | Immediate risk of data breach or unauthorized access | Public GCS buckets, firewall rules allowing 0.0.0.0/0 on SSH/RDP, Cloud SQL with public IP and no SSL, user-managed SA keys with admin roles |
-| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs |
+| **Critical** | Immediate risk of data breach or unauthorized access | Public GCS buckets, firewall rules allowing 0.0.0.0/0 on SSH/RDP, Cloud SQL with public IP and no SSL, public serverless admin APIs, user-managed SA keys with admin roles |
+| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs, literal serverless environment secrets |
 | **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, Shielded VM not enabled, uniform bucket access not set |
 | **Low** | Hardening recommendation or defense-in-depth measure | OS Login not enabled, serial port access not explicitly disabled, BigQuery tables without CMEK |
 | **Informational** | Best practice observation, no direct security impact | Default network still exists (non-production), naming conventions, documentation gaps |
@@ -150,6 +171,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Supplemental Serverless Findings
+
+| Resource | Public Invoker | Ingress | Runtime Service Account | Secret Source | Secret Version | WIF Condition | Status |
+|----------|----------------|---------|-------------------------|---------------|----------------|---------------|--------|
+| <Cloud Run / Function> | allUsers / restricted / not evaluable | all / internal / not evaluable | <service account> | literal / Secret Manager / none | pinned / latest / not applicable | present / missing / not applicable | Pass / Fail / Not Evaluable |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -194,6 +221,8 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Serverless exposure without VM evidence.** Cloud Run and Cloud Functions v2 can be public through invoker IAM or disabled invoker checks even when there is no VM public IP or broad firewall rule. Review ingress, invoker IAM, runtime service account, and Secret Manager usage together.
+8. **Assuming keyless federation is automatically safe.** Workload Identity Federation removes static keys, but weak provider mappings or missing `attribute_condition` can over-trust an external identity provider.
 
 ---
 
@@ -219,10 +248,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
+- Google Cloud Run Authentication: https://cloud.google.com/run/docs/authenticating/overview
+- Google Cloud Run Secrets: https://cloud.google.com/run/docs/configuring/services/secrets
+- Google Cloud Workload Identity Federation: https://cloud.google.com/iam/docs/workload-identity-federation
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Add supplemental Cloud Run, Cloud Functions v2, Secret Manager, and Workload Identity Federation evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
