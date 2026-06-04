@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -66,6 +66,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Memory/state persistence | Vector DB configs, session stores, scratchpad files | Exposes memory poisoning surface |
 | Human approval gates | Workflow configs, UI code, approval logic | Determines if HITL can be bypassed |
 | Multi-agent communication | Message bus configs, inter-agent protocols, shared state | Identifies trust boundary violations |
+| Handoff schemas | Typed message contracts, tool result schemas, agent output validators | Determines whether confidence, completeness, provenance, and fallback metadata survive downstream handoff |
 | Error handling and retry logic | Exception handlers, circuit breaker configs | Reveals cascading failure potential |
 | Authentication and identity | Auth middleware, token management, agent identity configs | Exposes identity gaps |
 | Rate limiting and quotas | API gateway configs, token budgets, cost controls | Determines resource exhaustion risk |
@@ -215,6 +216,8 @@ In 2024, researchers demonstrated a persistent memory poisoning attack against a
 - Hierarchical agent systems where sub-agents report results to an orchestrator that accepts them without validation.
 - Agent-to-agent communication over unauthenticated channels (shared queues, databases, files) without message signing.
 - Absence of an explicit trust model document that defines which agents trust which other agents and for what operations.
+- Handoffs that strip structured evidence-quality fields and preserve only a natural-language summary for the next agent.
+- Downstream agents that treat authenticated upstream messages as actionable even when the upstream output is partial, low-confidence, stale, or internally conflicted.
 
 **Real-World Failure Mode:**
 
@@ -227,6 +230,7 @@ In the Greshake et al. (2023) paper "Not What You've Signed Up For" (arXiv:2302.
 3. Validate all inter-agent data at trust boundaries. The receiving agent must treat incoming data from other agents as untrusted input, equivalent to user input.
 4. Deploy agent isolation at the infrastructure level — separate containers, network segments, or sandboxes for agents at different trust levels.
 5. Implement an agent registry and identity system. Each agent has a verifiable identity, and message recipients validate the sender's identity and authorization for the requested operation.
+6. Preserve evidence-quality metadata across handoffs. Authentication proves who sent the message; it does not prove that the message is complete, fresh, high-confidence, or semantically safe to act on.
 
 **Framework Mapping:**
 
@@ -279,6 +283,10 @@ In 2023, security researcher Johann Rehberger demonstrated that Bing Chat (now C
 - Error handling that catches exceptions but not semantic errors (the agent returned a confidently wrong answer — no exception is thrown).
 - Retry logic without jitter or backoff that can amplify failures under load.
 - Multi-agent systems without a health-check or consensus mechanism for critical decisions.
+- Summarization steps that flatten `unknown`, `partial`, `low-confidence`, or `fallback-used` results into authoritative prose.
+- Typed outputs that satisfy JSON schema but omit semantic sufficiency checks such as evidence count, source coverage, freshness, confidence, or disagreement state.
+- Fallback paths that silently switch to stale cache, narrower retrieval, weaker models, or heuristic mode without downgrading downstream actionability.
+- Agent disagreement that is summarized away instead of becoming a halt, escalation, tie-breaker, or human-review condition.
 
 **Real-World Failure Mode:**
 
@@ -292,6 +300,52 @@ In 2024, a financial services firm reported an incident (disclosed at a CISO rou
 4. Implement idempotent operations and rollback mechanisms for agents that take real-world actions (send emails, update databases, trigger payments).
 5. Set hard limits on chain depth. Define maximum pipeline length and require human review for chains exceeding the limit.
 6. Implement structured error propagation — agents must explicitly signal uncertainty rather than passing through low-confidence outputs as if they were facts.
+7. Require downstream semantic thresholds before state-changing actions, such as `complete=true`, `confidence >= 0.8`, required source classes present, no conflicting agent outputs, and no degraded fallback path.
+8. Treat schema-valid but under-evidenced approvals as unsafe. A JSON object can be well-formed while still hiding missing data, stale evidence, or unresolved disagreement.
+
+**Uncertainty and Handoff Validation:**
+
+Use this table when reviewing any agent chain where one agent's output becomes another agent's input:
+
+| Evidence Field | What to Verify | Unsafe Pattern |
+|---|---|---|
+| Upstream agent identity | Sender is authenticated and authorized for this message type | Generic `agent` sender or unsigned shared-queue message |
+| Output schema version | Downstream code validates a known schema version | Free-form natural language summary only |
+| Confidence or uncertainty | Machine-readable confidence, uncertainty, or risk score is preserved | Low-confidence retrieval becomes "confirmed" in a summary |
+| Completeness or partial flag | Partial results, missing records, and timeouts remain visible downstream | `not found` is treated as `safe` |
+| Source provenance | Source IDs, coverage, and freshness survive handoff | Summaries omit which corpus, cache, or timestamp was used |
+| Fallback path used | Cache, retry, smaller model, heuristic mode, or degraded source is explicit | Fallback output has the same actionability as primary output |
+| Conflict handling | Agent disagreement triggers halt, escalation, tie-breaker policy, or human review | Risk agent says high risk, execution agent proceeds |
+| Downstream threshold | State-changing actions require semantic gates beyond JSON shape | `{ "approved": true }` with no evidence count or confidence |
+| Result | Reviewer can classify the handoff as proceed, degraded, blocked, or review-required | No durable audit trail for why the chain proceeded |
+
+**Review Rules:**
+
+- Do not treat authenticated inter-agent messages as sufficient if uncertainty, completeness, provenance, or fallback metadata is discarded during summarization.
+- Require explicit stop conditions for `unknown`, `partial`, `timeout`, `fallback`, stale cache, and conflicting agent outputs.
+- Require downstream agents to consume structured evidence-quality fields, not only natural-language summaries, before executing payments, account changes, infrastructure changes, customer communications, or other state-changing actions.
+- Distinguish schema validity from semantic sufficiency. Passing JSON validation only proves shape, not whether the output is safe to automate.
+- Downgrade actionability when the chain used stale data, reduced source coverage, fallback models, partial retrieval, or unresolved disagreement.
+
+**Search Patterns:**
+
+```
+confidence
+certainty
+uncertainty
+partial
+incomplete
+fallback
+timeout
+stale cache
+source coverage
+provenance
+evidence_count
+approve
+proceed
+unknown
+disagreement
+```
 
 **Framework Mapping:**
 
@@ -471,6 +525,16 @@ Classify each finding using the following taxonomy:
 | **LOW** | Minor gap, defense-in-depth improvement | 90 days — track in backlog |
 | **INFORMATIONAL** | Observation, best practice recommendation | No SLA — advisory |
 
+Use these agent-handoff examples when assigning severity:
+
+| Finding Pattern | Typical Severity | Notes |
+|---|---|---|
+| Typed but under-evidenced action approval | HIGH | Raise to CRITICAL when it can trigger payments, deletion, identity changes, production deployments, or regulated decisions |
+| Conflict flattened into a single proceed decision | HIGH / CRITICAL | Severity depends on the impact of the hidden disagreement |
+| No confidence, completeness, or provenance propagation in a multi-agent action chain | MEDIUM / HIGH | Higher when downstream agents can change state or communicate externally |
+| Fallback path emits the same actionability as the primary evidence path | MEDIUM / HIGH | Higher when fallback uses stale cache, narrower corpus, or weaker model without review |
+| Read-only advisory chain with preserved uncertainty | LOW / INFORMATIONAL | Acceptable when no state-changing action can follow without review |
+
 ---
 
 ## Output Format
@@ -494,6 +558,7 @@ Structure the final report as follows:
 - Memory stores: [types]
 - Human approval gates: [present/absent, description]
 - Multi-agent communication: [method]
+- Handoff evidence model: [schema, confidence/completeness/provenance fields, fallback markers]
 
 ## Findings by Threat Category
 
@@ -504,6 +569,7 @@ Structure the final report as follows:
 - **Impact:** [what could go wrong]
 - **Remediation:** [specific action]
 - **Priority:** [P0/P1/P2/P3]
+- **Handoff validation:** [confidence, completeness, provenance, fallback, conflict handling, downstream threshold]
 
 [Repeat for AG02 through AG10]
 
@@ -518,6 +584,11 @@ Structure the final report as follows:
 1. [Highest priority recommendation]
 2. [Second priority recommendation]
 3. [Continue as needed]
+
+## Handoff Evidence Review
+| Agent Handoff | Confidence Preserved | Completeness Preserved | Provenance Preserved | Fallback Visible | Conflict Handling | Downstream Gate | Result |
+|---|---|---|---|---|---|---|---|
+| [agent A -> agent B] | [yes/no] | [yes/no] | [yes/no] | [yes/no] | [halt/review/tie-breaker/none] | [threshold] | [proceed/degraded/blocked] |
 
 ## Framework Compliance Mapping
 | Finding | OWASP Agentic AI | OWASP LLM Top 10 | MITRE ATLAS | NIST AI RMF |
@@ -573,6 +644,10 @@ Agent permissions must be scoped to the specific task, not the user's full permi
 ### 2. Trusting Agent-to-Agent Communication by Default
 
 Multi-agent systems routinely pass natural language messages between agents with no authentication, integrity checking, or authorization validation. Treat every inter-agent message as untrusted input. The fact that another agent produced the message does not make it safe — that agent may be compromised, hallucinating, or manipulated.
+
+### 2a. Flattening Uncertainty During Handoff
+
+Agent chains often convert structured, low-confidence, partial, or fallback-derived results into confident prose before the next agent sees them. That conversion can hide the most important safety signal in the workflow. Preserve confidence, completeness, provenance, fallback, and disagreement metadata as machine-readable fields until a deterministic gate or human reviewer explicitly decides the result is actionable.
 
 ### 3. Implementing Human-in-the-Loop as a Checkbox
 
