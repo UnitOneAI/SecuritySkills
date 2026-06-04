@@ -81,6 +81,20 @@ app.get('/search', (req, res) => {
 ```
 Remediation: Use a templating engine with auto-escaping enabled, or explicitly escape with a library such as `he` or `DOMPurify`.
 
+**JavaScript/TypeScript -- Prototype Pollution and Mass Assignment (CWE-1321, CWE-915)**
+```typescript
+// VULNERABLE: attacker-controlled keys flow directly into a model instance
+app.patch('/api/users/:id', requireAuth, async (req, res) => {
+  const user = await User.findByPk(req.params.id);
+  Object.assign(user, req.body);
+  await user.save();
+  res.json(user);
+});
+```
+Review dynamic object writes where request bodies, query parsers, webhook payloads, or JSON parser output can reach `Object.assign`, object spread into entities, recursive merge helpers, `for...in` assignment, `lodash.merge`-style sinks, or ORM `update(req.body)` calls. Verify handling for dangerous keys such as `__proto__`, `constructor`, and `prototype`, and verify that privileged fields such as `role`, `isAdmin`, `tenantId`, `ownerId`, and `accountBalance` cannot be set by the caller.
+
+Remediation: Project request data into an explicit DTO/schema allowlist before assignment. Treat Zod `.strict()`, JSON Schema `additionalProperties: false`, Joi `allowUnknown(false)`, or equivalent DTO projection as safe only when it is enforced on the same path as the update sink and includes nested-object allowlists.
+
 **Go -- OS Command Injection (CWE-78)**
 ```go
 // VULNERABLE: user input passed directly to shell execution
@@ -110,6 +124,8 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+- [ ] JavaScript/TypeScript dynamic object writes have source-to-sink evidence: source (`req.body`, query parser, JSON parser, webhook payload), sink (`Object.assign`, spread, recursive merge, ORM update), and dangerous-key handling (`__proto__`, `constructor`, `prototype`).
+- [ ] Request-body updates to model/entity objects use schema/DTO allowlists and block privileged fields such as `role`, `isAdmin`, `tenantId`, `ownerId`, and `accountBalance`.
 
 ---
 
@@ -420,6 +436,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Object write evidence** | For JavaScript/TypeScript dynamic object findings, record `object_write_source`, `merge_or_assignment_sink`, `dangerous_key_handling`, `privileged_fields_blocked`, and `schema_or_dto_evidence` |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -526,6 +543,8 @@ The final review output must be structured as follows:
 | CWE-798 | Use of Hard-coded Credentials | Step 3 |
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
+| CWE-1321 | Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution') | Step 2 |
+| CWE-915 | Improperly Controlled Modification of Dynamically-Determined Object Attributes | Step 2 |
 
 ---
 
@@ -540,6 +559,8 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Flagging every object merge without source-to-sink proof.** `Object.assign`, object spread, and merge helpers are not automatically prototype pollution or mass assignment. Require evidence that attacker-controlled property names reach a dynamic object write or model/entity update, and accept strict schema validation or DTO projection as a false-positive reducer when it is enforced on the same path.
 
 ---
 
@@ -562,4 +583,6 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Prototype Pollution Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html
+- **OWASP API Security Top 10 2023 -- API3 Broken Object Property Level Authorization:** https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
