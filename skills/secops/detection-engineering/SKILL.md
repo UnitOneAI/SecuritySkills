@@ -107,6 +107,24 @@ Before writing the rule, enumerate:
 - Evasion techniques an adversary might use to avoid the detection (known blind spots)
 - Tuning parameters that can reduce false positives without creating blind spots
 
+**Correlation decision gate:**
+
+Before choosing a plain Sigma rule, decide whether the detection logic is truly
+single-event or whether it requires a Sigma correlation rule or a SIEM-native
+handoff. Do not hide sequence, threshold, or grouping requirements inside a
+plain `selection_a and selection_b` condition.
+
+| Question | If yes |
+|----------|--------|
+| Does the behavior require a count, distinct count, sum, average, percentile, burst, or rarity threshold? | Use a Sigma correlation type such as `event_count`, `value_count`, `value_sum`, `value_avg`, or `value_percentile`, or document a SIEM-native correlation handoff. |
+| Does the detection require events to happen before, after, or near other events? | Use `temporal` or `temporal_ordered`; preserve the required order, grouping, and time window explicitly. |
+| Does the detection combine multiple rules or log sources? | Provide field alias mappings for user, host, IP, process, and session identifiers across related rules. |
+| Does the target backend lack the needed correlation feature? | Mark the Sigma output as a base rule only, record partial support, and include backend-specific implementation notes. |
+
+Trigger this gate when the strategy abstract or requirements include language
+such as "multiple", "burst", "threshold", "count", "distinct", "rare across
+hosts", "followed by", "before/after", "within N minutes", or "same user/host".
+
 ### Step 3: Author the Sigma Rule
 
 Write the detection rule following the Sigma specification (sigmahq.io).
@@ -195,6 +213,40 @@ fields:
 | `|base64offset` | Base64 encoded value match | `CommandLine|base64offset|contains: 'IEX'` |
 | `condition` | Boolean logic | `selection_a and selection_b and not filter_main` |
 
+**Sigma correlation rule template:**
+
+Use this structure when the correlation decision gate determines that the
+detection depends on counts, ordering, time windows, or entity grouping across
+events. Keep the base event rules separate and reference their rule IDs from the
+correlation rule.
+
+```yaml
+title: Failed Logons Followed by Success
+id: 8c5b7f5a-4a8a-4fc5-9a3a-8d4de4b0b5c2
+status: experimental
+description: |
+    Correlates repeated failed logons followed by a successful logon for the
+    same account and source host within a bounded time window.
+correlation:
+    type: temporal_ordered
+    rules:
+        - failed_logon_rule_id
+        - successful_logon_rule_id
+    group-by:
+        - TargetUserName
+        - WorkstationName
+    timespan: 10m
+    condition:
+        gte: 1
+falsepositives:
+    - Password reset or helpdesk-assisted login recovery
+level: medium
+```
+
+If the organization implements correlation only in SIEM-native content, label
+the Sigma output as the base event rule and add a deployment note that the full
+detection requires the SIEM-native sequence, threshold, or aggregation logic.
+
 ### Step 4: Build ADS Documentation
 
 Document the detection using the Palantir Alerting and Detection Strategy (ADS) framework. ADS ensures every detection has operational context beyond the rule itself.
@@ -221,10 +273,41 @@ Describe at a high level how the detection works without getting into implementa
 
 > Example: This detection monitors process creation events for instances of powershell.exe or pwsh.exe where the command line contains encoded command parameters (-enc, -EncodedCommand). Filters exclude known legitimate automation tools (SCCM) to reduce false positives.
 
+For correlation detections, explicitly state whether the strategy is:
+
+- A plain single-event Sigma rule
+- A Sigma correlation rule
+- A base Sigma rule plus SIEM-native correlation handoff
+- A partial correlation because one or more target backends cannot express the full semantics
+
 #### Technical Context
 Provide the technical details an analyst needs to understand the alert. Explain the underlying technology, why the behavior is suspicious, and what normal versus malicious usage looks like.
 
 > Example: PowerShell's -EncodedCommand parameter accepts a Base64-encoded string and executes it as a command. Adversaries use this to bypass command-line logging that looks for plaintext strings like "Invoke-Mimikatz" or "Net.WebClient". Legitimate use exists (SCCM, some deployment tools) but is typically from known parent processes and contains identifiable content when decoded.
+
+#### Correlation and Backend Support
+
+When the rule uses threshold, sequence, temporal, ordered-temporal, or
+multi-source logic, add a backend support matrix before claiming the detection
+is portable or production-ready.
+
+| Backend | Count | Distinct count | Temporal | Ordered temporal | Multi-source aliases | Status |
+|---------|-------|----------------|----------|------------------|----------------------|--------|
+| Splunk | yes | yes | yes | query-dependent | yes | Pass/Partial |
+| Microsoft Sentinel | yes | yes | yes | yes | yes | Pass/Partial |
+| Elastic | yes | yes | yes | rule-dependent | yes | Pass/Partial |
+| Chronicle | query-dependent | query-dependent | query-dependent | query-dependent | query-dependent | Pass/Partial |
+
+For each partial backend, include the unsupported construct, expected impact
+(false positives, false negatives, or ambiguous grouping), and the required
+SIEM-native implementation note. If related rules use different entity field
+names, include an alias table such as:
+
+| Entity | Rule A field | Rule B field | Normalized grouping field |
+|--------|--------------|--------------|---------------------------|
+| User | `TargetUserName` | `AccountName` | `user.name` |
+| Host | `WorkstationName` | `Computer` | `host.name` |
+| Source IP | `IpAddress` | `SourceIp` | `source.ip` |
 
 #### Blind Spots and Assumptions
 Document what this detection will NOT catch and what assumptions it relies on.
@@ -258,6 +341,16 @@ Describe how to test that this detection works correctly.
 2. **True negative test:** Execute `powershell.exe -Command "Get-Process"` (no encoding). Verify no alert fires.
 3. **Filter validation:** If SCCM is in use, verify that SCCM client operations do not trigger the alert.
 4. **ATT&CK technique coverage:** Validate with atomic red team test `T1059.001` (https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1059.001/T1059.001.md).
+
+For correlation rules, add sequence and count fixtures that prove the grouping,
+ordering, and time-window semantics:
+
+1. **Matching sequence inside timespan:** Expected related events occur in the required order for the same entity and within the configured window.
+2. **Same events outside timespan:** Events match individually but fall outside the window; verify the correlation does not fire.
+3. **Reverse order:** The same events occur in the wrong order; verify `temporal_ordered` logic does not fire.
+4. **Same user on different host:** Verify grouping prevents cross-host aggregation when host is part of the rule.
+5. **Different user on same host:** Verify grouping prevents cross-user aggregation when user is part of the rule.
+6. **Backend conversion evidence:** Include converted output for each target backend, or document partial support and the SIEM-native fallback.
 
 #### Response
 Define the analyst response procedure when this alert fires.
@@ -388,6 +481,21 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+
+### Correlation Handling
+| Field | Value |
+|-------|-------|
+| Rule Shape | [Plain Sigma / Sigma correlation / Base Sigma + SIEM-native handoff] |
+| Correlation Type | [None / event_count / value_count / temporal / temporal_ordered / other] |
+| Group-by Fields | [User, host, source IP, process, session, or not applicable] |
+| Timespan | [Window or not applicable] |
+| Backend Support | [Pass / Partial / Unsupported, with notes] |
+
+### Validation Fixtures
+- Matching event or sequence that should fire
+- Benign or incomplete event set that should not fire
+- Outside-timespan or reverse-order sequence, when correlation is used
+- Backend conversion output or documented partial-support fallback
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
