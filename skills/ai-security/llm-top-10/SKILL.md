@@ -317,14 +317,14 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 ---
 
-### LLM09:2025 — Misinformation
+### LLM09:2025 - Misinformation
 
 **What it is:** The LLM generates factually incorrect, fabricated, or misleading content (hallucinations) that the application presents as authoritative. This is especially dangerous in medical, legal, financial, or safety-critical domains where incorrect information causes real harm.
 
 **What to look for in code/architecture:**
 
 - Model outputs presented to users without any disclaimer, confidence indicator, or source attribution.
-- Absence of grounding mechanisms — the model generates free-form responses without being anchored to retrieved factual data.
+- Absence of grounding mechanisms - the model generates free-form responses without being anchored to retrieved factual data.
 - No human review step for model-generated content published to external audiences (customer-facing documentation, medical advice, legal guidance).
 - Automated pipelines that take model output and write it directly to production databases, CMSes, or knowledge bases without verification.
 - Temperature settings set high (>1.0) for use cases requiring factual accuracy.
@@ -335,6 +335,23 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Review whether source citations or references are included in model output and whether they are validated (do the cited sources actually exist and support the claim?).
 - Search for automated publish flows where model output reaches end users without human review.
 - Check model configuration: temperature, top-p, and other sampling parameters relative to the use case's factual accuracy requirements.
+- Identify the downstream sink for the model output: escaped UI text, markdown/HTML rendering, install command, build file, database write, CMS publish flow, tool call, or security decision.
+- Determine whether a security boundary is crossed and whether model output is treated as authoritative before assigning a CWE.
+
+**CWE applicability gate:**
+
+Use LLM09 for misinformation or overreliance observations, but do not force every LLM09 finding into a CWE. Assign a CWE only when the evidence shows a concrete software weakness.
+
+| Evidence | CWE guidance |
+|----------|--------------|
+| Wrong or unsupported answer shown only as escaped, clearly labeled UI text, with no automated action or security decision. | `CWE: Not Applicable` or `CWE: None assigned`; report as product, governance, trust, or legal risk. |
+| Model output is rendered as unsafe HTML/markdown or inserted into a command, query, file path, or executable sink. | Map to the output-handling weakness such as CWE-79, CWE-94, CWE-116, CWE-78, or the relevant injection/encoding CWE. |
+| Hallucinated package, dependency, or install instructions can be automatically trusted or written into build/deployment files. | Pair LLM09 with LLM03/LLM05/LLM06 as applicable and map to the concrete dependency trust or unsafe output-to-action weakness. |
+| Generated insecure code is accepted into production or a repo without review. | Map to the generated code flaw, such as SQL injection, XSS, command injection, insecure crypto, or missing validation; do not default to CWE-1188. |
+| A copilot or agent recommends closing alerts, approving transactions, publishing content, or making other security-impacting decisions without validation. | Map to missing validation, incorrect authorization, excessive agency, or workflow-control weakness when supported by evidence. |
+| Evidence actually shows a resource initialized with an insecure default value intended to be changed by an administrator or maintainer. | `CWE-1188` may be appropriate, but document why the resource-default pattern exists. |
+
+When reporting LLM09, include `security_boundary`, `downstream_sink`, `authoritative_claim`, `validation_control`, `human_review_gate`, `cwe_applicability`, and `cwe_mapping_rationale` so downstream vulnerability systems can distinguish a vulnerability from a governance-only observation.
 
 **Mitigations:**
 
@@ -345,7 +362,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Use lower temperature settings (0.0-0.3) for factual, deterministic use cases.
 - Implement cross-referencing or fact-checking pipelines for critical content generation workflows.
 
-**CWE Mapping:** CWE-1188 (Initialization with Hard-Coded Network Resource Configuration Reference — analogous: reliance on unvalidated information source)
+**CWE Mapping:** Evidence-driven. Use `CWE: Not Applicable` for governance-only misinformation findings, map to the concrete downstream weakness when model output reaches a vulnerable sink, and reserve CWE-1188 only for true insecure default initialization evidence.
 
 ---
 
@@ -419,7 +436,13 @@ Structure the findings report as follows:
 
 - **OWASP Category:** LLM0X:2025 — [Category Name]
 - **Severity:** Critical | High | Medium | Low | Informational
-- **CWE:** CWE-XXX
+- **CWE:** CWE-XXX | Not Applicable | None assigned
+- **CWE Mapping Rationale:** [Why the CWE applies, or why this is governance/product risk without a software weakness]
+- **Security Boundary:** [Boundary crossed, or "none"]
+- **Downstream Sink:** [Escaped UI text, HTML/markdown renderer, command, query, build file, CMS publish flow, tool call, security decision, etc.]
+- **Authoritative Claim:** Yes | No | Unclear
+- **Validation Control:** [Grounding, citation validation, schema validation, sanitizer, policy gate, or "none"]
+- **Human Review Gate:** Required | Present | Missing | Not applicable
 - **Location:** [file path, function, configuration]
 - **Description:** [What was found]
 - **Evidence:** [Code snippet, configuration excerpt, or architectural observation]
