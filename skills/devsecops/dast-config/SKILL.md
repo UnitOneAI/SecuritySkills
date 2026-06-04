@@ -73,6 +73,14 @@ Use Glob and Grep to locate DAST tool configurations, scan policies, and CI inte
 **/nuclei*
 **/.nuclei-templates/
 
+# Realtime transports that need authenticated DAST coverage
+**/*websocket*
+**/*socket.io*
+**/*eventsource*
+**/*sse*
+**/*subscription*
+**/*graphql*
+
 # General DAST CI
 **/.github/workflows/*dast*
 **/.github/workflows/*security*
@@ -269,6 +277,47 @@ jobs:
 - Mutations are handled carefully (exclude destructive mutations from active scanning).
 
 **Finding classification:** No API scanning for applications with API endpoints is **High**. OpenAPI spec out of date is **Medium**. No GraphQL scanning for GraphQL endpoints is **Medium**.
+
+---
+
+#### 3.3 Realtime Transport Coverage
+
+Authenticated HTTP scanning is not sufficient for applications that move sensitive behavior onto long-lived channels after login. WebSocket, Server-Sent Events (SSE), Socket.IO, and GraphQL subscriptions need explicit DAST evidence for connection, subscription, message schema, and session-lifetime behavior.
+
+**Discovery patterns:**
+
+```text
+new WebSocket(
+EventSource(
+io(
+socket.io
+graphql-ws
+graphql-transport-ws
+subscriptions
+text/event-stream
+```
+
+**What to verify:**
+
+- [ ] Realtime endpoints are listed in scope separately from normal HTTP routes.
+- [ ] Connection handshakes are tested with valid, expired, revoked, and missing credentials.
+- [ ] Channel or topic subscription authorization is tested for cross-tenant and cross-project access.
+- [ ] Reconnect behavior re-checks token expiry, role changes, logout, and session revocation.
+- [ ] Existing WebSocket/SSE connections are closed or denied sensitive events after logout.
+- [ ] Message schemas are fuzzed with protocol-aware payloads instead of relying only on HTTP parameter fuzzing.
+- [ ] GraphQL subscriptions and Socket.IO namespaces/rooms have negative authorization evidence.
+- [ ] Reports distinguish HTTP-authenticated coverage from realtime transport coverage.
+
+**Evidence to collect:**
+
+| Surface | Required evidence | Failure to flag |
+|---------|-------------------|-----------------|
+| WebSocket handshake | Authenticated and unauthenticated upgrade attempts, protocol and origin notes | Upgrade accepts stale or missing credentials |
+| Subscription authorization | Allowed and denied tenant/project/channel subscriptions | Cross-tenant subscription succeeds |
+| Session lifetime | Logout, expiry, revocation, and reconnect tests | Stream continues sensitive events after logout |
+| Message schema | Scripted message corpus or Burp/ZAP WebSocket evidence | Scanner only crawled the HTTP page |
+
+**Finding classification:** Realtime endpoints with no authenticated transport testing are **High**. Cross-tenant channel access or stale-token reconnect accepted by WebSocket/SSE is **Critical**. Missing message-schema fuzzing for realtime transports is **Medium**.
 
 ---
 
@@ -481,9 +530,9 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions; cross-tenant realtime channel access; stale-token realtime reconnect accepted. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; no authenticated realtime transport testing; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing WebSocket/SSE message-schema fuzzing; missing security header rules. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -518,6 +567,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
+| Realtime transport coverage | Yes/No | <WebSocket/SSE/Socket.IO/subscription evidence> |
 | Results deduplication | Yes/No | <dedup method> |
 
 ### Findings
@@ -526,6 +576,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 - **Severity:** Critical / High / Medium / Low
 - **Control Reference:** OWASP Top 10 AXX / WSTG-XXXX-XX
 - **File:** <path to config file>
+- **Transport Evidence:** <HTTP / WebSocket / SSE / Socket.IO / GraphQL subscription evidence>
 - **Description:** <what was found>
 - **Remediation:** <concrete fix with example>
 
@@ -603,6 +654,8 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP Top 10:2021: https://owasp.org/Top10/
 - OWASP Web Security Testing Guide v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
 - OWASP ZAP Documentation: https://www.zaproxy.org/docs/
+- OWASP ZAP WebSocket passive scan rules: https://www.zaproxy.org/docs/desktop/addons/websockets/pscanrules/
+- OWASP WebSocket Security Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html
 - ZAP Automation Framework: https://www.zaproxy.org/docs/automate/automation-framework/
 - ZAP GitHub Actions: https://www.zaproxy.org/docs/docker/github-actions/
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
