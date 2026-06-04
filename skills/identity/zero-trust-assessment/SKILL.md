@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -533,5 +533,6 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.2 | 2026-06-05 | Added workload identity fixtures for service authorization, shared-token gaps, and mTLS-without-authorization gaps. |
 | 1.0.1 | 2026-06-04 | Added workload identity and service-to-service authorization evidence tables, scoring caps, and non-human identity coverage. |
 | 1.0.0 | 2025-03-06 | Initial release |
