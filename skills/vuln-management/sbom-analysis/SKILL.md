@@ -103,13 +103,18 @@ Evaluate every `compositions[]` entry that applies to the product, component, se
 |---|---|---|
 | `complete` | The referenced inventory or relationship set is asserted complete | Eligible for strong inventory and dependency conclusions if NTIA fields also pass |
 | `incomplete` | The referenced inventory or relationship set is known incomplete | Do not claim complete dependency, vulnerability, or license coverage |
-| `incomplete_first_party_only` | First-party composition is incomplete | Cap first-party coverage and internal component conclusions at Partial or lower |
-| `incomplete_third_party_only` | Third-party composition is incomplete | Cap supply-chain, CVE, and open-source license conclusions at Partial or lower |
+| `incomplete_first_party_only` | Only first-party components, services, or dependencies are represented | Cap third-party, supply-chain, CVE, and open-source license conclusions at Partial or lower |
+| `incomplete_first_party_proprietary_only` | Only first-party proprietary components, services, or dependencies are represented | Cap first-party open-source and all third-party conclusions |
+| `incomplete_first_party_opensource_only` | Only first-party open-source components, services, or dependencies are represented | Cap first-party proprietary and all third-party conclusions |
+| `incomplete_third_party_only` | Only third-party components, services, or dependencies are represented | Cap first-party and internal component conclusions at Partial or lower |
+| `incomplete_third_party_proprietary_only` | Only third-party proprietary components, services, or dependencies are represented | Cap third-party open-source and all first-party conclusions |
+| `incomplete_third_party_opensource_only` | Only third-party open-source components, services, or dependencies are represented | Cap third-party proprietary and all first-party conclusions |
 | `unknown` | Completeness is not known | Treat coverage as unproven; require corroborating source evidence before strong conclusions |
-| `redacted` | Completeness details are withheld | Treat omitted areas as audit gaps unless private trusted evidence is available |
-| Missing or not specified | The SBOM does not assert composition completeness | Do not assume the inventory or dependency relationships are complete |
+| `not_specified` or missing | The SBOM does not assert composition completeness | Do not assume the inventory or dependency relationships are complete |
 
 If multiple composition statements apply, use the least complete applicable statement for the affected conclusion. Example: a `complete` component inventory with `incomplete_third_party_only` dependency relationships can pass component identity checks while still failing full dependency-risk confidence.
+
+CycloneDX 1.5 does not define `redacted` as a valid `compositions[].aggregate` value. If redaction is expressed through non-standard aggregate values, annotations, properties, vendor statements, or private disclosure boundaries, record it as a redacted/out-of-band scope signal, mark the aggregate invalid or not declared as appropriate, and require private trusted evidence before high-confidence conclusions.
 
 #### SPDX File Analysis Scope
 
@@ -127,7 +132,8 @@ For each SPDX package, evaluate `FilesAnalyzed` before using package verificatio
 ```
 Analysis Scope Assessment:
 - Generation Source:             [Build tool | package manager | manual | vendor | unknown]
-- CycloneDX Composition Aggregate: [complete | incomplete | incomplete_first_party_only | incomplete_third_party_only | unknown | redacted | missing]
+- CycloneDX Composition Aggregate: [complete | incomplete | incomplete_first_party_only | incomplete_first_party_proprietary_only | incomplete_first_party_opensource_only | incomplete_third_party_only | incomplete_third_party_proprietary_only | incomplete_third_party_opensource_only | unknown | not_specified | missing]
+- Redacted/Withheld Scope Signal: [None | Non-standard aggregate | Annotation/property | Vendor/private statement]
 - SPDX Files Analyzed:           [All true | Mixed | All false | Missing/unknown]
 - File-Level Evidence Available: [Yes | Partial | No]
 - Confidence Impact:             [No cap | Cap dependency conclusions | Cap license conclusions | Cap all completeness conclusions]
@@ -156,7 +162,7 @@ The seven NTIA minimum elements are:
 
 For each component in the SBOM, evaluate presence of elements 1-5. Elements 6-7 are document-level (evaluated once).
 
-Apply the Step 2 scope gate after field coverage is calculated. An SBOM can have 100% NTIA field coverage and still be capped below Complete when composition is `incomplete`, `unknown`, `redacted`, missing, or when SPDX packages set `FilesAnalyzed: false` for conclusions that depend on file-level evidence.
+Apply the Step 2 scope gate after field coverage is calculated. An SBOM can have 100% NTIA field coverage and still be capped below Complete when composition is `incomplete`, `unknown`, `not_specified`, missing, redacted through out-of-band evidence, or when SPDX packages set `FilesAnalyzed: false` for conclusions that depend on file-level evidence.
 
 ```
 NTIA Completeness Assessment:
@@ -308,7 +314,7 @@ Classify the overall SBOM analysis into one of the following states:
 | Classification | Definition | Criteria |
 |---|---|---|
 | **Critical Supply Chain Risk** | SBOM reveals high-risk supply chain exposure | Known exploited CVEs in dependencies, incomplete SBOM with missing critical elements, or license conflicts blocking distribution |
-| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, incomplete/unknown/redacted composition scope, multiple stale transitive dependencies, or VEX "Under Investigation" for critical components |
+| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, incomplete/unknown/not_specified/missing composition scope, redacted out-of-band scope, multiple stale transitive dependencies, or VEX "Under Investigation" for critical components |
 | **Acceptable** | SBOM meets minimum requirements with minor gaps | NTIA completeness >= 90%, no critical/high CVEs in dependencies, minor license issues documented, and scope limits do not block the reviewed conclusions |
 | **Strong** | SBOM is comprehensive and low-risk | NTIA 100% complete, composition scope supports complete coverage, all VEX statuses resolved, no critical dependency risks, clean license posture |
 
@@ -347,7 +353,8 @@ classification.]
 | Scope Signal | Value | Review Impact |
 |---|---|---|
 | Generation Source | [Build tool / package manager / manual / vendor / unknown] | [How source affects trust] |
-| CycloneDX Composition Aggregate | [complete / incomplete / incomplete_first_party_only / incomplete_third_party_only / unknown / redacted / missing / N/A] | [Confidence cap or no cap] |
+| CycloneDX Composition Aggregate | [complete / incomplete / incomplete_first_party_only / incomplete_first_party_proprietary_only / incomplete_first_party_opensource_only / incomplete_third_party_only / incomplete_third_party_proprietary_only / incomplete_third_party_opensource_only / unknown / not_specified / missing / N/A] | [Confidence cap or no cap] |
+| Redacted/Withheld Scope Signal | [None / Non-standard aggregate / Annotation-property / Vendor-private statement] | [Private trusted evidence required or N/A] |
 | SPDX FilesAnalyzed | [All true / Mixed / All false / Missing / N/A] | [File-level evidence impact] |
 | File-Level Evidence Available | [Yes / Partial / No] | [License and package-integrity impact] |
 | Completeness Confidence Cap | [None / Dependency conclusions / License conclusions / All conclusions] | [Reason] |
@@ -458,7 +465,7 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 
 1. **Confusing SBOM presence with SBOM completeness.** Receiving an SBOM file does not mean it contains useful data. Many auto-generated SBOMs are missing supplier names, dependency relationships, or unique identifiers (purls). Always validate against the NTIA seven minimum elements before relying on the SBOM for security decisions.
 
-2. **Over-trusting complete-looking fields without scope evidence.** A CycloneDX SBOM can contain all expected component fields while `compositions[].aggregate` is incomplete, unknown, redacted, or missing. An SPDX package with `FilesAnalyzed: false` can carry package-level metadata while file-level verification and license evidence are out of scope. Apply the composition and analysis-scope gate before making complete-coverage claims.
+2. **Over-trusting complete-looking fields without scope evidence.** A CycloneDX SBOM can contain all expected component fields while `compositions[].aggregate` is incomplete, unknown, not specified, or missing, or while redaction is disclosed through non-standard/out-of-band evidence. An SPDX package with `FilesAnalyzed: false` can carry package-level metadata while file-level verification and license evidence are out of scope. Apply the composition and analysis-scope gate before making complete-coverage claims.
 
 3. **Ignoring transitive dependencies.** Direct dependencies are typically well-managed, but transitive dependencies (dependencies of dependencies) account for the majority of supply chain vulnerabilities. The xz-utils backdoor (CVE-2024-3094) and Log4Shell (CVE-2021-44228) both demonstrated how deeply nested dependencies create organization-wide exposure. Analyze the full dependency tree, not just the top level.
 
