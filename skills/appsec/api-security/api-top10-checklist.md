@@ -42,6 +42,40 @@ def get_order(order_id):
     return jsonify(order)
 ```
 
+Relationship-based authorization is also valid when it is enforced before data is returned:
+
+```python
+# SECURE: Multi-tenant access is enforced through active account membership
+@app.route("/api/v1/orders/<order_id>", methods=["GET"])
+@require_auth
+def get_order(order_id):
+    order = (
+        Order.query
+        .join(AccountMembership, AccountMembership.account_id == Order.account_id)
+        .filter(
+            Order.id == order_id,
+            AccountMembership.user_id == current_user.id,
+            AccountMembership.status == "active",
+        )
+        .one_or_none()
+    )
+    if order is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(OrderDTO.from_model(order).dict())
+```
+
+### Acceptable Authorization Evidence
+
+Do not flag an endpoint as BOLA solely because it lacks a direct `resource.user_id == current_user.id` check. Acceptable object-level authorization can be proven through:
+
+- Tenant/account/team membership joins enforced in the query or repository method.
+- ACL tables that grant the caller access to the specific object.
+- ABAC or policy-engine decisions that include subject, action, resource, tenant, and relationship context.
+- Capability grants or sharing tokens that are scoped to the exact resource and action.
+- Resolver-level authorization for GraphQL fields and mutations before sensitive data is returned.
+
+Mark the finding as open when the evidence is only a controller-level authentication check, a gateway-only role check, a caller-supplied tenant ID, or an authorization helper whose resource context is not visible.
+
 ### GraphQL Vulnerable Patterns
 
 ```graphql
@@ -97,10 +131,12 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 ### Review Checklist
 
 - [ ] Every endpoint that accepts a resource identifier enforces ownership or relationship-based access control.
+- [ ] Multi-tenant APIs show authorization evidence through membership joins, ACLs, ABAC/policy decisions, or scoped capability grants.
 - [ ] Authorization checks happen at the data access layer, not only at the controller/route layer.
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] Negative tests show cross-tenant or unauthorized object IDs return `403` or indistinguishable `404`, not the object.
 
 ---
 
@@ -262,6 +298,20 @@ query {
 }
 ```
 
+```graphql
+# VULNERABLE: One HTTP request performs many sensitive operations through aliases
+query LoginSpray {
+  a1: login(email: "user@example.com", password: "guess1")
+  a2: login(email: "user@example.com", password: "guess2")
+  a3: login(email: "user@example.com", password: "guess3")
+}
+```
+
+```javascript
+// VULNERABLE: limiter counts one HTTP request, not per resolver/mutation cost
+app.use("/graphql", rateLimit({ windowMs: 60_000, max: 30 }), graphqlHandler);
+```
+
 ```javascript
 // VULNERABLE: No request body size limit
 app.use(express.json()); // Default limit may be very large or unconfigured
@@ -273,17 +323,24 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
+- Count GraphQL aliases, batched operations, and repeated sensitive mutations against the same rate-limit and cost budget as separate operations.
+- Persisted queries must map to approved operation IDs and must not bypass depth, complexity, authorization, or cost checks.
+- Operation-name allowlists must be enforced together with the parsed query body; do not trust the `operationName` parameter without validating the selected operation.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
 
 ### Review Checklist
 
 - [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations.
+- [ ] Gateway-level limits are distinguished from application/resolver-level limits for expensive business operations.
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] GraphQL aliases and repeated mutations consume per-field or per-mutation cost units, not only one HTTP request unit.
+- [ ] Persisted query IDs and `operationName` values cannot bypass rate limits, authorization, query complexity, or operation allowlists.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
+- [ ] Negative tests include alias spray, batch query, large pagination, and expensive resolver timeout cases.
 
 ---
 
@@ -407,6 +464,7 @@ def register_webhook():
 - Use a dedicated egress proxy for outbound requests that enforces domain allowlists.
 - For cloud environments, use IMDSv2 (requires token-based access to metadata) to mitigate SSRF exploitation against cloud metadata services.
 - Do not return raw responses from fetched URLs to the client; extract only the needed data.
+- For outbound webhook registration, validate destination URLs at registration and delivery time, including DNS rebinding and redirect checks.
 
 ### Review Checklist
 
@@ -415,6 +473,7 @@ def register_webhook():
 - [ ] HTTP redirects are disabled or the final destination is re-validated.
 - [ ] Cloud metadata endpoint access is restricted (IMDSv2 on AWS, equivalent on GCP/Azure).
 - [ ] Raw responses from fetched URLs are never returned directly to the client.
+- [ ] Outbound webhook registration rejects internal, loopback, link-local, metadata, and non-HTTPS destinations.
 
 ---
 
@@ -544,6 +603,14 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```javascript
+// VULNERABLE: inbound webhook accepts forged events without signature or replay checks
+app.post("/webhooks/stripe", express.json(), async (req, res) => {
+  await processPaymentEvent(req.body);
+  res.sendStatus(204);
+});
+```
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
@@ -552,6 +619,22 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
+- Verify inbound webhook authenticity before processing event semantics. Use the provider's raw-body signature scheme, HMAC/asymmetric verification, or mTLS where appropriate.
+- Enforce timestamp tolerance, nonce/idempotency keys, and event ID deduplication so captured webhook requests cannot be replayed.
+- Validate event source, event type, account/tenant binding, and payload schema before changing payment, account, or entitlement state.
+
+### Webhook Authenticity Checks
+
+Webhook handlers are API entry points even when they are intentionally unauthenticated by user session. Review both inbound and outbound webhook paths:
+
+| Control | What to Verify |
+|---|---|
+| Raw-body signature validation | Signature is computed over the exact raw request body before JSON parsing mutates it |
+| Timestamp tolerance | Old or future timestamps are rejected within a documented tolerance window |
+| Replay/idempotency | Event IDs, nonces, or delivery IDs are stored and duplicate deliveries are handled safely |
+| Source binding | Event account, tenant, or environment matches the expected integration configuration |
+| Event allowlist | Handler accepts only expected event types and ignores or rejects unknown types |
+| Negative tests | Unsigned, tampered, stale, duplicate, and wrong-tenant events are rejected before state changes |
 
 ### Review Checklist
 
@@ -560,3 +643,7 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+- [ ] Inbound webhooks verify raw-body signatures before processing.
+- [ ] Webhook timestamp tolerance and replay/idempotency protections are enforced.
+- [ ] Webhook events are bound to the expected provider account, tenant, environment, and event type.
+- [ ] Negative tests reject unsigned, tampered, stale, duplicate, and wrong-tenant webhook deliveries.
