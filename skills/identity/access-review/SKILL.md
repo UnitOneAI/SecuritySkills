@@ -102,6 +102,7 @@ Identify:
 - **In-scope systems** — production environments, SaaS applications, infrastructure platforms, databases, internal tools
 - **In-scope identity types** — human users, service accounts, shared accounts, external/guest accounts
 - **Entitlement sources** — IdP group memberships, cloud IAM roles, application-level permissions, database grants
+- **Effective-access sources** — nested group paths, dynamic group rules, SCIM mappings, app-local roles, and external IdP mappings
 - **Review cadence compliance** — verify the current review meets the organization-defined frequency
 
 **What to look for:**
@@ -113,6 +114,8 @@ AR-SCOPE-03: Service accounts excluded from review population
 AR-SCOPE-04: SaaS applications not included in centralized review (shadow IT gap)
 AR-SCOPE-05: No single authoritative source for entitlements (CIS 6.7 — centralize access control)
 AR-SCOPE-06: Guest/external accounts not included in review scope
+AR-SCOPE-07: Review population is based only on direct grants and does not expand inherited access paths
+AR-SCOPE-08: SCIM or external IdP group-to-role mappings are missing from the entitlement inventory
 ```
 
 **Recommended cadences:**
@@ -136,6 +139,17 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 
 For each user-entitlement pair, the certifier (typically the user's manager or resource owner) must affirm or revoke:
 
+Before presenting decisions to certifiers, expand each entitlement to its effective-access path. A review packet is incomplete if it only shows the direct grant and omits inherited or rule-derived access.
+
+Require the packet to include:
+
+- **Direct grant evidence** — user-to-role or user-to-permission assignment, if present
+- **Nested group path** — every group hop from the user to the final application role or privilege
+- **Dynamic group rule** — rule expression, source attributes, rule owner, and last evaluation timestamp
+- **External mapping** — SCIM, SAML/OIDC claim, or IdP group mapping that grants downstream application access
+- **Cycle detection** — evidence that nested group expansion was bounded and circular inheritance was rejected
+- **Break-glass treatment** — owner, activation path, and last-use evidence for normally empty emergency groups
+
 **What to look for:**
 
 ```
@@ -147,6 +161,10 @@ AR-CERT-05: No escalation path for entitlements where the certifier is uncertain
 AR-CERT-06: Certification decisions not enforced — revoked entitlements not actually removed
 AR-CERT-07: No SLA for certification completion (recommended: 14 business days)
 AR-CERT-08: Delegated reviews without accountability (certifier delegates but is not tracked)
+AR-CERT-09: Certifiers approve direct grants without seeing nested or dynamic inherited access paths
+AR-CERT-10: Dynamic group rules are certified without owner, source-attribute, or last-evaluation evidence
+AR-CERT-11: External IdP or SCIM mappings grant SaaS roles that are not included in the review packet
+AR-CERT-12: Circular or deep group nesting prevents reviewers from determining effective access
 ```
 
 **Rubber-stamp detection criteria:**
@@ -292,6 +310,9 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 |---|---|---|
 | Review campaign configuration (scope, reviewers, deadline) | Duration of audit period + 1 year | AC-2(j) |
 | Individual certification decisions (approve/revoke per entitlement) | Duration of audit period + 1 year | AC-6(7) |
+| Effective-access path expansion (direct grant, nested groups, dynamic rules, external mappings) | Duration of audit period + 1 year | AC-2, AC-6(7) |
+| Dynamic group rule evidence (owner, source attributes, last evaluation timestamp) | Duration of audit period + 1 year | AC-2, AC-6(7) |
+| SCIM / IdP group mapping evidence for downstream SaaS roles | Duration of audit period + 1 year | CIS 6.7 |
 | Revocation execution confirmation (ticket, timestamp) | Duration of audit period + 1 year | AC-2, CIS 6.2 |
 | Exception approvals with justification and expiry | Duration of exception + 1 year | AC-6 |
 | Review completion metrics (on-time %, revocation %) | Duration of audit period + 1 year | AC-2 |
@@ -321,6 +342,8 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, roles, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding (counts, examples, screenshots) |
+| **Access Path** | Direct, nested group, dynamic rule, external IdP/SCIM mapping, or app-local role path |
+| **Expansion Freshness** | Timestamp or review-cycle marker proving dynamic and external mappings were evaluated for this campaign |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -401,6 +424,8 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
 7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+8. **Direct-grant-only reviews** — Removing a direct entitlement does not remove access inherited through nested groups, dynamic rules, SCIM mappings, or app-local roles. Expand effective access before certification.
+9. **Stale dynamic-rule evidence** — Dynamic groups can change after HR or IdP attributes update. Require rule owner, source attribute snapshot, and last evaluation time for the review cycle.
 
 ---
 
