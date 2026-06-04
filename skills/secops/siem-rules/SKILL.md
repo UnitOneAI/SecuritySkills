@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -715,5 +715,6 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.2 | 2026-06-05 | Added late-event scheduling fixtures for safe overlap/dedup handling, Sentinel connector latency gaps, and Splunk event-time-only searches. |
 | 1.0.1 | 2026-06-04 | Added scheduling and ingestion-delay evidence, late-event validation, Sentinel/Splunk timing guidance, and output fields. |
 | 1.0.0 | 2025-03-06 | Initial release |
