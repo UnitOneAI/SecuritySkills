@@ -337,6 +337,38 @@ NuGet packages declare licenses in two ways:
 - Dual-licensed packages (e.g., `MIT OR Apache-2.0`) require verifying which license applies to your usage.
 - Some packages embed a `LICENSE.md` file in the `.nupkg` — verify its contents match the declared expression.
 
+### NuGet License Evidence Gates
+
+NuGet license reviews must preserve the source and quality of the license evidence before lowering risk. A license report should carry these fields for every direct and runtime transitive package:
+
+```json
+{
+  "package": "Example.Library",
+  "version": "3.4.5",
+  "license": "MIT OR Apache-2.0",
+  "license_evidence_source": "PackageLicenseExpression",
+  "license_evidence_status": "verified",
+  "usage_context": "runtime",
+  "decision_record": {
+    "selected_license": "MIT",
+    "approved_by": "legal@example.invalid",
+    "approved_date": "2026-06-04"
+  }
+}
+```
+
+| NuGet evidence case | Required handling |
+|---|---|
+| `<PackageLicenseExpression>` with a valid SPDX expression | Mark `license_evidence_source=PackageLicenseExpression`; verify the expression is still compatible with project usage. |
+| Legacy `<licenseUrl>` only | Mark `license_evidence_status=legacy-url-only`; do not treat it as verified until the license text is captured and reviewed. |
+| `NOASSERTION`, empty, or missing license data | Mark high risk with `license_evidence_status=noassertion` or `missing`; require replacement, vendor clarification, or legal approval. |
+| Embedded `.nupkg` license conflicts with registry metadata | Mark `license_evidence_status=conflict`; escalate for legal review before accepting. |
+| Dual-license expression using `OR` | Record the selected branch and decision record; do not automatically choose the most permissive branch. |
+| AGPL package used by a hosted API or SaaS service | Require legal approval or a source-disclosure decision before marking accepted. |
+| Commercial entitlement branch | Record an entitlement reference or approval record, but do not store secrets, license keys, or contract files in the report. |
+
+Scanner output that collapses these states into one unstructured `license` string is not enough to close the finding. Keep the raw scanner value, normalized SPDX expression, evidence status, and decision record side by side.
+
 ## .NET-Specific Transitive Dependency Analysis
 
 ### Viewing the Full Dependency Tree
@@ -411,6 +443,9 @@ Add these to the supply chain risk indicators when scanning a .NET project:
 - [ ] `<clear />` present in `nuget.config` `<packageSources>` to prevent config inheritance
 - [ ] No `<EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>` in any project file
 - [ ] NuGet prefix reservation claimed for internal package namespaces
+- [ ] License evidence source/status recorded for direct and runtime transitive packages
+- [ ] `licenseUrl`, `NOASSERTION`, missing, and conflicting license evidence triaged
+- [ ] Dual-license and commercial-entitlement decisions documented without secrets
 
 ## References
 

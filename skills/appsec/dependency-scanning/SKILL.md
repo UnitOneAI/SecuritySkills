@@ -6,7 +6,7 @@ description: >
   requirements.txt, go.mod, pom.xml, Cargo.toml) are shared or when discussing
   dependency security. Produces an SBOM assessment with CVE findings triaged
   by EPSS and CISA KEV, license compliance check, and supply chain risk rating.
-tags: [appsec, supply-chain, sbom, dependencies]
+tags: [appsec, supply-chain, sbom, dependencies, license]
 role: [appsec-engineer, security-engineer]
 phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
@@ -141,6 +141,24 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 4. **Dual-licensed commercial packages**: Some packages offer open-source licenses for non-commercial use and require a commercial license otherwise (e.g., certain database drivers, UI component libraries). Verify that the usage context matches the chosen license.
 5. **No-license dependencies**: Packages without a declared license default to full copyright protection. They cannot be legally redistributed. Replace or obtain explicit permission.
 
+### License Evidence Gates
+
+Do not downgrade license risk until the scan records the evidence source, evidence status, usage context, and any decision record needed to support the result.
+
+| Gate | Required evidence | Fail condition |
+|---|---|---|
+| Evidence source | SPDX expression, SBOM component license, registry metadata, embedded license file, or approved legal record | URL-only metadata, unstructured scanner text, or missing source |
+| Evidence status | `verified`, `legacy-url-only`, `conflict`, `noassertion`, `missing`, or `needs-legal-review` | Any status other than `verified` without a remediation action |
+| Usage context | Runtime, build-only, test-only, distributed client, SaaS/server, internal tool | AGPL/GPL/commercial packages without deployment and distribution context |
+| Decision record | Selected license branch, approver, approval date, entitlement reference, or source-disclosure decision | Dual-license, commercial, AGPL SaaS, or missing-license cases without an explicit decision |
+
+Apply these rules consistently:
+
+- Treat `NOASSERTION`, missing license data, and URL-only license metadata as unresolved evidence, not as verified permissive licenses.
+- If registry metadata conflicts with an embedded license file, classify the package as `needs-legal-review` until the conflict is resolved.
+- For dual-license expressions such as `MIT OR Apache-2.0` or `GPL-2.0-only OR commercial`, record the selected license branch and the decision record that makes that branch valid for the project.
+- For AGPL dependencies in SaaS or hosted API paths, require legal approval or a source-disclosure decision before marking the finding accepted.
+
 ### Tooling
 
 - `licensed` (GitHub): Caches and verifies dependency licenses in CI.
@@ -201,14 +219,15 @@ When performing a dependency scan, produce findings in the following structure:
 
 ### License Findings
 
-| # | Package | Version | License | Risk Level | Action Required |
-|---|---------|---------|---------|------------|-----------------|
-| 1 | ...     | ...     | ...     | ...        | ...             |
+| # | Package | Version | License | Evidence Source | Evidence Status | Usage Context | Decision Record | Risk Level | Action Required |
+|---|---------|---------|---------|-----------------|-----------------|---------------|-----------------|------------|-----------------|
+| 1 | ...     | ...     | ...     | ...             | ...             | ...           | ...             | ...        | ...             |
 
 ### Supply Chain Risk Indicators
 
 - [ ] Typosquatting risk detected
 - [ ] Packages with no license
+- [ ] Packages with `NOASSERTION`, URL-only, or conflicting license evidence
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
@@ -224,7 +243,7 @@ When performing a dependency scan, produce findings in the following structure:
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
+5. **License audit**: Extract license declarations from lockfiles, SBOMs, registry metadata, and embedded license files. Record evidence source/status, usage context, and decision records before downgrading risk. Flag copyleft, unlicensed, `NOASSERTION`, URL-only, conflicting, AGPL SaaS, and unresolved dual-license packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
 7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
 8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.

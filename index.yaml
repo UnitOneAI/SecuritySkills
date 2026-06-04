@@ -67,7 +67,7 @@ skills:
 
   - id: dependency-scanning
     name: "Dependency Scanning & SBOM Analysis"
-    tags: [appsec, supply-chain, sbom, dependencies]
+    tags: [appsec, supply-chain, sbom, dependencies, license]
     role: [appsec-engineer, security-engineer]
     phase: [build, deploy]
     activity: [review, assess]
