@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.3"
+version: "1.0.4"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -170,6 +170,19 @@ Long-term containment allows the organization to maintain operations while keepi
 
 Map observed attacker techniques to targeted containment actions. Each ATT&CK technique has containment actions that specifically counter the adversary's capability.
 
+For each selected ATT&CK row, bind the containment action to enforcement evidence. Do not only list the countermeasure; record which control proves the adversary capability is actually blocked.
+
+#### ATT&CK Enforcement Evidence Binding
+
+| Technique Family | Required Enforcement Evidence |
+|---|---|
+| Initial access via phishing, public-facing applications, external services, or supply chain | Mail/WAF/VPN/vendor block rule ID, affected recipient/app/service scope, quarantine or access-deny logs, and post-action exploit or login attempt result |
+| Valid accounts and alternate authentication material | IdP/account state, session and refresh-token revocation events, MFA or Kerberos reset evidence, app grant/API key review, and failed reuse of old credentials |
+| Remote services, remote exploitation, and lateral tool transfer | Firewall/EDR/host policy that covers the source and destination path, protocol and direction proof, and post-action authentication, flow, or EDR telemetry showing lateral activity stopped |
+| Application-layer C2, encrypted channels, tunneling, and dynamic DNS | Firewall/proxy/DNS policy ID, resolver path proof, DoH/DoT and direct-IP bypass review, DNS/proxy/flow logs, and test resolution or egress results from the affected path |
+| Persistence mechanisms such as scheduled tasks, autostarts, web shells, and created accounts | Removed artifact or account evidence, permission hardening proof, monitoring source, and post-action scan or audit log showing the mechanism did not recreate or execute |
+| Wiper and destructive malware propagation | Segmentation or shutdown scope, backup isolation proof, blocked SMB/WMI/RDP/GPO path evidence, and timestamped proof that at-risk systems or backup infrastructure are protected |
+
 #### Initial Access Containment
 
 | ATT&CK Technique | Containment Action |
@@ -303,7 +316,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.3
+**Skill:** containment v1.0.4
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -330,6 +343,11 @@ threat severity and business criticality, and expected impact on operations.]
 | Action | Enforcement Point | Scope Proof | Bypass Paths Checked | Telemetry Source | Validation Timestamp | Result |
 |---|---|---|---|---|---|---|
 | [Action] | [EDR/IdP/Firewall/DNS/Cloud SG/CNI/etc.] | [Provider-side evidence] | [Paths checked] | [Log/source] | [timestamp] | [Pass/Fail/Pending/Not Evaluable] |
+
+### ATT&CK Enforcement Binding
+| ATT&CK Technique | Containment Action | Enforcement Evidence | Result |
+|---|---|---|---|
+| [T-code] | [Action selected from Step 4] | [Rule/session/artifact/telemetry proof tied to this technique] | [Pass/Fail/Pending/Not Evaluable] |
 
 ### Long-Term Containment Actions
 | Action | Target | Duration | Status | Owner |
@@ -434,3 +452,11 @@ This skill processes incident data including attacker-controlled indicators (IP 
 12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
 13. **Kubernetes Network Policies** -- https://kubernetes.io/docs/concepts/services-networking/network-policies/
 14. **Microsoft Entra ID: Revoke user access in an emergency** -- https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access
+
+---
+
+## 10. Changelog
+
+- **1.0.4** -- Added ATT&CK enforcement evidence binding so technique-specific containment actions require proof that the mapped adversary capability is blocked.
+- **1.0.3** -- Added provider/platform verification examples and expanded validation checklist evidence fields.
+- **1.0.2** -- Added effective-enforcement state model and evidence matrix.
