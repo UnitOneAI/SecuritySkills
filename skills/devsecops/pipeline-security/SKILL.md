@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.1.1"
+version: "1.1.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -631,6 +631,7 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.1.2** -- Added cache trust-boundary fixtures for lockfile-scoped pull request caches, broad prefix release restores, and implicit setup-action caching in privileged workflows.
 - **1.1.1** -- Tightened restore-key scoping requirements and high-severity guidance for unscoped prefix-only restore keys in privileged executable/build cache paths.
 - **1.1.0** -- Added cache trust-boundary review guidance for dependency and build caches, restore-key evidence collection, severity triage, CICD-SEC-9 integrity validation linkage, and cache evidence reporting.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
