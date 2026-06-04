@@ -440,7 +440,7 @@ angular\.js|jquery\s*["\'].*1\.|lodash.*3\.|moment\(\)|request\(  # (npm 'reques
 # Session management
 session\.id|sessionId|JSESSIONID|connect\.sid|session_token
 # Weak password policy
-minLength.*([0-9]|1[0-4])|passwordMinLength|min_password_length|RequiredLength\s*=\s*([0-9]|1[0-4])\b
+\b(minLength|passwordMinLength|min_password_length)\b\s*[:=]\s*([0-9]|1[0-4])\b|RequiredLength\s*=\s*([0-9]|1[0-4])\b
 # Legacy composition or usability-hostile password policy
 requireUppercase|requireLowercase|requireDigit|requireSymbol|RequireUppercase|RequireDigit|RequireNonAlphanumeric|disallowSpaces|disallowUnicode|onpaste.*preventDefault|onpaste.*return\s+false
 # Password transformation before verification
