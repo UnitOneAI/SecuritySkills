@@ -223,13 +223,47 @@ If a DMZ is present, evaluate its architectural soundness:
 
 If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
+- PCI DSS source version, source document, source review date, and requirement mapping are recorded before assigning PCI-specific pass/fail status.
 - CDE is isolated in dedicated subnets or VLANs with explicit boundary controls.
 - All traffic entering and leaving the CDE traverses a firewall or equivalent PEP.
 - Connected-to systems are identified and documented.
 - Out-of-scope systems cannot route directly to CDE systems.
 - Segmentation testing methodology exists and is executed at least annually (PCI DSS 11.4.5).
+- Service-provider environments record the applicable PCI DSS 11.4.6 cadence and retained evidence; do not treat merchant-only annual test evidence as sufficient for service-provider cadence.
+- Significant network changes include retest evidence before relying on segmentation for PCI scope reduction.
 
 **Finding classification:** CDE not segmented from general corporate network is **Critical**. Missing segmentation testing is **High**.
+
+#### PCI DSS Source-Version Gate
+
+Before issuing PCI-specific findings, record current source evidence:
+
+| Evidence Field | Required Detail |
+|---|---|
+| PCI DSS version | Current assessed version, such as PCI DSS v4.0.1 |
+| Source document | Official PCI SSC document URL or controlled internal copy reference |
+| Source review date | Date the requirement mapping was checked against the source |
+| Requirement mapping | Explicit mapping for CDE segmentation controls, test requirements, and service-provider cadence |
+| Entity type | Merchant, service provider, or both |
+| Applicability rationale | Why PCI segmentation applies or does not apply to the assessed scope |
+
+If these fields are missing, mark PCI-specific status as `Not Evaluable - PCI source gate missing` instead of passing or failing PCI DSS. Continue reporting general segmentation findings under NIST SP 800-207 and CIS Controls.
+
+#### CDE Segmentation Evidence Matrix
+
+For each CDE boundary, collect separate evidence streams:
+
+| Evidence Area | Required Evidence |
+|---|---|
+| Boundary definition | CDE subnet/VLAN/VPC/namespace, connected-to systems, and out-of-scope adjacent zones |
+| Control points | Firewalls, security groups, routing controls, Kubernetes NetworkPolicy, service mesh policy, or equivalent PEP |
+| Test scope | Source zones, destination CDE assets, tested ports/protocols, and denied/allowed expectations |
+| Test results | Date, tester, method, observed result, evidence file, and exception list |
+| Cadence | Annual test evidence for applicable scopes plus service-provider 11.4.6 cadence when applicable |
+| Change retest | Triggering change, retest date, affected boundaries, and approval before scope reduction is relied on again |
+| Exceptions | Owner, reason, expiry, compensating control, and follow-up ticket |
+
+Do not collapse source currency, boundary effectiveness, cadence, and change retest into one score. A successful packet test can prove one control path works while still leaving PCI source mapping or service-provider cadence unevaluable.
 
 ---
 
@@ -242,6 +276,8 @@ Document or verify the existence of a segmentation testing process:
 3. **From the DMZ, attempt to reach internal zones** on unauthorized ports. Expected result: blocked.
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
+6. **For PCI CDE scopes, verify cadence evidence** separately for merchant and service-provider obligations, including PCI DSS 11.4.6 where applicable.
+7. **Retest after significant changes** to firewall rules, routing, identity-aware proxies, service mesh policy, Kubernetes namespaces, or CDE-connected systems before relying on segmentation for scope reduction.
 
 ---
 
@@ -283,6 +319,12 @@ Document or verify the existence of a segmentation testing process:
 | DMZ         | App       | Firewall    | Restricted | Pass |
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
+
+### PCI CDE Evidence Matrix
+
+| Boundary | PCI Source Version | Requirement Mapping Checked | Entity Type | Test Cadence Evidence | Change Retest Evidence | Status |
+|----------|--------------------|-----------------------------|-------------|-----------------------|------------------------|--------|
+| <CDE boundary> | <v4.0.1/source/date> | <yes/no> | <merchant/service provider> | <11.4.5 / 11.4.6 evidence> | <change/retest/ticket> | <Pass/Fail/Not Evaluable> |
 
 ### Findings
 
