@@ -6,14 +6,15 @@ description: >
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
   hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
-tags: [cloud, containers, kubernetes, docker]
+  management, including admission-control exception lifecycle risk. Produces a
+  prioritized findings report with remediation guidance.
+tags: [cloud, containers, kubernetes, docker, admission-control]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -101,6 +102,11 @@ Use Glob to locate all relevant configuration files.
 **/*-rbac.yaml
 **/*-psp.yaml
 **/*-podsecuritypolicy.yaml
+**/kyverno/**/*.yaml
+**/gatekeeper/**/*.yaml
+**/*policy*.yaml
+**/*constraint*.yaml
+**/*exception*.yaml
 ```
 
 Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, and supporting configs. Record all discovered files.
@@ -112,6 +118,25 @@ Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kusto
 Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
+
+---
+
+### Admission Exception Lifecycle Gate
+
+Apply this gate whenever a namespace, policy engine, admission webhook, image policy, or deployment process permits workloads that would otherwise violate Pod Security Standards, Kyverno/Gatekeeper policy, image-signature policy, or runtime hardening requirements. Temporary, owned break-glass exceptions are not the same risk as permanent policy bypasses; evidence must separate them.
+
+1. **Inventory exception sources** -- Pod Security Admission namespace labels, Kyverno `PolicyException` resources, Gatekeeper `exemptNamespaces` or excluded namespaces, policy `exclude`/`match` blocks, ValidatingAdmissionPolicy bindings, image-policy allowlists, and GitOps waiver files.
+2. **Record lifecycle ownership** -- For each exception, capture policy/control bypassed, namespace, workload identity, image reference, owner, reason, ticket/change reference, approval source, creation date, expiry/TTL, and review cadence.
+3. **Verify scope minimization** -- Prefer exact workload names, service accounts, namespaces, and immutable image digests. Treat wildcard namespaces, broad registry paths, mutable tags, and all-policy exclusions as high-risk unless strongly justified.
+4. **Check compensating controls** -- Node taints, dedicated namespaces, network isolation, restricted RBAC, audit logging, admission report output, post-incident deletion, and follow-up cleanup evidence.
+5. **Detect stale exceptions** -- Flag expired exceptions still active, missing expiry/review date, missing owner, missing ticket, or exceptions that survive incident closure, deployment completion, or system-component rollout.
+6. **Avoid false positives for controlled system workloads** -- CNI, CSI, node agents, monitoring daemonsets, and emergency debug sessions may legitimately need host access when the exception is narrow, time-bound, audited, and has cleanup evidence.
+
+### Admission Exception Evidence Matrix
+
+| Exception source | Policy/control bypassed | Scope | Owner / ticket | Expiry / review | Compensating controls | Status |
+|---|---|---|---|---|---|---|
+| PSA / Kyverno / Gatekeeper / image policy | privileged / hostPath / unsigned image / namespace exemption | namespace + workload + image digest | owner + reason + ticket | TTL / expiry / review cadence | audit, taint, RBAC, cleanup | Pass / Fail / Not Evaluable |
 
 ---
 
@@ -176,6 +201,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Container:** <container name>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
+- **Admission Exception Evidence:** <owner, reason, scope, expiry, compensating controls, cleanup evidence if applicable>
 - **Remediation:** <fix with code example>
 
 ### Pod Security Standards Compliance Matrix
@@ -184,6 +210,12 @@ Produce the final report using the structure defined in the Output Format sectio
 |----------|-----------|-----------|------------|
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
+
+### Admission Exception Lifecycle Matrix
+
+| Exception | Policy Bypassed | Scope | Owner | Expiry / Review | Compensating Controls | Status |
+|-----------|-----------------|-------|-------|-----------------|-----------------------|--------|
+| kyverno/allow-debug | restricted/privileged | incident-response/debug-pod | incident commander | 4h TTL | node taint, audit log, deletion evidence | Controlled |
 
 ### Prioritized Remediation Plan
 
@@ -257,6 +289,7 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Temporary admission exceptions become permanent.** A privileged debug pod, unsigned image waiver, or namespace policy exemption may be acceptable for incident response or system agents only when the owner, scope, TTL, audit trail, and cleanup evidence are documented.
 
 ---
 
@@ -283,6 +316,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
+- Kubernetes Validating Admission Policy: https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/
+- Kyverno Policy Exceptions: https://kyverno.io/docs/exceptions/
+- Gatekeeper Exempting Namespaces: https://open-policy-agent.github.io/gatekeeper/website/docs/exempt-namespaces/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
@@ -293,4 +329,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added admission-control exception lifecycle evidence gates for owner, scope, TTL, compensating controls, and stale-exception cleanup.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.

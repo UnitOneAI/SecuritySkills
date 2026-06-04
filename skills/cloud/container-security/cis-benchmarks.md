@@ -406,6 +406,112 @@ ports:
     hostPort: 8080  # FAIL: binds directly to host
 ```
 
+### Admission-Control Exception Lifecycle Review
+
+Admission exceptions are common during incident response, system-agent rollouts,
+and platform migrations. Reviewers should distinguish controlled temporary
+exceptions from silent permanent bypasses.
+
+#### Vulnerable Patterns
+
+```yaml
+# BAD: namespace permanently weakens Pod Security Admission with no owner or expiry
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production-debug
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+```
+
+```yaml
+# BAD: broad policy exception with mutable image tag and no lifecycle evidence
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: allow-unsigned-tools
+  namespace: policy-exceptions
+spec:
+  exceptions:
+    - policyName: require-signed-images
+      ruleNames:
+        - "*"
+  match:
+    any:
+      - resources:
+          namespaces:
+            - "*"
+          kinds:
+            - Pod
+          images:
+            - "registry.example.com/tools/*:latest"
+```
+
+```yaml
+# BAD: Gatekeeper namespace exemption covers an application namespace indefinitely
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Config
+metadata:
+  name: config
+  namespace: gatekeeper-system
+spec:
+  match:
+    - excludedNamespaces:
+        - production
+      processes:
+        - webhook
+        - audit
+```
+
+#### Controlled Temporary Exception Pattern
+
+```yaml
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: ir-debug-hostaccess-20260605
+  namespace: policy-exceptions
+  annotations:
+    security.example.com/owner: incident-commander
+    security.example.com/ticket: INC-2026-0605
+    security.example.com/reason: "4h privileged debug pod on tainted IR node"
+    security.example.com/expires-at: "2026-06-05T08:00:00Z"
+    security.example.com/cleanup-required: "delete debug pod and exception after incident"
+spec:
+  exceptions:
+    - policyName: restricted-pod-security
+      ruleNames:
+        - disallow-privileged
+  match:
+    any:
+      - resources:
+          namespaces:
+            - incident-response
+          kinds:
+            - Pod
+          names:
+            - ir-debug-shell
+          operations:
+            - CREATE
+```
+
+This example can be treated as controlled only when the reviewer also sees
+audit/report evidence that the exception was used narrowly, the debug workload
+ran on a constrained node or namespace, and post-expiry cleanup occurred.
+
+#### Review Checklist
+
+- [ ] Every policy exception has an owner, reason, ticket/change reference, creation date, expiry/TTL, and review cadence.
+- [ ] Exception scope is limited to exact namespace, workload identity, service account, operation, policy/rule, and immutable image digest where possible.
+- [ ] Broad wildcard exceptions (`*`, all namespaces, all policies, mutable tags, registry prefixes) are flagged unless documented as short-lived break-glass.
+- [ ] Production namespace Pod Security Admission downgrades have owner, expiry, approval, and rollback evidence.
+- [ ] Kyverno `PolicyException`, Gatekeeper namespace exemptions, and policy `exclude` blocks are included in the exception inventory.
+- [ ] Admission audit logs, PolicyReports, Gatekeeper audit output, or equivalent evidence show when the exception was used.
+- [ ] Expired exceptions are removed or escalated as stale control gaps.
+- [ ] System daemonset/CNI/CSI/monitoring exceptions are tied to exact workloads and reviewed on a defined cadence.
+
 ### CIS 5.3 -- Network Policies and CNI
 
 #### CIS 5.3.1 -- Ensure that the CNI in use supports NetworkPolicies
