@@ -33,6 +33,7 @@ Identify known vulnerabilities, license compliance violations, and supply chain 
 This skill activates when any of the following are present:
 
 - A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
+- Vendored, generated, or bundled dependency artifacts are present or referenced: `vendor/`, `third_party/`, `externals/`, `generated/`, `dist/`, `public/vendor/`, checked-in `*.min.js`, `*.wasm`, embedded license files, or generated client/server stubs.
 - The user asks about dependency security, vulnerability scanning, SBOM generation, or supply chain risk.
 - A CI/CD pipeline configuration references dependency audit steps.
 
@@ -90,6 +91,63 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 - Use `npm audit --omit=dev`, `pip-audit`, `govulncheck`, or `cargo audit` to scan the full resolved dependency tree.
 - Pin critical transitive dependencies using overrides/resolutions (`npm overrides`, `pip` constraints files, `go.mod replace`).
 - Evaluate dependency tree depth before adopting new packages: `npm ls --all`, `pipdeptree`, `go mod graph`.
+
+## Vendored and Generated Component Provenance
+
+### Why Manifest-Only Scans Miss Components
+
+Package-manager scanners only see dependencies represented in manifests and lockfiles. Many applications also ship copied source trees, generated runtime helpers, minified frontend bundles, checked-in WebAssembly, or CDN-pinned assets that are not present in package metadata. Treat these artifacts as dependency evidence, not as ordinary first-party code, until provenance is established.
+
+### Discovery Patterns
+
+Review the repository for dependency-like artifacts beyond manifests:
+
+- Directories: `vendor/`, `vendors/`, `third_party/`, `3rdparty/`, `externals/`, `deps/`, `generated/`, `gen/`, `dist/`, `public/vendor/`, `assets/vendor/`.
+- Files: `*.min.js`, `*.bundle.js`, `*.wasm`, `*.jar`, `*.nupkg`, checked-in archives, generated protobuf/gRPC clients, generated OpenAPI clients, and embedded `LICENSE`, `NOTICE`, or attribution files.
+- Metadata hints: comments with upstream URLs, source commit hashes, checksums, CDN URLs, vendoring scripts, update-owner notes, or generated-code headers.
+
+### Required Evidence
+
+For each vendored or generated component, capture:
+
+| Evidence Field | Required Detail |
+|---|---|
+| Component identity | Upstream project or package name, source URL, and package ecosystem if known |
+| Version proof | Release version, commit hash, checksum, CDN URL with integrity value, or generated-tool version |
+| License proof | SPDX identifier, embedded license/notice file, or documented reason the license is unknown |
+| Owner and update process | Owning team, refresh cadence, vendoring script, regeneration command, or documented manual process |
+| SBOM treatment | Included as a separate SBOM component or explicitly excluded with a time-bound justification |
+| Scanner coverage | Which scanner or manual check covers the artifact, including non-manifest inputs when supported |
+
+Flag a finding when a component lacks identity/version proof, cannot be tied to a license, is excluded from the SBOM without justification, or has no owner/update path.
+
+### Benign vs Risky Examples
+
+Benign vendoring evidence:
+
+```text
+third_party/foo/
+upstream: https://github.com/example/foo
+version: v1.4.2
+commit: abc123
+checksum: sha256:...
+license: Apache-2.0
+owner: platform-team
+refresh: quarterly via scripts/update-foo.sh
+sbom: included as component foo@1.4.2
+```
+
+Risky manifest gap:
+
+```text
+public/vendor/jquery.min.js
+upstream: unknown
+version: unknown
+license: missing
+sbom: not included
+```
+
+Do not mark a scan clean when these risky artifacts exist without provenance, even if every package manifest and lockfile is clean.
 
 ## Vulnerability Triage: EPSS + CVSS + CISA KEV
 
@@ -212,6 +270,15 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Vendored/generated components without provenance
+- [ ] Bundled or minified artifacts missing SBOM coverage
+- [ ] Checked-in WASM/archive/generated stubs without owner and update cadence
+
+### Vendored / Generated Component Findings
+
+| # | Path | Component Identity | Version Proof | License | SBOM Treatment | Owner / Update Path | Risk |
+|---|------|--------------------|---------------|---------|----------------|---------------------|------|
+| 1 | ...  | ...                | ...           | ...     | ...            | ...                 | ...  |
 
 ### Recommendations
 
@@ -223,11 +290,13 @@ When performing a dependency scan, produce findings in the following structure:
 1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
-4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
-6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+4. **Discover vendored and generated artifacts**: Search dependency-like directories, bundled/minified assets, WASM, generated stubs, checked-in archives, embedded licenses, and attribution notices.
+5. **Verify non-manifest provenance**: For each discovered artifact, record component identity, upstream URL, version or checksum, license proof, owner, update cadence, and SBOM inclusion or justified exclusion.
+6. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model, including vendored/generated components where identity is known.
+7. **License audit**: Extract license declarations from lockfiles, registry metadata, embedded license files, and vendored attribution notices. Flag copyleft, unlicensed, and unknown-license components.
+8. **Typosquatting check**: Review dependency names for patterns described in the detection section.
+9. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability, non-manifest component coverage, and SBOM completeness.
+10. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
