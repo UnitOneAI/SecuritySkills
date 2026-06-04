@@ -4,7 +4,9 @@ description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
   GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  SSRF. Also inventories framework API surfaces such as Next.js App Router
+  Route Handlers and Server Actions. Produces findings mapped to API1-API10
+  with remediation guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
@@ -21,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, API gateway configurations, and framework API surfaces such as Next.js App Router Route Handlers and Server Actions.
 
 ---
 
@@ -31,13 +33,14 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
-1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
+1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, framework-specific API routes, or hybrid. Each style has distinct attack patterns.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions. For Next.js App Router projects, include `app/**/route.ts`, `"use server"` action modules, inline Server Actions, `<form action={...}>`, `formAction={...}`, and Client Component imports of server action functions.
 3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **Classify public vs private intent** -- Public metadata, health, sitemap-adjacent, and product-information Route Handlers can be intentionally unauthenticated. A missing auth check is a finding only after evidence shows the handler returns sensitive data or performs a privileged action.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -48,6 +51,8 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+For Next.js App Router projects, apply the framework-specific Route Handler and Server Actions checklist in `api-top10-checklist.md`. Treat Server Actions as public mutation surfaces that need the same authentication, object authorization, input validation, CSRF/origin, resource-limit, and cache-safety evidence expected from traditional API endpoints.
 
 ---
 
@@ -62,8 +67,9 @@ Each finding produced by this review must include the following fields:
 | **OWASP API Risk** | API1:2023 through API10:2023 identifier |
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
-| **API Style** | REST, GraphQL, gRPC, or General |
+| **API Style** | REST, GraphQL, gRPC, Next.js App Router, or General |
 | **Location** | File path and line number(s), or OpenAPI spec path |
+| **Intent Classification** | Public metadata, authenticated user operation, privileged/admin operation, webhook/internal, or unknown |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
 | **Remediation** | Specific fix with code example where possible |
@@ -118,8 +124,9 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|General]
+- **API Style:** [REST|GraphQL|gRPC|Next.js App Router|General]
 - **Location:** [file:line or spec path]
+- **Intent Classification:** [public metadata|authenticated user operation|privileged/admin operation|webhook/internal|unknown]
 - **Description:** [explanation]
 - **Evidence:**
   ```[language]
@@ -239,3 +246,7 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+- **Next.js Route Handlers:** https://nextjs.org/docs/app/getting-started/route-handlers
+- **Next.js Server Functions / Updating Data:** https://nextjs.org/docs/app/getting-started/updating-data
+- **Next.js Data Security -- Allowed Origins:** https://nextjs.org/docs/app/guides/data-security#allowed-origins-advanced
+- **Next.js `serverActions` Configuration:** https://nextjs.org/docs/app/api-reference/config/next-config-js/serverActions

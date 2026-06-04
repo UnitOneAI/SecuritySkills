@@ -560,3 +560,165 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+
+---
+
+## Framework-Specific Checklist: Next.js App Router and Server Actions
+
+Next.js App Router applications expose API behavior through more than traditional REST endpoints. `app/**/route.ts` files are Route Handlers, and `"use server"` Server Actions / Server Functions are invokable mutation surfaces from forms, event handlers, and Client Components. Review them as part of the API inventory.
+
+### Inventory Patterns
+
+Search for:
+
+- `app/**/route.ts` or `app/**/route.js`
+- `"use server"` at module scope or inside Server Components
+- `<form action={...}>` and `formAction={...}`
+- Client Component imports of server action functions
+- `FormData.get(...)` and `FormData.getAll(...)`
+- `NextRequest`, `RouteContext`, `ctx.params`, and `request.nextUrl.searchParams`
+- `serverActions.allowedOrigins` and `serverActions.bodySizeLimit`
+- `export const dynamic`, `export const revalidate`, `fetch(..., { cache })`, and `use cache`
+
+### False Positive Boundary: Public Route Handlers
+
+Unauthenticated Route Handlers are not automatically vulnerable. Public metadata, health, sitemap-adjacent, and product-information endpoints can be intentionally public.
+
+```ts
+// BENIGN when documented as public and returning non-sensitive metadata
+export async function GET() {
+  return Response.json({
+    product: "public-docs",
+    docsVersion: "2026.06",
+  });
+}
+```
+
+Before reporting missing authentication, classify the handler's intended audience and the sensitivity of returned data or performed action.
+
+### Server Action Missing Auth/Authz (API1, API2, API5)
+
+```ts
+// VULNERABLE: public mutation surface with no auth, ownership, or role check
+"use server";
+
+import { db } from "@/lib/db";
+
+export async function deleteProject(formData: FormData) {
+  const projectId = String(formData.get("projectId"));
+  await db.project.delete({ where: { id: projectId } });
+}
+```
+
+Remediation:
+
+```ts
+// SECURE: authenticate, validate, and authorize the object before mutation
+"use server";
+
+import { z } from "zod";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+const schema = z.object({ projectId: z.string().uuid() });
+
+export async function deleteProject(formData: FormData) {
+  const user = await auth.requireUser();
+  const { projectId } = schema.parse({
+    projectId: formData.get("projectId"),
+  });
+
+  const project = await db.project.findFirst({
+    where: { id: projectId, ownerId: user.id },
+  });
+
+  if (!project) {
+    throw new Error("Not found");
+  }
+
+  await db.project.delete({ where: { id: projectId } });
+}
+```
+
+### Route Params and Search Params BOLA / Property Authorization (API1, API3)
+
+```ts
+// VULNERABLE: user-controlled params select object and included sensitive fields
+import type { NextRequest } from "next/server";
+
+export async function GET(
+  request: NextRequest,
+  ctx: RouteContext<"/api/projects/[id]">
+) {
+  const { id } = await ctx.params;
+  const includeBilling =
+    request.nextUrl.searchParams.get("includeBilling") === "true";
+
+  return Response.json(
+    await db.project.findUnique({
+      where: { id },
+      include: { billing: includeBilling },
+    })
+  );
+}
+```
+
+Reviewers should verify ownership checks for `ctx.params`, `RouteContext`, and path segment values, plus field/property authorization when `nextUrl.searchParams` controls included relationships or sensitive response fields.
+
+### Server Action Origin and Body Controls (API4, API8)
+
+```js
+// REVIEW HOTSPOT: broad preview origins and large action payloads
+module.exports = {
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["*.example.com", "*.preview.example.com"],
+      bodySizeLimit: "50mb",
+    },
+  },
+};
+```
+
+Require evidence that:
+
+- `serverActions.allowedOrigins` is minimal for the deployment topology and does not trust shared preview/proxy domains without a documented boundary.
+- Reverse-proxy deployments document why additional origins are needed.
+- `serverActions.bodySizeLimit` increases are tied to a concrete use case and paired with authentication, validation, rate limits, and file/content controls where relevant.
+
+### Route Handler Cache and Static Rendering Data Exposure (API3, API8)
+
+```ts
+// VULNERABLE: sensitive admin data opted into static caching
+export const dynamic = "force-static";
+
+export async function GET() {
+  const users = await db.user.findMany({
+    select: { id: true, email: true, role: true },
+  });
+
+  return Response.json(users);
+}
+```
+
+Inspect `dynamic`, `revalidate`, `fetch(..., { cache })`, and `use cache` around Route Handlers that return per-user, tenant, admin, financial, regulated, or otherwise sensitive data. Cache findings require both sensitivity evidence and cache/static behavior evidence.
+
+### Evidence Matrix
+
+| Surface | Evidence to Capture | API Risk Mapping |
+|---|---|---|
+| Route Handler | File path, HTTP method export, public/private intent, auth middleware, returned data sensitivity | API1, API2, API3, API5, API8 |
+| Server Action | `"use server"` location, call sites, auth check, object authorization, role check, schema validation | API1, API2, API3, API5 |
+| FormData parsing | `FormData.get` fields, allowlist/schema, type conversion, file/body size controls | API3, API4 |
+| Route/search params | `ctx.params`, `RouteContext`, `nextUrl.searchParams`, ownership and field-authorization checks | API1, API3 |
+| Server Actions config | `allowedOrigins`, reverse proxy context, `bodySizeLimit`, rate limiting and validation evidence | API4, API8 |
+| Cache/static config | `dynamic`, `revalidate`, fetch cache options, `use cache`, response sensitivity | API3, API8 |
+
+### Review Checklist
+
+- [ ] Route inventory includes `app/**/route.ts` and all HTTP method exports.
+- [ ] Server Actions are treated as API mutation endpoints, not as trusted private functions.
+- [ ] Public Route Handlers are documented as public and limited to non-sensitive data.
+- [ ] Every Server Action that mutates data authenticates the caller and enforces object/function authorization.
+- [ ] `FormData` and search parameter parsing use allowlisted server-side validation.
+- [ ] Broad `serverActions.allowedOrigins` and increased `bodySizeLimit` settings have deployment-specific justification and compensating controls.
+- [ ] Sensitive Route Handler responses are not opted into static caching or shared caching without explicit safe cache semantics.
