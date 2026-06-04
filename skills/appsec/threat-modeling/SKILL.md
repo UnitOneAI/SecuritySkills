@@ -13,7 +13,7 @@ phase: [design, review]
 frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -182,6 +182,25 @@ Every data flow in the DFD must be annotated with the following properties:
 
 Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
 
+### Asynchronous Messaging Trust Boundary Evidence
+
+When the system uses Kafka, RabbitMQ, SQS, Pub/Sub, EventBridge, Celery, or another queue/event bus, model the producer, broker/topic/queue, consumer, dead-letter queue, and redrive path as separate trust-boundary elements. Do not assume that authorization performed by the producer is still valid when the consumer executes the message later.
+
+Capture the following evidence for each asynchronous flow:
+
+| Field | Evidence to Capture | Why It Matters |
+|-------|---------------------|----------------|
+| Producer identity | Service principal, IAM role, API key, or mTLS identity allowed to publish | Detects producer spoofing and over-broad publish permissions |
+| Consumer identity | Service principal, IAM role, runtime account, and subscription scope | Confirms the consumer is authorized for the work it performs |
+| Payload authorization context | Whether the consumer re-checks authorization against current state or trusts producer-provided claims | Prevents stale, forged, or replayed authorization decisions |
+| Delivery semantics | At-most-once, at-least-once, exactly-once where supported, retry count, and ordering guarantee | Surfaces duplicate execution and ordering hazards |
+| Idempotency control | Idempotency key, deduplication window, transaction boundary, or replay guard | Prevents double charges, duplicate provisioning, and repeated side effects |
+| Poison-message handling | Retry policy, backoff, circuit breaker, quarantine, and alerting | Prevents queue starvation and cascading failures |
+| DLQ and redrive controls | Who can read, purge, replay, or redrive messages and how this is audited | Prevents unauthorized replay, data exposure, and evidence loss |
+| Payload sensitivity | PII, credentials, tokens, payment data, or regulated data present in messages | Drives encryption, retention, masking, and access-control requirements |
+
+Flag any asynchronous flow where the consumer trusts producer-provided authorization, performs non-idempotent side effects without a replay guard, or allows unaudited DLQ redrive as requiring immediate threat analysis.
+
 ### Step 4: Apply STRIDE per Element
 
 For every component and data flow identified in the DFD, systematically ask the following questions organized by STRIDE category.
@@ -197,6 +216,7 @@ Threat: An attacker pretends to be another user, service, or system component.
 | Can an attacker replay a valid authentication token? | Stolen JWT without expiration |
 | Are API keys rotated and scoped appropriately? | Leaked long-lived API key |
 | Is multi-factor authentication enforced for privileged accounts? | Admin account takeover |
+| Can an unauthorized producer publish messages to a trusted topic or queue? | Forged queue message accepted as a trusted internal event |
 
 #### T — Tampering (Integrity Threats)
 
@@ -209,6 +229,7 @@ Threat: An attacker modifies data, code, or configuration without authorization.
 | Can CI/CD pipeline artifacts be tampered with? | Compromised build server, dependency confusion |
 | Are configuration files protected from unauthorized modification? | Writable config in production containers |
 | Is input validated and sanitized before processing? | XSS, command injection, deserialization attacks |
+| Can message payloads or attributes be altered before consumer processing? | Tampered event changes account ID, amount, or operation type |
 
 #### R — Repudiation (Audit and Accountability Threats)
 
@@ -221,6 +242,7 @@ Threat: A user or system denies performing an action, and the system cannot prov
 | Are logs centralized and protected from tampering? | Local-only logs on compromised host |
 | Do transactions include non-repudiation controls (digital signatures)? | Disputed financial transactions |
 | Is there sufficient log detail to reconstruct the sequence of events? | Logs missing source IP, user ID, or action detail |
+| Are publish, consume, retry, DLQ, and redrive actions auditable end to end? | Message replay cannot be traced to an actor or approval |
 
 #### I — Information Disclosure (Confidentiality Threats)
 
@@ -233,6 +255,7 @@ Threat: Sensitive data is exposed to unauthorized parties.
 | Do error messages or stack traces leak internal details? | Verbose error pages reveal DB schema |
 | Are secrets stored in environment variables or dedicated vaults? | Hardcoded credentials in source code |
 | Is access to data stores restricted by least-privilege IAM policies? | Over-permissive S3 bucket policy |
+| Do queues, topics, or DLQs retain sensitive payloads longer than necessary? | DLQ exposes PII or tokens to operators outside the normal service path |
 
 #### D — Denial of Service (Availability Threats)
 
@@ -245,6 +268,7 @@ Threat: An attacker makes the system unavailable to legitimate users.
 | Are resource quotas enforced (memory, CPU, storage, connections)? | Memory leak triggered by crafted input |
 | Is the system resilient to dependency failures (circuit breakers)? | Cascading failure from downstream outage |
 | Are there auto-scaling policies and DDoS mitigation services? | Sustained DDoS overwhelms fixed capacity |
+| Can poison messages, retry storms, or unbounded redrive exhaust consumers? | Queue backlog blocks legitimate work or repeatedly triggers expensive jobs |
 
 #### E — Elevation of Privilege (Authorization Threats)
 
@@ -257,6 +281,7 @@ Threat: An attacker gains access to resources or actions beyond their authorized
 | Are privilege boundaries enforced in containerized environments? | Container escape, privileged container |
 | Can an attacker exploit deserialization or injection for code execution? | Remote code execution via insecure deserialization |
 | Are default credentials and unnecessary services removed? | Default admin/admin on management interfaces |
+| Does the consumer re-authorize requested actions instead of trusting the producer? | Compromised producer triggers privileged downstream actions |
 
 ### Step 5: Build Component-Threat Matrix
 
@@ -389,6 +414,12 @@ Rank mitigations using the following prioritization criteria:
 
 ## 5. Output Format — Threat Register
 
+If asynchronous flows are present, include a Queue Evidence Matrix before the threat register:
+
+| Queue/Topic | Producer | Consumer | Authz Recheck | Delivery Semantics | Idempotency Control | DLQ/Redrive Control | Sensitive Payload | Open Threat IDs |
+|-------------|----------|----------|---------------|--------------------|---------------------|---------------------|-------------------|-----------------|
+| `orders.created` | Checkout API | Fulfillment Worker | Yes, current order owner checked before execution | At-least-once, ordered per order ID | `order_id` idempotency key with processed-event table | DLQ redrive requires break-glass approval and audit log | PII: shipping address | TM-007, TM-008 |
+
 Produce the threat register as a structured table. Each row represents one identified threat.
 
 | Threat ID | STRIDE Category | Description | Affected Component | ATT&CK TTP | Likelihood | Impact | Severity | Mitigation | Owner | Status |
@@ -489,3 +520,6 @@ This skill processes user-supplied content that may include system descriptions,
 8. **NIST SP 800-154** — Guide to Data-Centric System Threat Modeling — https://csrc.nist.gov/publications/detail/sp/800-154/draft
 9. **STRIDE Original Paper** — Kohnfelder, L. & Garg, P. (1999). "The Threats to Our Products." Microsoft Internal Document.
 10. **OWASP Risk Rating Methodology** — https://owasp.org/www-community/OWASP_Risk_Rating_Methodology
+11. **Amazon SQS at-least-once delivery** — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues-at-least-once-delivery.html
+12. **Amazon SQS dead-letter queues** — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html
+13. **Apache Kafka message delivery semantics** — https://kafka.apache.org/documentation/#semantics
