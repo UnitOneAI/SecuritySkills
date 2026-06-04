@@ -1,0 +1,72 @@
+case: conditional_access_phishing_resistant_admins
+expected: should_not_trigger
+description: >
+  Security Defaults are intentionally disabled because enabled Conditional
+  Access policies enforce phishing-resistant MFA strength for privileged roles
+  and document break-glass exclusions.
+
+security_defaults:
+  enabled: false
+  disabled_reason: Conditional Access provides stronger scoped controls.
+
+conditional_access:
+  policies:
+    - name: require-phishing-resistant-mfa-for-admins
+      state: enabled
+      include_roles:
+        - Global Administrator
+        - Privileged Role Administrator
+        - Conditional Access Administrator
+        - Security Administrator
+        - Privileged Authentication Administrator
+      include_resources:
+        - all_cloud_apps
+      grant_controls:
+        require_authentication_strength:
+          display_name: Phishing-resistant MFA
+          policy_type: builtIn
+          allowed_combinations:
+            - fido2_security_key
+            - windows_hello_for_business
+            - certificate_based_authentication_multifactor
+      exclude_users:
+        - breakglass-admin-1
+        - breakglass-admin-2
+      report_only: false
+
+authentication_methods:
+  fido2_security_key:
+    enabled: true
+    include_groups:
+      - privileged-admins
+  windows_hello_for_business:
+    enabled: true
+    include_groups:
+      - privileged-admins
+  certificate_based_authentication:
+    enabled: true
+    include_groups:
+      - privileged-admins
+  sms:
+    enabled: false
+    include_groups: []
+  voice:
+    enabled: false
+    include_groups: []
+
+break_glass:
+  accounts:
+    - breakglass-admin-1
+    - breakglass-admin-2
+  owner: identity-security
+  monitoring_alert: Emergency access account sign-in or credential change
+  credential_vaulting: offline hardware security key custody record
+  test_cadence: quarterly
+  last_tested_at: "<last-quarter RFC3339>"
+
+review_expectation:
+  status: Pass
+  reason: >
+    The review should not flag Security Defaults disabled when enabled
+    Conditional Access policies provide stronger phishing-resistant controls
+    and documented emergency-access exceptions.

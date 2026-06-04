@@ -1,0 +1,40 @@
+case: external_mfa_trust_unverified
+expected: should_trigger
+description: >
+  A sensitive application accepts external users with generic MFA and broad
+  home-tenant MFA trust, but lacks evidence that the home-tenant method
+  satisfies the resource-tenant requirement.
+
+external_user_access:
+  sensitive_app: finance-portal
+  included_external_user_types:
+    - b2b_collaboration_guest
+    - b2b_direct_connect_user
+  conditional_access:
+    policy_name: require-mfa-for-finance-guests
+    state: enabled
+    include_resources:
+      - finance-portal
+    grant_controls:
+      built_in_controls:
+        - mfa
+  cross_tenant_access_settings:
+    inbound_trust:
+      default_trust_mfa_from_home_tenant: true
+      partner_tenants: all
+      accepted_home_tenant_methods: unknown
+      owner: null
+      reviewed_at: null
+  missing_evidence:
+    - resource_tenant_authentication_strength
+    - accepted_home_tenant_methods
+    - partner_tenant_allowlist
+    - resource_tenant_registration_or_challenge_path
+
+review_expectation:
+  status: Fail
+  severity: High
+  reason: >
+    The reviewer should not pass sensitive external access from a broad
+    require-MFA policy when cross-tenant trust and method-strength evidence are
+    unknown.

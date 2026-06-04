@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -152,6 +152,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Authentication Strength Evidence:** <required for Section 1 MFA findings; CA grant control, strength, method policy scope, and admin/guest coverage>
+- **External MFA Trust Evidence:** <required when guests or partner tenants are in scope; inbound trust settings, accepted methods, and resource-tenant fallback>
+- **Exception Evidence:** <break-glass, service account, service principal, or emergency-access exclusions with owner, monitoring, vaulting, and test cadence>
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -175,7 +178,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 | Section | Domain | Key Focus Areas |
 |---------|--------|-----------------|
-| 1 | Identity and Access Management | Entra ID security defaults, MFA enforcement, Conditional Access policies, guest user management, PIM configuration |
+| 1 | Identity and Access Management | Entra ID security defaults, MFA enforcement, authentication strength, Conditional Access policies, external MFA trust, guest user management, PIM configuration |
 | 2 | Microsoft Defender for Cloud | Defender plan enablement (Servers, App Service, SQL, Storage, Containers, Key Vault, DNS, ARM), security contacts, auto-provisioning |
 | 3 | Storage Accounts | HTTPS enforcement, infrastructure encryption, public access, network rules, soft delete, CMK encryption, TLS version |
 | 4 | Database Services | SQL auditing, firewall rules, threat detection, SSL enforcement, TDE, Entra ID admin, Cosmos DB public access |
@@ -200,6 +203,10 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Treating all MFA controls as equivalent.** `built_in_controls = ["mfa"]`, legacy per-user MFA, and `require_mfa: true` prove ordinary MFA, not phishing-resistant authentication strength for privileged roles or sensitive apps.
+8. **Passing Conditional Access from policy names alone.** A policy named "Require MFA" is not enough. Verify enabled state, include/exclude scope, grant controls, authentication method policy scope, and whether included users can register methods that satisfy the required strength.
+9. **Assuming home-tenant MFA is always acceptable for external users.** Cross-tenant MFA trust, partner tenant scope, accepted method combinations, and resource-tenant fallback must be evidenced before passing guest access to sensitive resources.
+10. **Flagging documented break-glass exclusions as failures.** Emergency access accounts should normally be excluded from broad Conditional Access lockout risks, but they need separate owner approval, monitoring, vaulting, and periodic test evidence.
 
 ---
 
@@ -222,6 +229,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Microsoft Azure Foundations Benchmark v2.1.0: https://www.cisecurity.org/benchmark/azure
 - Microsoft Defender for Cloud Documentation: https://learn.microsoft.com/en-us/azure/defender-for-cloud/
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
+- Conditional Access authentication strengths: https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-strengths
+- Phishing-resistant MFA for administrator roles: https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-admin-phish-resistant-mfa
+- Authentication strength for external users: https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-guests-mfa-strength
+- Emergency access accounts in Microsoft Entra ID: https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/security-emergency-access
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
@@ -231,4 +242,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added authentication strength, external MFA trust, and break-glass evidence gates for Section 1 identity findings.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.

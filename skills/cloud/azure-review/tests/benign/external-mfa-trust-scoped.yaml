@@ -1,0 +1,47 @@
+case: external_mfa_trust_scoped
+expected: should_not_trigger
+description: >
+  Guest access to a sensitive app uses a resource-tenant authentication
+  strength policy and partner-specific inbound MFA trust with reviewed method
+  evidence.
+
+external_user_access:
+  sensitive_app: finance-portal
+  included_external_user_types:
+    - b2b_collaboration_guest
+  conditional_access:
+    policy_name: require-phishing-resistant-mfa-for-finance-guests
+    state: enabled
+    include_resources:
+      - finance-portal
+    grant_controls:
+      require_authentication_strength:
+        display_name: Phishing-resistant MFA
+        policy_type: builtIn
+        allowed_combinations:
+          - fido2_security_key
+          - certificate_based_authentication_multifactor
+    exclude_users:
+      - finance-breakglass-guest-admin
+  cross_tenant_access_settings:
+    inbound_trust:
+      default_trust_mfa_from_home_tenant: false
+      partner_tenants:
+        - tenant_id: "11111111-2222-3333-4444-555555555555"
+          name: approved-auditor-tenant
+          trust_mfa_from_home_tenant: true
+          accepted_home_tenant_methods:
+            - fido2_security_key
+            - certificate_based_authentication_multifactor
+          owner: vendor-risk
+          ticket: VR-2026-042
+          reviewed_at: "<last-review RFC3339>"
+  fallback_path:
+    resource_tenant_registration_required_when_home_strength_missing: true
+    guest_registration_group: finance-portal-guest-strong-auth
+
+review_expectation:
+  status: Pass
+  reason: >
+    The reviewer can connect the sensitive app policy, partner-specific MFA
+    trust, accepted methods, owner review, and resource-tenant fallback path.

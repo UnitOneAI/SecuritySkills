@@ -21,6 +21,22 @@ resource "azuread_authentication_strength_policy" { ... }
 
 **Note:** Security Defaults should be disabled ONLY when Conditional Access policies provide equivalent or stronger controls.
 
+When Security Defaults are disabled, do not treat the setting as an automatic
+failure. Require evidence that Conditional Access provides the intended control:
+
+| Evidence | Pass condition | Finding trigger |
+|----------|----------------|-----------------|
+| Policy state | Relevant policies are `enabled` for enforcement | Policy is `disabled`, `reportOnly`, or only present as a draft/template |
+| Scope | Policies cover the required users, directory roles, user risks, apps, and resources | Privileged roles, sensitive apps, guests, or all-user scope are omitted without documented rationale |
+| Grant control | Policy uses `Require authentication strength` with the required built-in or custom strength, or generic MFA only where the review objective permits it | Generic `mfa` is counted as phishing-resistant MFA, or the grant control is missing |
+| Authentication methods | Method policies enable the methods needed by the included users/groups | Users in scope cannot register any method that satisfies the required strength |
+| Exceptions | Break-glass and service-principal exclusions have owner, monitoring, vaulting, and test evidence | Broad user/group exclusions, stale exception groups, or no break-glass monitoring evidence |
+
+If these artifacts are absent, mark the control **Not Evaluable** rather than
+passing based on a policy name such as "Require MFA." Mark it **Fail** when the
+available configuration proves that the relevant users/resources are not
+covered.
+
 #### CIS 1.1.2 -- Ensure that Multi-Factor Authentication is enabled for all privileged users
 
 Check for Conditional Access policies requiring MFA for admin roles:
@@ -38,13 +54,83 @@ resource "azuread_conditional_access_policy" {
 }
 ```
 
+Authentication strength gate for privileged roles:
+
+- For Global Administrator, Privileged Role Administrator, Conditional Access
+  Administrator, Security Administrator, Privileged Authentication
+  Administrator, Application Administrator, Cloud Application Administrator,
+  Exchange Administrator, SharePoint Administrator, User Administrator,
+  Authentication Administrator, Password Administrator, Billing Administrator,
+  and Helpdesk Administrator, record whether the enforcing policy uses
+  phishing-resistant MFA strength or only generic MFA.
+- Treat `built_in_controls = ["mfa"]`, `require_mfa: true`, legacy per-user
+  MFA, or a policy named "MFA" as ordinary MFA evidence, not as
+  phishing-resistant evidence.
+- Require authentication method policy evidence for the included admins:
+  FIDO2/passkeys, Windows Hello for Business or platform credentials, and
+  multifactor certificate-based authentication for phishing-resistant
+  strength; SMS, voice, push, and OATH methods alone do not satisfy that
+  stronger gate.
+- Confirm included admin roles are not bypassed through nested groups,
+  administrative unit-scoped/custom roles, stale exclusions, named-location
+  exclusions, device-platform exclusions, or report-only policy state.
+- Verify break-glass exclusions separately: at least two emergency accounts
+  where possible, owner approval, monitored use/change alerts, credential or
+  key vaulting evidence, and a periodic test cadence. Do not flag the exclusion
+  itself when this evidence exists.
+
+Use this finding calibration:
+
+| Scenario | Expected status |
+|----------|-----------------|
+| Security Defaults disabled, enabled CA policy covers privileged roles, grant control requires phishing-resistant MFA strength, admins can register allowed methods, and break-glass exclusions are documented | Pass |
+| Enabled CA policy covers privileged roles but only grants generic MFA while admin method policy allows SMS/voice/push only | Fail for phishing-resistant privileged-role evidence |
+| CA policy is report-only or excludes broad admin groups without owner/ticket/expiry | Fail |
+| Policy and method data are missing from the repository/export | Not Evaluable |
+
 #### CIS 1.1.3 -- Ensure that Multi-Factor Authentication is enabled for all non-privileged users
 
-Verify MFA requirement extends to all users, not just admins.
+Verify MFA requirement extends to all users, not just admins. For sensitive
+apps, high-risk users, finance/admin portals, and privileged operations,
+distinguish the configured authentication strength from the broad MFA grant
+control. Generic MFA can be acceptable for normal users when the policy/risk
+model says so, but should not silently downgrade a resource that requires
+passwordless or phishing-resistant strength.
 
 #### CIS 1.1.4 -- Ensure that 'Allow users to remember multi-factor authentication on devices they trust' is Disabled
 
 Check for MFA trust settings that weaken the control.
+
+For guests and external users, evaluate Conditional Access and cross-tenant
+access settings together:
+
+- Identify policies that include `Guest or external users`, B2B collaboration
+  users, direct-connect users, partner tenant groups, or sensitive apps exposed
+  to external identities.
+- Record whether the resource tenant requires generic MFA, passwordless MFA, a
+  built-in phishing-resistant MFA strength, or a custom authentication
+  strength.
+- Check inbound cross-tenant access settings for MFA trust. If the resource
+  tenant trusts MFA from the home tenant, require evidence of the trusted
+  partner tenant IDs, default vs partner-specific settings, accepted method
+  combinations, owner approval, review date, and whether the home-tenant claim
+  can satisfy the resource-tenant strength.
+- Do not pass external access based only on `require_mfa: true` when the
+  accepted home-tenant methods are unknown, all tenants are trusted by default,
+  or the sensitive app requires phishing-resistant authentication strength.
+- If external authentication methods, email OTP, SAML/WS-Fed, or Google
+  federation are in use, note whether authentication strength applies; where it
+  does not, evaluate the generic MFA grant control and residual risk instead.
+
+Suggested external-user evidence fields:
+
+| Field | Evidence to capture |
+|-------|---------------------|
+| External user scope | Included guest/external user types, partner tenant IDs, and sensitive apps/resources |
+| Resource-tenant CA grant | Generic MFA, passwordless MFA strength, phishing-resistant MFA strength, or custom strength |
+| Cross-tenant MFA trust | Default and partner-specific inbound trust settings, review date, and owner/ticket |
+| Method compatibility | Whether home-tenant or resource-tenant methods can satisfy the required strength |
+| Fallback path | Resource-tenant registration or challenge path when MFA trust is disabled or insufficient |
 
 ### CIS 1.2 -- Conditional Access Policies
 

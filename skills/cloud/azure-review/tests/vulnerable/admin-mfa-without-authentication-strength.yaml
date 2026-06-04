@@ -1,0 +1,54 @@
+case: admin_mfa_without_authentication_strength
+expected: should_trigger
+description: >
+  Privileged roles have an enabled Conditional Access policy that requires
+  ordinary MFA, but admins are not enabled for any phishing-resistant method.
+
+security_defaults:
+  enabled: false
+
+conditional_access:
+  policies:
+    - name: require-mfa-for-admins
+      state: enabled
+      include_roles:
+        - Global Administrator
+        - Privileged Role Administrator
+        - Security Administrator
+      include_resources:
+        - all_cloud_apps
+      grant_controls:
+        built_in_controls:
+          - mfa
+      exclude_users:
+        - breakglass-admin-1
+
+authentication_methods:
+  allowed_for_admins:
+    sms:
+      enabled: true
+    voice:
+      enabled: true
+    push_notification:
+      enabled: true
+  phishing_resistant_methods:
+    fido2_security_key:
+      enabled_for_admins: false
+    windows_hello_for_business:
+      enabled_for_admins: false
+    certificate_based_authentication:
+      enabled_for_admins: false
+
+break_glass:
+  accounts:
+    - breakglass-admin-1
+  monitoring_alert: null
+  credential_vaulting: null
+  test_cadence: null
+
+review_expectation:
+  status: Fail
+  severity: High
+  reason: >
+    Generic MFA and phishable methods should not satisfy the
+    phishing-resistant MFA evidence gate for privileged roles.
