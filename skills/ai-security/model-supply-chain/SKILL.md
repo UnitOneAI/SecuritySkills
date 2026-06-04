@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -77,6 +77,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Hash/checksum verification code | Download scripts, model loading code | Confirms integrity verification exists |
 | Model card or documentation | Model registry page, repo docs | Reveals training data, intended use, known limitations |
 | Training data sources | Data pipeline code, dataset configs, documentation | Identifies poisoning surface and licensing risk |
+| Dataset rights and deletion evidence | Dataset manifests, license snapshots, consent records, DSR logs, contract terms | Determines whether training use is authorized and whether removals propagate to snapshots, adapters, and retraining queues |
 | Fine-tuning pipeline | Training scripts, configs, orchestration code | Exposes data injection and pipeline tampering risks |
 | Inference dependencies | requirements.txt, pyproject.toml, Dockerfile, package.json | Identifies vulnerable libraries in serving path |
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
@@ -145,6 +146,10 @@ Assess the provenance, integrity, and governance of data used to train or fine-t
 - No data quality pipeline: missing steps for deduplication, PII removal, content filtering, or anomaly detection.
 - Training data stored in locations accessible to broad groups of users without write-access controls.
 - Dataset configuration files that reference external URLs without integrity checks.
+- Dataset manifests that omit license, consent basis, covered use, retention class, deletion workflow, contract expiry, or last rights review.
+- User deletion requests, data subject requests, or partner contract expirations applied only to the application database, not to fine-tuning snapshots, adapters, embedding stores, evaluation sets, or retraining queues.
+- Public or partner datasets used for commercial model training without a captured terms/license snapshot from the date the training dataset was assembled.
+- Synthetic datasets whose source data, prompt seeds, or generator inputs have restricted rights but are treated as rights-free because the final records are synthetic.
 
 **Detection methods using allowed tools:**
 
@@ -159,18 +164,44 @@ Grep: "dedup|deduplicate|filter|clean|sanitize|validate|quality" in **/*data*.{p
 # Find data source references
 Grep: "huggingface.co/datasets|kaggle|common.crawl|laion|pile|c4|openwebtext" in **/*.{py,yaml,yml,json,md}
 Grep: "s3://|gs://|az://|https://" in **/*data*.{py,yaml,yml,json,toml}
+
+# Check dataset rights, deletion, and retention controls
+Grep: "license|terms|consent|contract|agreement|expiry|expiration|retention|delete|deletion|dsr|erasure|opt.out|rights" in **/*data*.{py,yaml,yml,json,md}
+Grep: "manifest|dataset.version|snapshot|lineage|dvc|mlflow|transform_digest|adapter|embedding" in **/*.{py,yaml,yml,json,md}
 ```
+
+**Dataset rights evidence to collect:**
+
+| Evidence Field | What It Proves | Finding if Missing |
+|---|---|---|
+| Dataset source and version | The exact source snapshot used for training or fine-tuning | Cannot reproduce or audit authorization |
+| License/terms snapshot date | Terms allowed the intended use at dataset assembly time | License drift may hide forbidden training use |
+| Consent or lawful-use basis | User, customer, or partner data was authorized for model training | Training may be unauthorized even if technically reproducible |
+| Covered use and restrictions | Commercial use, fine-tuning, redistribution, retention, and synthetic-derivative limits | Dataset can be secure but not legally usable |
+| Retention class | Whether raw data, filtered rows, embeddings, adapters, or logs may persist | Review can falsely flag safe raw-data deletion or miss over-retention |
+| Deletion workflow and receipts | DSRs, opt-outs, and contract expirations propagate to snapshots, queues, adapters, and retraining | Deletions may stop at the app DB while model artifacts keep influence |
+| Last rights review | Rights evidence was refreshed after license, contract, or policy changes | Stale manifests may validate an expired permission |
 
 **What constitutes a finding:**
 
 | Condition | Severity |
 |---|---|
+| Training or fine-tuning uses data with missing, expired, or incompatible rights for the intended deployment | High |
+| User deletion requests, opt-outs, or partner contract expirations do not propagate to training snapshots, adapters, embedding stores, or retraining queues | High |
 | Training data includes unfiltered user-generated content with no poisoning controls | High |
 | No data versioning or snapshot mechanism for training datasets | High |
 | Fine-tuning data sourced from external partners without integrity verification | High |
+| Dataset rights evidence exists but has no license/terms snapshot date, covered-use statement, or last rights review | Medium |
+| Synthetic data lacks lineage to restricted source data or generator inputs | Medium |
 | Public dataset used without content audit or filtering pipeline | Medium |
 | No data lineage documentation (what data, from where, when, what processing) | Medium |
 | Training data storage lacks write-access controls | Medium |
+
+**False-positive guidance:**
+
+- Do not penalize a pipeline merely because raw sensitive data is not retained. A dataset can be auditable when it keeps immutable manifests, license snapshots, deletion receipts, transform digests, and reproducible filtering steps without storing raw PII indefinitely.
+- Do not require every model artifact to be retrained immediately after each deletion request when the organization has documented deletion cutoffs, retraining cadence, adapter retirement, and user-facing limitations. Flag the gap only when deletion state is absent, stale, or cannot be traced into downstream artifacts.
+- Treat a dataset manifest as incomplete if it proves provenance but not authorization. "Where the data came from" and "whether the model may use it" are separate gates.
 
 ---
 
@@ -291,6 +322,7 @@ A model card (Mitchell et al., 2019) is the primary documentation artifact for u
 | Model details | Architecture, parameter count, base model, version | Cannot verify what you are deploying |
 | Intended use | Target tasks, in-scope and out-of-scope uses | Misuse in unvalidated contexts |
 | Training data | Dataset names, sources, collection methodology, filtering | Cannot assess poisoning risk or bias |
+| Dataset rights | License/terms snapshot, consent or lawful-use basis, retention class, deletion workflow, rights review date | Cannot determine whether training use is authorized or deletion-compliant |
 | Training procedure | Hyperparameters, compute, training duration, framework version | Cannot reproduce or audit training |
 | Evaluation results | Benchmarks, metrics, evaluation datasets | Cannot assess capability claims |
 | Ethical considerations | Known biases, failure modes, sensitive use cases | Unmitigated bias in production |
@@ -313,6 +345,7 @@ Grep: "model.card|intended.use|training.data|evaluation|limitations|ethical" in 
 |---|---|
 | No model card exists for a production-deployed model | High |
 | Training data section missing or states "not disclosed" | High |
+| Dataset rights, deletion, retention, or license basis omitted for data used in fine-tuning | High |
 | No evaluation results or benchmarks documented | Medium |
 | Limitations section absent or trivially brief | Medium |
 | Model card exists but has not been updated for current model version | Low |
@@ -357,8 +390,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Severity | Criteria | Response SLA |
 |---|---|---|
 | **Critical** | Arbitrary code execution via model loading, known exploited CVE in inference path, or confirmed model tampering. Exploitation requires no special access beyond normal deployment flow. | Immediate -- block deployment |
-| **High** | No provenance verification on production models, uncontrolled training data pipeline, or dangerous deserialization patterns. Clear attack path exists. | 7 days -- remediate before next release |
-| **Medium** | Incomplete model documentation, missing reproducibility controls, or absent behavioral testing. Exploitation requires specific conditions or insider access. | 30 days -- schedule remediation |
+| **High** | No provenance verification on production models, uncontrolled training data pipeline, dangerous deserialization patterns, missing/expired/incompatible dataset rights, or deletion requests that do not propagate to model-training artifacts. Clear attack path or unauthorized training use exists. | 7 days -- remediate before next release; block new training runs until rights evidence is corrected |
+| **Medium** | Incomplete model documentation, missing reproducibility controls, incomplete dataset rights snapshots, or absent behavioral testing. Exploitation requires specific conditions or insider access. | 30 days -- schedule remediation |
 | **Low** | Defense-in-depth gaps, minor documentation omissions, or best practice deviations with limited direct risk. | 90 days -- track in backlog |
 | **Informational** | Recommendations for improvement with no current exploitable risk. | No SLA -- advisory |
 
@@ -382,6 +415,12 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|---|---|
 | [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
 
+## Dataset Rights and Deletion Lineage
+
+| Dataset | Version/Snapshot | License or Terms Snapshot | Consent / Use Basis | Retention Class | Deletion Propagation | Contract Expiry | Last Rights Review | Status |
+|---|---|---|---|---|---|---|---|---|
+| [dataset] | [manifest id] | [date/source] | [basis] | [raw/filtered/adapter/embedding] | [app DB/snapshot/adapter/retrain queue] | [date/N/A] | [date] | [authorized/gap/not evaluable] |
+
 ## Findings
 
 ### Finding [N]: [Title]
@@ -402,6 +441,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
+| Dataset rights and deletion lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
 | Model documentation | [description] | [recommendation] | [severity] |
@@ -440,6 +480,10 @@ Assess whether architectural and procedural controls exist to detect model backd
 4. **Assuming Hugging Face models are vetted.** Hugging Face Hub is a hosting platform, not a curation service. Any user can upload any model. While Hugging Face has introduced malware scanning and model signing capabilities, the majority of hosted models have no cryptographic provenance. Treat Hugging Face models as untrusted artifacts requiring verification, the same way you treat npm packages.
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
+
+6. **Confusing data provenance with data rights.** A dataset can be fully versioned, filtered, and reproducible while still being unauthorized for commercial training, adapter fine-tuning, synthetic derivative generation, or continued use after a deletion request or contract expiry. Rights evidence must travel with the dataset manifest.
+
+7. **Treating synthetic data as rights-free by default.** Synthetic examples still need lineage when they derive from restricted partner data, user data, copyrighted corpora, or prompts that embed sensitive records. Record the source, generator inputs, allowed use, and deletion impact before accepting synthetic data for training.
 
 ---
 
