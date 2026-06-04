@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -144,9 +144,23 @@ These Event IDs are the most security-relevant events in the Windows Security Ev
 | 5 | Service | Service start under a service account | Expected for known services; new service logons are suspicious |
 | 7 | Unlock | Workstation unlock | Normal for workstations |
 | 8 | NetworkCleartext | Logon with plaintext credentials over network | Security concern -- credentials exposed; legacy protocol indicator |
-| 9 | NewCredentials | Caller cloned token with new credentials (runas /netonly) | Lateral movement technique; always investigate |
+| 9 | NewCredentials | Caller cloned token with new credentials (runas /netonly) | Investigate when unexpected for the user, source host, process, network account, or outbound target |
 | 10 | RemoteInteractive | RDP logon | Expected for designated jump servers; suspicious on workstations or non-RDP servers |
 | 11 | CachedInteractive | Logon with cached domain credentials | Normal when DC is unreachable; suspicious if DC is available |
+
+**LogonType 9 / NewCredentials triage matrix:**
+
+Microsoft describes LogonType 9 as a local token clone that uses different credentials for outbound network connections. Treat it as a context-sensitive lateral-movement signal, not an automatic finding.
+
+| Evidence field | Benign calibration | Suspicious calibration |
+|----------------|--------------------|------------------------|
+| Process and command line | `runas.exe /netonly`, MMC, SQL Server Management Studio, or approved admin tooling | Unapproved binary, LOLBin chain, encoded PowerShell, or missing process evidence on a host where command-line logging should exist |
+| Network account | Named admin, read-only admin, or service account expected for the workflow | Privileged account not normally used from this host or user context |
+| Source host role | Admin workstation, jump host, management server, or approved automation runner | Ordinary workstation, kiosk, shared desktop, or newly compromised endpoint |
+| Outbound target | Approved admin console, file share, database, or management plane in the change ticket | Multiple servers, domain controllers, admin shares, or hosts outside normal scope |
+| Related events | Event 4648 explicit credentials, 4688/Sysmon process creation, EDR process tree, and change ticket align | Missing 4648/process context, followed by SMB/RDP/WMI/WinRM bursts, privilege events, or unusual Kerberos/NTLM activity |
+
+Use `P4/Informational` for expected NewCredentials use with owner and change evidence, `P3` when key context is missing, and `P2` or higher when Type 9 is paired with unusual privileged account use, lateral-movement protocols, or post-logon attacker behavior.
 
 #### Process and Service Events
 
@@ -243,7 +257,7 @@ Identify deviations from established baselines that may indicate malicious activ
 | Category | Baseline Metric | Anomaly Indicator | Example |
 |----------|----------------|-------------------|---------|
 | **Temporal** | Normal working hours for user/system | Activity outside established hours | Domain admin logon at 3:00 AM on a holiday |
-| **Volumetric** | Average daily event count per source | Significant deviation from mean (> 2 std dev) | 500 failed logons from a host that averages 5 |
+| **Volumetric** | Daily/hourly event count per entity and source | Deviation from an entity-aware baseline; use mean/stddev only when the distribution supports it | 500 failed logons from a host that normally has 5, or a rare privileged event outside an approved maintenance window |
 | **Geographic** | Normal logon locations | Logon from new country or impossible travel | US-based user authenticates from Eastern Europe |
 | **Behavioral** | Normal processes, commands, and network destinations | First-time process execution, new outbound destination | PowerShell on a server that has never run PowerShell |
 | **Relational** | Normal user-to-resource access patterns | Access to resources outside normal scope | Finance user accessing engineering source code repository |
@@ -257,11 +271,21 @@ Identify deviations from established baselines that may indicate malicious activ
 
 1. **Select the log source** and the specific metric to baseline (e.g., daily count of Event ID 4625 per source IP).
 2. **Collect 30-90 days** of historical data during a known-clean period.
-3. **Calculate statistics:** mean, median, standard deviation, 95th percentile, 99th percentile.
+3. **Calculate statistics:** mean, median, standard deviation, median absolute deviation, 95th percentile, 99th percentile, non-zero days, and maximum observed burst.
 4. **Identify recurring patterns:** daily cycles (business hours vs. off-hours), weekly cycles (weekday vs. weekend), monthly cycles (month-end processing).
-5. **Set thresholds:** Define anomaly thresholds at mean + 2 standard deviations for moderate alerts and mean + 3 standard deviations for high-priority alerts.
-6. **Document exclusions:** Record known legitimate outliers (patch Tuesday, quarterly audits, penetration tests) that should not trigger anomaly alerts.
-7. **Review and update baselines** quarterly or after significant environment changes.
+5. **Choose a threshold model:** Use mean + standard deviation only for reasonably dense and stable metrics. For sparse, bursty, or heavy-tailed security events, prefer entity-aware baselines, median/percentile thresholds, peer-group comparison, and explicit minimum-count or maintenance-window evidence.
+6. **Document exclusions:** Record known legitimate outliers (patch Tuesday, quarterly audits, penetration tests, approved admin maintenance) with owner, ticket, expiry, and revalidation trigger.
+7. **Record confidence:** Mark baselines as `strong`, `partial`, or `not evaluable` based on history length, data completeness, source health, entity coverage, and whether the assumed distribution fits the data.
+8. **Review and update baselines** quarterly or after significant environment changes.
+
+**Baseline model selection:**
+
+| Event shape | Recommended model | Avoid |
+|-------------|-------------------|-------|
+| Dense and stable counts | Mean/stddev plus percentile bands | Static thresholds with no review date |
+| Sparse administrative events | Entity-aware allowlist, maintenance-window evidence, peer group, and minimum-count logic | Treating one expected event as anomalous only because the historical mean is near zero |
+| Heavy-tailed or bursty activity | Median/MAD, percentiles, max burst, and documented outlier classes | Assuming normal distribution without checking variance and outliers |
+| Newly onboarded source | Temporary guardrail threshold plus `partial confidence` and revisit date | Calling absence of history a clean baseline |
 
 **Baseline metrics to establish:**
 
@@ -337,7 +361,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.1.0
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -375,7 +399,7 @@ Produce log analysis findings in this structure:
 | [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
-[Any baseline deviations noted, with comparison to established norms]
+[Any baseline deviations noted, baseline method used, history window, confidence, and known-good context such as maintenance/change evidence]
 
 ### Visibility Gaps
 [Log sources that were not available but would have provided relevant data]
@@ -451,6 +475,14 @@ A single Event ID can have very different meanings depending on the context. Eve
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
+### Pitfall 6: Treating NewCredentials as Automatically Malicious
+
+Windows LogonType 9 can indicate credential replay or lateral movement, but it is also generated by legitimate alternate-credential workflows such as `runas /netonly` from admin workstations. Do not escalate every Type 9 event by itself. Correlate process lineage, command line, network account, outbound target, source host role, related Event 4648, and change evidence before assigning severity.
+
+### Pitfall 7: Applying Mean and Standard Deviation to Sparse Security Events
+
+Many security-relevant events are sparse or heavy-tailed: privileged alternate-credential use, admin maintenance, rare service restarts, and one-off cloud control-plane actions. Mean plus standard deviation can over-alert on expected one-off work or under-alert after a single large burst inflates the baseline. Use entity-aware baselines, percentiles, median/MAD, peer comparison, maintenance windows, and explicit confidence labels for sparse sources.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -478,3 +510,4 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+12. **Microsoft Event 4624 -- Logon types and NewCredentials fields** -- https://learn.microsoft.com/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4624
