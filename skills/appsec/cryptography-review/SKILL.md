@@ -88,7 +88,7 @@ Start by building a small inventory of every cryptographic operation in scope.
 
 ```regex
 # Python
-from cryptography|import cryptography|Crypto\.Cipher|hashlib\.|hmac\.|secrets\.|random\.
+from cryptography|import cryptography|Crypto\.Cipher|hashlib\.|from hashlib import|hmac\.|secrets\.|random\.|\b(md5|sha1|sha256|sha512)\b
 
 # JavaScript / TypeScript
 require\(['"]crypto['"]\)|from ['"]crypto['"]|createCipher|createDecipher|createHash|randomBytes|Math\.random|getRandomValues
@@ -221,13 +221,21 @@ Report hard-coded or weakly managed cryptographic keys when keys are:
   rotation or revocation path.
 - Logged, returned in error messages, included in crash dumps, or printed in
   debug output.
-- Loaded from environment variables without rotation, ownership, or access
-  control evidence for high-impact secrets.
+- Loaded through fallback defaults, committed environment files, container
+  definitions, deployment manifests, or scripts that expose static plaintext key
+  material.
+- Shown by vault, KMS, orchestrator, or secrets-manager evidence to have broad
+  unaudited access, no ownership, no rotation path, or no revocation path.
 
 ### 4.2 Review Questions
 
 - Who can create, read, rotate, disable, and destroy keys?
 - Is key access scoped to the service and environment that needs it?
+- If source code loads keys from environment variables, what external control
+  plane populates them: KMS sidecar, vault agent, orchestrator secret, CI secret,
+  runtime parameter store, or a committed/plaintext config?
+- Does that external control plane provide owner, access scope, audit log,
+  rotation, and revocation evidence?
 - Does the design support rotation without re-encrypting everything in one
   outage-prone step?
 - Are data encryption keys separated from key encryption keys?
@@ -244,6 +252,19 @@ Report hard-coded or weakly managed cryptographic keys when keys are:
   deterministic and auditable.
 - Keep development keys separate from production keys and block production code
   from falling back to demo values.
+
+### 4.4 Environment Variable Guardrail
+
+Do not report an environment variable read as a key-management vulnerability by
+itself. Many production systems correctly inject keys through environment
+variables from a vault, KMS sidecar, orchestrator secret, CI secret, or runtime
+parameter store. Treat the source-code read as an inventory signal, then verify
+the external control plane before deciding.
+
+Report only when there is evidence of a concrete key-management weakness, such
+as a committed `.env` containing the key, a production fallback literal, a
+deployment manifest with static plaintext, excessive access to the secret, no
+owner, no audit trail, or no rotation/revocation path for a high-impact key.
 
 ---
 
