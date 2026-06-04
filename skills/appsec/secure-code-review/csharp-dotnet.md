@@ -218,7 +218,7 @@ public IActionResult CompleteOAuth(string redirectUri)
 Remediation: Parse and canonicalize the URL, require HTTPS, compare exact origin/path allowlist entries, and use a safe fallback.
 
 ```csharp
-// SECURE: exact parsed origin/path allowlist with canonical host comparison
+// SECURE: exact parsed authority/path allowlist, including any non-default port
 private static readonly HashSet<string> AllowedOAuthCallbacks =
     new(StringComparer.OrdinalIgnoreCase)
     {
@@ -231,7 +231,7 @@ public IActionResult CompleteOAuth(string redirectUri)
     if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri))
         return RedirectToAction("Login", "Account");
 
-    var canonical = $"{uri.Scheme}://{uri.IdnHost}{uri.AbsolutePath}";
+    var canonical = $"{uri.GetLeftPart(UriPartial.Authority)}{uri.AbsolutePath}";
     if (uri.Scheme != Uri.UriSchemeHttps || !AllowedOAuthCallbacks.Contains(canonical))
         return RedirectToAction("Login", "Account");
 
