@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -244,7 +244,7 @@ jobs:
 
 - OpenAPI specification is available and current (matches deployed API).
 - All API endpoints are included in the spec (undocumented endpoints are not tested).
-- API authentication is configured (Bearer tokens, API keys injected via ZAP headers).
+- API authentication is configured with a supported ZAP mechanism (context auth, `ZAP_AUTH_HEADER*`, Replacer, HTTP Sender script, or header-based session management).
 - Content-Type is set correctly for API requests (`application/json` for REST).
 - Rate limiting considerations: API scans should respect rate limits to avoid triggering WAF blocks.
 
@@ -282,7 +282,7 @@ Unauthenticated DAST scans miss the majority of an application's attack surface.
 |--------|----------|--------------|
 | **Form-based** | Traditional login forms | Login URL, username/password fields, logged-in/out indicators |
 | **Browser-based** | JavaScript-heavy SPAs, MFA flows | Selenium-based login script, ZAP browser launch |
-| **Header-based** | API tokens, Bearer auth | Static header injection (Authorization: Bearer <token>) |
+| **Header injection / session headers** | API tokens, Bearer auth | `ZAP_AUTH_HEADER*`, Replacer, HTTP Sender script, or `sessionManagement.method: "headers"` |
 | **Script-based** | Complex auth flows (OAuth2, SAML) | Custom Zest or Python script |
 
 **Browser-based authentication (preferred for modern apps):**
@@ -302,32 +302,52 @@ authentication:
     pollUnits: "requests"
 ```
 
-**Header-based authentication (for APIs):**
+**API header handling (for bearer-token APIs):**
 
 ```yaml
-# ZAP Automation Framework -- header-based auth
+# ZAP Automation Framework -- header-based session management
 env:
   contexts:
     - name: "api-context"
       urls:
         - "https://staging.example.com/api"
       authentication:
-        method: "header"
+        method: "manual"
+        verification:
+          method: "response"
+          loggedInRegex: "\"userId\""
+          loggedOutRegex: "\"unauthorized\""
+      sessionManagement:
+        method: "headers"
         parameters:
-          - header: "Authorization"
-            value: "Bearer ${API_TOKEN}"
+          Authorization: "Bearer: {%env:API_TOKEN%}"
 ```
+
+ZAP Automation Framework context authentication methods do not include `header`. For API bearer tokens generated outside ZAP, use process-level `ZAP_AUTH_HEADER`, `ZAP_AUTH_HEADER_VALUE`, and `ZAP_AUTH_HEADER_SITE` before ZAP starts, or use Automation Framework Replacer rules / HTTP Sender scripts when token injection needs custom logic. Use `sessionManagement.method: "headers"` when the context should maintain arbitrary headers during authenticated scanning.
+
+**API header-auth evidence:**
+
+| Evidence Field | Required Proof |
+|----------------|----------------|
+| Header mechanism | `ZAP_AUTH_HEADER*`, Replacer, HTTP Sender script, browser/client auth plus header-based session management, or another supported method |
+| Token source and refresh model | Static token, generated-before-scan token, or refreshed-during-scan flow |
+| Scope control | `ZAP_AUTH_HEADER_SITE`, context URL constraints, or equivalent host restriction for injected headers |
+| Plan validation | `zap.sh -cmd -autocheck <plan>` or equivalent Automation Framework validation output |
+| Auth verification | Logged-in/logged-out response checks, auth statistics, or protected endpoint response samples |
 
 **Verification checklist:**
 
 - [ ] Logged-in indicator regex is specific enough (not just checking for HTTP 200).
 - [ ] Logged-out indicator regex is defined (detects session expiry during scan).
 - [ ] Credentials are injected via environment variables (never hardcoded in plan files).
+- [ ] API header injection uses a supported mechanism, not `authentication.method: "header"`.
+- [ ] Header values are scoped to the intended host or context and are not sent to discovered third-party hosts.
+- [ ] At least one protected API request proves the scanner sent the expected authenticated header.
 - [ ] Test user has sufficient permissions to access the application's full attack surface.
 - [ ] Test user does NOT have admin privileges (test with realistic user role).
 - [ ] Session management is configured (ZAP re-authenticates when logged-out indicator is detected).
 
-**Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**.
+**Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Unsupported ZAP authentication methods that make authenticated API coverage unproven are **High**. Hardcoded credentials in scan configuration is **High**.
 
 ---
 
@@ -514,6 +534,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Setting | Status | Evidence |
 |---------|--------|---------|
 | Authenticated scanning | Yes/No | <auth method> |
+| API header auth evidence | Pass/Fail/Not applicable | <mechanism, token source, scope, validation, protected request proof> |
 | Scope restrictions | Yes/No | <include/exclude paths> |
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
@@ -576,7 +597,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 1. **Running active scans against production.** Active scanning sends injection payloads (SQL injection, XSS, command injection) that can modify data, trigger alerts, or cause service disruption. Active DAST must target staging or ephemeral environments only. Use passive-only baseline scans against production if any production scanning is required.
 
-2. **Skipping authenticated scanning because "it is hard to configure."** Unauthenticated DAST sees the login page and public content -- typically less than 10% of the application surface. The effort to configure authentication pays for itself immediately. Use browser-based authentication for SPAs and header-based for APIs.
+2. **Skipping authenticated scanning because "it is hard to configure."** Unauthenticated DAST sees the login page and public content -- typically less than 10% of the application surface. The effort to configure authentication pays for itself immediately. Use browser-based authentication for SPAs and supported header injection or header-based session management for APIs.
 
 3. **Not excluding destructive endpoints from scan scope.** ZAP's spider will follow every link and form action it finds. If a "Delete Account" or "Reset Database" endpoint is in scope, the scanner will exercise it. Explicitly exclude destructive paths in the scan context.
 
@@ -604,6 +625,9 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP Web Security Testing Guide v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
 - OWASP ZAP Documentation: https://www.zaproxy.org/docs/
 - ZAP Automation Framework: https://www.zaproxy.org/docs/automate/automation-framework/
+- ZAP Automation Framework Environment: https://www.zaproxy.org/docs/desktop/addons/automation-framework/environment/
+- ZAP Header Based Session Management: https://www.zaproxy.org/docs/desktop/addons/authentication-helper/session-header/
+- ZAP Handling Authentication Yourself: https://www.zaproxy.org/docs/getting-further/authentication/handling-auth-yourself/
 - ZAP GitHub Actions: https://www.zaproxy.org/docs/docker/github-actions/
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
 - OWASP API Security Top 10: https://owasp.org/API-Security/
@@ -614,4 +638,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **1.1.0** -- Replaced unsupported ZAP `authentication.method: "header"` API example with supported header handling mechanisms and API header-auth evidence requirements.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
