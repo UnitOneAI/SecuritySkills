@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-05"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -63,6 +63,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/appsec/api-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: business-logic-review
+    name: "Business Logic Review"
+    tags: [appsec, business-logic, workflow, abuse]
+    role: [appsec-engineer, security-engineer]
+    phase: [design, build, review]
+    activity: [review, assess]
+    frameworks: [OWASP-WSTG, OWASP-API-Security-2023, CWE]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/appsec/business-logic-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning
