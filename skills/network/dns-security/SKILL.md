@@ -6,14 +6,15 @@ description: >
   -- Use DNS Filtering Services). Auto-invoked when reviewing DNS configurations,
   DNSSEC deployment, or investigating DNS-based exfiltration and tunneling
   indicators. Produces a DNS security assessment covering DNSSEC validation,
-  protective DNS, and exfiltration detection patterns.
-tags: [network, dns, dnssec, exfiltration]
+  protective DNS, CAA issuance policy, domain delegation integrity, and
+  exfiltration detection patterns.
+tags: [network, dns, dnssec, caa, delegation, exfiltration]
 role: [security-engineer]
 phase: [operate]
-frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
+frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8, RFC-8659, ICANN-SAC044, OWASP-WSTG]
 difficulty: intermediate
-time_estimate: "20-40min"
-version: "1.0.0"
+time_estimate: "30-55min"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +24,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DNS Security Review
 
-A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide), CIS Controls v8 Control 9.2 (Use DNS Filtering Services), RFC 8659 CAA controls, ICANN SSAC domain-registration guidance, and OWASP WSTG subdomain takeover testing. This skill covers DNSSEC deployment, domain control-plane protections, delegation lifecycle integrity, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
 
 ---
 
@@ -43,6 +44,8 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 ## Context
 
 DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2 Section 2 identifies three primary DNS threat categories: DNS cache poisoning, DNS-based denial of service, and unauthorized zone data modification. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
+
+Public DNS assurance also depends on the domain control plane and delegation lifecycle. DNSSEC can validate malicious records if an attacker controls the registrar account, DNS provider account, or delegated hosted zone. A source-only review often cannot prove registrar locks, registry locks, CA account policy, Certificate Transparency monitoring, or hosted-zone ownership. Mark those fields `Not Evaluable` with required evidence instead of guessing pass or fail.
 
 ---
 
@@ -156,11 +159,64 @@ dnssec
 
 ---
 
-### Step 3: Encrypted DNS Transport Review
+### Step 3: Domain Control Plane and Delegation Integrity Review
+
+Complete this gate before assigning high confidence to public DNS posture. For each public apex domain and delegated public subdomain, verify registrar controls, CAA issuance controls, parent/child delegation consistency, and hosted-zone ownership. If the review only has local source files or Terraform and no registrar/provider/CT evidence, mark the unavailable fields `Not Evaluable`.
+
+#### 3.1 Registrar, Registry, and Nameserver-Change Controls
+
+For each domain, verify:
+
+- **Registrar identity:** The registrar is identified from authoritative registrar records or approved asset inventory.
+- **Registrar account protection:** MFA and change-approval workflow are documented for domain updates, especially nameserver, DS, transfer, and contact changes.
+- **Client locks:** Check for `clientTransferProhibited`, `clientUpdateProhibited`, and `clientDeleteProhibited` where appropriate.
+- **Registry/server locks:** For high-value apex, identity, email, or authentication domains, record whether `serverTransferProhibited`, `serverUpdateProhibited`, and `serverDeleteProhibited` are enabled, unavailable, or intentionally waived.
+- **Nameserver-change audit evidence:** Recent NS changes have ticket, approval, and registrar/provider audit evidence.
+- **DS status:** DNSSEC DS evidence is recorded separately from NS-set consistency.
+
+**Finding classification:** Missing registrar or registry evidence is `Not Evaluable`, not automatically vulnerable. High-value domains without documented registrar MFA/change approval or transfer/update protections are **Medium** or **High** depending on business criticality. Unauthorized or unexplained nameserver changes are **High**.
+
+#### 3.2 CAA and Certificate Issuance Policy (RFC 8659)
+
+For each public zone and delegated public application zone, verify:
+
+- **CAA `issue`:** Approved certificate authorities are explicitly authorized.
+- **CAA `issuewild`:** Wildcard issuance is restricted or intentionally forbidden.
+- **CAA `iodef`:** Incident reporting destination is present when the organization can receive and process CAA reports.
+- **Documented exceptions:** Multi-CA, managed CDN, or SaaS issuance exceptions are documented with owners.
+- **Compensating controls:** If CAA is absent, verify Certificate Transparency monitoring or CA account controls before assigning confidence.
+
+**Patterns to check in zone files or DNS exports:**
+
+```
+example.com. 300 IN CAA 0 issue "letsencrypt.org"
+example.com. 300 IN CAA 0 issuewild ";"
+example.com. 300 IN CAA 0 iodef "mailto:security@example.com"
+```
+
+**Finding classification:** Missing CAA is **Low** or **Medium** by itself. Raise severity when it affects high-value wildcard-capable zones, when CT monitoring is absent, or when CA account controls are weak or unknown.
+
+#### 3.3 Delegation Consistency, Orphaned Hosted Zones, and Dangling Records
+
+Compare external delegation evidence against provider and source-of-truth records:
+
+- **Parent NS set:** Delegation in the parent zone matches the intended DNS provider.
+- **Child NS set:** The delegated zone's authoritative nameservers match the parent NS set or have a documented migration window.
+- **Lame delegation:** Every delegated nameserver answers authoritatively for the zone.
+- **Hosted-zone ownership:** Cloud DNS or Route 53 hosted-zone IDs and account ownership are verified for delegated zones.
+- **Orphaned hosted zones:** Parent NS records do not point to deleted or unowned provider zones.
+- **Dangling CNAME/NS records:** Public records do not point to deprovisioned SaaS, CDN, storage, or cloud DNS targets that can be reclaimed.
+- **Live query evidence:** Record `NOERROR`, `NXDOMAIN`, `SERVFAIL`, `REFUSED`, and authoritative-answer evidence when available.
+
+**Finding classification:** Orphaned public NS delegation to a reclaimable provider is **High** or **Critical** depending on domain value and exploitability. Dangling CNAME records to reclaimable SaaS, CDN, or storage targets are **High** when public and user-facing. Parent/child NS mismatch or lame delegation is **Medium** or **High** depending on outage and takeover risk.
+
+---
+
+### Step 4: Encrypted DNS Transport Review
 
 Evaluate whether DNS queries are protected in transit.
 
-#### 3.1 DNS over HTTPS (DoH) and DNS over TLS (DoT)
+#### 4.1 DNS over HTTPS (DoH) and DNS over TLS (DoT)
 
 | Transport | Port | Standard | Use Case |
 |-----------|------|----------|----------|
@@ -194,11 +250,11 @@ forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
 
 ---
 
-### Step 4: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
+### Step 5: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
 
 CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (Response Policy Zones, defined by ISC) is the standard mechanism for DNS-based filtering on recursive resolvers.
 
-#### 4.1 RPZ Configuration
+#### 5.1 RPZ Configuration
 
 **Verify RPZ is deployed and configured:**
 
@@ -223,7 +279,7 @@ rpz:
 - Update frequency is at least daily.
 - Logging of RPZ-blocked queries is enabled for incident detection.
 
-#### 4.2 Protective DNS Service Evaluation
+#### 5.2 Protective DNS Service Evaluation
 
 If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gateway, Quad9, CISA Protective DNS), verify:
 
@@ -237,11 +293,11 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ---
 
-### Step 5: DNS Exfiltration and Tunneling Detection Patterns
+### Step 6: DNS Exfiltration and Tunneling Detection Patterns
 
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
-#### 5.1 Exfiltration Indicators
+#### 6.1 Exfiltration Indicators
 
 | Indicator | Normal | Suspicious | Detection Method |
 |-----------|--------|-----------|-----------------|
@@ -252,7 +308,7 @@ DNS tunneling encodes data in DNS query names or TXT record responses to create 
 | **Query volume per domain** | < 100/hr to a single domain | > 1000/hr to single obscure domain | Volumetric per-domain threshold |
 | **Response size** | < 512 bytes | TXT responses > 512 bytes, multiple TXT records | Monitor response payload sizes |
 
-#### 5.2 Tunneling Tool Signatures
+#### 6.2 Tunneling Tool Signatures
 
 Common DNS tunneling tools produce distinctive query patterns:
 
@@ -270,7 +326,7 @@ abcdef0123456789.dnscat.example.com TXT
 0001.<encoded>.d.example.com KEY
 ```
 
-#### 5.3 Detection Configuration
+#### 6.3 Detection Configuration
 
 **Where to implement detection:**
 
@@ -286,7 +342,7 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
-### Step 6: Domain Categorization and Newly Registered Domain (NRD) Blocking
+### Step 7: Domain Categorization and Newly Registered Domain (NRD) Blocking
 
 - **NRD blocking:** Domains registered within the past 30 days are disproportionately associated with phishing and malware. CIS Control 9.2 supports blocking or flagging NRDs.
 - **DGA detection:** Domain Generation Algorithms produce random-appearing domain names. Detection relies on entropy analysis and machine learning classifiers integrated into protective DNS services.
@@ -298,10 +354,12 @@ abcdef0123456789.dnscat.example.com TXT
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; orphaned public NS delegation to a reclaimable provider for a high-value domain. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; public dangling CNAME/NS records to reclaimable providers; unauthorized nameserver changes. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; missing CAA on public application zones; parent/child NS mismatch or lame delegation with limited takeover risk. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
+
+Use `Not Evaluable` for registrar locks, registry locks, CA account controls, CT monitoring, and hosted-zone ownership when the evidence requires external registrar, provider, or monitoring access that was not available during the review.
 
 ---
 
@@ -321,6 +379,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Zone | Signed | Algorithm | Key Sizes | DS in Parent | NSEC Version | Status |
 |------|--------|-----------|-----------|--------------|-------------|--------|
 | example.com | Yes/No | 13/8/15 | KSK:2048/ZSK:1024 | Yes/No | NSEC3 | Pass/Fail |
+
+### Domain Control and Delegation Integrity
+
+| Domain | Registrar | Registrar lock | Registry lock | Registrar MFA/change approval | Parent NS | Child NS | Provider zone/account evidence | DS status | CAA issue/issuewild/iodef | CT monitoring | Dangling records | Confidence |
+|--------|-----------|----------------|---------------|-------------------------------|-----------|----------|--------------------------------|-----------|---------------------------|---------------|------------------|------------|
+| example.com | Known/Unknown | Yes/No/Unknown | Yes/No/Unknown/Not applicable | Yes/No/Unknown | Pass/Fail/Unknown | Pass/Fail/Unknown | Verified/Not verified | Pass/Fail/Unknown | Pass/Fail/Unknown | Yes/No/Unknown | Yes/No/Unknown | Strong/Partial/Not Evaluable |
 
 ### Resolver Security
 
@@ -384,6 +448,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Treating DNSSEC as proof of domain-control security.** DNSSEC validates the records served by the delegated authority. It does not prove that registrar accounts, registry locks, DNS provider accounts, or nameserver changes are protected.
+
+6. **Scoring unavailable registrar/provider evidence as pass or fail.** A source-only review cannot usually prove lock status, hosted-zone ownership, CT monitoring, or CA account controls. Record `Not Evaluable` and list the exact external evidence required.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -406,6 +474,11 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
+- RFC 8659 -- DNS Certification Authority Authorization Resource Record: https://www.rfc-editor.org/rfc/rfc8659
+- ICANN Transfer Policy: https://www.icann.org/en/contracted-parties/accredited-registrars/resources/domain-name-transfers/policy
+- ICANN SSAC SAC044 -- A Registrant's Guide to Protecting Domain Name Registration Accounts: https://www.icann.org/en/groups/ssac/documents/sac-044-en.pdf
+- AWS Route 53, Deleting a Public Hosted Zone: https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/DeleteHostedZone.html
+- OWASP WSTG v4.2, Test for Subdomain Takeover: https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
 
@@ -413,4 +486,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.1.0** -- Added domain control-plane, CAA, registrar/registry lock, delegation consistency, orphaned hosted-zone, dangling-record, and `Not Evaluable` evidence handling.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
