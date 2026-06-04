@@ -652,6 +652,7 @@ Evidence to collect:
 - Signing evidence: Cosign/keyless, Notary, registry attestation, or Not Evaluable.
 - Admission policy: Kyverno `verifyImages`, Gatekeeper/OPA policy, Sigstore policy-controller, registry admission control, or Not Evaluable.
 - Policy mode: enforce, audit/warn only, dry-run, or unknown.
+- Keyless identity scope: Fulcio issuer plus exact `subject` or constrained `subjectRegExp`, or Not Evaluable.
 - Negative test evidence: unsigned image denied, untrusted issuer/subject denied, mutable tag denied, or Not Evaluable.
 
 ```yaml
@@ -674,6 +675,7 @@ spec:
             - entries:
                 - keyless:
                     issuer: https://token.actions.githubusercontent.com
+                    subject: https://github.com/example/app/.github/workflows/release.yaml@refs/heads/main
 ```
 
 Flag a finding when CI signs images but no admission policy verifies them, when policy runs in audit/warn mode only, or when unsigned/untrusted images can still be admitted.
