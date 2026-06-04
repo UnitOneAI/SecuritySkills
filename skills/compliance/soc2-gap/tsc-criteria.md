@@ -397,7 +397,7 @@ When Availability is in scope, use this gate before scoring CC7.5, A1.2, or A1.3
 | Integrity validation | Checksums, record counts, application smoke tests, reconciliation, or business-owner sign-off | Marking a restore successful because data files were copied |
 | Finding remediation | DR findings, owners, due dates, retest evidence, and residual-risk acceptance | Leaving failed DR test findings open without management decision |
 
-Use `Not Evaluable` when the review lacks system-boundary, critical-data, backup-job, or restore-test evidence. Do not infer backup maturity from architecture claims, provider marketing pages, or policy text alone.
+Use `Not Evaluable` as an evidence-status flag when the review lacks system-boundary, critical-data, backup-job, or restore-test evidence. It is not a replacement for the 0-4 criterion score: assign **0** if no control evidence exists, assign **1** if only policy/ownership claims exist without operating evidence, and include that numeric score in the aggregate readiness calculation. Do not infer backup maturity from architecture claims, provider marketing pages, or policy text alone.
 
 ### Confidentiality Criteria (C1.1-C1.2)
 

@@ -346,7 +346,7 @@ BACKUP-RES-09: Configuration, secrets, IaC state, or dependency artifacts needed
 - Score **2** when backups and restore tests exist but scope, integrity checks, immutable retention, or RPO/RTO measurement is incomplete.
 - Score **3** when backup/restore controls are documented, monitored, and recently tested for critical systems, but evidence does not cover the full observation period or all dependencies.
 - Score **4** only when backup monitoring, deletion resistance, restore drills, measured RPO/RTO, integrity validation, and test-finding remediation evidence are all current and cover the audit period.
-- Use **Not Evaluable** when the system boundary, critical data sets, backup job evidence, or restore-test evidence is unavailable.
+- Use **Not Evaluable** as an evidence-status flag only, not as the numeric criterion score. If the system boundary, critical data sets, backup job evidence, or restore-test evidence is unavailable, assign a numeric score of **0** when no control evidence exists or **1** when only policy/ownership claims exist, mark the evidence status `Not Evaluable`, and include that score in the aggregate readiness calculation.
 
 ---
 
@@ -420,7 +420,7 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 3. **Category Summary**: Average maturity score per category with narrative assessment.
 4. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
-6. **Backup Resilience Matrix**: For in-scope Availability, report RPO/RTO, backup age, failed-job monitoring, immutability, admin separation, restore drill scope, measured restore time, integrity validation, and residual findings.
+6. **Backup Resilience Matrix**: For in-scope Availability, report RPO/RTO, backup age, failed-job monitoring, immutability, admin separation, restore drill scope, measured restore time, integrity validation, residual findings, numeric score, and evidence status.
 7. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
 8. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
 
