@@ -103,6 +103,8 @@ CUSTODY LOG:
 
 RFC 3227 Section 2.1 defines the order of volatility -- evidence sources ranked from most volatile (shortest lifespan) to least volatile. Collect in this order to minimize evidence loss.
 
+**Source validation:** Use the RFC Editor canonical info endpoint (for example, `https://www.rfc-editor.org/info/rfc3227`) when citing RFC 3227. The extensionless `https://www.rfc-editor.org/rfc/rfc3227` path is not a stable citation target and can return 404 during automated reference checks.
+
 **RFC 3227 Order of Volatility:**
 
 | Priority | Evidence Source | Volatility | Collection Window | Tool Examples |
@@ -478,7 +480,7 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 ## 9. References
 
 1. **NIST SP 800-86** -- Guide to Integrating Forensic Techniques into Incident Response -- https://csrc.nist.gov/publications/detail/sp/800-86/final
-2. **RFC 3227** -- Guidelines for Evidence Collection and Archiving -- https://www.rfc-editor.org/rfc/rfc3227
+2. **RFC 3227** -- Guidelines for Evidence Collection and Archiving -- https://www.rfc-editor.org/info/rfc3227
 3. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
 4. **ISO/IEC 27037:2012** -- Guidelines for Identification, Collection, Acquisition and Preservation of Digital Evidence -- https://www.iso.org/standard/44381.html
 5. **SANS Digital Forensics and Incident Response** -- https://www.sans.org/digital-forensics-incident-response/
