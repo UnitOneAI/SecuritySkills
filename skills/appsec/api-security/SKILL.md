@@ -3,9 +3,10 @@ name: api-security
 description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
-tags: [appsec, api, rest, graphql]
+  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, SSRF,
+  and webhook receiver replay/idempotency risk. Produces findings mapped to
+  API1-API10 with remediation guidance.
+tags: [appsec, api, rest, graphql, webhook]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
@@ -37,7 +38,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+7. **Identify downstream dependencies and event channels** -- Third-party APIs, internal microservices, outbound webhooks, and inbound webhook receivers that the API consumes or exposes.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -48,6 +49,35 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+---
+
+## Webhook Receiver Evidence Gate
+
+Apply this gate when the API receives events from payment processors, SaaS providers, Git hosting systems, messaging platforms, internal event buses, or partner systems. Webhooks are usually at-least-once delivery channels; duplicate delivery is normal. Findings should focus on tampering, replay, stale credentials, and non-idempotent side effects rather than flagging expected duplicate deliveries.
+
+1. **Inventory inbound webhook providers and events** -- Record provider, endpoint, event types, tenant/account binding, side effects, and whether events affect payment, billing, account, provisioning, or security state.
+2. **Verify signatures over the provider-signed bytes** -- Require evidence that the handler verifies the exact raw body or provider-defined signed base string before parsing or mutation. Do not count verification over re-serialized JSON as sufficient unless the provider explicitly signs that canonical representation.
+3. **Check provider-specific signature material** -- Record header names, algorithm, secret or key identifier, timestamp field, and whether comparison is constant time. Accept HMAC, signed JWT, mTLS, or asymmetric signatures when the trust root and verification steps are documented.
+4. **Require replay protection** -- Verify timestamp tolerance, nonce/delivery/event-ID cache, or equivalent replay guard. Evidence should show stale timestamps, future timestamps outside skew bounds, duplicate delivery IDs, and missing signature headers are rejected.
+5. **Require idempotent side effects** -- For state-changing events, verify that provider event IDs or idempotency keys are persisted with a unique constraint or transactional guard before side effects run. Duplicate valid deliveries should not double-charge, double-provision, re-close accounts, or repeat irreversible actions.
+6. **Check secret rotation behavior** -- Overlapping old/new webhook secrets or keys are acceptable when expiry, owner, and audit evidence are present. Permanent multiple active secrets without owner or expiry should be treated as a control gap.
+7. **Verify tenant and object binding** -- Confirm the event's account, installation, organization, or tenant identifier is checked against the destination tenant before applying side effects.
+
+### Webhook Evidence Matrix
+
+| Provider / endpoint | Signed material | Replay guard | Idempotency key | Tenant binding | Rotation evidence | Status |
+|---|---|---|---|---|---|---|
+| `<provider> / <path>` | raw body / signed base string / JWT / mTLS | timestamp window + event cache | event ID unique constraint | account/org/installation checked | old/new secret expiry | Pass / Fail / Not Evaluable |
+
+### Webhook-Specific Test Cases
+
+- Tamper one byte of the raw body after capturing a valid signature.
+- Re-serialize JSON with different whitespace or field order when the provider signs raw bytes.
+- Replay a valid event after the timestamp tolerance expires.
+- Deliver the same valid event ID twice and confirm side effects run once.
+- Use a valid signature for tenant A against tenant B's endpoint or resource.
+- Send an event during secret rotation with the old secret after its expiry date.
 
 ---
 
@@ -66,6 +96,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
+| **Webhook Evidence** | For webhook findings, raw-body/signature/replay/idempotency/tenant-binding evidence |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -125,6 +156,7 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Webhook Evidence:** [raw body/signature/replay/idempotency/tenant-binding evidence, if applicable]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
@@ -215,6 +247,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Treating webhook signature checks as sufficient.** A valid webhook signature proves origin and integrity for that delivery, but it does not prove freshness, single-use processing, tenant binding, or safe side effects. Replay protection and idempotency evidence must be reviewed separately.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -239,3 +273,6 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+- **GitHub Docs -- Validating webhook deliveries:** https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
+- **Stripe Docs -- Webhook signature verification:** https://docs.stripe.com/webhooks/signatures
+- **Slack Docs -- Verifying requests from Slack:** https://api.slack.com/authentication/verifying-requests-from-slack

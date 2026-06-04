@@ -560,3 +560,89 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+
+---
+
+## Webhook Receiver Signature, Replay, and Idempotency Checks
+
+Inbound webhook receivers commonly map to API2, API8, and API10 depending on
+the failure mode. Treat provider events as untrusted until the receiver proves
+origin, integrity, freshness, tenant binding, and safe single-use processing.
+
+### Vulnerable Patterns
+
+```javascript
+// VULNERABLE: verifies a re-serialized body and has no replay or idempotency guard
+app.post("/webhooks/provider", express.json(), async (req, res) => {
+  const signature = req.get("X-Provider-Signature");
+
+  if (!verifyProviderSignature(JSON.stringify(req.body), signature)) {
+    return res.sendStatus(401);
+  }
+
+  await grantCredits(req.body.accountId, req.body.amount);
+  return res.sendStatus(204);
+});
+```
+
+```javascript
+// VULNERABLE: accepts a valid old delivery and repeats irreversible side effects
+app.post("/webhooks/billing", express.raw({ type: "application/json" }), async (req, res) => {
+  const event = JSON.parse(req.body.toString("utf8"));
+
+  if (!verifyProviderSignature(req.body, req.get("X-Provider-Signature"))) {
+    return res.sendStatus(401);
+  }
+
+  await provisionSubscription(event.data.customerId, event.data.planId);
+  return res.sendStatus(204);
+});
+```
+
+### Remediated Pattern
+
+```javascript
+app.post("/webhooks/provider", express.raw({ type: "application/json" }), async (req, res) => {
+  const signature = req.get("X-Provider-Signature");
+  const timestamp = Number(req.get("X-Provider-Timestamp"));
+
+  assertFreshTimestamp(timestamp, 300);
+  verifyProviderSignature(req.body, signature, timestamp);
+
+  const event = JSON.parse(req.body.toString("utf8"));
+  await db.transaction(async (tx) => {
+    await assertTenantBinding(tx, event.account_id, req.params.tenantId);
+
+    const firstDelivery = await tx.webhookEvents.insertOnce({
+      provider: "provider",
+      eventId: event.id,
+      tenantId: req.params.tenantId,
+    });
+    if (!firstDelivery) return;
+
+    await applyProviderEvent(tx, event);
+  });
+
+  return res.sendStatus(204);
+});
+```
+
+### Remediation Guidance
+
+- Verify the raw request body or provider-defined signed base string before parsing, decoding, or normalizing it.
+- Enforce the provider's timestamp, nonce, delivery ID, or event ID replay window; reject stale, future-skewed, missing-signature, and duplicate deliveries.
+- Persist idempotency state with a unique constraint before running state-changing side effects.
+- Bind the event account, installation, organization, or tenant identifier to the destination tenant/resource before applying changes.
+- Model retry behavior explicitly: duplicate valid deliveries should return success or no-op without repeating side effects.
+- Document secret rotation overlap, owner, audit trail, and expiry; do not leave multiple active secrets without an end date.
+
+### Review Checklist
+
+- [ ] The receiver exposes the provider-signed raw body or signed base string to the verifier.
+- [ ] Signature algorithm, header names, key identifiers, and constant-time comparison are documented.
+- [ ] Timestamp, nonce, delivery ID, or event ID replay protection is enforced and tested.
+- [ ] Idempotency records are written transactionally before side effects execute.
+- [ ] Duplicate delivery tests prove payment, provisioning, account, or security actions run once.
+- [ ] Tenant/account/installation binding is verified before applying event state.
+- [ ] Secret rotation allows a bounded overlap and expires old secrets.
+- [ ] Negative tests cover tampered bodies, stale timestamps, duplicate event IDs, missing headers, and cross-tenant events.
