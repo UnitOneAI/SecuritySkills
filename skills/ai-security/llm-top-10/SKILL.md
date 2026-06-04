@@ -317,14 +317,14 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 ---
 
-### LLM09:2025 - Misinformation
+### LLM09:2025 — Misinformation
 
 **What it is:** The LLM generates factually incorrect, fabricated, or misleading content (hallucinations) that the application presents as authoritative. This is especially dangerous in medical, legal, financial, or safety-critical domains where incorrect information causes real harm.
 
 **What to look for in code/architecture:**
 
 - Model outputs presented to users without any disclaimer, confidence indicator, or source attribution.
-- Absence of grounding mechanisms - the model generates free-form responses without being anchored to retrieved factual data.
+- Absence of grounding mechanisms — the model generates free-form responses without being anchored to retrieved factual data.
 - No human review step for model-generated content published to external audiences (customer-facing documentation, medical advice, legal guidance).
 - Automated pipelines that take model output and write it directly to production databases, CMSes, or knowledge bases without verification.
 - Temperature settings set high (>1.0) for use cases requiring factual accuracy.
