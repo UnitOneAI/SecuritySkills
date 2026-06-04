@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -310,7 +310,7 @@ RBAC-ABAC-07: Policy conflicts not detected — overlapping permit/deny without 
 RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
 ```
 
-#### Authorization Decision Assurance
+#### Step 5A: Runtime Authorization Assurance
 
 RBAC/ABAC designs are not proven only by the role model. The review must also verify how policy decisions behave when the PDP, PEP, cache, token claims, or policy-test pipeline fails.
 
@@ -327,10 +327,11 @@ RBAC/ABAC designs are not proven only by the role model. The review must also ve
 **What to look for:**
 
 ```
-RBAC-RUNTIME-01: PDP or PEP defaults to permit on timeout, network failure, policy exception, deny, or indeterminate decision
-RBAC-RUNTIME-02: Some services bypass the central PDP/PEP and enforce embedded role checks only
-RBAC-RUNTIME-03: No approved degraded mode for PDP outage or high-latency conditions
-RBAC-RUNTIME-04: Authorization decision logs omit subject, resource, action, policy version, decision, reason, or enforcement point
+RBAC-RUNTIME-01: PEP permits when the PDP returns deny or indeterminate decision
+RBAC-RUNTIME-02: PEP permits when PDP evaluation times out, loses network connectivity, or raises a policy exception
+RBAC-RUNTIME-03: Some services bypass the central PDP/PEP and enforce embedded role checks only
+RBAC-RUNTIME-04: No approved degraded mode for PDP outage or high-latency conditions
+RBAC-RUNTIME-05: Authorization decision logs omit subject, resource, action, policy version, decision, reason, or enforcement point
 RBAC-CACHE-01: Authorization decisions, roles, attributes, scopes, or session claims cached with no TTL
 RBAC-CACHE-02: Revocation, transfer, SoD exception expiry, or incident containment does not invalidate cached permits
 RBAC-CACHE-03: Cache TTL exceeds the risk tolerance for privileged, financial, tenant-isolation, or regulated-data actions
@@ -430,7 +431,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
-- Authorization Decision Assurance (Step 5): [count]
+- Runtime Authorization Assurance (Step 5A): [count]
 - Role Mining (Step 6): [count]
 
 ### Detailed Findings
@@ -540,5 +541,6 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.1 | 2026-06-04 | Clarified runtime assurance finding labels and added fail-open/cache-staleness test fixtures |
 | 1.1.0 | 2026-06-04 | Added PDP/PEP fail-closed, cache-staleness, revocation-latency, decision-log, policy-test, and break-glass evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
