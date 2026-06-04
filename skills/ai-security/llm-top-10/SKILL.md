@@ -49,6 +49,7 @@ Before beginning the review, collect the following:
 - [ ] **Output flow** — how model output is rendered, parsed, or acted upon (HTML, CLI, database writes, API calls).
 - [ ] **Tool/function-calling configuration** — any tools the LLM can invoke, their permissions, and confirmation gates.
 - [ ] **RAG pipeline architecture** — document ingestion, chunking strategy, embedding model, vector store, retrieval query construction, context window assembly.
+- [ ] **Prompt-cache and memory architecture** — provider prompt caching, application conversation memory, retrieval result caches, embedding caches, tool-result caches, key dimensions, TTLs, deletion paths, and invalidation triggers.
 - [ ] **Authentication and authorization context** — how user identity propagates through the LLM pipeline, whether the model inherits user permissions or operates with elevated privileges.
 - [ ] **Rate limiting and quota configuration** — per-user and per-session limits on model invocations.
 - [ ] **Data classification** — what sensitivity level of data flows into or out of the model (PII, PHI, financial, credentials).
@@ -59,6 +60,15 @@ Before beginning the review, collect the following:
 ## 3. Process
 
 Review the application against each of the ten OWASP LLM risk categories below. For each category, examine the codebase for the specified patterns, apply the detection methods, and recommend the listed mitigations where gaps are found.
+
+Before scoring individual categories, build a cache and memory isolation inventory. Prompt caches and memory stores often sit outside the vector database or prompt builder but still decide which prior context re-enters the model.
+
+| Cache or memory store | What to verify | Finding trigger |
+|-----------------------|----------------|-----------------|
+| Provider prompt cache | Retention mode, cached prompt prefix, data classification, whether dynamic user context is kept out of reusable prefixes, and whether any explicit cache key is used only for routing/cache efficiency rather than authorization. | High when tenant/user-scoped sensitive context is deliberately placed in a reusable prompt prefix or long-lived retention path without evidence that provider, organization, and application boundaries prevent cross-context disclosure. Do not file High solely because a provider cache key omits tenant or user when dynamic context is outside the shared prefix. |
+| Conversation memory or summaries | Storage key, TTL, deletion path, summarization inputs, and invalidation when roles, workspace membership, or source ACLs change. | High when memory is keyed only by assistant/project and can replay privileged facts to another user or after a permission downgrade. |
+| Retrieval or embedding result cache | Cache key dimensions, source document ACL version, chunk permissions, tenant/user scope, and recheck behavior on cache hits. | High when a correctly filtered vector query is cached under a query-only key and later injected into prompts for a different scope. |
+| Tool-result cache | Tool identity, caller identity, permission scope, result sensitivity, TTL, and invalidation when tool permissions change. | High when privileged API results are reused as model context after the user's role or tool grant changes. |
 
 ---
 
@@ -103,6 +113,8 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - System prompts containing API keys, database credentials, internal URLs, or business logic secrets.
 - RAG pipelines that retrieve documents without enforcing the querying user's authorization level — a user may receive context chunks from documents they should not access.
 - Logging or monitoring pipelines that store full prompt/response pairs containing user PII or sensitive business data.
+- Provider prompt caches that put tenant/user-scoped sensitive context into reusable prompt prefixes or long-lived retention without boundary evidence.
+- Application-owned conversation memory, retrieval caches, or tool-result caches that store sensitive context without tenant/user/permission-scope isolation.
 - Absence of output filtering — model responses streamed or returned to the client without scanning for sensitive patterns (SSNs, credit card numbers, credentials).
 - Fine-tuned models trained on datasets containing PII, credentials, or proprietary data without data sanitization.
 
@@ -110,6 +122,10 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 - Grep system prompt files and prompt template code for hardcoded secrets, internal hostnames, or credential patterns.
 - Review RAG retrieval logic for authorization checks — does the vector query filter by the requesting user's access level?
+- Search for cache and memory controls: `prompt_cache_key`, `prompt_cache_retention`, `cache_control`, `no-store`, `memory`, `conversation`, `summary`, `Redis`, `ttl`, `expire`, and `cache.set`.
+- For provider prompt caching, verify whether sensitive dynamic context appears in the reusable prefix, what retention mode applies, and whether documented provider/org boundaries prevent cache sharing across unauthorized contexts. Treat explicit provider cache keys as routing/cache-efficiency hints, not permission enforcement.
+- For application-owned memory, retrieval, embedding, and tool-result caches, verify that cache keys include the same authorization dimensions as the source data: tenant, user or workspace, assistant, data classification, source ACL version, tool set, model, and policy version.
+- Check whether cache hits re-run authorization or are invalidated when documents are deleted, users leave workspaces, roles change, or data subject erasure is requested.
 - Search for logging statements that capture full `messages` arrays, completion text, or embedding inputs.
 - Check whether output filtering or redaction is applied before responses reach the end user.
 
@@ -117,6 +133,10 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 - Never embed secrets, credentials, or internal infrastructure details in system prompts. Use environment variables or secret managers, referenced only by server-side code outside the prompt.
 - Implement document-level and chunk-level access control in RAG pipelines — filter retrieval results by the authenticated user's permissions before injecting into the prompt.
+- Keep tenant/user-specific sensitive context out of provider prompt-cache prefixes unless provider/org isolation and retention controls are documented for that data class.
+- Scope application-owned memory keys, retrieval caches, embedding caches, and tool-result caches to the authorization context that protects the underlying data.
+- Prefer short-lived or in-memory cache retention for sensitive prompts. Do not use long-lived prompt-cache retention for content that cannot safely persist outside the immediate request window.
+- Invalidate memory and caches on role changes, workspace membership changes, document ACL changes, source deletion, and data subject erasure workflows.
 - Apply output filtering with regex-based or NER-based PII detectors (e.g., Microsoft Presidio) on model responses before returning to the user.
 - Sanitize training and fine-tuning datasets to remove PII, credentials, and proprietary data.
 - Minimize logging of full prompt/response content; if required for debugging, redact sensitive fields and enforce access controls on log storage.
@@ -232,12 +252,14 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Tool definitions with broad permissions — e.g., a database tool that allows arbitrary SQL execution rather than scoped read-only queries.
 - Absence of human-in-the-loop confirmation for destructive or irreversible operations (delete, send email, financial transactions, deploy).
 - The model operating with the application's service account credentials rather than the end user's scoped permissions.
+- Cached tool results or agent memory that replay privileged API responses after the user loses the corresponding tool permission.
 
 **Detection methods:**
 
 - Enumerate all tools, functions, and plugins registered for the LLM to invoke. Document their permissions and blast radius.
 - Check for confirmation gates: is there a step between the model requesting an action and the action executing where a human or deterministic policy can approve or deny?
 - Review whether tool permissions follow least privilege — can the scope be narrowed?
+- Check whether tool outputs are stored in conversation memory, retrieval caches, or tool-result caches and whether those stores are scoped to the caller and current permission set.
 - Search for autonomous execution loops (e.g., `while` loops that let the agent keep calling tools until it decides to stop).
 
 **Mitigations:**
@@ -246,6 +268,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Implement mandatory human-in-the-loop confirmation for all state-changing, destructive, or high-impact actions.
 - Set hard limits on the number of tool calls per session or per request to prevent runaway agent loops.
 - Use the end user's permissions (not the application's service account) when tools access downstream systems.
+- Store tool outputs only under cache keys that include caller identity, tool identity, permission scope, and policy version. Revalidate or purge cached tool results when permissions change.
 - Log all tool invocations with full parameters for audit and incident response.
 - Separate read operations (low risk, can auto-execute) from write operations (require confirmation).
 
@@ -292,6 +315,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 - Vector databases (Pinecone, Weaviate, Chroma, Milvus, pgvector, Qdrant) deployed without authentication or with default credentials.
 - No access control on vector store collections — all users query the same collection regardless of authorization level.
+- Retrieval or embedding result caches keyed only by query text or embedding hash, omitting tenant, user, workspace, or source ACL version.
 - Embeddings stored alongside or without separation from the original source text, enabling data exposure through vector store access.
 - No encryption at rest or in transit for vector store data.
 - Vector similarity search without relevance thresholds — low-similarity results injected into the prompt may introduce noise or adversarial content.
@@ -300,6 +324,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 - Review vector database configuration for authentication, authorization, network access controls, and encryption settings.
 - Check whether vector store queries are filtered by tenant, user, or permission scope.
+- Inspect retrieval-cache keys and cache-hit paths to verify that cached chunks cannot bypass vector-store authorization filters.
 - Examine whether a minimum similarity threshold is applied to retrieval results before they enter the prompt.
 - Verify that embedding API calls use TLS and that stored embeddings are encrypted at rest.
 - Check whether raw source text is stored in vector metadata and whether that metadata is access-controlled.
@@ -308,6 +333,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 - Enable authentication and authorization on vector databases. Never expose vector stores to unauthenticated access.
 - Implement tenant isolation or permission-based filtering on vector queries — users should only retrieve embeddings from documents they are authorized to access.
+- Include tenant, user or workspace, source ACL version, and data classification in retrieval-cache keys, or disable retrieval caching for sensitive corpora.
 - Set minimum similarity score thresholds for retrieval results to prevent injection of irrelevant or adversarial content.
 - Encrypt embeddings at rest and in transit. Treat embeddings as sensitive data because source text can be partially reconstructed.
 - Do not store raw source text in vector metadata unless access controls are equivalent to the source document's classification.
@@ -391,6 +417,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 |----------|----------|---------|
 | **Critical** | Exploitable vulnerability enabling data exfiltration, unauthorized actions, or full system compromise via the LLM. | Prompt injection that triggers tool calls to exfiltrate database contents (LLM01 + LLM06). |
 | **High** | Significant risk of sensitive data exposure, privilege escalation, or substantial financial impact. | RAG pipeline returns documents the user is not authorized to access (LLM02). Unrestricted agent with database write access (LLM06). |
+| **High** | Application memory, retrieval-cache, embedding-cache, or tool-result cache can replay sensitive context across tenants, users, workspaces, or permission changes; provider prompt cache uses long-lived reusable prefixes containing scoped sensitive context without boundary evidence. | Cache key is `retrieval:${queryHash}` and cached chunks are injected for users with different source-document permissions (LLM02 + LLM08). |
 | **Medium** | Moderate risk requiring specific conditions to exploit, or limited blast radius. | System prompt leakage revealing business logic but no credentials (LLM07). Missing rate limiting on LLM endpoint (LLM10). |
 | **Low** | Minor information disclosure, best practice deviation, or defense-in-depth gap. | Model output lacks disclaimer for AI-generated content (LLM09). Dependency one minor version behind with no known exploit (LLM03). |
 | **Informational** | Observation or recommendation for improvement with no current exploitable risk. | Suggest adding similarity score threshold to RAG retrieval (LLM08). |
@@ -412,6 +439,12 @@ Structure the findings report as follows:
 ## Executive Summary
 
 [2-3 sentences: overall risk posture, critical findings count, top recommendation]
+
+## Prompt Cache and Memory Inventory
+
+| Store | Location | Cached content | Key dimensions | Retention/TTL | Invalidation triggers | Evidence confidence | Risk |
+|-------|----------|----------------|----------------|---------------|-----------------------|---------------------|------|
+| Provider prompt cache / conversation memory / retrieval cache / tool-result cache | file/config | prompts/chunks/tool output/summary | tenant/user/workspace/ACL/model/tool/policy | duration | role change/delete/ACL update/DSAR | High/Medium/Low | Safe/Finding |
 
 ## Findings
 
@@ -464,7 +497,7 @@ Key differences from the 2023 edition:
 
 ## 7. Common Pitfalls
 
-These are the five most frequent mistakes agents make when performing LLM security reviews:
+These are the six most frequent mistakes agents make when performing LLM security reviews:
 
 1. **Reviewing only the prompt, not the data flow.** The prompt is one attack surface. The full data flow — from user input through retrieval, prompt assembly, model inference, output parsing, tool execution, and response rendering — must be traced end to end. Findings missed in output handling (LLM05) and excessive agency (LLM06) are the most common gaps.
 
@@ -475,6 +508,8 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Assuming prompt caches and memory are outside the data flow.** Provider prompt caches, conversation summaries, retrieval-result caches, and tool-result caches can all reintroduce sensitive context. Review their key dimensions, retention, and invalidation with the same rigor as RAG authorization and logging.
 
 ---
 
@@ -507,3 +542,4 @@ When performing a review using this skill:
 - LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
 - LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
 - LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+- OpenAI API Prompt Caching Guide: https://developers.openai.com/api/docs/guides/prompt-caching
