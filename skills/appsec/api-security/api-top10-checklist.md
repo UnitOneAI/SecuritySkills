@@ -113,7 +113,7 @@ Next.js App Router projects expose API attack surface through both Route Handler
 - Route Handlers under `app/**/route.ts` or `app/**/route.js` that export HTTP methods such as `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, or `OPTIONS`.
 - Server Actions marked with `"use server"` and invoked from `<form action={...}>`, `formAction={...}`, or client components.
 - User-controlled identifiers read from `RouteContext`, `params`, `NextRequest`, `request.nextUrl.searchParams`, request JSON, or `FormData.get(...)`.
-- Configuration in `next.config.js` or `next.config.mjs`, especially `serverActions.allowedOrigins` and `serverActions.bodySizeLimit`.
+- Configuration in `next.config.js`, `next.config.mjs`, or `next.config.ts`, especially `serverActions.allowedOrigins` and `serverActions.bodySizeLimit`.
 - Caching controls such as `dynamic = "force-static"`, `revalidate`, `use cache`, `cacheTag`, or `unstable_cache` on handlers that return user, tenant, billing, or admin data.
 
 ### Vulnerable Server Action Patterns

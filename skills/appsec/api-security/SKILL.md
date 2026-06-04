@@ -49,7 +49,7 @@ Framework-native APIs can hide sensitive operations outside traditional route fi
 | Framework | Discovery Signals | Security Review Focus |
 |---|---|---|
 | **Next.js App Router** | `app/**/route.ts`, `app/**/route.js`, exported HTTP methods, `RouteContext`, `NextRequest`, `request.nextUrl.searchParams` | Classify public versus private route handlers, then verify authentication, object ownership, response field filtering, caching behavior, and rate limits. Public metadata handlers may be intentional, so do not report missing authentication until the exposed data or operation sensitivity is established. |
-| **Next.js Server Actions** | `"use server"`, exported async actions, `<form action=...>`, `formAction=...`, `FormData.get(...)` | Treat Server Actions as API mutation endpoints. Verify authentication and authorization inside the action or a shared policy wrapper, validate all form fields, and check `serverActions.allowedOrigins` and `serverActions.bodySizeLimit` in `next.config.js` when present. |
+| **Next.js Server Actions** | `"use server"`, exported async actions, `<form action=...>`, `formAction=...`, `FormData.get(...)` | Treat Server Actions as API mutation endpoints. Verify authentication and authorization inside the action or a shared policy wrapper, validate all form fields, and check `serverActions.allowedOrigins` and `serverActions.bodySizeLimit` in `next.config.js`, `next.config.mjs`, or `next.config.ts` when present. |
 | **Next.js Caching Controls** | `dynamic = "force-static"`, `revalidate`, `use cache`, `cacheTag`, `unstable_cache` | Confirm sensitive user, tenant, billing, or admin data is not statically cached or shared across callers without per-user cache isolation. |
 
 ---
