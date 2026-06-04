@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -375,6 +375,29 @@ Object obj = ois.readObject();
 ```
 Remediation: Avoid native Java deserialization of untrusted data. Use JSON with explicit type mapping, or apply an allowlist filter (e.g., Apache Commons IO `ValidatingObjectInputStream`).
 
+**PHP -- Unsafe Deserialization (CWE-502)**
+```php
+// VULNERABLE: attacker-controlled serialized object graph
+$state = $_POST['state'] ?? '';
+$user = unserialize($state);
+```
+Remediation: Do not pass request, cookie, header, queue, or database data that users can influence into `unserialize()`. Prefer JSON decoded into arrays or DTOs with explicit schema validation. For legacy migration only, use `unserialize($state, ['allowed_classes' => false])` after verifying integrity and before mapping the resulting plain data to trusted types.
+
+**Ruby -- Unsafe Marshal Deserialization (CWE-502)**
+```ruby
+# VULNERABLE: attacker-controlled object deserialization
+blob = Base64.decode64(params[:profile_blob])
+profile = Marshal.load(blob)
+```
+Remediation: Do not use `Marshal.load` on data from params, cookies, headers, uploads, cache entries, or queues unless the data is strictly server-owned and integrity-verified before loading. Prefer JSON plus typed validation or a parser that returns plain data structures only.
+
+**Ruby -- Unsafe YAML Object Loading (CWE-502)**
+```ruby
+# VULNERABLE: unsafe object construction from YAML
+settings = YAML.load(params[:settings])
+```
+Remediation: Replace `YAML.load` on untrusted input with `YAML.safe_load` using narrow `permitted_classes`, `permitted_symbols`, and `aliases: false`, or use a typed parser. Treat `YAML.unsafe_load` as equivalent to native object deserialization.
+
 **TypeScript -- Unrestricted File Upload (CWE-434)**
 ```typescript
 // VULNERABLE: no validation on uploaded file type or size
@@ -396,9 +419,25 @@ func fetchURL(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
 
-### 8.3 Review Checklist
+### 8.3 False Positive and Edge-Case Guidance
 
-- [ ] No use of native deserialization (pickle, ObjectInputStream, Marshal.load) on untrusted data.
+Do not report plain data parsing as CWE-502 solely because it reads user input:
+
+- JSON parsing followed by explicit schema or DTO validation, such as Pydantic, Zod, JSON Schema, or framework request models, is not native object deserialization.
+- `yaml.safe_load` with narrow permitted classes, no aliases, and no later dynamic object construction is usually a safe parser pattern.
+- Test fixtures that intentionally contain `pickle.loads`, `unserialize`, `Marshal.load`, or `YAML.load` are evidence for coverage, not production findings, unless runtime code loads the fixture.
+
+For signed, encrypted, or framework-managed serialized blobs, verify the trust boundary before classifying exploitability:
+
+- The signature or MAC must cover the exact serialized bytes and must be verified before any deserialization call.
+- Deserializing first and verifying later is still vulnerable because gadget execution or object construction may already have occurred.
+- Server-owned framework sessions should be reviewed for serializer choice, key rotation, and whether a client can tamper with the serialized value before reporting CWE-502.
+
+### 8.4 Review Checklist
+
+- [ ] No use of native deserialization (`pickle`, `ObjectInputStream`, `unserialize`, `Marshal.load`, `YAML.load`, `YAML.unsafe_load`) on untrusted data.
+- [ ] Signed or encrypted serialized blobs are integrity-verified before deserialization, with the check covering the exact serialized bytes.
+- [ ] Safe parsers such as schema-validated JSON and constrained `yaml.safe_load` are distinguished from native object graph deserialization.
 - [ ] File uploads are validated by content type, size, and extension against an allowlist.
 - [ ] Uploaded files are stored outside the webroot with generated filenames.
 - [ ] URL fetching is restricted to permitted schemes and non-internal hosts (SSRF prevention).
@@ -445,7 +484,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.1.0
 
 ### Summary
 - Critical: [count]
@@ -562,4 +601,6 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Deserialization Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html
+- **CWE-502:** https://cwe.mitre.org/data/definitions/502.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
