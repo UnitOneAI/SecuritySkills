@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -66,6 +66,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Memory/state persistence | Vector DB configs, session stores, scratchpad files | Exposes memory poisoning surface |
 | Human approval gates | Workflow configs, UI code, approval logic | Determines if HITL can be bypassed |
 | Multi-agent communication | Message bus configs, inter-agent protocols, shared state | Identifies trust boundary violations |
+| Agent handoff contracts | Output schemas, orchestration prompts, message envelopes, tool result models | Shows whether uncertainty, completeness, fallback state, and provenance survive downstream handoff |
 | Error handling and retry logic | Exception handlers, circuit breaker configs | Reveals cascading failure potential |
 | Authentication and identity | Auth middleware, token management, agent identity configs | Exposes identity gaps |
 | Rate limiting and quotas | API gateway configs, token budgets, cost controls | Determines resource exhaustion risk |
@@ -293,6 +294,41 @@ In 2024, a financial services firm reported an incident (disclosed at a CISO rou
 5. Set hard limits on chain depth. Define maximum pipeline length and require human review for chains exceeding the limit.
 6. Implement structured error propagation — agents must explicitly signal uncertainty rather than passing through low-confidence outputs as if they were facts.
 
+#### Uncertainty and Handoff Validation
+
+For chained or multi-agent systems, do not treat authentication, logging, or schema validity as sufficient evidence that a downstream action is safe. Review whether each agent handoff preserves machine-checkable evidence quality for the next stage, especially before state-changing, external-communication, financial, identity, or infrastructure actions.
+
+Use this evidence matrix for every material handoff in an agent chain:
+
+| Field | Evidence to Capture | Failing Pattern |
+|---|---|---|
+| Upstream agent and output schema | Agent identity, schema version, and message type | Natural-language summary with no structured contract |
+| Confidence or uncertainty | Numeric confidence, categorical confidence, or explicit uncertainty field | Low-confidence result converted to authoritative prose |
+| Completeness or partial-result flag | Complete, partial, missing records, source unavailable, or timeout state | `unknown` or `not found` treated as safe |
+| Provenance and source coverage | Source identifiers, retrieval scope, corpus coverage, and freshness | Source coverage removed before downstream automation |
+| Fallback path used | Primary path, retry path, stale cache, weaker model, heuristic mode | Degraded fallback emits the same actionability as primary evidence |
+| Downstream semantic threshold | Required confidence, completeness, source classes, and freshness before action | JSON schema passes but semantic thresholds are absent |
+| Conflict handling | Halt, escalate, tie-breaker policy, or human review when agents disagree | Conflicting agent outputs flattened into a single proceed decision |
+| Final actionability | Proceed, degraded/read-only, blocked, or human review required | State-changing action proceeds on partial or conflicting evidence |
+
+Apply these review rules:
+
+1. Require downstream agents to consume structured evidence-quality fields, not only natural-language summaries, before they take state-changing actions.
+2. Treat `unknown`, `partial`, timeout fallback, stale cache, missing source classes, and conflicting agent outputs as stop or degrade conditions unless an explicit policy says otherwise.
+3. Distinguish schema-valid output from semantically sufficient output. A typed response can still be unsafe when confidence, completeness, provenance, or fallback state are missing.
+4. Downgrade actionability when the chain falls back to narrower data, stale cache, weaker model, or heuristic mode.
+5. Allow lower severity when the downstream step is read-only or advisory and uncertainty is preserved in the user-facing output.
+
+Findings guidance:
+
+| Finding Pattern | Typical Severity |
+|---|---|
+| Typed but under-evidenced approval before state-changing action | HIGH |
+| Conflicting agent outputs flattened into a proceed decision | HIGH or CRITICAL, depending on impact |
+| No confidence/completeness propagation in a multi-agent action chain | MEDIUM or HIGH |
+| Fallback path hides degraded evidence quality before automation | MEDIUM or HIGH |
+| Read-only advisory chain with preserved uncertainty | LOW or PASS |
+
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM09 — Misinformation (hallucination propagation)
@@ -426,6 +462,9 @@ Grep: "pinecone|weaviate|chroma|pgvector|redis|memory|persist|vector" in **/*.{p
 # Inter-agent communication
 Grep: "send_message|delegate|dispatch|publish|subscribe|queue" in **/*.{py,ts,js}
 
+# Handoff evidence quality
+Grep: "confidence|uncertainty|partial|complete|unknown|fallback|timeout|stale|source_coverage|provenance|approve|proceed" in **/*.{py,ts,js,yaml,yml,json}
+
 # Human approval gates
 Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,js,yaml,yml}
 ```
@@ -514,6 +553,12 @@ Structure the final report as follows:
 | AG01 | [rating] | [one-line summary] | [priority] |
 | ... | ... | ... | ... |
 
+## Agent Handoff Evidence Matrix
+
+| Handoff | Confidence/Uncertainty Present | Completeness Present | Provenance Preserved | Fallback Used | Conflict Handling | Downstream Threshold | Result |
+|---|---|---|---|---|---|---|---|
+| [agent A -> agent B] | [yes/no/value] | [complete/partial/unknown] | [yes/no/source classes] | [none/cache/model/retry] | [halt/escalate/proceed] | [policy or missing] | [proceed/degraded/blocked] |
+
 ## Recommendations
 1. [Highest priority recommendation]
 2. [Second priority recommendation]
@@ -585,6 +630,16 @@ Persistent agent memory is a high-value target because it persists across sessio
 ### 5. Assuming Tool Calls Are Safe Because the Tool Is Legitimate
 
 A tool functioning correctly is not the same as a tool being used correctly. The agent controls what parameters it passes, what sequence it calls tools in, and how it interprets results. A legitimate database query tool becomes an exfiltration vector when the agent is manipulated into querying sensitive tables and sending the results to an external webhook. Secure the tool invocation, not just the tool implementation.
+
+### 6. Flattening Uncertainty During Handoff
+
+Agent chains often begin with useful evidence-quality metadata, then lose it when a later stage turns the result into a natural-language summary. A downstream agent that only receives "safe to proceed" cannot distinguish complete evidence from partial retrieval, timeout fallback, stale cache, or disagreement between agents. Preserve confidence, completeness, provenance, fallback state, and conflict status as structured fields through every handoff used for automation.
+
+---
+
+## Changelog
+
+- v1.0.2: Added uncertainty and handoff validation gates for AG07/AG05, including evidence-quality search cues, handoff matrix output, semantic threshold rules, and finding severity guidance.
 
 ---
 
