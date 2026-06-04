@@ -65,12 +65,15 @@ Authentication strength gate for privileged roles:
   phishing-resistant MFA strength or only generic MFA.
 - Treat `built_in_controls = ["mfa"]`, `require_mfa: true`, legacy per-user
   MFA, or a policy named "MFA" as ordinary MFA evidence, not as
-  phishing-resistant evidence.
+  phishing-resistant evidence. These controls can satisfy the CIS 1.1.2 MFA
+  requirement when scoped correctly, but should be reported separately as a
+  phishing-resistant authentication-strength gap when privileged-role risk,
+  organizational policy, or sensitive-resource scope requires stronger methods.
 - Require authentication method policy evidence for the included admins:
   FIDO2/passkeys, Windows Hello for Business or platform credentials, and
   multifactor certificate-based authentication for phishing-resistant
   strength; SMS, voice, push, and OATH methods alone do not satisfy that
-  stronger gate.
+  stronger gate, but do not fail the CIS MFA control solely for that reason.
 - Confirm included admin roles are not bypassed through nested groups,
   administrative unit-scoped/custom roles, stale exclusions, named-location
   exclusions, device-platform exclusions, or report-only policy state.
@@ -84,7 +87,7 @@ Use this finding calibration:
 | Scenario | Expected status |
 |----------|-----------------|
 | Security Defaults disabled, enabled CA policy covers privileged roles, grant control requires phishing-resistant MFA strength, admins can register allowed methods, and break-glass exclusions are documented | Pass |
-| Enabled CA policy covers privileged roles but only grants generic MFA while admin method policy allows SMS/voice/push only | Fail for phishing-resistant privileged-role evidence |
+| Enabled CA policy covers privileged roles with generic MFA while admin method policy allows SMS/voice/push only | Pass CIS 1.1.2 MFA coverage; add supplemental phishing-resistant MFA gap for privileged roles |
 | CA policy is report-only or excludes broad admin groups without owner/ticket/expiry | Fail |
 | Policy and method data are missing from the repository/export | Not Evaluable |
 

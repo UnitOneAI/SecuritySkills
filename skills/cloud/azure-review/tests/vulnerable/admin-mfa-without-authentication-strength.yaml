@@ -47,8 +47,9 @@ break_glass:
   test_cadence: null
 
 review_expectation:
-  status: Fail
+  status: Supplemental Finding
   severity: High
   reason: >
-    Generic MFA and phishable methods should not satisfy the
-    phishing-resistant MFA evidence gate for privileged roles.
+    Generic MFA can satisfy CIS 1.1.2 when scoped to privileged roles, but
+    phishable methods should still be reported as a separate privileged-role
+    phishing-resistant authentication-strength gap.
