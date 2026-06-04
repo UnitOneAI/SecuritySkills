@@ -357,7 +357,7 @@ Use `Not Evaluable` when source artifacts cannot prove whether IPv6 is enabled, 
 | DMZ         | App       | IPv4           | Firewall ENI | Restricted tcp/443   | Tested            | Pass | Strong | None |
 | DMZ         | App       | IPv6           | Unknown      | Missing              | Not tested        | Not Evaluable | Low | F-IPv6-001 |
 | App         | Data      | IPv4           | SG only      | Overly permissive    | Tested            | Fail | Strong | F-002 |
-| User        | Data      | IPv6           | ::/0 egress-only gateway | No matching deny | Not tested | Fail | Medium | F-001 |
+| App         | Internet  | IPv6           | ::/0 egress-only gateway | No inspection or egress policy evidence | Not tested | Fail | Medium | F-IPv6-EGRESS |
 
 ### Findings
 
