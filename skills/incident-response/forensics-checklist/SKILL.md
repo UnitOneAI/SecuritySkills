@@ -4,10 +4,10 @@ description: >
   Guides digital forensic evidence collection following NIST SP 800-86 and
   RFC 3227 order of volatility. Auto-invoked when the user needs to collect
   forensic evidence, preserve chain of custody, capture volatile data, create
-  disk images, or handle cloud forensics. Produces an evidence collection plan
+  disk images, or handle cloud/SaaS forensics. Produces an evidence collection plan
   with volatility-prioritized acquisition steps, integrity verification, and
   chain-of-custody documentation.
-tags: [incident-response, forensics, evidence]
+tags: [incident-response, forensics, evidence, cloud, saas]
 role: [soc-analyst, security-engineer]
 phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
@@ -41,7 +41,7 @@ Invoke this skill when any of the following conditions are met:
 - **Volatile data capture is needed** -- Systems that may contain volatile forensic evidence (memory, running processes, network connections) are at risk of being rebooted, reimaged, or shut down.
 - **Disk imaging is required** -- A system must be forensically imaged before eradication or recovery actions alter the disk state.
 - **Chain of custody must be established** -- Evidence may be used in legal proceedings, regulatory investigations, insurance claims, or internal disciplinary actions requiring documented provenance.
-- **Cloud environment evidence collection** -- Forensic data must be captured from cloud infrastructure (AWS, Azure, GCP) where traditional disk imaging does not apply.
+- **Cloud or SaaS evidence collection** -- Forensic data must be captured from cloud infrastructure (AWS, Azure, GCP) or provider-operated SaaS platforms where traditional disk imaging does not apply.
 - **Log preservation needed** -- Logs at risk of rotation, overwrite, or deletion must be preserved before they are lost.
 
 **Do not use when:** The task is incident classification and response coordination (use ir-playbook), containment strategy selection (use containment), or post-incident retrospective (use post-incident-review).
@@ -59,7 +59,8 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Authorization** -- Written authorization from system owner or legal authority to perform forensic acquisition.
 - [ ] **Evidence storage** -- Write-protected storage media available (forensic drives, NAS, S3 bucket with object lock).
 - [ ] **Forensic tools available** -- Memory capture (WinPmem, LiME, DumpIt), disk imaging (dc3dd, FTK Imager, ewfacquire), network capture (tcpdump, Wireshark).
-- [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
+- [ ] **Cloud/SaaS provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment), plus SaaS audit/eDiscovery roles for tenant exports.
+- [ ] **SaaS retention and hold status** -- Product plan, audit retention policy, eDiscovery/legal hold state, export lag window, and whether activity logs are still within retention.
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
 
@@ -339,6 +340,42 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
 
+#### 6a: SaaS Evidence Preservation
+
+Provider-operated SaaS platforms such as Microsoft 365, Google Workspace, GitHub, Slack, and CRM systems often have no customer-accessible disk or memory image. Treat provider-native audit export, content hold, directory state, and export provenance as first-class forensic evidence.
+
+**SaaS preservation checklist:**
+
+| Evidence Class | What to Preserve | Required Provenance |
+|----------------|------------------|---------------------|
+| Activity/audit logs | Admin actions, mailbox/file access, sharing, OAuth app grants, rule changes, login events | Tenant/org ID, product plan, retention policy, UTC query window, collector role, export method, export timestamp, pagination/continuation handling |
+| Content evidence | Mailbox messages, files, chats, records, deleted or modified content | eDiscovery/legal hold ID, custodian, preservation scope, redaction status, hash and immutable storage location |
+| Identity state | Users, aliases, groups, admin roles, delegated mailbox permissions, OAuth/service apps, external collaborators | Snapshot time, directory source, role used for export, mapping from opaque IDs to current and historical identities |
+| Configuration state | Retention policies, sharing controls, mailbox forwarding, app consent settings, tenant security settings | Export command/API, configuration scope, region, policy version or last-modified timestamp |
+| Evidence gaps | Expired logs, unlicensed audit, disabled logging, API lag, role-limited export, provider outage, privacy redaction | Reason code, affected time range, compensating source, and whether a repeat query is required after ingestion lag |
+
+**Example SaaS evidence commands or actions:**
+
+```
+# Microsoft 365 / Purview
+# Export unified audit records for the incident window, then hash the CSV/JSON.
+# Preserve mailbox/file content separately with an eDiscovery hold when content is in scope.
+
+# Google Workspace
+# Export Admin audit / Reports API events for the incident window.
+# Record data-lag and retention limits for the specific log type.
+
+# GitHub Enterprise / organization
+# Export audit log events, org membership, team membership, SSO identity links, and app installations.
+```
+
+**SaaS forensic considerations:**
+- Content hold is not the same as activity-log preservation; mailbox or document holds may not prove who accessed, delegated, shared, or changed data.
+- A hashed export proves post-export integrity but not completeness. Record the exact query, filters, time zone, pagination method, and collector privileges.
+- Some SaaS audit logs have ingestion lag. Repeat the export after the documented lag window when the first query is close to the event time.
+- Deleted users or renamed accounts can break audit attribution. Preserve identity and group membership snapshots alongside activity logs.
+- If the plan or tenant was not configured for long-term audit retention, mark the gap explicitly as `expired`, `not licensed`, `not enabled`, `role-limited`, or `not evaluable` rather than silently treating the source as clean.
+
 ---
 
 ## 4. Findings Classification
@@ -401,6 +438,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### SaaS Evidence (if applicable)
+| SaaS Platform | Evidence Class | Retention/Plan Verified | Export Method | Query Window (UTC) | Collector Role | Identity Snapshot | Hash/Storage | Status |
+|---|---|---|---|---|---|---|---|---|
+| [Microsoft 365/Google Workspace/GitHub/etc.] | [Audit/Content/Identity/Config] | [Yes/No/Unknown] | [UI/API/CLI/eDiscovery] | [Start - End] | [Role] | [Yes/No/N/A] | [SHA-256 + location] | [Collected/Expired/Not Licensed/API Lag/Role-Limited] |
 ```
 
 ---
@@ -461,6 +503,10 @@ Applying traditional forensic methods to cloud environments without adaptation l
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
 
+### Pitfall 6: Treating SaaS Content Holds as Complete Forensic Preservation
+
+Legal holds and eDiscovery cases can preserve mailbox, file, or chat content, but they may not preserve the activity trail needed to prove access, delegation, sharing, OAuth consent, forwarding rules, or admin changes. For SaaS incidents, preserve activity logs, content, identity state, and configuration state separately. Record retention limits, export lag, query provenance, collector role, and evidence-gap reason codes so a missing SaaS artifact is not mistaken for absence of attacker activity.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -487,3 +533,6 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
 9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
 10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+11. **Microsoft Purview Audit Log Retention Policies** -- https://learn.microsoft.com/purview/audit-log-retention-policies
+12. **Google Workspace Data Retention and Lag Times** -- https://support.google.com/a/answer/7061566
+13. **AWS CloudTrail Event History** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/view-cloudtrail-events.html

@@ -336,7 +336,7 @@ skills:
 
   - id: forensics-checklist
     name: "Digital Forensics Evidence Collection"
-    tags: [incident-response, forensics, evidence]
+    tags: [incident-response, forensics, evidence, cloud, saas]
     role: [soc-analyst, security-engineer]
     phase: [respond]
     activity: [investigate]
