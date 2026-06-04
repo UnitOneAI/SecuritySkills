@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -143,6 +143,16 @@ If evidence is unavailable, use `Pending`, `Failed`, or `Not Evaluable`; do not 
 | DNS sinkhole or DNS block | Resolver path used by the affected asset, DoH/DoT and direct-IP bypass review, sinkhole response from the affected asset, DNS egress enforcement, and blocked-resolution or failed-C2 telemetry | Enforce proxy/firewall egress controls, block direct C2 IPs, or isolate the host if the resolver path is uncontrolled |
 | Kubernetes NetworkPolicy | Target pod and namespace selector match, CNI support for NetworkPolicy, ingress and egress `policyTypes`, namespace label evidence, and denied connection telemetry | Apply node, namespace, cloud security-group, or service-mesh policy isolation if the CNI does not enforce NetworkPolicy |
 
+**Provider and platform verification examples:**
+
+| Domain | Verification Examples | Evidence That Should Be Captured |
+|---|---|---|
+| Cloud network controls | AWS `describe-instances`, `describe-network-interfaces`, `describe-security-groups`, and VPC Flow Logs; Azure NIC/NSG rule queries and Activity Log; GCP firewall rule, instance tag, and VPC flow-log queries | The affected workload is attached to the intended enforcement point, ingress and egress are covered, route/NACL/proxy/transit bypass paths were reviewed, and denied/flow telemetry changed after enforcement |
+| EDR isolation | EDR console or API action status, isolation state, agent last-seen time, host acknowledgement, management-channel exception list, and post-action process/network telemetry | The isolation command reached the endpoint, the endpoint remains manageable, attacker process or network activity stopped, and a fallback path exists if the agent is offline or tampered |
+| Identity containment | Entra ID/Microsoft Graph, Okta, AD, IAM, or application-session audit evidence for account disablement, session revocation, refresh-token invalidation, app-grant review, API-key rotation, service-principal disablement, and certificate/SSH-key revocation | Old sessions or credentials fail, live app access is revoked, non-human identities are handled, downstream SaaS sessions are covered, and the relevant audit event timestamp is recorded |
+| DNS and proxy controls | `dig`/`nslookup` from an affected network path, DNS server logs, resolver policy/RPZ evidence, proxy/firewall deny logs, DoH/DoT bypass checks, and direct-IP egress review | The affected asset uses the controlled resolver path, malicious resolution is blocked or sinkholed, direct-IP/DoH bypass is blocked, and C2 resolution or connection telemetry stops |
+| Kubernetes and service mesh | `kubectl get networkpolicy`, pod and namespace label evidence, CNI enforcement support, ingress/egress `policyTypes`, service-mesh policy state, and denied connection telemetry | The policy selector actually matches the affected workload and namespace, the CNI or mesh enforces it, and connection tests or logs show the intended traffic is blocked |
+
 ### Step 3: Long-Term Containment
 
 Long-term containment allows the organization to maintain operations while keeping the attacker blocked. These actions prepare the environment for eradication.
@@ -228,14 +238,14 @@ After implementing containment, verify effectiveness before proceeding to eradic
 
 **Validation checklist:**
 
-| Check | Method | Expected Result |
-|-------|--------|----------------|
-| C2 communication blocked | Monitor network traffic for C2 indicators | No outbound connections to known C2 IPs/domains |
-| Lateral movement blocked | Monitor authentication logs and network flows between segments | No unauthorized cross-segment authentication |
-| Compromised credentials revoked | Attempt authentication with known-compromised credentials | Authentication fails |
-| Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
-| Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
-| Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+| Check | Evidence Source | Verification Method | Expected Result | Non-Pass Handling |
+|-------|-----------------|---------------------|-----------------|-------------------|
+| C2 communication blocked | Firewall, proxy, DNS, EDR network telemetry, flow logs | Query post-action connections and test controlled resolution or egress from the affected path | No outbound connections to known C2 IPs/domains | Mark `Pending` or `Failed`; add network, DNS, proxy, or host isolation fallback |
+| Lateral movement blocked | Authentication logs, EDR lateral-movement telemetry, firewall/flow logs | Compare post-action cross-segment authentication and protocol activity against the incident path | No unauthorized cross-segment authentication or admin protocol activity | Expand segmentation, disable accounts, or isolate additional systems |
+| Compromised credentials revoked | IdP, AD, IAM, SaaS, and application audit logs | Verify account disablement, session/token revocation, API key rotation, and failed reuse of old credentials | Authentication and old token/session reuse fail | Revoke downstream sessions, rotate non-human credentials, and block source paths |
+| Attacker persistence neutralized | Endpoint, cloud, identity, scheduler, startup, and application telemetry | Re-query known persistence mechanisms and verify the old execution path is removed or blocked | No active persistence artifacts or callbacks | Escalate to full isolation or rebuild when persistence remains active |
+| Business services operational (if surgical containment) | Service health checks, synthetic transactions, observability dashboards | Verify critical service health from user and dependency perspectives | Services responding normally within accepted degradation | Escalate business-owner decision or reduce containment scope with compensating controls |
+| Evidence preserved | Forensic storage, hash records, memory/disk acquisition logs | Verify images, memory dumps, and log exports are present, immutable, and hash-verified | Hash verification passes | Preserve before destructive containment or document evidence loss and approval |
 
 **Effective enforcement evidence matrix:**
 
@@ -293,7 +303,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.2
+**Skill:** containment v1.0.3
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -332,9 +342,9 @@ threat severity and business criticality, and expected impact on operations.]
 | [Service] | [Description of disruption] | [Workaround if any] | [Yes/No -- requires escalation] |
 
 ### Containment Validation Checklist
-| Check | Result | Timestamp |
-|---|---|---|
-| [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+| Check | Evidence Source | Verification Method | Expected Result | Result | Timestamp | Non-Pass Handling |
+|---|---|---|---|---|---|---|
+| [Validation item] | [API/log/tool/source] | [How evidence was collected] | [Expected state/output] | [Pass/Fail/Pending/Not Evaluable] | [timestamp] | [Fallback/escalation/limitation] |
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
