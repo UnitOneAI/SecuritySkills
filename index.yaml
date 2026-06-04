@@ -238,7 +238,7 @@ skills:
 
   - id: scanner-tuning
     name: "Vulnerability Scanner Tuning"
-    tags: [vuln-management, false-positives, scanner]
+    tags: [vuln-management, false-positives, scanner, suppression]
     role: [security-engineer]
     phase: [operate]
     activity: [configure, review]

@@ -5,15 +5,16 @@ description: >
   and improve result accuracy. Covers false positive identification patterns,
   scan policy configuration, authenticated vs unauthenticated scanning tradeoffs,
   severity override criteria, plugin/check selection, scan scheduling, and result
-  correlation across multiple scanners. Uses CVSS 4.0 for severity validation and
-  CWE for vulnerability classification.
-tags: [vuln-management, false-positives, scanner]
+  correlation across multiple scanners. Requires scoped suppression evidence so
+  ignores remain bound to ecosystem, package identity, asset, and version range.
+  Uses CVSS 4.0 for severity validation and CWE for vulnerability classification.
+tags: [vuln-management, false-positives, scanner, suppression]
 role: [security-engineer]
 phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -49,6 +50,7 @@ Before starting, collect or confirm:
 - [ ] **Scan scope:** Target IP ranges, hostnames, applications, containers, or cloud accounts
 - [ ] **Authentication status:** Are scans currently authenticated (credentialed) or unauthenticated?
 - [ ] **False positive examples:** Specific findings suspected or confirmed as false positives, with evidence
+- [ ] **Existing suppressions/ignore rules:** Current `.trivyignore`, `.grype.yaml`, VEX, scanner exception, or risk-acceptance entries
 - [ ] **Scan frequency:** Current scan schedule and any performance constraints
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
 - [ ] **Compliance requirements:** Whether scans must meet specific compliance mandates (PCI ASV, DISA STIG, CIS Benchmark)
@@ -97,6 +99,33 @@ False Positive Record:
 - Evidence:            [Specific evidence proving false positive]
 - Verification Method: [Package manager check | Authenticated re-scan | Manual testing | Configuration review]
 - Disposition:         [Confirmed FP -- suppress | Accepted Risk -- document | True Positive -- remediate]
+```
+
+#### Suppression Scope Evidence Gate
+
+Apply this gate before recommending or accepting any ignore rule, scanner exception, VEX statement, or risk-acceptance suppression. The goal is to suppress the exact false positive without hiding true positives in other ecosystems, packages, assets, rebuilt images, or future versions.
+
+1. **Bind package identity** -- Require Package URL (purl) or CPE where available, plus ecosystem, package manager, package name, installed version, and vendor advisory/backport evidence. Display-name-only suppressions such as `openssl` are not sufficient.
+2. **Bind asset and artifact identity** -- Record hostname, application, repository, image digest, SBOM serial/version, scanner target, or cloud resource ID. Container suppressions should prefer immutable image digests over tags.
+3. **Bind version and fix scope** -- Record exact version, fixed/backported version, affected version range, or VEX product status. Suppression should fail closed when version range or advisory evidence is missing.
+4. **Bind exploitability rationale** -- Distinguish patched/backported, not affected, not reachable, configuration-disabled, and accepted-risk reasons. A single unreachable exploit path should not suppress a CVE globally when another exposed service uses the vulnerable feature.
+5. **Set owner and expiry** -- Require owner, approval/ticket, creation date, review cadence, and expiry. Expired suppressions must be revalidated or removed.
+6. **Check cross-ecosystem bleed** -- Verify a suppression for `pkg:apk/.../openssl` does not suppress Debian, RPM, npm, Maven, Go, or future rebuilt artifacts with the same display name.
+
+```
+Suppression Scope Record:
+- Scanner / Rule Source: [Trivy .trivyignore.yaml | Grype ignore | VEX | scanner exception]
+- CVE / Advisory:        [CVE-YYYY-NNNNN | GHSA | vendor advisory]
+- Package Identity:     [purl or CPE]
+- Ecosystem / Manager:  [apk | deb | rpm | npm | maven | go | pypi | other]
+- Installed Version:    [exact version]
+- Version Scope:        [exact | range | backport advisory | VEX product status]
+- Asset / Artifact:     [host, app, image digest, SBOM serial, repo]
+- Suppression Reason:   [patched/backported | not affected | not reachable | accepted risk]
+- Evidence:             [package manager output, vendor advisory, VEX statement, exploitability proof]
+- Owner / Ticket:       [owner and reference]
+- Expiry / Review:      [date and cadence]
+- Fail-Closed Rule:     [what happens if identity fields are missing]
 ```
 
 ### Step 2: Scan Policy Configuration
@@ -331,6 +360,12 @@ Highlight the most impactful tuning recommendations.]
 **Estimated False Positive Rate:** [N%]
 **Top FP Contributors:** [List top 3-5 plugins generating the most false positives]
 
+### Suppression Scope Review
+
+| Suppression | Package Identity | Ecosystem | Version Scope | Asset / Artifact | Owner / Expiry | Status |
+|---|---|---|---|---|---|---|
+| [rule or exception ID] | [purl/CPE] | [ecosystem] | [exact/range/backport/VEX] | [host/image digest/SBOM] | [owner/date] | [Valid / Too Broad / Expired / Not Evaluable] |
+
 ### Severity Overrides
 
 | CVE ID | Asset | Original Severity | Adjusted Severity | Justification | Review Date |
@@ -399,6 +434,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
+6. **Using display-name-only suppressions.** A suppression for `openssl`, `log4j`, or `lodash` without purl/CPE, ecosystem, version, and artifact scope can hide real findings across operating systems, language ecosystems, or rebuilt images.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -427,5 +464,15 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - Greenbone/OpenVAS: https://greenbone.github.io/docs/
 - Trivy: https://aquasecurity.github.io/trivy/
 - Grype: https://github.com/anchore/grype
+- Package URL specification: https://ecma-tc54.github.io/ECMA-427/
+- NIST CPE Specification: https://csrc.nist.gov/projects/security-content-automation-protocol/specifications/cpe
+- Trivy filtering and ignore configuration: https://trivy.dev/docs/latest/configuration/filtering/
 - Nuclei: https://docs.projectdiscovery.io/tools/nuclei/
 - NVD (NIST): https://nvd.nist.gov/
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added suppression scope evidence gates for purl/CPE, ecosystem, package manager, version range, asset/artifact identity, owner, expiry, and fail-closed behavior.
+- **1.0.0** -- Initial release. Scanner tuning workflow for false positive analysis, policy configuration, authentication, severity overrides, correlation, and scan scheduling.
