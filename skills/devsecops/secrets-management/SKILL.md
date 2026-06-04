@@ -4,16 +4,16 @@ description: >
   Performs a structured secrets management review against OWASP Secrets
   Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for
   Key Management). Auto-invoked when reviewing secret handling patterns, vault
-  configurations, .env files, or credential rotation policies. Produces a secrets
-  management assessment covering detection patterns, rotation automation, vault
-  integration, and agent-specific credential handling.
-tags: [devsecops, secrets, vault, rotation]
+  configurations, .env files, JWT/JWE bearer tokens, or credential rotation
+  policies. Produces a secrets management assessment covering detection patterns,
+  rotation automation, vault integration, and agent-specific credential handling.
+tags: [devsecops, secrets, vault, rotation, jwt, bearer-token]
 role: [security-engineer, devsecops]
 phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -155,8 +155,11 @@ xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
 # Generic password assignment
 (?i)(?:password|passwd|pwd)\s*[=:]\s*['"][^'"]{8,}['"]
 
-# JWT tokens (three base64url segments separated by dots)
-eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*
+# JWT/JWS tokens (three base64url segments; do not require eyJ prefix)
+[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*
+
+# JWE tokens (five base64url segments)
+[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
 ```
 
 #### 2.2 False Positive Filtering — Distinguishing Real Secrets from Noise
@@ -165,7 +168,7 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+3. **Recognize known secret prefixes and token context.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, JWT/JWE segment shapes, or bearer tokens in `Authorization` context), it is likely a real secret and should be classified before reporting.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
@@ -173,7 +176,38 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
-#### 2.3 Detection Tool Configuration Review
+#### 2.3 JWT, JWE, and Bearer Token Classification
+
+JWT-like values require classification before severity assignment. Do not assume every `eyJ...` string is an active credential, and do not assume every real bearer token begins with `eyJ`.
+
+Perform only local, non-validating analysis:
+
+- Decode base64url header and payload segments locally when possible.
+- Never send a token to an identity provider, introspection endpoint, verification service, or external decoder.
+- Never print the token value or full decoded claims in the report.
+- Record only token type, context, expiry status, issuer/audience presence, and whether sensitive claims are present.
+
+| Token Shape / Context | Classification Guidance |
+|-----------------------|-------------------------|
+| Three-segment JWS/JWT in `Authorization`, cookie, config, or `.env` context | Active-looking credential unless clearly expired, revoked test fixture, or documented example |
+| Five-segment JWE or opaque bearer value in `Authorization: Bearer` context | Treat as active-looking credential even when payload cannot be decoded |
+| JWT header that does not start with `eyJ` | Decode segments locally where possible; whitespace or serialization changes can alter the base64url prefix |
+| `alg: none`, `exp: 0`, dummy issuer/audience, and documentation/test context | Classify as example/test fixture when surrounding context clearly marks it as non-live |
+| Expired token with real issuer/audience or PII-like claims | Classify as expired credential or sensitive claim exposure, not as harmless placeholder |
+| Placeholder values such as `<jwt>`, `example.token.value`, `dummy.jwt.signature` | Suppress as placeholder unless surrounding code uses it as a real runtime credential |
+
+Use these reporting tiers:
+
+| Tier | Criteria | Reporting |
+|------|----------|-----------|
+| **Active-looking credential** | Bearer/auth context, plausible issuer/audience, unexpired or unknown expiry, no clear fixture marker | Numbered finding; rotate/revoke and remove from code |
+| **Expired but sensitive claim exposure** | Token appears expired but contains real user, tenant, email, scope, or audience claims | Numbered finding for sensitive data exposure; redact claim values |
+| **Example/test fixture** | Documentation, unit test, `alg: none`, `exp: 0`, dummy issuer/audience, and no live auth path | Note as suppressed false positive or low-risk fixture hygiene item |
+| **Placeholder/noise** | Obvious placeholder, malformed fake, or low-entropy sample | Do not count as a finding |
+
+For findings, cite the storage context and token class only. Example: "JWT-like bearer credential in `.env.production` with unexpired/unknown expiry", not the token value.
+
+#### 2.4 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
@@ -389,6 +423,12 @@ spec:
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
 
+### JWT/JWE and Bearer Token Classification
+
+| Location | Token Class | Context | Expiry Status | Sensitive Claims Present | Disposition |
+|----------|-------------|---------|---------------|--------------------------|-------------|
+| <file:line> | Active-looking credential / Expired sensitive / Fixture / Placeholder | Authorization / cookie / docs / tests / config | Unexpired / Expired / Unknown / N/A | Yes / No / Unknown | Finding / Suppressed / Hygiene note |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -442,6 +482,10 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Treating all JWT-shaped strings equally.** Documentation examples, unsigned fixtures, expired test tokens, active bearer credentials, and expired tokens with sensitive claims require different dispositions. Classify locally, redact values, and preserve findings for real credential or sensitive-claim exposure.
+
+6. **Relying only on the `eyJ` prefix.** JWE tokens, opaque bearer credentials, and JWT headers serialized with whitespace can miss that prefix. Bearer context and segment shape should elevate review even when the header prefix differs.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -466,10 +510,13 @@ This skill processes configuration files and code that may contain secret values
 - detect-secrets: https://github.com/Yelp/detect-secrets
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
+- RFC 7519 -- JSON Web Token (JWT): https://www.rfc-editor.org/rfc/rfc7519
+- RFC 7516 -- JSON Web Encryption (JWE): https://www.rfc-editor.org/rfc/rfc7516
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added JWT/JWE and bearer token classification, local decode guidance, false-positive tiers for examples/fixtures/placeholders, and reporting fields for expired sensitive claim exposure.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.

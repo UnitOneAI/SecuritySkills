@@ -532,7 +532,7 @@ skills:
 
   - id: secrets-management
     name: "Secrets Management Review"
-    tags: [devsecops, secrets, vault, rotation]
+    tags: [devsecops, secrets, vault, rotation, jwt, bearer-token]
     role: [security-engineer, devsecops]
     phase: [build, operate]
     activity: [review, audit]
