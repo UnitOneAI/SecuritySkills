@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -639,6 +639,7 @@ Agent chains often begin with useful evidence-quality metadata, then lose it whe
 
 ## Changelog
 
+- v1.0.3: Added handoff validation fixtures for preserved evidence quality, flattened partial results, hidden fallback paths, and unresolved agent disagreement.
 - v1.0.2: Added uncertainty and handoff validation gates for AG07/AG05, including evidence-quality search cues, handoff matrix output, semantic threshold rules, and finding severity guidance.
 
 ---
