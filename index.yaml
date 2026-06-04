@@ -214,11 +214,11 @@ skills:
 
   - id: patch-prioritization
     name: "Patch Prioritization & SLA Management"
-    tags: [vuln-management, patching, sla]
+    tags: [vuln-management, patching, sla, vex, csaf]
     role: [security-engineer, vciso]
     phase: [operate]
     activity: [triage, remediate]
-    frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
+    frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV, CSAF-VEX]
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/vuln-management/patch-prioritization/SKILL.md
