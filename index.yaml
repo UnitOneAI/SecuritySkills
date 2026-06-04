@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-05"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -39,6 +39,18 @@ skills:
     difficulty: intermediate
     time_estimate: "15-45min per module"
     file: skills/appsec/secure-code-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: cryptography-review
+    name: "Cryptography Review"
+    tags: [appsec, crypto, cryptography, password-hashing]
+    role: [appsec-engineer, security-engineer]
+    phase: [build, review]
+    activity: [review, assess]
+    frameworks: [OWASP-Cryptographic-Storage, OWASP-Password-Storage, NIST-SP-800-38D, CWE]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/cryptography-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: owasp-top-10-web
