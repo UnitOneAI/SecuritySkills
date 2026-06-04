@@ -65,6 +65,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Permission model | IAM configs, role definitions, credential stores | Reveals whether least-privilege is enforced |
 | Memory/state persistence | Vector DB configs, session stores, scratchpad files | Exposes memory poisoning surface |
 | Human approval gates | Workflow configs, UI code, approval logic | Determines if HITL can be bypassed |
+| Approval enforcement objects | Approval service records, signed approval tokens, policy decision logs | Shows whether approval is bound to exact action parameters, approver identity, TTL, and revocation state |
 | Multi-agent communication | Message bus configs, inter-agent protocols, shared state | Identifies trust boundary violations |
 | Error handling and retry logic | Exception handlers, circuit breaker configs | Reveals cascading failure potential |
 | Authentication and identity | Auth middleware, token management, agent identity configs | Exposes identity gaps |
@@ -98,6 +99,17 @@ In 2023, researchers demonstrated that ChatGPT plugins (now deprecated in favor 
 3. Use read-only credentials by default. Escalate to write permissions only through an explicit approval gate.
 4. Audit tool registrations on every deployment. Flag new tools or expanded permissions in CI/CD.
 5. Implement permission boundaries (AWS Permission Boundaries, GCP IAM Conditions, Azure Conditional Access) that cap what an agent identity can ever do regardless of policy attachments.
+
+**Approval evidence gate:** Human-in-the-loop (HITL) is not a sufficient compensating control by itself. For every high-impact tool escalation, require an approval record that is enforced by the backend and bound to:
+
+- Approver identity and role from the identity provider, not only an agent transcript or chat message.
+- Exact action parameters or action hash, including amount, recipient, target resource, tool name, and batch item IDs.
+- Policy version and risk decision used at approval time.
+- Short TTL or expiration timestamp appropriate to the action risk.
+- Nonce or approval ID that is single-use and non-replayable.
+- Revocation path for role changes, incident lockout, policy updates, and user logout.
+
+Flag broad prompts such as "approve this agent" or "allow future transfers" as **High** when they can authorize multiple actions. Flag approval reuse with changed parameters, expired approvals that still execute, or delegated approval accepted without a signed approver identity as **Critical** for high-impact actions.
 
 **Framework Mapping:**
 
@@ -163,6 +175,7 @@ In early 2024, researchers from UIUC demonstrated a multi-agent privilege escala
 3. Apply the principle of least authority at the delegation layer — an agent cannot delegate permissions it does not hold.
 4. Deploy runtime guardrails that detect and block attempts to redefine agent identity or role within conversation context.
 5. Use hardware-backed credential stores (HSMs, TEEs) for high-privilege operations, requiring out-of-band approval for access.
+6. Bind delegated approvals to a signed approver identity and exact downstream action. A lower-privilege agent must not be able to launder authorization through another agent by quoting a user's chat approval without backend verification.
 
 **Framework Mapping:**
 
@@ -428,6 +441,7 @@ Grep: "send_message|delegate|dispatch|publish|subscribe|queue" in **/*.{py,ts,js
 
 # Human approval gates
 Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,js,yaml,yml}
+Grep: "approval_id|approvalId|ttl|expires_at|nonce|policy_version|action_hash|delegated_authority" in **/*.{py,ts,js,yaml,yml,json}
 ```
 
 ### Hands-On Assessment Tooling
@@ -456,6 +470,7 @@ For each finding, document:
 3. The evidence (file path, code snippet, configuration).
 4. The risk rating with justification.
 5. The recommended remediation with priority.
+6. For HITL findings, document approval enforcement evidence: approver identity, role, action hash or parameter binding, TTL, replay status, policy version, and revocation path.
 
 ---
 
@@ -492,7 +507,7 @@ Structure the final report as follows:
 - Agent framework: [framework name and version]
 - Tools registered: [count and categories]
 - Memory stores: [types]
-- Human approval gates: [present/absent, description]
+- Human approval gates: [present/absent, approval binding, TTL, replay protection, revocation path]
 - Multi-agent communication: [method]
 
 ## Findings by Threat Category
@@ -501,6 +516,7 @@ Structure the final report as follows:
 - **Rating:** [rating]
 - **Finding:** [description]
 - **Evidence:** [file path, code reference]
+- **Approval Evidence:** [approver identity, policy version, action hash, TTL, replay status, revocation path; N/A if not HITL-related]
 - **Impact:** [what could go wrong]
 - **Remediation:** [specific action]
 - **Priority:** [P0/P1/P2/P3]
@@ -577,6 +593,8 @@ Multi-agent systems routinely pass natural language messages between agents with
 ### 3. Implementing Human-in-the-Loop as a Checkbox
 
 An approval gate is only effective if the human reviewer has sufficient context, time, and expertise to make a meaningful decision. Systems that bombard reviewers with hundreds of low-context approval requests per day have no effective human oversight — they have an approval theatre that will be bypassed through fatigue. Design for meaningful review, not review volume.
+
+For HITL controls, also verify that the approval is enforceable. UI confirmation is not equivalent to backend authorization unless the approval is bound to exact action parameters, expires quickly, cannot be replayed, and is revoked when approver role or policy state changes.
 
 ### 4. Ignoring the Memory Attack Surface
 
