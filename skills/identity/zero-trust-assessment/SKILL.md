@@ -187,7 +187,32 @@ ZT-DEV-07: No automated remediation for non-compliant devices
 ZT-DEV-08: IoT/OT devices not inventoried or segmented
 ZT-DEV-09: Device state changes do not trigger access re-evaluation
 ZT-DEV-10: Endpoint telemetry not fed into policy engine for risk scoring
+ZT-DEV-11: Device posture signal age is unknown or exceeds the policy's maximum freshness window
+ZT-DEV-12: Sessions are not revoked or re-evaluated when device posture degrades after login
+ZT-DEV-13: Conflicting MDM, EDR, IdP, or ZTNA posture signals have no precedence or fail-closed rule
 ```
+
+#### Device Posture Freshness and CAE Evidence
+
+For each access path that depends on device compliance, require evidence that posture is current enough to support the decision. A static daily compliance export should not receive the same maturity score as live posture telemetry that feeds the policy engine and revokes access on drift.
+
+Collect:
+
+- **Posture source** — MDM, EDR/XDR, device certificate, hardware attestation, IdP conditional access, ZTNA gateway, or API access proxy
+- **Last signal timestamp** — when the posture signal was last evaluated for the device and user session
+- **Maximum allowed age** — policy freshness bound, such as 5 minutes for high-risk apps or immediate recheck on EDR disablement
+- **Failure mode** — fail closed, limited access, step-up authentication, quarantine, or allow until next scheduled sync
+- **Session revocation trigger** — CAE or equivalent event proving active sessions are revoked or re-evaluated when posture changes
+- **Correlation evidence** — linked MDM, EDR, IdP, and ZTNA logs showing the same device identifier and policy decision
+
+Maturity scoring guidance:
+
+| Evidence Pattern | Score Impact |
+|---|---|
+| Login-time compliance check only, no freshness timestamp | Initial at most |
+| Scheduled compliance export with documented max age and limited access for stale devices | Advanced candidate |
+| Near-real-time posture feed plus CAE/session revocation on drift | Optimal candidate |
+| Conflicting posture sources with no precedence rule | Cap at Initial until fail-closed handling is documented |
 
 ---
 
@@ -400,6 +425,14 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 ### Detailed Findings
 [Findings by pillar with framework references]
 
+Each device-pillar finding should include:
+
+- Posture source and device identifier
+- Last signal timestamp and maximum allowed signal age
+- Access decision point that consumed the posture signal
+- Session revocation or re-evaluation trigger for posture degradation
+- Failure mode when posture data is stale, missing, or conflicting
+
 ### Zero Trust Roadmap
 - Phase 1 (0-6 months): [quick wins, critical gaps]
 - Phase 2 (6-12 months): [pillar advancement]
@@ -442,6 +475,8 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Treating stale posture as continuous verification** — a compliant bit from yesterday does not prove current device health. Score device controls by signal freshness, not only by whether a compliance source exists.
+9. **CAE without revocation evidence** — claiming continuous access evaluation without logs showing session revocation or policy re-evaluation on posture drift overstates maturity.
 
 ---
 
