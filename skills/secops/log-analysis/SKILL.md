@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -65,6 +65,38 @@ Before beginning analysis, gather or confirm:
 ---
 
 ## 3. Process
+
+### Step 0: Telemetry Integrity and Ingestion Coverage
+
+Complete this pre-check before interpreting "no evidence found" as benign. Prove that the required telemetry sources were present, trustworthy, and queryable for the analysis window.
+
+**Source-to-hypothesis matrix:**
+
+| Hypothesis / Question | Required Sources | Status | Integrity Evidence | Confidence |
+|-----------------------|------------------|--------|--------------------|------------|
+| Account compromise | IdP sign-in, MFA/CA, endpoint process, proxy/DNS, EDR alerts | Present / Partial / Missing / Delayed / Untrusted | Heartbeat, last event time, last ingest time, index permissions, known maintenance | High / Medium / Low / Not Evaluable |
+| Credential theft | Sysmon 10, EDR process access, PowerShell 4104, Windows Security, cloud audit | Present / Partial / Missing / Delayed / Untrusted | Sensor policy, parser status, drop counters, query scope, event volume baseline | High / Medium / Low / Not Evaluable |
+| C2 or exfiltration | DNS, proxy, firewall, NetFlow/VPC flow, endpoint network | Present / Partial / Missing / Delayed / Untrusted | Collector health, queue/backpressure counters, sampling policy, late-arrival window | High / Medium / Low / Not Evaluable |
+
+**Telemetry integrity checks:**
+
+- **Source heartbeat:** Confirm the source or collector reported healthy during the window, not merely that some old events exist.
+- **Last event vs. last ingest:** Record both event occurrence time and SIEM ingestion time. A source can be producing events while the SIEM is delayed, or the SIEM can receive replayed backlog after the fact.
+- **Pipeline configuration:** Review collector, parser, routing, filter, and index configuration for the event classes needed by the hypothesis. Treat silent drops of authentication, EDR, cloud audit, DNS, or proxy events as high-risk visibility failures.
+- **Drop and error counters:** Check queue depth, output failures, parser failures, rejected events, throttling, sampling, truncation, and license/volume caps before drawing volumetric conclusions.
+- **Access scope:** Confirm the analyst can query the required tenant, namespace, index, subscription, account, project, or workspace. Search permissions can create a false "no logs found" result.
+- **Known maintenance:** Document change tickets, planned parser deployments, approved sampling, or expected zero-event windows. These can explain gaps but should lower confidence if they prevent answering the hypothesis.
+- **Replay and duplication:** Use stable event IDs, sequence numbers, or source offsets to deduplicate replayed batches and to flag late-arriving events that may change the timeline.
+- **Evidence retention:** Preserve collector configuration, filter rules, parser versions, source health metrics, and query scope evidence with the investigation record so pipeline integrity can be rechecked later.
+
+**Telemetry integrity finding guidance:**
+
+| Condition | Classification Guidance |
+|-----------|-------------------------|
+| Documented maintenance or zero-event period with heartbeat, ticket, expected-events rationale, and no corroborating suspicious activity | Record as a visibility limitation; do not classify as compromise by itself. |
+| Required source missing, delayed, sampled, or access-restricted for the analysis window | Mark the hypothesis as Partial or Not Evaluable; do not issue high-confidence benign closure. |
+| Collector filter, parser, route, or SIEM rule suppresses high-value event classes without approval | Treat as P2 High; escalate as possible telemetry evasion or monitoring control failure. |
+| Evidence of deliberate log clearing, sensor disabling, audit policy downgrade, or targeted auth/EDR/cloud/DNS event suppression during an incident | Treat as P1 Critical when tied to active compromise context; map to ATT&CK T1070 or T1562 as applicable. |
 
 ### Step 1: Log Source Taxonomy
 
@@ -122,37 +154,6 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | Azure Activity Log | Azure | Resource operations -- create, delete, modify at the control plane | Cloud Service (DS0025) |
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
-
-### Step 1A: Telemetry Integrity and Ingestion Coverage
-
-Before interpreting "no evidence found" as benign, prove that the required telemetry sources were present, trustworthy, and queryable for the analysis window.
-
-**Source-to-hypothesis matrix:**
-
-| Hypothesis / Question | Required Sources | Status | Integrity Evidence | Confidence |
-|-----------------------|------------------|--------|--------------------|------------|
-| Account compromise | IdP sign-in, MFA/CA, endpoint process, proxy/DNS, EDR alerts | Present / Partial / Missing / Delayed / Untrusted | Heartbeat, last event time, last ingest time, index permissions, known maintenance | High / Medium / Low / Not Evaluable |
-| Credential theft | Sysmon 10, EDR process access, PowerShell 4104, Windows Security, cloud audit | Present / Partial / Missing / Delayed / Untrusted | Sensor policy, parser status, drop counters, query scope, event volume baseline | High / Medium / Low / Not Evaluable |
-| C2 or exfiltration | DNS, proxy, firewall, NetFlow/VPC flow, endpoint network | Present / Partial / Missing / Delayed / Untrusted | Collector health, queue/backpressure counters, sampling policy, late-arrival window | High / Medium / Low / Not Evaluable |
-
-**Telemetry integrity checks:**
-
-- **Source heartbeat:** Confirm the source or collector reported healthy during the window, not merely that some old events exist.
-- **Last event vs. last ingest:** Record both event occurrence time and SIEM ingestion time. A source can be producing events while the SIEM is delayed, or the SIEM can receive replayed backlog after the fact.
-- **Pipeline configuration:** Review collector, parser, routing, filter, and index configuration for the event classes needed by the hypothesis. Treat silent drops of authentication, EDR, cloud audit, DNS, or proxy events as high-risk visibility failures.
-- **Drop and error counters:** Check queue depth, output failures, parser failures, rejected events, throttling, sampling, truncation, and license/volume caps before drawing volumetric conclusions.
-- **Access scope:** Confirm the analyst can query the required tenant, namespace, index, subscription, account, project, or workspace. Search permissions can create a false "no logs found" result.
-- **Known maintenance:** Document change tickets, planned parser deployments, approved sampling, or expected zero-event windows. These can explain gaps but should lower confidence if they prevent answering the hypothesis.
-- **Replay and duplication:** Use stable event IDs, sequence numbers, or source offsets to deduplicate replayed batches and to flag late-arriving events that may change the timeline.
-
-**Telemetry integrity finding guidance:**
-
-| Condition | Classification Guidance |
-|-----------|-------------------------|
-| Documented maintenance or zero-event period with heartbeat, ticket, expected-events rationale, and no corroborating suspicious activity | Record as a visibility limitation; do not classify as compromise by itself. |
-| Required source missing, delayed, sampled, or access-restricted for the analysis window | Mark the hypothesis as Partial or Not Evaluable; do not issue high-confidence benign closure. |
-| Collector filter, parser, route, or SIEM rule suppresses high-value event classes without approval | Treat as P2 High; escalate as possible telemetry evasion or monitoring control failure. |
-| Evidence of deliberate log clearing, sensor disabling, audit policy downgrade, or targeted auth/EDR/cloud/DNS event suppression during an incident | Treat as P1 Critical when tied to active compromise context; map to ATT&CK T1070 or T1562 as applicable. |
 
 ### Step 2: Critical Windows Event IDs
 
@@ -378,9 +379,10 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.1.0
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
+**Overall Confidence:** [High / Medium / Low / Not Evaluable] — [state how telemetry source coverage affected this confidence]
 
 ### Analysis Objective
 [1-2 sentences describing what question this analysis is answering]
@@ -533,3 +535,10 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+
+---
+
+## 10. Changelog
+
+- **1.1.0** -- Added Step 0 telemetry integrity pre-check, source-to-hypothesis confidence mapping, event-time/ingest-time timeline fields, pipeline exception reporting, confidence modifiers, and evidence-retention guidance.
+- **1.0.0** -- Initial release. Log source taxonomy, anomaly identification, baseline recommendations, and ATT&CK-mapped correlation guidance.
