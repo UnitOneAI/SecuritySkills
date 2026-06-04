@@ -1,16 +1,18 @@
 ---
 name: post-incident-review
 description: >
-  Conducts a structured post-incident review following NIST SP 800-61 Rev 2
-  Post-Incident Activity guidance. Auto-invoked when an incident has been
-  resolved and the team needs to conduct a blameless retrospective, reconstruct
-  the timeline, perform root cause analysis, document lessons learned, and
-  track remediation actions. Produces a PIR report with metrics (MTTD, MTTR,
-  MTTC), control failure mapping, and actionable improvement plan.
+  Conducts a structured post-incident review following NIST SP 800-61 Rev. 3
+  and the NIST CSF 2.0 Community Profile for incident response. Auto-invoked
+  when an incident has been resolved and the team needs to conduct a blameless
+  retrospective, reconstruct the timeline, perform root cause analysis,
+  document lessons learned, and track remediation actions. Produces a PIR
+  report with metrics (MTTD, MTTR, MTTC), control failure mapping, notification
+  decision evidence, CSF 2.0 improvement mapping, and an actionable improvement
+  plan.
 tags: [incident-response, pir, lessons-learned]
 role: [soc-analyst, security-engineer, vciso]
 phase: [recover]
-frameworks: [NIST-SP-800-61r2]
+frameworks: [NIST-SP-800-61r3, NIST-CSF-2.0]
 difficulty: beginner
 time_estimate: "30-60min"
 version: "1.0.0"
@@ -21,9 +23,9 @@ injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
 
-# Post-Incident Review -- NIST SP 800-61 Rev 2
+# Post-Incident Review -- NIST SP 800-61 Rev. 3 / CSF 2.0
 
-> **Framework:** NIST SP 800-61 Rev 2 (Section 3.4: Post-Incident Activity)
+> **Framework:** NIST SP 800-61 Rev. 3 (Incident Response Recommendations and Considerations for Cybersecurity Risk Management: A CSF 2.0 Community Profile)
 > **Role:** SOC Analyst, Security Engineer, vCISO
 > **Time:** 30-60 min
 > **Output:** Post-incident review report with blameless retrospective, root cause analysis, control failure mapping, metrics (MTTD, MTTR, MTTC), lessons learned, and remediation tracking plan
@@ -58,10 +60,28 @@ Before conducting the PIR, gather or confirm:
 - [ ] **Existing controls** -- Documentation of security controls that were in place at the time of the incident (detection rules, access controls, network segmentation, patching cadence).
 - [ ] **Previous PIR reports** -- Any prior post-incident reviews for similar incident types, to identify recurring patterns.
 - [ ] **Metrics data** -- Timestamps needed to compute MTTD, MTTR, and MTTC (see Step 4).
+- [ ] **Framework basis** -- Assessment date, SP 800-61 revision used, CSF 2.0 profile mapping, and whether any legacy Rev. 2 wording is intentionally retained.
+- [ ] **Notification and legal decision record** -- Legal hold status, notification obligations considered, decision owner, approval evidence, and notices sent or explicitly ruled out.
+- [ ] **Risk and control registers** -- Risk register entries, control owners, control testing evidence, and residual-risk decisions affected by this incident.
 
 ---
 
 ## 3. Process
+
+### Step 0: Framework and Governance Preflight
+
+Before running the retrospective, record the framework basis and governance scope. NIST SP 800-61 Rev. 3 supersedes Rev. 2 and is organized as a NIST Cybersecurity Framework (CSF) 2.0 Community Profile. Current reports should default to Rev. 3 unless the engagement explicitly requires a legacy Rev. 2 assessment.
+
+| Field | Required Evidence |
+|---|---|
+| Assessment date | [YYYY-MM-DD] |
+| Framework version | [NIST SP 800-61 Rev. 3 / legacy Rev. 2 with rationale] |
+| CSF 2.0 profile used | [Yes/No -- if no, explain] |
+| Legacy Rev. 2 mode | [No / Yes with business or audit reason] |
+| Executive risk owner | [Name/team approving residual-risk decisions] |
+| Legal/comms participation | [Names/teams consulted for notification and evidence-retention decisions] |
+
+If a legacy Rev. 2 report is required, state that it is a compatibility mode and do not present it as the current NIST baseline.
 
 ### Step 1: Blameless Retrospective
 
@@ -114,6 +134,8 @@ Build a comprehensive timeline of the incident from initial compromise through c
 - When and why was containment strategy X chosen over alternative Y?
 - Were there decision delays? What caused them (missing information, unavailable personnel, unclear authority)?
 - Were any decisions reversed during the response? What new information triggered the reversal?
+- When was the notification decision made, what obligation clock was used, and who approved the decision?
+- Which risk owner accepted, mitigated, transferred, or escalated residual risk after recovery?
 
 ### Step 3: Root Cause Analysis
 
@@ -232,11 +254,13 @@ MTTR measures the total response duration from detection through return to norma
 
 Map the incident to specific control failures -- what should have prevented, detected, or limited the incident but did not.
 
-| Control Category | Expected Control | Status at Time of Incident | Failure Mode | Improvement |
-|---|---|---|---|---|
-| **Preventive** | [Control that should have prevented initial access] | [Missing / Misconfigured / Bypassed / Working as designed but insufficient] | [Why it failed] | [Specific improvement] |
-| **Detective** | [Control that should have detected the attack sooner] | [Missing / Misconfigured / Alert not triaged / Working but too slow] | [Why it failed] | [Specific improvement] |
-| **Corrective** | [Control that should have limited impact or accelerated recovery] | [Missing / Untested / Ineffective] | [Why it failed] | [Specific improvement] |
+| Control Category | CSF 2.0 Function/Category | Expected Control | Status at Time of Incident | Failure Mode | Improvement |
+|---|---|---|---|---|---|
+| **Governance** | [GV.OV / GV.RR / GV.PO] | [Risk ownership, policy, or oversight control] | [Missing / unclear / working] | [Why it failed] | [Specific improvement] |
+| **Preventive** | [ID / PR category] | [Control that should have prevented initial access] | [Missing / Misconfigured / Bypassed / Working as designed but insufficient] | [Why it failed] | [Specific improvement] |
+| **Detective** | [DE category] | [Control that should have detected the attack sooner] | [Missing / Misconfigured / Alert not triaged / Working but too slow] | [Why it failed] | [Specific improvement] |
+| **Responsive** | [RS category] | [Control that should have contained or analyzed the incident] | [Missing / Untested / Ineffective] | [Why it failed] | [Specific improvement] |
+| **Recovery** | [RC category] | [Control that should have restored service or communication] | [Missing / Untested / Ineffective] | [Why it failed] | [Specific improvement] |
 
 **Common control failure patterns:**
 
@@ -266,10 +290,22 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 
 **Remediation action template:**
 
-| ID | Finding | Action | Owner | Priority | Deadline | Tracking |
+| ID | Finding | CSF 2.0 Function/Category | Risk Decision | Action | Owner | Priority | Deadline | Tracking | Retest Evidence |
+|---|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Specific finding from RCA or control failure mapping] | [GV/ID/PR/DE/RS/RC category] | [Mitigate / accept / transfer / escalate] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] | [Test, tabletop, query replay, or control validation] |
+| REM-002 | [Finding] | [CSF category] | [Decision] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] | [Evidence] |
+
+**Notification and legal decision template:**
+
+| Obligation Source | Clock Start | Decision | Decision Owner | Approval Evidence | Notice Sent | Legal Hold / Retention |
 |---|---|---|---|---|---|---|
-| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] |
-| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] |
+| [Law / regulator / contract / voluntary] | [Timestamp or Not Applicable] | [Notify / no notice required / pending] | [Legal/comms owner] | [Ticket, memo, counsel approval] | [Recipient and timestamp or N/A] | [Hold ID, retention period, evidence store] |
+
+**Risk register feedback template:**
+
+| Risk ID | Risk Statement | Change From Incident | Treatment Decision | Owner | Review Date |
+|---|---|---|---|---|---|
+| [RISK-001] | [Risk statement] | [New / updated likelihood / updated impact / closed] | [Mitigate / accept / transfer / avoid] | [Risk owner] | [YYYY-MM-DD] |
 
 **Remediation prioritization:**
 
@@ -303,12 +339,22 @@ Produce the post-incident review report with these exact sections:
 **Date of Review:** [YYYY-MM-DD]
 **Date of Incident:** [YYYY-MM-DD]
 **Skill:** post-incident-review v1.0.0
-**Framework:** NIST SP 800-61 Rev 2
+**Framework:** NIST SP 800-61 Rev. 3 / NIST CSF 2.0
 **PIR Facilitator:** [Name or "AI-assisted -- human facilitator required"]
+
+### Framework and Governance Basis
+| Field | Value |
+|---|---|
+| Assessment Date | [YYYY-MM-DD] |
+| Framework Version | [NIST SP 800-61 Rev. 3 / legacy Rev. 2 with rationale] |
+| CSF 2.0 Profile Used | [Yes/No] |
+| Executive Risk Owner | [Name/team] |
+| Legal/Comms Participants | [Name/team or Not Applicable] |
 
 ### Executive Summary
 [3-5 sentences. State the incident type, severity, duration, business impact,
-root cause, and the number/priority of remediation actions identified.]
+root cause, notification decision, residual-risk decision, and the
+number/priority of remediation actions identified.]
 
 ### Incident Overview
 | Field | Value |
@@ -343,9 +389,9 @@ root cause, and the number/priority of remediation actions identified.]
 **Root Cause Statement:** [1-2 sentence definitive statement of the systemic root cause]
 
 ### Control Failure Mapping
-| Control Category | Expected Control | Status | Failure Mode | Improvement |
-|---|---|---|---|---|
-| [Preventive/Detective/Corrective] | [Control] | [Status] | [Why it failed] | [Improvement] |
+| Control Category | CSF 2.0 Function/Category | Expected Control | Status | Failure Mode | Improvement |
+|---|---|---|---|---|---|
+| [Governance/Preventive/Detective/Responsive/Recovery] | [GV/ID/PR/DE/RS/RC category] | [Control] | [Status] | [Why it failed] | [Improvement] |
 
 ### What Went Well
 - [Strength identified during retrospective]
@@ -354,9 +400,19 @@ root cause, and the number/priority of remediation actions identified.]
 - [Gap or failure identified during retrospective]
 
 ### Remediation Plan
-| ID | Finding | Action | Owner | Priority | Deadline | Ticket |
+| ID | Finding | CSF 2.0 Function/Category | Risk Decision | Action | Owner | Priority | Deadline | Ticket | Retest Evidence |
+|---|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Finding] | [GV/ID/PR/DE/RS/RC] | [Mitigate/accept/transfer/escalate] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] | [Evidence] |
+
+### Notification and Legal Decision Record
+| Obligation Source | Clock Start | Decision | Decision Owner | Approval Evidence | Notice Sent | Legal Hold / Retention |
 |---|---|---|---|---|---|---|
-| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
+| [Law/regulator/contract/voluntary] | [Timestamp/N/A] | [Decision] | [Owner] | [Evidence] | [Recipient/timestamp/N/A] | [Hold or retention status] |
+
+### Risk Register Feedback
+| Risk ID | Risk Statement | Change From Incident | Treatment Decision | Owner | Review Date |
+|---|---|---|---|---|---|
+| [RISK-001] | [Risk] | [New/updated/closed] | [Mitigate/accept/transfer/avoid] | [Owner] | [Date] |
 
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
@@ -370,23 +426,32 @@ root cause, and the number/priority of remediation actions identified.]
 
 ## 6. Framework Reference
 
-### NIST SP 800-61 Rev 2 -- Post-Incident Activity
+### NIST SP 800-61 Rev. 3 -- CSF 2.0 Community Profile
 
-NIST SP 800-61 Rev 2 Section 3.4 ("Post-Incident Activity") identifies the post-incident review as one of the most important -- and most frequently omitted -- parts of incident response. Key guidance:
+NIST SP 800-61 Rev. 3 supersedes Rev. 2 and reframes incident response as a NIST Cybersecurity Framework 2.0 Community Profile. For PIR work, that means lessons learned should feed governance, risk, detection, response, and recovery improvements instead of remaining a standalone retrospective artifact.
 
-**Lessons Learned Meetings (Section 3.4.1):**
-- Should be held within several days of the end of the incident for major incidents
-- Participants should include all parties involved in the response
-- Questions to address: What exactly happened and at what times? How well did staff and management perform? What information was needed sooner? Were any steps or actions taken that might have inhibited the recovery? What would the staff and management do differently the next time a similar incident occurs? How could information sharing with other organizations have been improved? What corrective actions can prevent similar incidents in the future? What precursors or indicators should be watched for in the future? What additional tools or resources are needed to detect, analyze, and mitigate future incidents?
+**Current-framework expectations:**
+- Record whether the report uses SP 800-61 Rev. 3 or a documented legacy Rev. 2 basis.
+- Map remediation and lessons learned to CSF 2.0 functions and categories when possible.
+- Include governance and risk owners for residual-risk decisions.
+- Capture notification, legal hold, communications, and retention decisions as evidence, not only as timing metrics.
+- Feed PIR outcomes back into the risk register, control library, detection tests, response playbooks, and recovery plans.
 
-**Using Collected Incident Data (Section 3.4.2):**
-- Organizations should focus on collecting actionable data: number of incidents handled, time per incident, objective assessment of each incident, documentation completeness
-- This data supports trend analysis, resource allocation, and detection capability improvement
+**Legacy Rev. 2 compatibility:**
+- Rev. 2 lessons-learned questions remain useful for retrospective facilitation.
+- If an audit scope requires Rev. 2 language, state that it is legacy compatibility and include the assessment date.
+- Do not present Rev. 2 as the current NIST incident response baseline.
 
-**Evidence Retention (Section 3.4.3):**
-- Organizations should establish a policy for retaining evidence from incidents
-- Retention considerations: prosecution requirements, data retention regulations, organizational policy, cost of storage
-- General guidance: retain evidence for a minimum of the statute of limitations period for applicable laws
+**Relevant CSF 2.0 functions for PIR actions:**
+
+| Function | PIR Use |
+|---|---|
+| Govern (GV) | Risk ownership, policy updates, oversight, roles, and residual-risk decisions |
+| Identify (ID) | Asset, supplier, vulnerability, and improvement register updates |
+| Protect (PR) | Preventive control changes that reduce recurrence likelihood |
+| Detect (DE) | Detection coverage, alert tuning, telemetry, and analytic retest actions |
+| Respond (RS) | Analysis, communication, mitigation, and response-process improvements |
+| Recover (RC) | Recovery planning, restoration, external communications, and resilience improvements |
 
 ### Blameless Retrospective Methodology
 
@@ -436,12 +501,14 @@ This skill processes incident response data including timelines, forensic findin
 
 ## 9. References
 
-1. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide (Section 3.4: Post-Incident Activity) -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
-2. **NIST Cybersecurity Framework (CSF) -- Recover Function** -- https://www.nist.gov/cyberframework
-3. **Etsy Blameless Post-Mortem Culture** -- Allspaw, J. "Blameless PostMortems and a Just Culture" -- https://codeascraft.com/2012/05/22/blameless-postmortems/
-4. **Google SRE Book -- Chapter 15: Postmortem Culture** -- https://sre.google/sre-book/postmortem-culture/
-5. **IBM Cost of a Data Breach Report** -- https://www.ibm.com/security/data-breach
-6. **Mandiant M-Trends Annual Report** -- https://www.mandiant.com/m-trends
-7. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
-8. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
-9. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
+1. **NIST SP 800-61 Rev. 3** -- Incident Response Recommendations and Considerations for Cybersecurity Risk Management: A CSF 2.0 Community Profile -- https://csrc.nist.gov/pubs/sp/800/61/r3/final
+2. **NIST announcement for SP 800-61 Rev. 3** -- https://www.nist.gov/news-events/news/2025/04/nist-revises-sp-800-61-incident-response-recommendations-and-considerations
+3. **NIST Cybersecurity Framework (CSF) 2.0** -- https://www.nist.gov/cyberframework
+4. **NIST SP 800-61 Rev. 2 legacy reference** -- Computer Security Incident Handling Guide (superseded baseline; useful for legacy audit compatibility) -- https://csrc.nist.gov/pubs/sp/800/61/r2/final
+5. **Etsy Blameless Post-Mortem Culture** -- Allspaw, J. "Blameless PostMortems and a Just Culture" -- https://codeascraft.com/2012/05/22/blameless-postmortems/
+6. **Google SRE Book -- Chapter 15: Postmortem Culture** -- https://sre.google/sre-book/postmortem-culture/
+7. **IBM Cost of a Data Breach Report** -- https://www.ibm.com/security/data-breach
+8. **Mandiant M-Trends Annual Report** -- https://www.mandiant.com/m-trends
+9. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
+10. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
+11. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
