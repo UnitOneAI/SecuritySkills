@@ -444,6 +444,8 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 | `lookback period` | Historical data to evaluate | `ago(1h)`, `ago(24h)` |
 | `frequency` | How often the rule runs | Every 5m, 15m, 1h |
 | `suppression window` | Cooldown after firing to prevent duplicate alerts | 1h, 4h, 24h |
+| `ingestion lag` | Expected delay between event generation and SIEM availability | 5m built-in delay, 30m SaaS audit lag |
+| `deduplication key` | Entity fields used to prevent duplicate alerts when lookbacks overlap | Account + IP + bin(TimeGenerated, 10m) |
 
 **KQL alert rule scheduling (Sentinel Analytics Rule):**
 
@@ -455,6 +457,52 @@ Event grouping:      Trigger alert for each event / Group all events
 Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
+
+### Step 4.1: Scheduling and Ingestion Delay Evidence
+
+Scheduled rules can miss true positives when events arrive after the rule's
+event-time window has already closed. This is common for cloud, SaaS, firewall,
+EDR, and batch-forwarded audit logs. Validate the scheduling model separately
+from the detection query logic.
+
+**Evidence to collect:**
+
+| Evidence | What to Verify |
+|----------|----------------|
+| Source latency | Expected p50/p95 ingestion delay for each source table, index, or connector |
+| Query frequency | How often the rule runs |
+| Lookback period | How far back the query searches each run |
+| Built-in platform delay | Sentinel scheduled-rule delay, Splunk durable search lag, or equivalent |
+| Time basis | Whether the rule filters by event time, ingestion time, index time, or both |
+| Overlap strategy | Whether lookback intentionally exceeds frequency to catch late events |
+| Deduplication key | How duplicate alerts are suppressed when windows overlap |
+| Backfill posture | Whether missed/partial scheduled runs are rerun or backfilled |
+| Late-event validation | A true-positive test where event time is old but ingestion/index time is delayed |
+
+**Sentinel guidance:**
+
+- Account for Microsoft Sentinel's scheduled-rule delay and any connector-specific latency.
+- If expected ingestion latency exceeds the rule delay, use a lookback longer than the frequency and add entity-based deduplication or alert grouping.
+- For latency-sensitive detections, record whether `TimeGenerated`, `ingestion_time()`, or a source-specific event timestamp is the primary filter.
+- Treat a rule as `Not Evaluable` if the source latency is unknown and the lookback equals the frequency.
+
+**Splunk guidance:**
+
+- Decide whether a scheduled search should track event time (`_time`) or indexed time (`_indextime`).
+- Use `_index_earliest` and `_index_latest` when the objective is to find events indexed during a recent period, while preserving a broad enough event-time range to retrieve those events.
+- Use durable search and lag time for scheduled searches where late-arriving events or skipped runs could create gaps.
+- Add deduplication by stable entities such as user, source IP, destination host, rule name, and binned event time when widening search windows.
+
+**Late-arriving event test case:**
+
+```text
+Rule frequency: every 10 minutes
+Lookback: last 10 minutes
+Observed source latency p95: 18 minutes
+Expected result: Not production-ready until lookback, lag, or index-time handling is adjusted.
+```
+
+**Finding classification:** Scheduled rule with known ingestion delay greater than its effective lookback is **High**. Unknown source latency for a critical detection is **Medium**. Overlapping lookback without deduplication or grouping is **Medium** because it can create repeated alerts. No backfill/durable-search posture for scheduled summary or correlation rules is **Medium**.
 
 ### Step 5: Detection Rule Lifecycle Management
 
@@ -533,6 +581,8 @@ Produce SIEM rule deliverables in this structure:
 | Time window | [Xm/h] | [Why this window] |
 | Frequency | [Xm/h] | [How often to run] |
 | Suppression | [Xh] | [Cooldown period] |
+| Ingestion lag handling | [Delay/lookback/index-time strategy] | [How late events are covered] |
+| Deduplication key | [Fields] | [How overlap duplicates are prevented] |
 
 ### Entity Mapping
 | Entity Type | Source Field |
@@ -632,6 +682,10 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
+### Pitfall 6: Ignoring Late-Arriving Events
+
+A rule can be logically correct and still miss events that arrive after the scheduled search window closes. This is especially common for SaaS audit logs, cloud control-plane logs, firewall batches, and EDR telemetry. Measure ingestion lag, widen lookbacks deliberately, choose event-time versus index-time filtering consciously, and prove the rule catches a synthetic late-arriving true positive.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -658,3 +712,6 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 8. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 9. **Sentinel Entity Mapping** -- https://learn.microsoft.com/en-us/azure/sentinel/map-data-fields-to-entities
 10. **Splunk CIM (Common Information Model)** -- https://docs.splunk.com/Documentation/CIM/latest/User/Overview
+11. **Microsoft Sentinel Scheduled Analytics Rules** -- https://learn.microsoft.com/en-us/azure/sentinel/scheduled-rules-overview
+12. **Splunk Durable Scheduled Reports** -- https://help.splunk.com/en/splunk-enterprise/create-dashboards-and-reports/reporting-manual/9.4/report-management/make-scheduled-reports-durable-to-prevent-event-loss
+13. **Splunk Time Modifiers** -- https://help.splunk.com/en/splunk-cloud-platform/search/search-reference/10.4.2604/time-format-variables-and-modifiers/time-modifiers
