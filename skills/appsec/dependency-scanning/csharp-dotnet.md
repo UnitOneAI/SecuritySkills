@@ -337,6 +337,39 @@ NuGet packages declare licenses in two ways:
 - Dual-licensed packages (e.g., `MIT OR Apache-2.0`) require verifying which license applies to your usage.
 - Some packages embed a `LICENSE.md` file in the `.nupkg` — verify its contents match the declared expression.
 
+### NuGet License Evidence Gates
+
+NuGet license review should distinguish between verified SPDX metadata,
+deprecated URL-only evidence, missing metadata, and usage-sensitive copyleft
+obligations. A project should not pass license review only because a scanner
+printed a permissive-looking string.
+
+| Evidence Gate | Pass Condition | Finding Condition |
+|---|---|---|
+| SPDX license expression | Package metadata exposes a valid `license` element or `PackageLicenseExpression`, and SBOM/scanner output preserves the expression | Scanner output only shows `NOASSERTION`, `Unknown`, an empty license, or an unstructured string |
+| Deprecated `licenseUrl` | URL-only metadata is manually verified against archived or packaged license text for the exact version | `licenseUrl` is the only evidence, is unreachable, redirects to a generic page, or is accepted without manual review |
+| Embedded license file | `.nupkg` contains `LICENSE`, `LICENSE.txt`, or `LICENSE.md` matching the declared expression | Embedded file conflicts with metadata or is missing when metadata is missing |
+| AGPL SaaS context | Network-accessible services have no AGPL runtime dependency, or legal approval documents source-disclosure obligations | AGPL-licensed dependency appears in runtime/server dependency graph for an API, SaaS, or hosted worker without an approval record |
+| Dual-license selection | Report records the chosen license branch, commercial entitlement if applicable, approving owner, and usage scope | Dual-license package is accepted without selecting the applicable license or proving commercial rights |
+
+When using `dotnet-project-licenses`, `CycloneDX`, `Syft`, or `Trivy`, preserve
+the raw package name, version, license expression, evidence source, dependency
+scope, and transitive path. If tool output collapses `licenseUrl`,
+`NOASSERTION`, or multiple-license expressions into a single string, mark the
+package for manual review instead of downgrading risk.
+
+### NuGet License Report Fields
+
+Add these fields to each .NET license finding:
+
+| Field | Required Evidence |
+|---|---|
+| `license_evidence_source` | `PackageLicenseExpression`, `.nuspec license`, `licenseUrl`, embedded license file, SBOM component, or scanner output |
+| `license_evidence_status` | `verified`, `manual-review`, `missing`, or `conflicting` |
+| `dependency_scope` | Direct/transitive and runtime/dev/build classification |
+| `usage_context` | Library, CLI, desktop app, API, SaaS service, hosted worker, or redistributed artifact |
+| `decision_record` | Required for AGPL, GPL, LGPL/MPL/EPL, dual-license, commercial-license, missing-license, and URL-only findings |
+
 ## .NET-Specific Transitive Dependency Analysis
 
 ### Viewing the Full Dependency Tree

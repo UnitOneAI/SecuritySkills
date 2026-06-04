@@ -141,6 +141,25 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 4. **Dual-licensed commercial packages**: Some packages offer open-source licenses for non-commercial use and require a commercial license otherwise (e.g., certain database drivers, UI component libraries). Verify that the usage context matches the chosen license.
 5. **No-license dependencies**: Packages without a declared license default to full copyright protection. They cannot be legally redistributed. Replace or obtain explicit permission.
 
+### License Evidence Gates
+
+Do not treat a dependency as license-compliant based only on a scanner summary
+string. Record the source of the license evidence and whether that evidence is
+machine-verifiable, manually confirmed, or missing.
+
+| Evidence Gate | Pass Condition | Finding Condition |
+|---|---|---|
+| SPDX expression evidence | Registry metadata, SBOM, or lockfile records a valid SPDX expression such as `MIT`, `Apache-2.0`, or `MIT OR Apache-2.0` | License is reported only as free text, `UNKNOWN`, `NOASSERTION`, or omitted |
+| Legacy URL evidence | Deprecated `licenseUrl` or equivalent URL is manually fetched or otherwise backed by an archived license text matching the package version | URL is the only evidence, is unavailable, redirects unexpectedly, or cannot be tied to the package version |
+| Unknown license evidence | No packages with `NOASSERTION`, missing license, empty license arrays, or unlicensed markers remain in production/runtime dependencies | Unknown license appears in direct or transitive runtime dependency output |
+| Network-use copyleft context | AGPL or similar network-copyleft dependency is absent from network-accessible services, or legal approval and source-disclosure obligations are documented | AGPL dependency is used by a SaaS/API/server path without an approved disclosure and distribution decision |
+| Dual-license decision record | The report names the selected license option, usage basis, and approving owner for expressions such as `GPL-2.0-only OR commercial` | Dual-license package is accepted without choosing the applicable license or documenting commercial entitlement |
+
+When a tool reports a license as `NOASSERTION`, missing, or available only via a
+legacy URL, classify the dependency as **Not Evaluable** or **High Risk** until
+additional evidence is collected. A permissive-looking URL or package README is
+not enough to downgrade risk unless it is tied to the exact package version.
+
 ### Tooling
 
 - `licensed` (GitHub): Caches and verifies dependency licenses in CI.
@@ -201,9 +220,9 @@ When performing a dependency scan, produce findings in the following structure:
 
 ### License Findings
 
-| # | Package | Version | License | Risk Level | Action Required |
-|---|---------|---------|---------|------------|-----------------|
-| 1 | ...     | ...     | ...     | ...        | ...             |
+| # | Package | Version | License | Evidence Source | Evidence Status | Usage Context | Risk Level | Action Required |
+|---|---------|---------|---------|-----------------|-----------------|---------------|------------|-----------------|
+| 1 | ...     | ...     | ...     | SPDX expression / licenseUrl / package file / scanner output | Verified / Manual Review / Missing / Conflicting | Runtime / Dev / Build / SaaS service | ... | ... |
 
 ### Supply Chain Risk Indicators
 
@@ -224,7 +243,7 @@ When performing a dependency scan, produce findings in the following structure:
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
+5. **License audit**: Extract license declarations from lockfiles or registry metadata. Record the evidence source, evidence status, usage context, and license decision for each finding. Flag copyleft, unknown, URL-only, conflicting, and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
 7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
 8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
