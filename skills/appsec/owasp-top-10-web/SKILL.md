@@ -6,7 +6,7 @@ description: >
   when a user asks for a general security review of a web application. Produces
   structured findings mapped to A01-A10 with CWE references, severity ratings,
   and specific remediation guidance.
-tags: [appsec, web, owasp]
+tags: [appsec, web, owasp, ssrf]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
@@ -589,6 +589,22 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 - Disable HTTP redirects in server-side HTTP clients, or re-validate the destination after each redirect.
 - Deploy network-level segmentation so the application server cannot reach internal services it does not need.
 - For webhook features, validate callback URLs at registration time and again at invocation time (DNS rebinding defense).
+
+**Effective Destination Evidence Gates:**
+
+Do not classify a server-side URL fetch as safe or unsafe from the sink call alone. Record evidence that the actual outbound request path constrains the effective destination at time of use.
+
+| Gate | Required evidence | Common failure |
+|------|-------------------|----------------|
+| Scheme and port | Explicit allowlist, usually `https` and approved ports only | Accepting any absolute URL or silently normalizing unsupported schemes |
+| Host allowlist | Exact host or tenant-specific allowlist checked on the same code path as the request | String contains/suffix checks, wildcard host patterns, or helper not invoked before the sink |
+| DNS/IP validation | All resolved addresses checked immediately before sending the request | Registration-time-only validation, single-address checks, or no DNS rebinding defense |
+| Restricted ranges | IPv4, IPv6, loopback, link-local, RFC1918, unique-local, and cloud metadata endpoints denied | IPv4-only checks that miss IPv6 or `169.254.169.254` equivalents |
+| Redirect handling | Redirects disabled, or every redirect target re-enters the same allowlist and DNS/IP validation | HTTP client follows redirects after only the initial URL was checked |
+| Invocation-time validation | Webhook/callback URLs revalidated when invoked, not only when registered | Stored URL passes once and later resolves to a restricted address |
+| Egress controls | Network policy, firewall, service mesh, or proxy rules block internal destinations from the app server | App-layer validation is the only control |
+
+Benign SSRF findings require positive evidence for these gates. Vulnerable findings should cite which gate is missing, not just that an HTTP client receives a URL-like value.
 
 ---
 

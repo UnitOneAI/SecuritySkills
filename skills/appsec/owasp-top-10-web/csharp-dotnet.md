@@ -1127,7 +1127,9 @@ public async Task<IActionResult> Fetch(
     if (!allowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
         return BadRequest("Host not in allowlist");
 
-    var client = httpClientFactory.CreateClient("external");
+    // Use a named client whose primary handler disables automatic redirects,
+    // or re-run the same validation on every redirect target.
+    var client = httpClientFactory.CreateClient("external-no-redirects");
     var response = await client.GetStringAsync(uri);
     return Ok(response);
 }
@@ -1135,15 +1137,38 @@ public async Task<IActionResult> Fetch(
 private static bool IsPrivateOrReserved(IPAddress ip)
 {
     byte[] bytes = ip.GetAddressBytes();
-    return ip.IsIPv6LinkLocal
-        || ip.IsIPv6SiteLocal
-        || IPAddress.IsLoopback(ip)
-        || (bytes[0] == 10)                                          // 10.0.0.0/8
+    if (IPAddress.IsLoopback(ip) || ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal)
+        return true;
+
+    if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+        return (bytes[0] & 0xfe) == 0xfc; // fc00::/7 unique local
+
+    return (bytes[0] == 10)                                          // 10.0.0.0/8
         || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)    // 172.16.0.0/12
         || (bytes[0] == 192 && bytes[1] == 168)                     // 192.168.0.0/16
         || (bytes[0] == 169 && bytes[1] == 254);                    // 169.254.0.0/16 (link-local / cloud metadata)
 }
 ```
+
+Configure the named client so redirects cannot bypass the allowlist:
+
+```csharp
+builder.Services.AddHttpClient("external-no-redirects")
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false
+    });
+```
+
+**SSRF evidence checklist for .NET reviews:**
+
+- [ ] The sink uses the validated `Uri` object, not the original string.
+- [ ] Scheme, host, and port are allowlisted on the same path that sends the request.
+- [ ] `Dns.GetHostAddressesAsync` or equivalent runs at invocation time, including webhook delivery time.
+- [ ] Every resolved IPv4 and IPv6 address is checked for loopback, link-local, RFC1918, unique-local, and metadata-service ranges.
+- [ ] `HttpClientHandler` or `SocketsHttpHandler` disables automatic redirects, or each redirect target is revalidated before following it.
+- [ ] Network egress policy or firewall rules also block access to internal-only destinations.
+- [ ] A helper such as `safeFetch` or `ValidateUrl` is verified to be called immediately before `GetAsync`, `PostAsync`, `SendAsync`, or `GetStringAsync`.
 
 ---
 

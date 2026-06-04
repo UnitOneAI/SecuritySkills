@@ -43,7 +43,7 @@ skills:
 
   - id: owasp-top-10-web
     name: "OWASP Top 10 Web Application Review"
-    tags: [appsec, web, owasp]
+    tags: [appsec, web, owasp, ssrf]
     role: [appsec-engineer, security-engineer]
     phase: [build, review]
     activity: [review, test]
