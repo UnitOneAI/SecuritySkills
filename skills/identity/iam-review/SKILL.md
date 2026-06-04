@@ -41,7 +41,7 @@ Invoke this skill when:
 - Preparing for compliance audits that cover access control (SOC 2, ISO 27001, PCI DSS, HIPAA)
 - Responding to incidents involving credential compromise or privilege escalation
 
-**Do NOT use this skill for:** network segmentation reviews (see `network/segmentation.md`), application-layer authorization logic (see `appsec/secure-code-review.md`), or privileged access management tool configuration (see `identity/privileged-access.md`).
+**Do NOT use this skill for:** network segmentation reviews (see `skills/network/segmentation/SKILL.md`), application-layer authorization logic (see `skills/appsec/secure-code-review/SKILL.md`), or privileged access management tool configuration (see `skills/identity/privileged-access/SKILL.md`).
 
 ---
 
@@ -438,14 +438,14 @@ For each finding, produce a row with:
 
 | Related Skill | When to chain |
 |---|---|
-| `identity/privileged-access.md` | Deep dive on PAM tooling (CyberArk, Delinea, Azure PIM configuration) |
-| `identity/access-review.md` | Periodic entitlement review process and certification campaigns |
-| `identity/rbac-design.md` | Designing or refactoring role hierarchies and ABAC policies |
-| `identity/zero-trust-assessment.md` | Full NIST SP 800-207 maturity assessment beyond IAM |
-| `cloud/aws-review.md` | AWS-specific security posture including IAM deep dive |
-| `cloud/azure-review.md` | Azure/Entra ID-specific security configuration |
-| `cloud/gcp-review.md` | GCP-specific IAM and organization policy review |
-| `compliance/soc2-gap.md` | Mapping IAM findings to SOC 2 Trust Services Criteria (CC6.1-CC6.3) |
+| `skills/identity/privileged-access/SKILL.md` | Deep dive on PAM tooling (CyberArk, Delinea, Azure PIM configuration) |
+| `skills/identity/access-review/SKILL.md` | Periodic entitlement review process and certification campaigns |
+| `skills/identity/rbac-design/SKILL.md` | Designing or refactoring role hierarchies and ABAC policies |
+| `skills/identity/zero-trust-assessment/SKILL.md` | Full NIST SP 800-207 maturity assessment beyond IAM |
+| `skills/cloud/aws-review/SKILL.md` | AWS-specific security posture including IAM deep dive |
+| `skills/cloud/azure-review/SKILL.md` | Azure/Entra ID-specific security configuration |
+| `skills/cloud/gcp-review/SKILL.md` | GCP-specific IAM and organization policy review |
+| `skills/compliance/soc2-gap/SKILL.md` | Mapping IAM findings to SOC 2 Trust Services Criteria (CC6.1-CC6.3) |
 
 ---
 

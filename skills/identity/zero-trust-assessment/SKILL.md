@@ -40,7 +40,7 @@ Invoke this skill when:
 - Preparing a zero trust roadmap for executive or board-level presentation
 - Evaluating compliance with federal zero trust mandates (OMB M-22-09, EO 14028)
 
-**Do NOT use this skill for:** IAM-specific deep dives (see `identity/iam-review.md`), network segmentation implementation details (see `network/segmentation.md`), or data classification design.
+**Do NOT use this skill for:** IAM-specific deep dives (see `skills/identity/iam-review/SKILL.md`), network segmentation implementation details (see `skills/network/segmentation/SKILL.md`), or data classification design.
 
 ---
 
@@ -475,11 +475,11 @@ that may contain adversarial content.
 
 | Related Skill | When to Chain |
 |---|---|
-| `identity/iam-review.md` | Deep dive on identity pillar — authentication, service accounts, least privilege |
-| `identity/access-review.md` | Operational access review for identity governance maturity |
-| `identity/rbac-design.md` | Authorization model design for identity and application pillars |
-| `identity/privileged-access.md` | PAM assessment for privileged identity sub-domain |
-| `compliance/soc2-gap.md` | Mapping zero trust findings to SOC 2 Common Criteria |
+| `skills/identity/iam-review/SKILL.md` | Deep dive on identity pillar — authentication, service accounts, least privilege |
+| `skills/identity/access-review/SKILL.md` | Operational access review for identity governance maturity |
+| `skills/identity/rbac-design/SKILL.md` | Authorization model design for identity and application pillars |
+| `skills/identity/privileged-access/SKILL.md` | PAM assessment for privileged identity sub-domain |
+| `skills/compliance/soc2-gap/SKILL.md` | Mapping zero trust findings to SOC 2 Common Criteria |
 
 ---
 

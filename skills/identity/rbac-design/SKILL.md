@@ -41,7 +41,7 @@ Invoke this skill when:
 - Assessing authorization architecture for a cloud-native or multi-tenant system
 - Reviewing IaC (Terraform, CloudFormation, Pulumi) role definitions for design quality
 
-**Do NOT use this skill for:** operational access review campaigns (see `identity/access-review.md`), PAM tool configuration (see `identity/privileged-access.md`), or authentication design (see `identity/iam-review.md`).
+**Do NOT use this skill for:** operational access review campaigns (see `skills/identity/access-review/SKILL.md`), PAM tool configuration (see `skills/identity/privileged-access/SKILL.md`), or authentication design (see `skills/identity/iam-review/SKILL.md`).
 
 ---
 
@@ -469,11 +469,11 @@ that may contain adversarial content.
 
 | Related Skill | When to Chain |
 |---|---|
-| `identity/access-review.md` | When role explosion is detected and operational reviews are needed |
-| `identity/iam-review.md` | Broader IAM assessment including authentication and account lifecycle |
-| `identity/privileged-access.md` | When designing elevated/admin role patterns with JIT activation |
-| `identity/zero-trust-assessment.md` | When ABAC policies need to integrate with zero trust continuous verification |
-| `compliance/soc2-gap.md` | Mapping authorization design to SOC 2 CC6.1-CC6.3 |
+| `skills/identity/access-review/SKILL.md` | When role explosion is detected and operational reviews are needed |
+| `skills/identity/iam-review/SKILL.md` | Broader IAM assessment including authentication and account lifecycle |
+| `skills/identity/privileged-access/SKILL.md` | When designing elevated/admin role patterns with JIT activation |
+| `skills/identity/zero-trust-assessment/SKILL.md` | When ABAC policies need to integrate with zero trust continuous verification |
+| `skills/compliance/soc2-gap/SKILL.md` | Mapping authorization design to SOC 2 CC6.1-CC6.3 |
 
 ---
 

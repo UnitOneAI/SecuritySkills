@@ -40,7 +40,7 @@ Invoke this skill when:
 - Preparing for SOC 2, ISO 27001, PCI DSS, or HIPAA audits that require evidence of access reviews
 - Responding to audit findings related to excessive or inappropriate access
 
-**Do NOT use this skill for:** designing RBAC/ABAC models from scratch (see `identity/rbac-design.md`), PAM tool configuration (see `identity/privileged-access.md`), or full zero trust maturity assessment (see `identity/zero-trust-assessment.md`).
+**Do NOT use this skill for:** designing RBAC/ABAC models from scratch (see `skills/identity/rbac-design/SKILL.md`), PAM tool configuration (see `skills/identity/privileged-access/SKILL.md`), or full zero trust maturity assessment (see `skills/identity/zero-trust-assessment/SKILL.md`).
 
 ---
 
@@ -431,11 +431,11 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Related Skill | When to Chain |
 |---|---|
-| `identity/iam-review.md` | Broader IAM security assessment covering authentication, service accounts, and zero trust alignment |
-| `identity/rbac-design.md` | Designing or refactoring roles when role explosion is detected |
-| `identity/privileged-access.md` | Deep dive on PAM controls when privileged account findings surface |
-| `identity/zero-trust-assessment.md` | When access review findings indicate need for continuous verification |
-| `compliance/soc2-gap.md` | Mapping access review findings to SOC 2 CC6.1-CC6.3 |
+| `skills/identity/iam-review/SKILL.md` | Broader IAM security assessment covering authentication, service accounts, and zero trust alignment |
+| `skills/identity/rbac-design/SKILL.md` | Designing or refactoring roles when role explosion is detected |
+| `skills/identity/privileged-access/SKILL.md` | Deep dive on PAM controls when privileged account findings surface |
+| `skills/identity/zero-trust-assessment/SKILL.md` | When access review findings indicate need for continuous verification |
+| `skills/compliance/soc2-gap/SKILL.md` | Mapping access review findings to SOC 2 CC6.1-CC6.3 |
 
 ---
 

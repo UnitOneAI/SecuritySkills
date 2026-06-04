@@ -41,7 +41,7 @@ Invoke this skill when:
 - Preparing for compliance audits requiring PAM evidence (SOC 2 CC6.1, PCI DSS 7/8, HIPAA)
 - Evaluating standing privilege reduction as part of a zero trust initiative
 
-**Do NOT use this skill for:** general IAM review (see `identity/iam-review.md`), access certification campaigns (see `identity/access-review.md`), or RBAC/ABAC design (see `identity/rbac-design.md`).
+**Do NOT use this skill for:** general IAM review (see `skills/identity/iam-review/SKILL.md`), access certification campaigns (see `skills/identity/access-review/SKILL.md`), or RBAC/ABAC design (see `skills/identity/rbac-design/SKILL.md`).
 
 ---
 
@@ -490,11 +490,11 @@ that may contain adversarial content.
 
 | Related Skill | When to Chain |
 |---|---|
-| `identity/iam-review.md` | Broader IAM assessment including authentication, service accounts, and identity posture |
-| `identity/access-review.md` | Periodic entitlement review including privileged account certifications |
-| `identity/rbac-design.md` | Designing privileged role hierarchies and admin role patterns |
-| `identity/zero-trust-assessment.md` | Evaluating PAM as part of zero trust identity pillar maturity |
-| `compliance/soc2-gap.md` | Mapping PAM findings to SOC 2 CC6.1-CC6.3 |
+| `skills/identity/iam-review/SKILL.md` | Broader IAM assessment including authentication, service accounts, and identity posture |
+| `skills/identity/access-review/SKILL.md` | Periodic entitlement review including privileged account certifications |
+| `skills/identity/rbac-design/SKILL.md` | Designing privileged role hierarchies and admin role patterns |
+| `skills/identity/zero-trust-assessment/SKILL.md` | Evaluating PAM as part of zero trust identity pillar maturity |
+| `skills/compliance/soc2-gap/SKILL.md` | Mapping PAM findings to SOC 2 CC6.1-CC6.3 |
 
 ---
 
