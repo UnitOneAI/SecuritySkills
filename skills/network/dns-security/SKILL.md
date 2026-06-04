@@ -176,7 +176,7 @@ For each public authoritative zone and delegated subzone, verify:
 
 - **CAA inventory:** The review records the apex and relevant subdomain CAA RRsets, including inherited policy. Absence of CAA is not automatically a vulnerability, but it should be recorded for public domains where issuance control matters.
 - **Allowed CAs:** `issue` tags identify only approved CAs. Avoid broad catch-all policies that do not match the organization's certificate inventory.
-- **Wildcard policy:** `issuewild` is present when wildcard certificates are intentionally allowed. Use `issuewild ";"` when wildcard issuance should be forbidden even if normal `issue` tags are present.
+- **Wildcard policy:** Record `issuewild` when present and interpret it as taking precedence for wildcard issuance. Do not require `issuewild` merely because wildcard certificates are allowed; if `issuewild` is absent, the applicable `issue` policy still authorizes wildcard issuance for that CA. Use `issuewild ";"` when wildcard issuance should be explicitly forbidden even if normal `issue` tags are present.
 - **Incident reporting:** `iodef` points to a monitored mailbox or HTTPS endpoint for CA issuance reports. Stale or unmonitored `iodef` contacts reduce the value of CAA reporting.
 - **Critical flags:** Unknown critical CAA properties are investigated. Do not mark a policy as passing if critical tags are present but unsupported by the intended CA.
 
@@ -203,7 +203,7 @@ For ACME-managed certificates, verify:
 - **Validation method binding:** CAA `validationmethods` restricts issuance to intended methods, such as `dns-01`, `http-01`, or `tls-alpn-01`, when supported by the CA and operationally required.
 - **Delegation scope:** `_acme-challenge` CNAME or NS delegation points only to controlled validation zones or ACME services. Delegation to a shared SaaS tenant, stale vendor account, parked domain, or unowned DNS zone is a finding.
 - **DNS write permissions:** ACME automation credentials can write only the required `_acme-challenge` names, not the whole production zone, unless a documented exception exists.
-- **Wildcard issuance:** Wildcard certificate automation uses DNS-01 and has explicit owner, inventory, renewal, and revocation evidence. Broad DNS-01 write access plus no `issuewild` policy is not acceptable evidence.
+- **Wildcard issuance:** Wildcard certificate automation uses DNS-01 and has explicit owner, inventory, renewal, and revocation evidence. Broad DNS-01 write access plus no owner, account, or validation-method evidence is not acceptable evidence. Absence of `issuewild` alone is not a finding when the `issue` RRset intentionally authorizes the same CA for wildcard issuance.
 
 #### 3.3 Benign and Vulnerable Calibration
 
@@ -212,9 +212,10 @@ For ACME-managed certificates, verify:
 | Public zone has `CAA 0 issue "letsencrypt.org; accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/12345; validationmethods=dns-01"` and a scoped `_acme-challenge` delegation to an owned validation zone | Passing, if the certificate inventory and ACME account owner match. |
 | Public zone intentionally has no CAA but certificate issuance is manually controlled through a single enterprise CA and monitored Certificate Transparency alerts | Informational or Medium depending on domain criticality; do not call it Critical solely because CAA is absent. |
 | Zone allows `CAA 0 issue "letsencrypt.org"` and delegates `_acme-challenge` to a decommissioned vendor-controlled zone | High, because an external party may be able to complete DNS-01 validation or request certificates through an unintended account. |
-| Wildcard certificates exist but no `issuewild` policy, no ACME account owner, and automation token has full-zone write access | High; escalate to Critical if active unauthorized issuance or DNS account compromise evidence exists. |
+| Wildcard certificates exist, the applicable `issue` RRset authorizes the intended CA, ACME account ownership is documented, and DNS-01 credentials are scoped to `_acme-challenge` | Passing even if `issuewild` is absent, because RFC 8659 treats `issue` as the applicable wildcard authorization unless `issuewild` is present. |
+| Wildcard certificates exist but no ACME account owner, no validation-method evidence, and automation token has full-zone write access | High; escalate to Critical if active unauthorized issuance or DNS account compromise evidence exists. |
 
-**Finding classification:** `_acme-challenge` delegation to an unowned or decommissioned zone is **High**. Wildcard issuance without owner/account/method evidence is **High**. Full-zone DNS write credentials for ACME automation are **High** unless tightly justified and monitored. Missing CAA on critical public domains is **Medium** when the organization has no compensating issuance monitoring. Stale `iodef` contacts are **Low** to **Medium** depending on domain criticality.
+**Finding classification:** `_acme-challenge` delegation to an unowned or decommissioned zone is **High**. Wildcard issuance without owner/account/method evidence is **High**; missing `issuewild` alone is not a finding when `issue` already authorizes the intended CA. Full-zone DNS write credentials for ACME automation are **High** unless tightly justified and monitored. Missing CAA on critical public domains is **Medium** when the organization has no compensating issuance monitoring. Stale `iodef` contacts are **Low** to **Medium** depending on domain criticality.
 
 ---
 
@@ -361,7 +362,7 @@ abcdef0123456789.dnscat.example.com TXT
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; unowned `_acme-challenge` delegation; wildcard or ACME issuance without owner/account/method evidence. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; unowned `_acme-challenge` delegation; wildcard or ACME issuance without owner/account/method evidence. Missing `issuewild` alone is not High when the applicable `issue` RRset intentionally authorizes the CA. |
 | **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; missing CAA on critical public domains without compensating issuance monitoring. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
