@@ -42,6 +42,20 @@ def get_order(order_id):
     return jsonify(order)
 ```
 
+### Acceptable Authorization Evidence
+
+Direct ownership checks such as `resource.user_id == current_user.id` are not the only valid BOLA mitigation. Multi-tenant APIs often authorize through relationships or policy decisions that are enforced before data is returned.
+
+Acceptable evidence includes:
+
+- **Tenant or account membership joins** that constrain the query by both resource ID and caller membership before returning the object.
+- **ACL or sharing tables** that prove the caller has an active grant for the requested object, project, team, or tenant.
+- **Policy engine decisions** such as OPA, Cedar, Casbin, or framework policy objects, when the decision input includes the caller, action, object, and tenant or relationship context.
+- **Capability or scoped token grants** where the token is bound to the specific object/action and checked server-side.
+- **Service-to-service authorization** based on mTLS/workload identity plus an explicit authorization policy, for internal APIs that intentionally do not use end-user JWT/session authentication.
+
+Do not flag these patterns as BOLA solely because they lack a direct owner column. Do flag them when the relationship check happens after data return, omits tenant/account scope, treats inactive memberships as valid, or cannot be traced to the specific object/action under review.
+
 ### GraphQL Vulnerable Patterns
 
 ```graphql
@@ -101,6 +115,8 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] Relationship-based access evidence records the caller, action, object, tenant/account, and grant status used in the decision.
+- [ ] Negative authorization tests include at least one cross-tenant or revoked-membership object access attempt that returns 403/404 before data is disclosed.
 
 ---
 
@@ -149,6 +165,14 @@ paths:
           in: query  # Should be in header
 ```
 
+```javascript
+// VULNERABLE: unsigned webhook can forge a payment event
+app.post('/webhooks/stripe', express.json(), async (req, res) => {
+  await processPaymentEvent(req.body);  // No signature, timestamp, or replay check
+  res.sendStatus(204);
+});
+```
+
 ### Remediation Guidance
 
 - Enforce rate limiting on all authentication endpoints (e.g., 5 attempts per minute per IP/account).
@@ -157,6 +181,8 @@ paths:
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
 - Authenticate service-to-service calls with mTLS or signed tokens, not network-based trust.
+- For inbound webhooks, verify the provider signature or MAC against the exact raw request body before trusting event semantics. Enforce timestamp tolerance, replay detection, and idempotency/event-ID checks before changing account, payment, or business state.
+- Keep raw-body parser requirements explicit. Many webhook providers sign the original byte payload; parsing or re-serializing JSON before verification can invalidate the intended signature check or lead reviewers to pass dead code.
 
 ### Review Checklist
 
@@ -166,6 +192,9 @@ paths:
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
+- [ ] Webhook handlers verify signatures/MACs over the raw body before processing events.
+- [ ] Webhook handlers reject old timestamps, duplicate event IDs, and unsigned or malformed requests before side effects occur.
+- [ ] Webhook negative tests cover unsigned delivery, stale timestamp replay, duplicate event replay, and body-tampering after signature generation.
 
 ---
 
@@ -272,7 +301,8 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
-- For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
+- For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), batch query limits, per-field/per-mutation cost accounting, alias limits, and resolver-level throttles for sensitive operations.
+- For persisted GraphQL queries: verify that persisted IDs map to approved documents and that clients cannot bypass policy with arbitrary raw queries, unexpected operation names, or aliases inside an allowed document.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
 
@@ -282,6 +312,9 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] GraphQL alias counts, operation names, and persisted-query IDs are included in rate-limit/cost decisions.
+- [ ] Sensitive GraphQL mutations are throttled per field or per resolver, not only per HTTP request.
+- [ ] Negative tests include a single-request alias spray or multi-operation payload that must be rejected or charged per mutation.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 
