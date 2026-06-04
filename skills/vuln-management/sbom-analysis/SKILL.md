@@ -89,7 +89,52 @@ SBOM Format Assessment:
 - File Size:           [Size]
 ```
 
-### Step 2: NTIA Minimum Elements Completeness Check
+### Step 2: Composition and Analysis Scope Gate
+
+Before scoring completeness or drawing license/security conclusions, determine what the SBOM claims to cover. NTIA field presence proves that required data elements exist, but it does not prove the component inventory, dependency graph, or file-level evidence is complete.
+
+**Framework mapping:** CycloneDX 1.5 `compositions[].aggregate`, SPDX 2.3 `FilesAnalyzed`, `PackageVerificationCode`, `PackageLicenseConcluded`, `PackageLicenseDeclared`, `PackageLicenseInfoFromFiles`
+
+#### CycloneDX Composition Completeness
+
+Evaluate every `compositions[]` entry that applies to the product, component, service, or dependency relationship under review.
+
+| `compositions[].aggregate` | Meaning for review | Confidence impact |
+|---|---|---|
+| `complete` | The referenced inventory or relationship set is asserted complete | Eligible for strong inventory and dependency conclusions if NTIA fields also pass |
+| `incomplete` | The referenced inventory or relationship set is known incomplete | Do not claim complete dependency, vulnerability, or license coverage |
+| `incomplete_first_party_only` | First-party composition is incomplete | Cap first-party coverage and internal component conclusions at Partial or lower |
+| `incomplete_third_party_only` | Third-party composition is incomplete | Cap supply-chain, CVE, and open-source license conclusions at Partial or lower |
+| `unknown` | Completeness is not known | Treat coverage as unproven; require corroborating source evidence before strong conclusions |
+| `redacted` | Completeness details are withheld | Treat omitted areas as audit gaps unless private trusted evidence is available |
+| Missing or not specified | The SBOM does not assert composition completeness | Do not assume the inventory or dependency relationships are complete |
+
+If multiple composition statements apply, use the least complete applicable statement for the affected conclusion. Example: a `complete` component inventory with `incomplete_third_party_only` dependency relationships can pass component identity checks while still failing full dependency-risk confidence.
+
+#### SPDX File Analysis Scope
+
+For each SPDX package, evaluate `FilesAnalyzed` before using package verification or file-level license fields.
+
+| SPDX evidence | Meaning for review | Confidence impact |
+|---|---|---|
+| `FilesAnalyzed: true` or omitted | File-level analysis is in scope | `PackageVerificationCode` is expected; `PackageLicenseInfoFromFiles` may support stronger license confidence |
+| `FilesAnalyzed: false` | File-level analysis is explicitly out of scope | `PackageVerificationCode` and `PackageLicenseInfoFromFiles` must not be required; do not make file-level license or integrity conclusions |
+| `PackageLicenseDeclared` | License declared by package authors or packager | Record as declared-license evidence; do not treat as scan proof |
+| `PackageLicenseConcluded` | License conclusion by the SPDX document creator | Record as conclusion evidence and review basis |
+| `NOASSERTION` or missing license fields | No determination or no assertion was made | Treat as unknown for compliance decisions |
+| `NONE` | No license information was found or declared | Treat as high-review priority because obligations remain unclear |
+
+```
+Analysis Scope Assessment:
+- Generation Source:             [Build tool | package manager | manual | vendor | unknown]
+- CycloneDX Composition Aggregate: [complete | incomplete | incomplete_first_party_only | incomplete_third_party_only | unknown | redacted | missing]
+- SPDX Files Analyzed:           [All true | Mixed | All false | Missing/unknown]
+- File-Level Evidence Available: [Yes | Partial | No]
+- Confidence Impact:             [No cap | Cap dependency conclusions | Cap license conclusions | Cap all completeness conclusions]
+- Required Follow-up Evidence:   [List evidence needed before stronger claims]
+```
+
+### Step 3: NTIA Minimum Elements Completeness Check
 
 Evaluate the SBOM against all seven NTIA "minimum elements for an SBOM" as defined in the July 2021 NTIA publication "The Minimum Elements for a Software Bill of Materials."
 
@@ -111,6 +156,8 @@ The seven NTIA minimum elements are:
 
 For each component in the SBOM, evaluate presence of elements 1-5. Elements 6-7 are document-level (evaluated once).
 
+Apply the Step 2 scope gate after field coverage is calculated. An SBOM can have 100% NTIA field coverage and still be capped below Complete when composition is `incomplete`, `unknown`, `redacted`, missing, or when SPDX packages set `FilesAnalyzed: false` for conclusions that depend on file-level evidence.
+
 ```
 NTIA Completeness Assessment:
 - Total Components:           [N]
@@ -128,12 +175,12 @@ NTIA Completeness Assessment:
 
 | Rating | Criteria |
 |---|---|
-| **Complete** | All 7 NTIA elements present for 100% of components |
-| **Substantially Complete** | All 7 elements present for >= 90% of components; gaps documented |
+| **Complete** | All 7 NTIA elements present for 100% of components and no composition/scope cap applies |
+| **Substantially Complete** | All 7 elements present for >= 90% of components; gaps documented; only minor scope limitations |
 | **Partial** | 5-6 elements present for majority of components; significant gaps in supplier or dependency data |
 | **Incomplete** | Fewer than 5 elements consistently present; SBOM not suitable for compliance or risk assessment |
 
-### Step 3: VEX Status Interpretation
+### Step 4: VEX Status Interpretation
 
 If VEX (Vulnerability Exploitability eXchange) documents are provided, interpret the status for each vulnerability-product pair.
 
@@ -170,7 +217,7 @@ VEX Assessment:
 - Under Investigation: [N] (monitor for updates)
 ```
 
-### Step 4: Transitive Dependency Analysis
+### Step 5: Transitive Dependency Analysis
 
 Analyze the dependency tree to identify risk concentration in transitive (indirect) dependencies.
 
@@ -203,16 +250,29 @@ Transitive Dependency Analysis:
 - Stale Dependencies:       [N] components with no update in >= 18 months
 ```
 
-### Step 5: License Conflict Detection
+### Step 6: License Conflict Detection
 
 Analyze component licenses for conflicts, compliance risks, and policy violations.
 
 **Framework mapping:** SPDX License List (https://spdx.org/licenses/), CycloneDX license representation
 
-1. Extract declared license for each component
-2. Categorize licenses by type (permissive, weak copyleft, strong copyleft, proprietary, unknown)
-3. Identify conflicts based on the distribution model of the software being analyzed
-4. Flag components with no declared license (risk: unknown legal obligations)
+1. Extract declared license for each component (`PackageLicenseDeclared`, CycloneDX declared license)
+2. Extract concluded license separately (`PackageLicenseConcluded`, file scan or reviewer conclusion)
+3. Check whether file-level license evidence is in scope (`FilesAnalyzed`, `PackageLicenseInfoFromFiles`, CycloneDX evidence when present)
+4. Categorize licenses by type (permissive, weak copyleft, strong copyleft, proprietary, unknown)
+5. Identify conflicts based on the distribution model of the software being analyzed
+6. Flag `NOASSERTION`, missing, and `NONE` values separately because they imply different evidence gaps
+
+#### License Confidence Split
+
+| Evidence State | Interpretation | Action |
+|---|---|---|
+| Declared and concluded licenses match, file evidence available | Strongest automated license confidence | Still require human review for conflicts |
+| Declared license present, concluded license missing or `NOASSERTION` | Package says what it declares, but the reviewer did not conclude | Treat as medium confidence |
+| Concluded license present, declared license missing or `NOASSERTION` | Reviewer inferred license from evidence | Treat as medium confidence and cite evidence |
+| `FilesAnalyzed: false` with only package-level license fields | File-level license obligations are not proven | Do not claim file-level license coverage |
+| `NONE` | No license information found or declared | Mandatory legal/compliance review |
+| Missing, unknown, or `NOASSERTION` | No assertion was made | Treat as unknown legal obligation |
 
 #### License Compatibility Matrix (Common Conflicts)
 
@@ -234,6 +294,8 @@ License Analysis:
 - Strong Copyleft:      [N] (GPL, AGPL, etc.)
 - Proprietary:          [N]
 - No License Declared:  [N] -- FLAG for review
+- Declared/Concluded Mismatch: [N] -- FLAG for review
+- File-Level License Evidence: [Complete | Partial | Not analyzed]
 - Conflicts Detected:   [N] -- list specific conflicts
 ```
 
@@ -246,9 +308,9 @@ Classify the overall SBOM analysis into one of the following states:
 | Classification | Definition | Criteria |
 |---|---|---|
 | **Critical Supply Chain Risk** | SBOM reveals high-risk supply chain exposure | Known exploited CVEs in dependencies, incomplete SBOM with missing critical elements, or license conflicts blocking distribution |
-| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, multiple stale transitive dependencies, or VEX "Under Investigation" for critical components |
-| **Acceptable** | SBOM meets minimum requirements with minor gaps | NTIA completeness >= 90%, no critical/high CVEs in dependencies, minor license issues documented |
-| **Strong** | SBOM is comprehensive and low-risk | NTIA 100% complete, all VEX statuses resolved, no critical dependency risks, clean license posture |
+| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, incomplete/unknown/redacted composition scope, multiple stale transitive dependencies, or VEX "Under Investigation" for critical components |
+| **Acceptable** | SBOM meets minimum requirements with minor gaps | NTIA completeness >= 90%, no critical/high CVEs in dependencies, minor license issues documented, and scope limits do not block the reviewed conclusions |
+| **Strong** | SBOM is comprehensive and low-risk | NTIA 100% complete, composition scope supports complete coverage, all VEX statuses resolved, no critical dependency risks, clean license posture |
 
 ---
 
@@ -265,8 +327,9 @@ Produce a structured report with these exact sections:
 
 ### Executive Summary
 [3-5 sentences. State the software being analyzed, SBOM format, NTIA completeness
-rating, number of components, key risk findings (CVEs in dependencies, license
-conflicts), and overall classification.]
+rating after composition/scope caps, number of components, key risk findings
+(CVEs in dependencies, license conflicts), license confidence, and overall
+classification.]
 
 ### SBOM Overview
 | Field | Value |
@@ -278,6 +341,17 @@ conflicts), and overall classification.]
 | Total Components | [N] (direct: [N], transitive: [N]) |
 | SBOM Author | [Author name] |
 | SBOM Timestamp | [ISO 8601] |
+
+### Analysis Scope and Completeness Confidence
+
+| Scope Signal | Value | Review Impact |
+|---|---|---|
+| Generation Source | [Build tool / package manager / manual / vendor / unknown] | [How source affects trust] |
+| CycloneDX Composition Aggregate | [complete / incomplete / incomplete_first_party_only / incomplete_third_party_only / unknown / redacted / missing / N/A] | [Confidence cap or no cap] |
+| SPDX FilesAnalyzed | [All true / Mixed / All false / Missing / N/A] | [File-level evidence impact] |
+| File-Level Evidence Available | [Yes / Partial / No] | [License and package-integrity impact] |
+| Completeness Confidence Cap | [None / Dependency conclusions / License conclusions / All conclusions] | [Reason] |
+| Required Follow-up Evidence | [Evidence needed or None] | [Owner/action] |
 
 ### NTIA Minimum Elements Compliance
 
@@ -319,6 +393,17 @@ conflicts), and overall classification.]
 | Strong Copyleft | [N] | [List -- flag for review] |
 | Proprietary | [N] | [List] |
 | No License / Unknown | [N] | [List -- mandatory review] |
+
+#### License Evidence Confidence
+
+| Evidence Type | Coverage | Confidence | Notes |
+|---|---|---|---|
+| Declared License | [N/N] | [High/Medium/Low] | [PackageLicenseDeclared/CycloneDX declared license notes] |
+| Concluded License | [N/N] | [High/Medium/Low] | [PackageLicenseConcluded or reviewer conclusion notes] |
+| File-Derived License Evidence | [N/N or N/A] | [High/Medium/Low/Not analyzed] | [FilesAnalyzed/PackageLicenseInfoFromFiles notes] |
+| NOASSERTION / Missing | [N] | Low | [List affected components] |
+| NONE | [N] | Low | [List affected components] |
+| Declared/Concluded Mismatch | [N] | Low until reviewed | [List affected components] |
 
 **Conflicts Detected:** [Yes/No]
 [If yes, list each conflict with affected components and remediation guidance]
@@ -373,13 +458,15 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 
 1. **Confusing SBOM presence with SBOM completeness.** Receiving an SBOM file does not mean it contains useful data. Many auto-generated SBOMs are missing supplier names, dependency relationships, or unique identifiers (purls). Always validate against the NTIA seven minimum elements before relying on the SBOM for security decisions.
 
-2. **Ignoring transitive dependencies.** Direct dependencies are typically well-managed, but transitive dependencies (dependencies of dependencies) account for the majority of supply chain vulnerabilities. The xz-utils backdoor (CVE-2024-3094) and Log4Shell (CVE-2021-44228) both demonstrated how deeply nested dependencies create organization-wide exposure. Analyze the full dependency tree, not just the top level.
+2. **Over-trusting complete-looking fields without scope evidence.** A CycloneDX SBOM can contain all expected component fields while `compositions[].aggregate` is incomplete, unknown, redacted, or missing. An SPDX package with `FilesAnalyzed: false` can carry package-level metadata while file-level verification and license evidence are out of scope. Apply the composition and analysis-scope gate before making complete-coverage claims.
 
-3. **Treating VEX "Not Affected" as automatic clearance.** A VEX "Not Affected" status is only as trustworthy as its justification. "Component not present" is verifiable against the SBOM; "vulnerable code not in execute path" requires code-level analysis that should be validated independently for critical systems. Always review the justification category and assess its credibility.
+3. **Ignoring transitive dependencies.** Direct dependencies are typically well-managed, but transitive dependencies (dependencies of dependencies) account for the majority of supply chain vulnerabilities. The xz-utils backdoor (CVE-2024-3094) and Log4Shell (CVE-2021-44228) both demonstrated how deeply nested dependencies create organization-wide exposure. Analyze the full dependency tree, not just the top level.
 
-4. **Overlooking license implications in SaaS deployments.** AGPL-3.0 triggers copyleft obligations for network use (SaaS), unlike GPL which only triggers on distribution. Organizations running AGPL-licensed components in SaaS products may have unrecognized compliance obligations. Always flag AGPL components regardless of distribution model.
+4. **Treating VEX "Not Affected" as automatic clearance.** A VEX "Not Affected" status is only as trustworthy as its justification. "Component not present" is verifiable against the SBOM; "vulnerable code not in execute path" requires code-level analysis that should be validated independently for critical systems. Always review the justification category and assess its credibility.
 
-5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
+5. **Overlooking license implications in SaaS deployments.** AGPL-3.0 triggers copyleft obligations for network use (SaaS), unlike GPL which only triggers on distribution. Organizations running AGPL-licensed components in SaaS products may have unrecognized compliance obligations. Always flag AGPL components regardless of distribution model.
+
+6. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
 
 ---
 
