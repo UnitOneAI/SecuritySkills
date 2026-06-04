@@ -251,11 +251,11 @@ skills:
   # -- AI Security ----------------------------------------------------------
   - id: llm-top-10
     name: "LLM Application Security Review (OWASP 2025)"
-    tags: [ai-security, llm, appsec]
+    tags: [ai-security, llm, appsec, cwe]
     role: [appsec-engineer, security-engineer, vciso]
     phase: [design, build, review]
     activity: [review, assess, test]
-    frameworks: [OWASP-LLM-Top-10-2025]
+    frameworks: [OWASP-LLM-Top-10-2025, CWE]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/ai-security/llm-top-10/SKILL.md
