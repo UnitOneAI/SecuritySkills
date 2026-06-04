@@ -520,7 +520,7 @@ Document doc = builder.parse(request.getInputStream());
 
 ## API10:2023 -- Unsafe Consumption of APIs
 
-**CWE:** CWE-20 (Improper Input Validation), CWE-295 (Improper Certificate Validation), CWE-319 (Cleartext Transmission of Sensitive Information)
+**CWE:** CWE-20 (Improper Input Validation), CWE-295 (Improper Certificate Validation), CWE-319 (Cleartext Transmission of Sensitive Information), CWE-345 (Insufficient Verification of Data Authenticity), CWE-294 (Authentication Bypass by Capture-replay)
 **Severity:** High to Medium
 
 ### Vulnerable Patterns
@@ -544,6 +544,44 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```javascript
+// VULNERABLE: Webhook signature is verified over parsed JSON, not the raw request body.
+app.post('/webhooks/payment', express.json(), async (req, res) => {
+  const expected = hmac(JSON.stringify(req.body), process.env.WEBHOOK_SECRET);
+  if (expected !== req.header('X-Signature')) return res.sendStatus(401);
+
+  await provisionSubscription(req.body.customerId, req.body.planId);
+  res.sendStatus(204);
+});
+```
+
+```python
+# VULNERABLE: Valid signed events can be replayed indefinitely.
+@app.post("/webhooks/billing")
+def billing_webhook():
+    event = verify_signature(request.data, request.headers["Signature"])
+    fulfill_invoice(event["invoice_id"])
+    return "", 204
+```
+
+### Webhook Receiver Evidence
+
+For each inbound webhook endpoint, capture this table before marking the integration ready:
+
+| Provider | Endpoint | Signature Input | Timestamp / Nonce Window | Idempotency Key | Side Effects | Secret Rotation |
+|----------|----------|-----------------|--------------------------|-----------------|--------------|-----------------|
+| Stripe / GitHub / Slack / custom | `/webhooks/...` | Exact raw body plus signed headers | e.g. 5 minutes or stored nonce | Event ID with unique constraint | Billing, provisioning, account changes | Old/new overlap with expiry |
+
+Reviewers should verify:
+
+- signature verification uses the exact raw body bytes and provider-specified signed headers, not reparsed or reserialized JSON;
+- signature comparison is constant-time where the platform provides a safe helper;
+- a timestamp tolerance, nonce cache, or provider event ID prevents captured valid events from being replayed later;
+- non-idempotent side effects use an event ID, delivery ID, or business key with a unique constraint before performing fulfillment, billing, entitlement, or account changes;
+- expected duplicate delivery is treated as benign only when idempotency evidence exists;
+- webhook secret rotation supports overlapping old/new secrets with an expiry and does not permanently accept retired secrets;
+- body-level error responses such as `signature_invalid`, `timestamp_too_old`, or `duplicate_event` are tracked, not only HTTP 2xx/4xx status codes.
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
@@ -552,6 +590,9 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
+- Verify inbound webhook signatures using provider SDKs or raw-body HMAC/JWS verification, with timestamp/nonce replay protection.
+- Persist webhook event IDs or delivery IDs before non-idempotent side effects so provider retries do not duplicate billing, fulfillment, provisioning, or account changes.
+- Document webhook secret rotation with bounded old/new secret overlap and audit evidence for retired secrets.
 
 ### Review Checklist
 
@@ -560,3 +601,7 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+- [ ] Inbound webhook signatures are verified over the exact raw request body and provider-specified headers.
+- [ ] Webhook replay protection exists through timestamp tolerance, nonce cache, or stored provider event IDs.
+- [ ] Webhook handlers are idempotent before billing, fulfillment, provisioning, or account side effects.
+- [ ] Webhook secret rotation allows bounded overlap and rejects retired secrets.

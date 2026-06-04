@@ -38,8 +38,9 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **Inventory inbound webhook receivers** -- For each provider, record the endpoint, expected signature scheme, raw-body requirement, timestamp or nonce replay control, idempotency key/event ID, secret rotation process, and side effects triggered by the event.
 
-> **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
+> **Gate:** Do not proceed until the API style, authentication model, authorization model, endpoint inventory, and webhook receiver inventory are documented. Incomplete scope leads to missed findings.
 
 ---
 
@@ -120,6 +121,7 @@ The final review output must be structured as follows:
 - **CWE:** CWE-[number] -- [name]
 - **API Style:** [REST|GraphQL|gRPC|General]
 - **Location:** [file:line or spec path]
+- **Webhook Evidence:** [provider, raw-body signature evidence, replay window, idempotency key, secret rotation status, if applicable]
 - **Description:** [explanation]
 - **Evidence:**
   ```[language]
