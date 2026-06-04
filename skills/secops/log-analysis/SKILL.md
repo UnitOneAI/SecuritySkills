@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -540,5 +540,6 @@ This skill processes user-supplied content that may include raw log data, event 
 
 ## 10. Changelog
 
+- **1.1.1** -- Added telemetry integrity fixtures for documented maintenance gaps, access-scope false negatives, and ingest-time-only timeline errors.
 - **1.1.0** -- Added Step 0 telemetry integrity pre-check, source-to-hypothesis confidence mapping, event-time/ingest-time timeline fields, pipeline exception reporting, confidence modifiers, and evidence-retention guidance.
 - **1.0.0** -- Initial release. Log source taxonomy, anomaly identification, baseline recommendations, and ATT&CK-mapped correlation guidance.
