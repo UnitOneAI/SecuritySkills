@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -217,6 +217,8 @@ IAM-SVC-06: Service accounts without ownership assignment
 IAM-SVC-07: No inventory or lifecycle management for service accounts (CIS 5.5)
 IAM-SVC-08: Service account keys stored in plaintext (code, config files, environment variables)
 IAM-SVC-09: Service accounts without audit logging of usage
+IAM-SVC-10: Workload identity federation trust is not scoped by issuer, audience, subject, or mapped attributes
+IAM-SVC-11: Downstream role binding grants broad access to an entire workload identity pool, tenant, repository set, or CI/CD platform
 ```
 
 **Platform-specific checks:**
@@ -236,6 +238,22 @@ IAM-SVC-09: Service accounts without audit logging of usage
 2. Short-lived tokens via OIDC/STS (time-bound, auto-expiring)
 3. Managed secrets with automatic rotation (Secrets Manager, Key Vault)
 4. User-managed keys with strict rotation policy (last resort)
+
+#### Workload Identity Federation Trust Evidence
+
+Do not treat "keyless" or "federated" as automatically least-privilege. For each workload identity federation path, verify the token trust boundary and the downstream role binding together.
+
+| Platform | Trust Evidence | Broad-Trust Trigger |
+|---|---|---|
+| **AWS** | OIDC provider ARN, issuer, `aud`, `sub`, repository/branch/environment claim restrictions, session duration, role trust policy, permission boundary/SCP context | Trust checks only `aud`, trusts `repo:org/*`, omits branch/environment, or allows a shared public IdP to assume high-privilege roles broadly |
+| **Azure / Entra ID** | Federated identity credential issuer, subject, audiences, app/managed identity, environment protection, deployment-branch rule, role assignment scope | Subject wildcard, tenant-wide app trust, missing protected-environment evidence, or subscription/resource-group role broader than the intended workload |
+| **GCP** | Workload identity provider URI, allowed audiences, attribute mapping, `attribute_condition`, IAM member selector, role scope, pool/project boundary | Empty allowed audiences, no attribute condition, broad `principalSet://.../workloadIdentityPools/*`, or high-privilege role at project/folder/org scope |
+
+| Status | Use When | Finding Guidance |
+|---|---|---|
+| **Scoped federation** | Issuer, audience, subject/attributes, downstream principal, and role scope all match the intended workload | Document as controlled; still verify activity logging and owner |
+| **Keyless but broad trust** | Static keys are absent, but token claims or downstream bindings allow unrelated workloads to mint credentials | Medium/High depending on role scope and public IdP exposure |
+| **Not Evaluable** | The trust policy, federated credential, attribute condition, or downstream binding is missing | Do not mark service account hygiene as complete |
 
 ---
 
@@ -414,6 +432,12 @@ For each finding, produce a row with:
 ### Detailed Findings
 [Findings table — see above]
 
+### Workload Identity Federation Trust Matrix
+
+| Provider | Workload / Principal | Issuer | Audience | Subject or Attributes | Downstream Binding Scope | Status |
+|---|---|---|---|---|---|---|
+| [AWS/Azure/GCP] | [Workload, role, managed identity, or service account] | [OIDC/SAML issuer] | [Pinned audience or Not Evaluable] | [Exact subject, mapped attributes, or gap] | [Role and resource scope] | [Scoped federation / Keyless but broad trust / Not Evaluable] |
+
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
 
@@ -508,4 +532,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-04 | Added workload identity federation trust-claim gates for AWS, Azure, and GCP, including downstream binding checks and output matrix |
 | 1.0.0 | 2025-03-06 | Initial release |
