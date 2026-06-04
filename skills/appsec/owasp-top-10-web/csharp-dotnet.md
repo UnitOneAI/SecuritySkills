@@ -662,8 +662,8 @@ UseDeveloperExceptionPage
 # Debug/development environment leaked
 ASPNETCORE_ENVIRONMENT.*Development
 
-# Default or weak Identity password requirements
-RequireDigit\s*=\s*false|RequiredLength\s*=\s*[1-5]\b|RequireUppercase\s*=\s*false
+# Stale or weak Identity password requirements
+RequiredLength\s*=\s*([0-9]|1[0-4])\b|RequireUppercase\s*=\s*true|RequireDigit\s*=\s*true|RequireNonAlphanumeric\s*=\s*true|RequiredUniqueChars\s*=\s*[2-9]\b
 
 # Missing security headers
 # (absence check — grep for these to confirm they exist)
@@ -700,31 +700,54 @@ else
 }
 ```
 
-**2. Default Identity password policy too weak**
+**2. Stale Identity password policy**
 
 ```csharp
-// VULNERABLE — trivially brute-forceable passwords accepted
+// VULNERABLE — short minimum plus legacy composition rules can reject strong passphrases
 builder.Services.Configure<IdentityOptions>(options =>
 {
-    options.Password.RequiredLength = 4;
-    options.Password.RequireDigit = false;
-    options.Password.RequireUppercase = false;
-    options.Password.RequireLowercase = false;
-    options.Password.RequireNonAlphanumeric = false;
-});
-```
-
-```csharp
-// SECURE — strong password policy
-builder.Services.Configure<IdentityOptions>(options =>
-{
-    options.Password.RequiredLength = 12;
+    options.Password.RequiredLength = 8;
     options.Password.RequireDigit = true;
     options.Password.RequireUppercase = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireNonAlphanumeric = true;
     options.Password.RequiredUniqueChars = 4;
 });
+```
+
+```csharp
+// SECURE — length-first policy; add breached-password/blocklist checks in a custom validator
+builder.Services.Configure<IdentityOptions>(options =>
+{
+    options.Password.RequiredLength = 15;
+    options.Password.RequireDigit = false;
+    options.Password.RequireUppercase = false;
+    options.Password.RequireLowercase = false;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequiredUniqueChars = 1;
+});
+```
+
+```csharp
+// SECURE — example custom validator hook for blocklist and exact submitted password checks
+builder.Services.AddScoped<IPasswordValidator<ApplicationUser>, BlocklistPasswordValidator>();
+
+public sealed class BlocklistPasswordValidator : IPasswordValidator<ApplicationUser>
+{
+    public Task<IdentityResult> ValidateAsync(
+        UserManager<ApplicationUser> manager,
+        ApplicationUser user,
+        string? password)
+    {
+        if (password is null || KnownBadPasswordList.Contains(password, StringComparer.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(IdentityResult.Failed(
+                new IdentityError { Code = "BlockedPassword", Description = "Choose a different password." }));
+        }
+
+        return Task.FromResult(IdentityResult.Success);
+    }
+}
 ```
 
 **3. Missing security headers**

@@ -9,10 +9,10 @@ description: >
 tags: [appsec, web, owasp]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
-frameworks: [OWASP-Top-10-2021]
+frameworks: [OWASP-Top-10-2021, OWASP-ASVS-5.0, NIST-SP-800-63B-4]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -399,10 +399,17 @@ angular\.js|jquery\s*["\'].*1\.|lodash.*3\.|moment\(\)|request\(  # (npm 'reques
 **What to Look For:**
 
 - No protection against credential stuffing or brute-force attacks (missing rate limiting on login).
-- Weak password policies (no minimum length, no complexity requirements, no check against breached password lists).
+- Weak or stale password policy evidence:
+  - no assurance context recorded for whether passwords are single-factor or paired with MFA;
+  - single-factor password minimum below 15 characters, or MFA-only password minimum below 8 characters;
+  - no blocklist or breached-password check;
+  - legacy composition rules treated as stronger than length, blocklist, rate limiting, and MFA evidence;
+  - paste/password-manager blocking, space/Unicode rejection, or too-low maximum length;
+  - password verification that truncates, lowercases, strips, normalizes, or otherwise transforms the submitted secret before hashing/verifying.
 - Credentials transmitted over unencrypted connections.
 - Session tokens in URLs (logged in proxies, referer headers, browser history).
 - Session IDs that do not rotate after successful authentication.
+- Session evidence that lacks ASVS 5.0 context: backend token verification, reference-token entropy, regeneration on authentication and re-authentication, inactivity timeout, absolute lifetime, concurrent-session policy, and federated/SSO session coordination.
 - Missing multi-factor authentication on privileged accounts.
 - "Remember me" tokens that never expire or use predictable values.
 - Password recovery that uses knowledge-based questions or sends passwords in plaintext.
@@ -433,11 +440,17 @@ angular\.js|jquery\s*["\'].*1\.|lodash.*3\.|moment\(\)|request\(  # (npm 'reques
 # Session management
 session\.id|sessionId|JSESSIONID|connect\.sid|session_token
 # Weak password policy
-minLength.*[0-5]|passwordMinLength|min_password_length
+minLength.*([0-9]|1[0-4])|passwordMinLength|min_password_length|RequiredLength\s*=\s*([0-9]|1[0-4])\b
+# Legacy composition or usability-hostile password policy
+requireUppercase|requireLowercase|requireDigit|requireSymbol|RequireUppercase|RequireDigit|RequireNonAlphanumeric|disallowSpaces|disallowUnicode|onpaste.*preventDefault|onpaste.*return\s+false
+# Password transformation before verification
+password.*(toLowerCase|lower\(|trim\(|strip\(|substring\(|slice\(|substr\()|candidate.*(toLowerCase|lower\(|trim\(|strip\(|substring\(|slice\(|substr\()
 # Session in URL
 session.*=.*req\.query|token.*=.*req\.query|url.*session
 # Missing session rotation
 regenerate|rotateSession|session\.create|session_regenerate_id
+# Session evidence gaps
+token_entropy|inactivity_timeout|absolute_lifetime|maxAge|idleTimeout|reauth|federated|sso
 # Certificate validation bypass
 rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarning.*disable
 ```
@@ -445,11 +458,15 @@ rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarni
 **Mitigations:**
 
 - Implement rate limiting and account lockout on authentication endpoints.
-- Enforce minimum password length of 12 characters (NIST 800-63B requires at least 8; OWASP ASVS V2.1.1 recommends at least 12); verifiers SHOULD permit at least 64; check passwords against breached-password databases (e.g., HaveIBeenPwned API).
+- Record password assurance context before grading length: single-factor passwords should be at least 15 characters, while passwords used only as part of MFA can be shorter but should still be at least 8 characters.
+- Do not require arbitrary uppercase/lowercase/digit/symbol composition rules. Prefer length, blocklists, breached-password checks, rate limiting, phishing-resistant MFA, and exact verifier evidence.
+- Permit paste and password managers; allow spaces and Unicode where the platform can verify them exactly; support at least 64-character maximum passwords and avoid silently truncating or case-transforming submitted passwords before hashing.
+- Check passwords against breached-password and organization-specific blocklists without logging the submitted secret.
 - Regenerate session IDs after login, privilege escalation, and re-authentication.
 - Set session cookies with `Secure`, `HttpOnly`, and `SameSite=Lax` (or `Strict`) attributes.
 - Implement multi-factor authentication for all users, mandatory for administrative accounts.
-- Set absolute and idle session timeouts appropriate to the application's risk profile.
+- Set absolute and idle session timeouts appropriate to the application's risk profile, document concurrent-session behavior, and coordinate local session lifetime with federated SSO/IdP session controls.
+- Verify reference session tokens with a trusted backend service, generate them with CSPRNG entropy, and require at least 128 bits of entropy for reference tokens.
 - Never expose session tokens in URLs.
 
 ---
@@ -628,6 +645,35 @@ Present findings in this structure:
 
 ### Findings
 
+### A07 Authentication and Session Evidence
+
+Use these tables whenever authentication or session management is in scope, even if no A07 finding is reported.
+
+**Password Policy Evidence**
+
+| Control | Evidence | Status |
+|---------|----------|--------|
+| Assurance context | single-factor / MFA factor / federated / unknown | Pass / Fail / Not Evaluable |
+| Minimum length | configured minimum plus MFA context | Pass / Fail / Not Evaluable |
+| Maximum length | accepted maximum and truncation behavior | Pass / Fail / Not Evaluable |
+| Composition rules | none / present / blocks spaces or Unicode | Pass / Fail / Not Evaluable |
+| Blocklist / breached check | source, timing, and failure handling | Pass / Fail / Not Evaluable |
+| Paste / password-manager support | UI and server behavior | Pass / Fail / Not Evaluable |
+| Exact verification | no lowercase/strip/truncate/normalize before hashing | Pass / Fail / Not Evaluable |
+| Rotation / recovery | no periodic forced rotation without compromise; recovery is non-knowledge-based | Pass / Fail / Not Evaluable |
+
+**Session Evidence**
+
+| Control | Evidence | Status |
+|---------|----------|--------|
+| Backend token verification | local / backend / self-contained validation path | Pass / Fail / Not Evaluable |
+| Token entropy | reference-token generation source and entropy | Pass / Fail / Not Evaluable |
+| Rotation on auth/re-auth | login, privilege change, and re-authentication behavior | Pass / Fail / Not Evaluable |
+| Inactivity timeout | configured idle timeout and justification | Pass / Fail / Not Evaluable |
+| Absolute lifetime | configured maximum lifetime and justification | Pass / Fail / Not Evaluable |
+| Concurrent sessions | limit and behavior when exceeded | Pass / Fail / Not Evaluable |
+| Federated/SSO coordination | IdP and relying-party session lifetime/logout/re-auth behavior | Pass / Fail / Not Evaluable |
+
 #### [SEVERITY] — [Short Title]
 
 - **OWASP Category:** [A0X:2021 — Category Name]
@@ -687,6 +733,8 @@ Present findings in this structure:
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
+6. **Treating no composition rules as weak by itself.** A password policy with no uppercase/lowercase/digit/symbol requirement can be correct when it has adequate length, blocklists, breached-password checks, paste/password-manager support, rate limiting, and MFA context. Flag composition requirements when they reject strong passphrases, spaces, Unicode, or password-manager workflows.
+
 ## Prompt Injection Safety Notice
 
 This skill processes source code and configuration files that may contain adversarial content. The following safeguards apply:
@@ -710,6 +758,9 @@ This skill processes source code and configuration files that may contain advers
 - OWASP Top 10:2021 — A09 Security Logging and Monitoring Failures — https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/
 - OWASP Top 10:2021 — A10 Server-Side Request Forgery — https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
 - MITRE CWE List — https://cwe.mitre.org/
-- NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
+- NIST SP 800-63B-4 Digital Identity Guidelines: Authentication and Authenticator Management — https://csrc.nist.gov/pubs/sp/800/63/b/4/final
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
 - OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+- OWASP ASVS 5.0 Password Security — https://cornucopia.owasp.org/taxonomy/asvs-5.0/06-authentication/02-password-security
+- OWASP ASVS 5.0 Session Management Documentation — https://cornucopia.owasp.org/taxonomy/asvs-5.0/07-session-management/01-session-management-documentation
+- OWASP ASVS 5.0 Fundamental Session Management Security — https://cornucopia.owasp.org/taxonomy/asvs-5.0/07-session-management/02-fundamental-session-management-security

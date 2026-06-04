@@ -47,7 +47,7 @@ skills:
     role: [appsec-engineer, security-engineer]
     phase: [build, review]
     activity: [review, test]
-    frameworks: [OWASP-Top-10-2021]
+    frameworks: [OWASP-Top-10-2021, OWASP-ASVS-5.0, NIST-SP-800-63B-4]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/appsec/owasp-top-10-web/SKILL.md
