@@ -5,9 +5,9 @@ description: >
   AI agents. Auto-invoked when reviewing multi-agent architectures, AI agent
   deployments, or systems where LLMs have tool access and act autonomously.
   Covers permission models, tool security, memory integrity, trust boundaries,
-  and human oversight. Produces a structured assessment with risk ratings and
-  architectural recommendations.
-tags: [ai-security, agentic-ai, agents]
+  handoff validation, and human oversight. Produces a structured assessment
+  with risk ratings and architectural recommendations.
+tags: [ai-security, agentic-ai, agents, handoff-validation]
 role: [appsec-engineer, security-engineer, architect, vciso]
 phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]

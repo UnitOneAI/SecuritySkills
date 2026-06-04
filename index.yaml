@@ -263,7 +263,7 @@ skills:
 
   - id: agentic-top-10
     name: "Agentic AI Security Review (OWASP 2025)"
-    tags: [ai-security, agentic-ai, agents]
+    tags: [ai-security, agentic-ai, agents, handoff-validation]
     role: [appsec-engineer, security-engineer, architect, vciso]
     phase: [design, build, review]
     activity: [review, assess, design]
