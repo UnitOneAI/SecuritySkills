@@ -189,7 +189,7 @@ skills:
 
   - id: container-security
     name: "Container & Kubernetes Security Review"
-    tags: [cloud, containers, kubernetes, docker]
+    tags: [cloud, containers, kubernetes, docker, provenance]
     role: [cloud-security-engineer, security-engineer]
     phase: [build, deploy, operate]
     activity: [review, audit]

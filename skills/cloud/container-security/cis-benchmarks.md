@@ -193,6 +193,8 @@ ENTRYPOINT ["/server"]
 
 Evaluate Kubernetes workload definitions against CIS Kubernetes Benchmark Section 5 (Policies) and Pod Security Standards.
 
+For each workload, inspect `containers`, `initContainers`, and `ephemeralContainers`. Apply Pod Security Standards to each container class and report when ephemeral debug containers were not present or not evaluable from the reviewed manifests.
+
 ### CIS 5.1 -- RBAC and Service Accounts
 
 #### CIS 5.1.1 -- Ensure that the cluster-admin role is only used where required
@@ -264,6 +266,39 @@ Evaluate workload configurations against Kubernetes Pod Security Standards. The 
 | **Baseline** | Minimally restrictive. Prevents known privilege escalations. | Standard workloads |
 | **Restricted** | Heavily restricted. Follows current hardening best practices. | Security-sensitive and untrusted workloads |
 
+#### System Workload Exception Gate
+
+`hostNetwork`, host namespaces, privileged mode, hostPath, and added capabilities remain high-risk controls. Before assigning application workload severity, check whether the workload is a platform component that needs node-level access:
+
+```yaml
+# Possible justified exception, not an automatic app-workload violation
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      serviceAccountName: cni-agent
+      containers:
+        - name: cni-agent
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+```
+
+Required exception evidence:
+
+- Namespace is `kube-system` or a documented platform namespace.
+- Component class is CNI, CSI, kube-proxy, node exporter, log/EDR agent, admission/controller component, or another named system workload.
+- RBAC is scoped to the component's required API groups/resources/verbs.
+- Image is pinned to a digest or otherwise provenance-controlled, and admission verification evidence exists where available.
+- Admission/PSA/Kyverno/Gatekeeper policy denies the same host namespace/capability pattern for ordinary application namespaces.
+- Owner, change-control path, and compensating controls are documented.
+
+If these fields are complete, report `System workload exception requires governance` with Medium/Informational severity as appropriate. If any required field is missing, keep the underlying High/Critical finding and list the missing exception evidence.
+
 #### CIS 5.2.1 -- Ensure that the cluster has at least one active policy control mechanism installed
 
 Check for Pod Security Admission labels on namespaces:
@@ -318,6 +353,8 @@ spec:
 spec:
   hostNetwork: true  # FAIL for application workloads
 ```
+
+For CNI, CSI, kube-proxy, and node-level agents, run the System Workload Exception Gate before assigning final severity.
 
 #### CIS 5.2.6 -- Minimize the admission of containers with allowPrivilegeEscalation
 
@@ -430,6 +467,15 @@ spec:
 ```
 
 **Critical check:** A default-deny NetworkPolicy should exist in every namespace.
+
+**Effective policy check:** NetworkPolicies are additive. Verify the combined effect of default-deny plus all allow policies in the namespace. A namespace can pass the "has NetworkPolicy" check while still allowing broad egress or ingress through a second policy.
+
+Report:
+
+- Default-deny present: Yes / No / Not Evaluable.
+- Effective ingress reviewed: Yes / No / Not Evaluable.
+- Effective egress reviewed: Yes / No / Not Evaluable.
+- Broad allow policies such as empty `podSelector`, empty `namespaceSelector`, `0.0.0.0/0`, `::/0`, or all ports/protocols.
 
 ### CIS 5.4 -- Secrets Management
 
@@ -592,9 +638,45 @@ Evaluate container runtime configurations against NIST SP 800-190 countermeasure
 |---------------|---------------|
 | **CM-1:** Use minimal base images | Verify Alpine, Distroless, or slim variants in FROM |
 | **CM-2:** Scan images for vulnerabilities | Check for Trivy, Grype, Snyk in CI pipeline |
-| **CM-3:** Sign and verify images | Check for Cosign signatures, Notary, or admission webhooks |
-| **CM-4:** Use immutable tags or digests | `image: nginx@sha256:...` preferred over `image: nginx:1.25` |
+| **CM-3:** Sign and verify images | Check for signing plus admission-time verification that denies unsigned/untrusted images |
+| **CM-4:** Use immutable tags or digests | `image: nginx@sha256:...` preferred over mutable tags; record whether tags are resolved in rendered manifests |
 | **CM-5:** Remove unnecessary packages | No curl, wget, netcat, or shells in production images |
+
+#### Image Provenance and Admission Enforcement
+
+Signing in CI is not the same as cluster enforcement. For every material workload, record whether image provenance is enforced at admission time.
+
+Evidence to collect:
+
+- Image reference type: digest, immutable tag, mutable tag, or `latest`.
+- Signing evidence: Cosign/keyless, Notary, registry attestation, or Not Evaluable.
+- Admission policy: Kyverno `verifyImages`, Gatekeeper/OPA policy, Sigstore policy-controller, registry admission control, or Not Evaluable.
+- Policy mode: enforce, audit/warn only, dry-run, or unknown.
+- Negative test evidence: unsigned image denied, untrusted issuer/subject denied, mutable tag denied, or Not Evaluable.
+
+```yaml
+# Kyverno example: admission-time verification is enforceable when validationFailureAction is Enforce
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: require-cosign
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      verifyImages:
+        - imageReferences: ["ghcr.io/example/*"]
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: https://token.actions.githubusercontent.com
+```
+
+Flag a finding when CI signs images but no admission policy verifies them, when policy runs in audit/warn mode only, or when unsigned/untrusted images can still be admitted.
 
 ### NIST 800-190: Orchestrator Countermeasures
 

@@ -7,13 +7,13 @@ description: >
   or container orchestration configurations. Evaluates image security, runtime
   hardening, RBAC, Pod Security Standards, network policies, and secrets
   management. Produces a prioritized findings report with remediation guidance.
-tags: [cloud, containers, kubernetes, docker]
+tags: [cloud, containers, kubernetes, docker, provenance]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -92,6 +92,9 @@ Use Glob to locate all relevant configuration files.
 **/values-*.yaml
 **/kustomization.yaml
 **/kustomization.yml
+**/kyverno/**/*.yaml
+**/gatekeeper/**/*.yaml
+**/policies/**/*.yaml
 **/base/**/*.yaml
 **/overlays/**/*.yaml
 **/*-deployment.yaml
@@ -103,7 +106,25 @@ Use Glob to locate all relevant configuration files.
 **/*-podsecuritypolicy.yaml
 ```
 
-Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, and supporting configs. Record all discovered files.
+Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, admission policies, and supporting configs. Record all discovered files. If Helm or Kustomize is present, record whether rendered manifests were reviewed (`helm template`, Kustomize build output, or committed rendered YAML). If only templates/values are available, mark the rendered workload evidence as `Not Evaluable` rather than assuming the template defaults are deployed.
+
+For every Pod template, inventory `containers`, `initContainers`, and `ephemeralContainers` separately. Ephemeral debug containers can carry privileged security contexts and must not disappear behind the main container list.
+
+---
+
+### Step 2A: System Workload Exception Gate
+
+Before assigning Critical/High severity to `hostNetwork`, `hostPID`, `hostIPC`, hostPath, privileged mode, or added capabilities, determine whether the workload is an application workload or a justified platform/system workload.
+
+Record:
+
+- Namespace and owner: `kube-system`, platform namespace, application namespace, or unknown.
+- Component class: CNI, CSI/storage driver, kube-proxy, node exporter, log/EDR agent, admission/controller component, or application.
+- Required privilege: host namespace, capability, hostPath, or privileged mode and why it is needed.
+- Compensating controls: RBAC scope, dedicated service account, image digest/signature/provenance, namespace isolation, NetworkPolicy/effective egress, admission policy exception, and change-control owner.
+- Deny rule for application namespaces: evidence that the same privilege is blocked for ordinary app workloads.
+
+If all exception evidence is present, classify the finding as `System workload exception requires governance` rather than an application workload violation. If evidence is missing, keep the security finding and list the missing exception fields.
 
 ---
 
@@ -144,6 +165,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Frameworks: CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, NIST SP 800-190
 - Files reviewed: <N Dockerfiles, N K8s manifests, N Helm charts>
+- Rendered manifests reviewed: Yes / No / Not Evaluable
+- Admission policy evidence: Pod Security Admission / Kyverno / Gatekeeper / Other / Not Evaluable
 
 ### Executive Summary
 - Total checks evaluated: <N>
@@ -174,16 +197,26 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
 - **Container:** <container name>
+- **Container class:** app / init / sidecar / ephemeral / system workload
+- **System workload exception:** Not applicable / Justified / Missing evidence
+- **Rendered manifest evidence:** Rendered / Template-only / Not Evaluable
+- **Verification performed:** <policy denial, scan result, manifest proof, or Not Evaluable reason>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
 - **Remediation:** <fix with code example>
 
 ### Pod Security Standards Compliance Matrix
 
-| Workload | Namespace | PSS Level | Violations |
-|----------|-----------|-----------|------------|
-| deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
-| deploy/worker | production | Privileged | privileged: true |
+| Workload | Namespace | Containers Inspected | PSS Level | System Exception | Violations |
+|----------|-----------|----------------------|-----------|------------------|------------|
+| deploy/app | production | app/init/ephemeral | Baseline (not Restricted) | N/A | runAsRoot, no seccomp |
+| daemonset/cni | kube-system | app/init/ephemeral | Privileged | Justified / Missing evidence | hostNetwork, NET_ADMIN |
+
+### Image Provenance and Admission Enforcement
+
+| Workload | Image | Reference Type | Signing Present | Admission Verification | Unsigned Image Denied? | Evidence |
+|----------|-------|----------------|-----------------|------------------------|------------------------|----------|
+| deploy/app | ghcr.io/org/app@sha256:... | digest | cosign/keyless | Kyverno/Gatekeeper/enforcer | Yes/No/Not Evaluable | policy/test/log |
 
 ### Prioritized Remediation Plan
 
@@ -251,11 +284,11 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Common Pitfalls
 
 1. **Init containers and sidecar containers are often missed.** Pod Security Standards apply to ALL containers in a pod, including init containers and ephemeral containers. Check every container spec.
-2. **Helm template values may override security settings.** A Helm chart template may set `runAsNonRoot: true`, but `values.yaml` or environment-specific values files may override it to `false`. Always check both the templates and all values files.
+2. **Helm template values may override security settings.** A Helm chart template may set `runAsNonRoot: true`, but `values.yaml` or environment-specific values files may override it to `false`. Always check both the templates and all values files, and prefer rendered manifests. If rendered output is unavailable, mark environment-specific controls as `Not Evaluable`.
 3. **Default namespace is not just a naming issue.** The `default` namespace typically has no NetworkPolicy and no Pod Security Admission labels. Workloads in `default` often bypass all policy controls.
 4. **Base64 encoding is not encryption.** Kubernetes Secrets store data as base64, which is trivially decodable. Secrets committed to version control in manifests are effectively plaintext.
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
-6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
+6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created, and allow policies must be evaluated together. A namespace can have a default-deny policy and still allow broad egress through a second policy.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
 
 ---
@@ -284,7 +317,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
+- Kubernetes Ephemeral Containers: https://kubernetes.io/docs/concepts/workloads/pods/ephemeral-containers/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Helm template command: https://helm.sh/docs/helm/helm_template/
+- Kyverno verifyImages rules: https://kyverno.io/docs/policy-types/cluster-policy/verify-images/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
@@ -293,4 +329,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added system workload exception gates, rendered manifest evidence, ephemeral container inventory, image provenance/admission enforcement evidence, and effective NetworkPolicy review guidance.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
