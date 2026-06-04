@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -62,6 +62,7 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
+- [ ] **Ransomware restore posture** -- Most recent clean-room restore drill, achieved RTO/RPO, immutable/offline backup tier, backup admin separation, key escrow, and application-owner signoff.
 
 ---
 
@@ -252,6 +253,37 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 
 **Nation-state context:** State-sponsored actors (Iranian, Russian, North Korean) increasingly deploy wipers against healthcare and defense supply chains. The 2026 Stryker medtech wiper attack demonstrates ePHI custodians are active targets. IR teams must account for pre-positioned backdoors beyond the wiper payload, potential prior data exfiltration, and the need for FBI/CISA/H-ISAC notification.
 
+#### Step 3.1c: Ransomware Restore Readiness Track
+
+Ransomware recovery is not proven by successful backup jobs alone. Before
+declaring recovery feasible, capture restore, key, immutability, and application
+validation evidence. Treat missing evidence as a recovery risk even when backup
+dashboards show recent successful jobs.
+
+**Restore readiness evidence:**
+
+| Evidence Area | Required Evidence | Fails When |
+|---|---|---|
+| **Restore drill** | Last drill date, systems restored, clean-room environment, achieved RTO/RPO, data integrity checks, application-owner signoff | Backups have never been restored or the last drill scope excludes critical apps |
+| **Backup isolation** | Offline, immutable, or segregated backup tier; separate backup admin identity; blocked production lateral movement path | Backup console uses the same compromised identity plane as production |
+| **Key escrow** | Backup encryption key owner, escrow location, dual-control access, break-glass process, last recovery test | Keys are stored only in production IAM, a compromised vault, or undocumented admin accounts |
+| **Immutability controls** | Retention lock, delete protection, change approval, privileged-admin separation, evidence that retention cannot be shortened during the incident | Privileged backup admins can delete or shorten retention without independent approval |
+| **Application consistency** | Database point-in-time restore evidence, transaction consistency, schema/app compatibility, business owner validation | Storage volume restores succeed but application checks fail or are untested |
+| **SaaS export recovery** | Provider retention/export limits, API quota assumptions, export format, restore target, and provider escalation path | SaaS data depends on provider retention but no restore/export drill exists |
+
+**Ransomware reconnect criteria:**
+
+Do not reconnect restored systems to production until all applicable criteria are
+documented:
+
+1. Restored data comes from a recovery point before encryption, tampering, or attacker persistence.
+2. Backup keys were recovered through documented escrow or dual-control procedure.
+3. Restored hosts or services were built in an isolated clean room and scanned before reconnection.
+4. Application owners validated integrity, authentication, authorization, and critical transactions.
+5. Compromised identity, remote access, backup-agent, and management-plane credentials were rotated.
+6. Backup-console audit logs were reviewed for deletion, retention-change, or attacker access attempts.
+7. Reconnection is phased, monitored, and reversible if encryption, beaconing, or destructive activity recurs.
+
 #### Step 3.2: Eradication
 
 After containment, remove the threat from the environment:
@@ -273,6 +305,12 @@ Restore systems to normal operations:
 4. **Enhanced monitoring** -- Increase logging verbosity and alerting sensitivity for a minimum of 30 days post-recovery
 5. **Stakeholder confirmation** -- Obtain business owner sign-off before declaring systems operational
 6. **Update IOC blocklists** -- Ensure all identified IOCs remain blocked across perimeter and endpoint controls
+
+For ransomware, add restore-readiness proof before recovery signoff: clean-room
+restore evidence, key-escrow evidence, immutable retention evidence, application
+consistency checks, and reconnect criteria status. If these are missing, mark
+recovery as "Not Evaluable" or "Supplemented" rather than assuming backups are
+usable.
 
 #### Step 3.4: Stakeholder Notification
 
@@ -338,6 +376,7 @@ Escalate to the next tier when any of the following conditions are met:
 |---------|------------|-----------|
 | Confirmed data exfiltration involving PII/PHI | Legal counsel, Privacy Officer, Executive leadership | Immediately |
 | Ransomware with encryption of production systems | Executive leadership, External IR, Cyber insurance carrier, Law enforcement (FBI IC3) | Within 1 hour |
+| Ransomware recovery blocked by untested restores, missing escrowed keys, or mutable backup retention | Executive leadership, Backup platform owner, External IR, Cyber insurance carrier | Immediately |
 | Wiper/destructive malware with active data destruction | Executive leadership, External IR, Cyber insurance, FBI IC3, CISA, Sector ISAC (e.g., H-ISAC for healthcare) | Immediately |
 | Active attacker with domain admin / root access | External IR firm, Executive leadership | Within 1 hour |
 | Incident duration exceeds 4 hours without containment | IR lead escalates to management for resource allocation | At 4-hour mark |
@@ -407,6 +446,15 @@ and recommended immediate actions. Lead with the most critical fact.]
 - **Recovery Actions:** [List of restoration actions taken or planned]
 - **Enhanced Monitoring:** [Description of increased monitoring posture]
 
+### Ransomware Restore Readiness
+| Evidence Area | Status | Evidence | Owner | Gap / Next Action |
+|---|---|---|---|---|
+| Last clean-room restore drill | [Complete / Partial / Missing / N/A] | [Date, scope, RTO/RPO achieved] | [Owner] | [Gap] |
+| Backup isolation / immutability | [Complete / Partial / Missing / N/A] | [Retention lock, offline tier, admin separation] | [Owner] | [Gap] |
+| Key escrow / break-glass recovery | [Complete / Partial / Missing / N/A] | [Escrow path, dual-control, last key recovery test] | [Owner] | [Gap] |
+| Application consistency validation | [Complete / Partial / Missing / N/A] | [Database/app transaction checks] | [Owner] | [Gap] |
+| Reconnect criteria | [Approved / Blocked / Pending / N/A] | [Phased reconnection and monitoring plan] | [Owner] | [Gap] |
+
 ### Stakeholder Notifications
 | Stakeholder | Notified | Timestamp | Method |
 |---|---|---|---|
@@ -468,6 +516,15 @@ Reconnecting systems to the network before thoroughly removing all persistence m
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
 
+### Pitfall 6: Assuming Backup Success Equals Ransomware Recovery
+
+Backup job success does not prove that recovery is possible. Ransomware recovery
+can still fail when restores have never been tested in a clean room, encryption
+keys live only in the compromised identity plane, immutable retention can be
+changed by the same backup admins, or restored databases are not application
+consistent. Require restore-drill, key-escrow, immutability, and application
+validation evidence before marking ransomware recovery ready.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -497,3 +554,5 @@ This skill processes incident data that may include attacker-controlled content 
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
 13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+14. **CISA StopRansomware Guide** -- https://www.cisa.gov/stopransomware/ransomware-guide
+15. **NIST SP 800-34 Rev. 1 -- Contingency Planning Guide** -- https://csrc.nist.gov/pubs/sp/800/34/r1/upd1/final
