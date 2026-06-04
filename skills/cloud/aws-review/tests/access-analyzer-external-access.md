@@ -96,6 +96,7 @@ access_analyzer:
       owner: platform-security
       ticket: SEC-2026-0188
       business_purpose: "partner settlement event ingestion"
+      last_revalidated_at: "<last-review RFC3339>"
       expires_at: "<contract-renewal - 30d RFC3339>"
       next_review_at: "<last-review + 90d RFC3339>"
       revalidate_on:
