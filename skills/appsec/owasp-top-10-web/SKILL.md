@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -118,9 +118,48 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 - Enforce authorization server-side on every request using middleware or decorators; adopt deny-by-default.
 - Validate resource ownership — confirm the authenticated user owns or has explicit permission to the requested resource.
 - Use indirect references or opaque tokens instead of sequential database IDs.
-- Enable CSRF protection framework-wide; use `SameSite` cookie attributes.
+- Gate CSRF findings on credential transport: cookie/session-authenticated unsafe requests need CSRF controls, while bearer-token-only APIs that reject ambient cookies should not be flagged for missing CSRF tokens by default.
+- Use `SameSite` cookie attributes as defense-in-depth, not as the only control for high-value unsafe methods.
 - Restrict CORS to an explicit allowlist of origins; never reflect arbitrary `Origin` values.
 - Constrain file paths with canonicalization and chroot/jail patterns; reject `..` sequences.
+
+**CSRF and SameSite Decision Gate:**
+
+Before reporting missing CSRF protection, identify whether the browser automatically sends credentials to the endpoint:
+
+| Credential pattern | CSRF assessment |
+|--------------------|-----------------|
+| Session cookie or refresh-token cookie accepted on unsafe methods | Require a synchronizer token, double-submit token, signed state parameter, or strict Origin/Referer validation. |
+| Explicit `Authorization: Bearer ...` only, with cookies rejected or ignored | Do not report a missing CSRF token by default; review token storage, CORS, and XSS exposure instead. |
+| Hybrid access-token header plus refresh cookie | Review refresh/logout/session-extension endpoints as cookie-authenticated flows even if normal API calls use bearer tokens. |
+| OIDC/SAML callback, embedded app, or federated logout requiring cross-site cookies | `SameSite=None; Secure` can be valid when paired with `state`/`nonce`, CSRF tokens, or Origin/Referer checks. |
+
+Benign bearer-token API example:
+
+```javascript
+app.post("/api/profile", rejectCookies, requireBearerToken, express.json(), async (req, res) => {
+  await updateProfile(req.user.id, req.body);
+  res.sendStatus(204);
+});
+
+function rejectCookies(req, res, next) {
+  if (req.headers.cookie) return res.sendStatus(400);
+  next();
+}
+```
+
+This should not be reported as missing CSRF protection solely because there is no CSRF middleware; the browser does not automatically attach the accepted credential.
+
+Vulnerable high-value cookie flow example:
+
+```javascript
+app.post("/transfer", cookieSession, async (req, res) => {
+  await transferMoney(req.user.id, req.body.to, req.body.amount);
+  res.redirect("/done");
+});
+```
+
+`SameSite=Lax` alone is not enough for high-impact unsafe methods. Require a request-bound CSRF token or strong Origin/Referer enforcement in addition to secure cookie attributes.
 
 ---
 
