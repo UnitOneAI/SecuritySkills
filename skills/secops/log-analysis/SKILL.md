@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,7 @@ Before beginning analysis, gather or confirm:
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
+- [ ] **Windows auth context:** For 4624/4625/4648/4672 review, what are the expected account classes, host roles, jump hosts, service accounts, source networks, and privileged groups?
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
 
@@ -147,6 +148,51 @@ These Event IDs are the most security-relevant events in the Windows Security Ev
 | 9 | NewCredentials | Caller cloned token with new credentials (runas /netonly) | Lateral movement technique; always investigate |
 | 10 | RemoteInteractive | RDP logon | Expected for designated jump servers; suspicious on workstations or non-RDP servers |
 | 11 | CachedInteractive | Logon with cached domain credentials | Normal when DC is unreachable; suspicious if DC is available |
+
+#### Windows Authentication Field-Level Evidence Gate
+
+Do not classify Windows authentication findings from Event ID alone. Before marking Event ID 4624, 4625, 4648, or 4672 as suspicious, benign, or confirmed malicious, record the fields that determine whether the event is expected for that account, source, destination, and host role. If the decisive fields are unavailable, classify the finding as `Needs More Context` rather than forcing high-confidence severity.
+
+| Field | Applies To | Why It Matters | False Positive Control |
+|-------|------------|----------------|------------------------|
+| EventID and TimeCreated | 4624, 4625, 4648, 4672 | Anchors the event type and timeline position | Prevents mixing successful, failed, explicit-credential, and privilege-assignment events |
+| TargetUserName, TargetDomainName, TargetUserSid | 4624, 4625 | Identifies the account being authenticated | Separate human users, service accounts, machine accounts ending in `$`, break-glass accounts, and disabled accounts |
+| SubjectUserName, SubjectDomainName, SubjectUserSid | 4648, 4672 | Identifies the caller or security principal that initiated the action | Avoids attributing `runas`, service, or privileged-session events to the wrong account |
+| LogonType | 4624, 4625 | Distinguishes console, network, batch, service, unlock, RDP, cached, and `runas /netonly` activity | Treat LogonType 3 on file servers differently from workstations; treat LogonTypes 4 and 5 as automation/service context until proven otherwise |
+| LogonProcessName and AuthenticationPackageName | 4624, 4625, 4648 | Shows whether the logon used Kerberos, NTLM, Negotiate, CredSSP, or another path | Distinguishes expected Kerberos/NTLM behaviour from legacy cleartext, RDP, or explicit-credential anomalies |
+| Status, SubStatus, FailureReason | 4625 | Explains why authentication failed | Distinguish invalid password from expired password, disabled account, locked account, logon-hours restriction, and logon-type mismatch |
+| IpAddress, SourceNetworkAddress, IpPort, WorkstationName | 4624, 4625 | Identifies origin of the authentication attempt | Treat `-`, `::1`, `127.0.0.1`, local system activity, known scanner IPs, and expected management hosts differently from external or peer-workstation sources |
+| Computer, destination host role | 4624, 4625, 4672 | Identifies where the event occurred | RDP to a jump host, SMB to a file server, and admin logon to a workstation have different risk profiles |
+| LogonId, LinkedLogonId, ElevatedToken | 4624, 4672 | Joins the logon to privilege assignment and downstream process activity | Prevents isolated 4672 events from being over-scored when they match normal administrator sessions |
+| ProcessName and CallerProcessName | 4648, 4688 correlation | Shows the process that requested explicit credentials or spawned activity after logon | Helps distinguish approved admin tooling from suspicious `runas /netonly`, remote tooling, or unusual script execution |
+| Account group membership and account class | 4624, 4625, 4672 | Adds privilege and expected-use context | Service-account retry storms after password rotation are different from privileged human-account failures from a workstation |
+
+**Decision gate for Event ID 4625 failures:**
+
+1. Group by `TargetUserName`, source field, destination host, `Status`, `SubStatus`, `FailureReason`, and `LogonType`.
+2. Compare against known service-account rotations, password expiry windows, lockout events, vulnerability scanners, misconfigured scheduled tasks, and expected non-interactive authentication.
+3. Escalate as password spray or brute force only when the failure reason, account class, source pattern, and timing support credential guessing.
+4. Mark as `Needs More Context` when failure codes or source fields are missing, normalised away, or replaced by placeholders.
+
+**Decision gate for Event ID 4624 successes:**
+
+1. Validate `LogonType`, source address/workstation, destination host role, account class, and time of day against the baseline.
+2. Treat LogonType 9 (`NewCredentials`) and unexpected LogonType 10 (`RemoteInteractive`) as high-interest events requiring process and source correlation.
+3. Treat LogonType 3 as context-dependent: expected for file servers and domain services, more suspicious for inbound peer-workstation access by privileged accounts.
+4. Correlate `LogonId` with 4672, 4688, Sysmon Event ID 1, EDR process trees, and network connections before assigning high severity.
+
+**Windows auth evidence output fields:**
+
+For every Windows authentication finding, include:
+
+| Output Field | Required Content |
+|--------------|------------------|
+| Event summary | EventID, timestamp, destination host, account, source address/workstation |
+| Decisive fields | LogonType, Status/SubStatus or FailureReason, AuthenticationPackage, LogonProcess, account class, host role |
+| Expected context | Known-good baseline, approved admin path, service account owner, or change ticket if available |
+| Assessment | Suspicious, Benign, Confirmed malicious, or Needs More Context |
+| Reason | One sentence explaining which fields make the event suspicious or benign |
+| Follow-up | Correlation required, such as 4672, 4688, Sysmon, EDR, VPN, firewall, or identity-provider logs |
 
 #### Process and Service Events
 
@@ -366,6 +412,16 @@ Produce log analysis findings in this structure:
 **Evidence:**
 [Relevant log entries, timestamps, and entity details]
 
+**Windows Auth Field Gate (when applicable):**
+| Field | Value | Assessment |
+|-------|-------|------------|
+| EventID / TimeCreated | [4624/4625/4648/4672, timestamp] | [Timeline anchor] |
+| Account / Account Class | [User, service, machine, privileged, break-glass] | [Expected / Unexpected] |
+| Source / Workstation | [IP, port, workstation, or placeholder] | [Expected / Suspicious / Missing] |
+| Destination Host Role | [Workstation, server, DC, file server, jump host] | [Expected / Unexpected] |
+| LogonType / Auth Package / Process | [Values from event] | [Why decisive] |
+| Status / SubStatus / FailureReason | [Values from event, if 4625] | [Spray, lockout, expiry, drift, or missing context] |
+
 **Analysis:**
 [Interpretation of the evidence -- why is this significant or benign?]
 
@@ -443,9 +499,11 @@ No single log source provides complete visibility. Authentication logs show who 
 
 The absence of logs can be as significant as their presence. If a server that normally generates 1000 events per hour suddenly shows zero events, the logging pipeline may be broken or an adversary may have disabled logging (T1070.001 -- Clear Windows Event Logs, T1562.001 -- Disable or Modify Tools). Monitor for gaps in log continuity.
 
-### Pitfall 4: Misinterpreting Event IDs Without Context
+### Pitfall 4: Misinterpreting Windows Authentication Event IDs Without Field Context
 
-A single Event ID can have very different meanings depending on the context. Event ID 4624 (successful logon) with LogonType 3 (network) is routine on a file server but suspicious on a developer workstation receiving inbound network logons. Always consider the LogonType, source/destination, user, time of day, and host role when interpreting events.
+A single Event ID can have very different meanings depending on the context. Event ID 4624 (successful logon) with LogonType 3 (network) is routine on a file server but suspicious on a developer workstation receiving inbound network logons. Event ID 4625 can indicate credential guessing, but it can also be caused by expired passwords, lockouts, service-account password rotation drift, scheduled tasks, or logon-type restrictions. Always inspect LogonType, Status/SubStatus, FailureReason, AuthenticationPackage, LogonProcess, source address, workstation, account class, destination host role, and privileged-group context before assigning severity.
+
+If a SIEM view hides these fields, do not compensate with a stronger conclusion. Record the field gap and mark the finding as `Needs More Context` until raw Windows event XML, enriched identity context, or correlated endpoint data is available.
 
 ### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
 
