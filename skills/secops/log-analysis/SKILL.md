@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Before beginning analysis, gather or confirm:
 - [ ] **Time window:** The specific time range to analyze.
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
+- [ ] **Windows authentication fields:** For Event IDs 4624/4625, are LogonType, Status/SubStatus, FailureReason, LogonProcess, AuthenticationPackage, source address, workstation, account class, and host role available?
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
@@ -147,6 +148,40 @@ These Event IDs are the most security-relevant events in the Windows Security Ev
 | 9 | NewCredentials | Caller cloned token with new credentials (runas /netonly) | Lateral movement technique; always investigate |
 | 10 | RemoteInteractive | RDP logon | Expected for designated jump servers; suspicious on workstations or non-RDP servers |
 | 11 | CachedInteractive | Logon with cached domain credentials | Normal when DC is unreachable; suspicious if DC is available |
+
+**Windows authentication field evidence gate (4624/4625):**
+
+Do not classify Windows authentication activity from Event ID alone. Record the decisive fields before assigning severity or ATT&CK mapping.
+
+| Field | Why It Matters | Precision Guidance |
+|---|---|---|
+| Event ID | Distinguishes success (4624) from failure (4625), explicit credential use (4648), and privileged logon (4672) | Use as the starting signal, not the conclusion |
+| LogonType | Separates console, network, batch, service, RDP, cached, and `runas /netonly` activity | Treat LogonType 3 on workstations, 9, and unexpected 10 as higher-risk than routine server SMB or managed service activity |
+| Status / SubStatus | Explains 4625 failure cause | Bad password / unknown user supports spray or brute force; locked, disabled, expired, or logon-type-denied may indicate operational drift or policy enforcement |
+| FailureReason | Human-readable failure context where available | Cross-check against Status/SubStatus; do not rely on localized text alone |
+| LogonProcess | Shows the Windows component or mechanism involved | `User32`, `Advapi`, `NtLmSsp`, and service/batch contexts imply different activity paths |
+| AuthenticationPackage | Distinguishes Kerberos, NTLM, Negotiate, or package-specific flows | Unexpected NTLM where Kerberos is expected may indicate downgrade, legacy path, or lateral movement |
+| Source Network Address / WorkstationName | Identifies where the attempt originated | Treat `-`, `::1`, `127.0.0.1`, and local hostnames as local/unknown until corroborated; do not map them to external source behavior |
+| TargetUserName / TargetDomainName | Identifies the account and identity boundary | Separate human users, service accounts, machine accounts ending in `$`, break-glass accounts, and external/trusted domains |
+| Privileged membership | Adds impact context for successful or repeated authentication | Correlate 4624 with 4672 and group membership before escalating valid-account findings |
+| Host role | Determines whether the logon pattern is expected | RDP to a jump host, SMB to a file server, and service logon on an app server have different baselines |
+
+**Common 4625 SubStatus examples:**
+
+| SubStatus | Typical Meaning | Triage Implication |
+|---|---|---|
+| `0xC000006A` | Bad password | Stronger spray/brute-force signal when repeated across users or sources |
+| `0xC0000064` | User name does not exist | Username enumeration or spray candidate |
+| `0xC0000234` | Account locked out | May be attack outcome or operational lockout noise; correlate with prior failures |
+| `0xC0000072` | Account disabled | Often stale automation or invalid use of disabled account; investigate source and recency |
+| `0xC0000071` | Password expired | Usually operational drift unless paired with suspicious source, volume, or privilege |
+| `0xC000015B` | Logon type not granted | Policy prevented requested logon; useful for attempted access path but not proof of compromise |
+
+**Decision rule:**
+
+- Mark a 4624/4625 finding `Suspicious` only when the field combination contradicts known-good account class, host role, source, time window, or access path.
+- Mark it `Benign / Expected` when the event matches documented service, scheduled task, jump host, file server, or policy-enforcement behavior.
+- Mark it `Needs More Context` when key fields are absent, normalized away by the SIEM, or inconsistent across sources.
 
 #### Process and Service Events
 
@@ -337,7 +372,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -376,6 +411,11 @@ Produce log analysis findings in this structure:
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
+
+### Windows Auth Field Evidence (if applicable)
+| Event Ref | Event ID | LogonType | Status/SubStatus | Auth Package | Logon Process | Source / Workstation | Account Class | Privileged Membership | Host Role | Assessment |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [event id/timestamp] | [4624/4625] | [2/3/9/10/etc.] | [code/reason] | [Kerberos/NTLM/etc.] | [process] | [IP/host/null] | [human/service/machine/break-glass] | [4672/group context/none] | [workstation/server/jump/file/app] | [Suspicious/Benign/Needs More Context] |
 
 ### Visibility Gaps
 [Log sources that were not available but would have provided relevant data]
@@ -443,9 +483,9 @@ No single log source provides complete visibility. Authentication logs show who 
 
 The absence of logs can be as significant as their presence. If a server that normally generates 1000 events per hour suddenly shows zero events, the logging pipeline may be broken or an adversary may have disabled logging (T1070.001 -- Clear Windows Event Logs, T1562.001 -- Disable or Modify Tools). Monitor for gaps in log continuity.
 
-### Pitfall 4: Misinterpreting Event IDs Without Context
+### Pitfall 4: Misinterpreting Event IDs Without Field-Level Context
 
-A single Event ID can have very different meanings depending on the context. Event ID 4624 (successful logon) with LogonType 3 (network) is routine on a file server but suspicious on a developer workstation receiving inbound network logons. Always consider the LogonType, source/destination, user, time of day, and host role when interpreting events.
+A single Event ID can have very different meanings depending on the context. Event ID 4624 (successful logon) with LogonType 3 (network) is routine on a file server but suspicious on a developer workstation receiving inbound network logons. Event ID 4625 can indicate attack traffic, but SubStatus may show expired passwords, disabled accounts, lockouts, or policy-denied logon types. Always consider LogonType, Status/SubStatus, FailureReason, LogonProcess, AuthenticationPackage, source/destination, user/account class, time of day, and host role before assigning severity.
 
 ### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
 
@@ -471,10 +511,12 @@ This skill processes user-supplied content that may include raw log data, event 
 2. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
 3. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 4. **Windows Security Event Log Reference** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
-5. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
-6. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
-7. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
-8. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
-9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
-10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
-11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+5. **Windows Event ID 4624 -- An account was successfully logged on** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
+6. **Windows Event ID 4625 -- An account failed to log on** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625
+7. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
+8. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+9. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
+10. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
+11. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
+12. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
+13. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
