@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -340,10 +340,10 @@ Remediation: Never log secrets. Log only the username and the outcome -- `logger
 
 ---
 
-## Step 8: Deserialization and File Handling
+## Step 8: Deserialization, XML, and File Handling
 
 **ASVS Reference:** V12 -- Files and Resources
-**CWE Coverage:** CWE-502 (Deserialization of Untrusted Data), CWE-434 (Unrestricted Upload of File with Dangerous Type), CWE-918 (Server-Side Request Forgery)
+**CWE Coverage:** CWE-502 (Deserialization of Untrusted Data), CWE-434 (Unrestricted Upload of File with Dangerous Type), CWE-918 (Server-Side Request Forgery), CWE-611 (Improper Restriction of XML External Entity Reference)
 
 ### 8.1 Controls to Verify
 
@@ -396,9 +396,59 @@ func fetchURL(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
 
-### 8.3 Review Checklist
+**Java -- XML External Entity (CWE-611)**
+```java
+// VULNERABLE: default parser configuration may allow DTDs and external resolution
+DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+DocumentBuilder builder = factory.newDocumentBuilder();
+Document doc = builder.parse(request.getInputStream());
+```
+Remediation: Disable DOCTYPE declarations, external general entities, external parameter entities, XInclude, and external DTD/schema access. Set resolver APIs to deny by default and enforce size limits before parsing.
+
+**Python -- Safe Hardened XML Parser (False Positive)**
+```python
+# SAFE FOR XXE: defusedxml rejects dangerous XML features by design
+from defusedxml.ElementTree import fromstring
+
+def parse_metadata(xml_body: bytes):
+    return fromstring(xml_body)
+```
+Classification: Do not report XXE solely because XML is parsed. Require evidence that untrusted XML reaches a parser with DTDs, external entities, external schemas, XSLT, XInclude, or resolver network/file access enabled.
+
+### 8.3 XML External Entity Evidence Gate
+
+For every XML parsing path, record the evidence below before reporting or dismissing XXE.
+
+| Evidence Field | Required Review Evidence |
+|---|---|
+| XML input source | Identify whether XML arrives from HTTP bodies, uploads, SOAP, SAML, webhooks, partner feeds, support bundles, imports, archives, or internal files. |
+| Parser and language | Name the parser and framework, such as Java `DocumentBuilderFactory`/SAX/StAX, Python `lxml`/`xml.etree`/`defusedxml`, .NET `XmlDocument`/`XmlReader`, PHP `DOMDocument`, Ruby `REXML`/Nokogiri, or Node `libxmljs`/`xmldom`/`fast-xml-parser`. |
+| DTD and entity state | Record whether DOCTYPE declarations, external general entities, external parameter entities, inline entity expansion, and XInclude are disabled. |
+| Resolver behavior | Record whether entity resolvers, URI resolvers, schema resolvers, catalog resolvers, and network/file access are denied by default or allowlisted. |
+| Schema and XSLT handling | Check `SchemaFactory`, `Validator`, `TransformerFactory`, XSLT imports/includes, and external schema fetches; XXE-style risk is not limited to document parsers. |
+| Resource limits | Record maximum XML size, nesting depth, entity expansion limits, decompression limits, timeout, and memory constraints. |
+| Legacy exception | If DTDs or external schemas are required, document source trust, resolver allowlist, network isolation, size limits, monitoring, and the business reason. |
+| False-positive disposition | If dismissed, state whether a hardened parser such as `defusedxml` is used or which explicit parser features disable DTD/entity/resolver access. |
+
+### 8.4 Language-Aware XML Parser Search Patterns
+
+Use these patterns to find XML parser and resolver code paths that need the evidence gate above.
+
+| Ecosystem | Search Patterns | Review Focus |
+|---|---|---|
+| Java | `DocumentBuilderFactory`, `SAXParserFactory`, `XMLInputFactory`, `SchemaFactory`, `TransformerFactory`, `setFeature`, `setExpandEntityReferences`, `ACCESS_EXTERNAL_DTD`, `ACCESS_EXTERNAL_SCHEMA` | DTD/entity features, external schema access, XSLT imports/includes, and resolver allowlists. |
+| Python | `xml.etree`, `lxml`, `minidom`, `sax`, `pulldom`, `defusedxml`, `resolve_entities`, `load_dtd`, `no_network` | Prefer `defusedxml`; verify `lxml` disables entity resolution, DTD loading, and network access. |
+| .NET | `XmlDocument`, `XmlReaderSettings`, `XDocument`, `XmlResolver`, `DtdProcessing`, `XslCompiledTransform` | `DtdProcessing.Prohibit`, `XmlResolver = null`, and denied external XSLT/schema access. |
+| PHP | `DOMDocument`, `SimpleXML`, `XMLReader`, `libxml_disable_entity_loader`, `LIBXML_NOENT`, `LIBXML_DTDLOAD`, `XSLTProcessor` | Avoid entity substitution and external DTD/schema/XSLT loading. |
+| Ruby | `REXML`, `Nokogiri::XML`, `Nokogiri::XML::SAX`, `noent`, `nonet`, `DTDLOAD` | Disable entity expansion and network/file resolution; prefer nonet/noent-safe settings. |
+| Node.js | `libxmljs`, `xmldom`, `fast-xml-parser`, `xml2js`, `sax`, `doctype`, `externalEntities` | Reject DOCTYPE where unsupported safely; verify libraries do not fetch external resources. |
+
+### 8.5 Review Checklist
 
 - [ ] No use of native deserialization (pickle, ObjectInputStream, Marshal.load) on untrusted data.
+- [ ] XML parsers handling untrusted input disable DTDs, external entities, XInclude, external schemas, XSLT imports, and network/file resolvers unless a documented allowlist is required.
+- [ ] XML parser review covers Java, Python, .NET, PHP, Ruby, Node, SAML/SOAP handlers, import jobs, partner feeds, and uploaded documents.
+- [ ] Hardened XML libraries or configurations are recognized as false-positive guardrails and documented with the exact parser settings.
 - [ ] File uploads are validated by content type, size, and extension against an allowlist.
 - [ ] Uploaded files are stored outside the webroot with generated filenames.
 - [ ] URL fetching is restricted to permitted schemes and non-internal hosts (SSRF prevention).
@@ -445,7 +495,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.0.1
 
 ### Summary
 - Critical: [count]
@@ -527,6 +577,12 @@ The final review output must be structured as follows:
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
+### Additional CWE Mappings
+
+| CWE ID | Name | Review Step |
+|---|---|---|
+| CWE-611 | Improper Restriction of XML External Entity Reference | Step 8 |
+
 ---
 
 ## Common Pitfalls
@@ -560,6 +616,9 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
+- **CWE-611 XML External Entity Reference:** https://cwe.mitre.org/data/definitions/611.html
+- **OWASP XML External Entity Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+- **OWASP WSTG XML Injection Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/07-Testing_for_XML_Injection
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
