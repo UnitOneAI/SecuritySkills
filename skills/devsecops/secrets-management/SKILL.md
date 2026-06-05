@@ -196,6 +196,71 @@ Verify that at least one secret detection tool is configured and integrated:
 
 ---
 
+### Step 2.5: CI Log, Output, and Artifact Leakage
+
+CI systems can leak secrets after the source tree is clean. Review workflow files, job logs if available, debug settings, workflow outputs, environment files, and uploaded artifacts. Never reproduce the leaked value in the report; record only the secret type, location, exposure channel, and remediation status.
+
+#### Mask-Before-Output Ordering
+
+```yaml
+# BAD: value is printed before masking is registered
+run: |
+  token="$(vault read -field=token deploy/app)"
+  echo "token=$token"
+  echo "::add-mask::$token"
+```
+
+```yaml
+# GOOD: mask exact runtime value before any output or propagation
+run: |
+  token="$(vault read -field=token deploy/app)"
+  echo "::add-mask::$token"
+  echo "deploy_token=$token" >> "$GITHUB_OUTPUT"
+```
+
+Verify that generated runtime secrets, derived tokens, multiline secrets, and transformed values are masked before any `echo`, CLI invocation, workflow output, or environment propagation that might print them.
+
+#### Debug and Trace Output
+
+```yaml
+# BAD: shell tracing can print expanded secrets in command arguments
+run: |
+  set -x
+  curl -H "Authorization: Bearer $API_TOKEN" https://api.example.com/deploy
+```
+
+Check for:
+
+- `set -x`, `bash -x`, `ACTIONS_STEP_DEBUG`, `ACTIONS_RUNNER_DEBUG`, verbose HTTP clients, SDK debug flags, package-manager debug logs, and Terraform/provider debug output.
+- Secrets passed as command-line arguments rather than stdin, files with restrictive permissions, or masked environment variables.
+- Workflow commands that append sensitive values to `$GITHUB_ENV`, `$GITHUB_OUTPUT`, or equivalent CI environment/output files.
+
+#### Artifact and Report Uploads
+
+```yaml
+# RISK: artifacts can capture secrets outside normal log masking
+- uses: actions/upload-artifact@v4
+  with:
+    path: |
+      test-output/
+      .env
+      terraform.tfplan
+```
+
+Review uploaded artifacts, test reports, coverage reports, SARIF files, crash dumps, Terraform plans, package-manager logs, and deployment bundles for credentials, Authorization headers, private keys, and environment snapshots.
+
+**Evidence to collect:**
+
+- Workflow/job/step name and file path.
+- Exposure channel: log, debug trace, `$GITHUB_ENV`, `$GITHUB_OUTPUT`, artifact, report, crash dump, or deployment bundle.
+- Masking status and whether masking occurs before first output.
+- Retention policy or deletion evidence for affected logs/artifacts.
+- Rotation status and redeploy/consumer update status after exposure.
+
+**Finding classification:** Secret printed in public CI logs or uploaded artifact is **Critical** if unrotated and **High** if rotated but logs/artifacts remain accessible. Debug/trace settings that can expose secrets are **High**. Missing evidence because logs/artifacts are unavailable should be marked **Not Evaluable**, not assumed safe.
+
+---
+
 ### Step 3: .env File and Git History Exposure (OWASP Secrets Management Cheat Sheet)
 
 #### 3.1 .env File Exposure
@@ -381,6 +446,12 @@ spec:
 | Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
 | detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
 
+### CI Log and Artifact Exposure Status
+
+| Workflow | Secret Type | Exposure Channel | Mask Before Output | Artifact/Log Retention | Rotation/Redeploy Status |
+|----------|-------------|------------------|--------------------|------------------------|--------------------------|
+| deploy.yml / deploy step | deployment token | `$GITHUB_OUTPUT` | Yes/No | <retention/delete evidence> | <rotated/redeployed/N/A> |
+
 ### Secrets Inventory (by type, NOT values)
 
 | Secret Type | Storage Method | Rotation Period | Automated | Last Rotated |
@@ -442,6 +513,8 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Assuming CI masking works retroactively.** Masking commands protect output only after the runner registers the value. If a token is echoed, traced, or uploaded before masking, the leak already happened. Also check derived, encoded, multiline, and partial values that automatic masking may not recognize.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -459,6 +532,8 @@ This skill processes configuration files and code that may contain secret values
 ## References
 
 - OWASP Secrets Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- GitHub Actions Workflow Commands: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions
+- GitHub Actions Secrets: https://docs.github.com/en/actions/concepts/security/secrets
 - NIST SP 800-57 Part 1 Rev 5: https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final
 - NIST SP 800-57 Part 1 Rev 5 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf
 - Gitleaks: https://github.com/gitleaks/gitleaks
