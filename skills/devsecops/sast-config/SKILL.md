@@ -5,14 +5,14 @@ description: >
   CWE Top 25. Auto-invoked when reviewing Semgrep rules, CodeQL queries, SAST
   CI integration, or false positive triage workflows. Produces a SAST maturity
   assessment covering rule authoring, severity tuning, custom rule development,
-  and CI integration patterns.
+  compiled-language build coverage, and CI integration patterns.
 tags: [devsecops, sast, semgrep, codeql]
 role: [security-engineer, appsec-engineer]
 phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # SAST Tool Configuration and Tuning
 
-A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, and CI integration. All findings map to ASVS controls and CWE identifiers.
+A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, compiled-language build coverage, and CI integration. All findings map to ASVS controls and CWE identifiers.
 
 ---
 
@@ -80,6 +80,24 @@ Use Glob and Grep to locate SAST tool configurations, custom rules, and CI integ
 **/pylintrc
 **/.eslintrc*
 
+# Compiled-language build evidence
+**/CMakeLists.txt
+**/Makefile
+**/makefile
+**/configure.ac
+**/build.gradle
+**/build.gradle.kts
+**/pom.xml
+**/*.sln
+**/*.csproj
+**/Directory.Build.props
+**/go.mod
+**/go.sum
+**/Cargo.toml
+**/Cargo.lock
+**/Package.swift
+**/build.zig
+
 # CI integration
 **/.github/workflows/*.yml
 **/.gitlab-ci.yml
@@ -90,6 +108,7 @@ Categorize by:
 - **Tool:** Semgrep, CodeQL, SonarQube, Bandit, ESLint-security, etc.
 - **Rule source:** Default/managed rules, community rules, custom org rules.
 - **Integration point:** Pre-commit, PR check, scheduled scan, IDE plugin.
+- **Build system:** CMake, Make, Maven, Gradle, MSBuild/dotnet, Go modules, Cargo, Swift Package Manager, Zig, or vendor build pipeline.
 
 ---
 
@@ -422,6 +441,66 @@ jobs:
       - uses: github/codeql-action/analyze@v3
 ```
 
+#### 6.2 Compiled-Language Build Coverage Gate
+
+For compiled languages, SAST coverage is only defensible when the CI job builds the production code paths that the analyzer needs. CodeQL extracts compiled languages by observing the build process; autobuild can work for simple repositories, but manual build steps are required when autobuild misses modules, uses the wrong build variant, or cannot resolve dependencies.
+
+Record this evidence for each compiled language:
+
+| Language | Required Build Evidence | Common Commands | Coverage Risk |
+|----------|-------------------------|-----------------|---------------|
+| C/C++ | CMake/Make/autotools/Bazel command, compiler family, generated compile database if used | `cmake -B build && cmake --build build`, `make all` | Unbuilt targets hide memory-safety paths |
+| Java/Kotlin | Maven/Gradle command, dependency resolution, generated sources, multi-module coverage | `mvn -DskipTests compile`, `gradle build -x test` | Missing modules break taint and framework analysis |
+| C#/.NET | NuGet restore, solution/project build, target framework, generated code handling | `dotnet restore && dotnet build --no-restore` | Unrestored packages or partial solutions reduce analysis |
+| Go | Module download, package build list, CGO setting, all package paths | `go build ./...` | Build tags or skipped packages hide vulnerable handlers |
+| Rust | Cargo workspace build, feature flags, lockfile, target profile | `cargo build --workspace --all-features` | Feature-gated code and workspace members can be skipped |
+| Swift | Package/Xcode build scheme, platform target, generated source handling | `swift build` or `xcodebuild` | Wrong scheme or platform leaves code unanalyzed |
+
+**Compiled-language verification checklist:**
+
+- [ ] CI identifies every compiled language present in production source.
+- [ ] Build commands run before CodeQL analysis or the report explains why autobuild is sufficient.
+- [ ] Build logs show successful compilation for all production packages/modules/workspace members.
+- [ ] Dependency restore is included (`mvn`, `gradle`, `dotnet restore`, `go mod download`, `cargo fetch`, package manager equivalent).
+- [ ] Incremental/cached builds do not skip source files needed for analysis.
+- [ ] Build tags, feature flags, target frameworks, and generated-source steps are documented.
+- [ ] Excluded paths are test/vendor/generated-only, not production services or libraries.
+- [ ] The report records files/packages that were not compiled and marks related coverage as `Not Evaluable`.
+
+**CI examples:**
+
+```yaml
+# C/C++ with CodeQL manual build
+- uses: github/codeql-action/init@v3
+  with:
+    languages: cpp
+- run: |
+    cmake -B build -DCMAKE_BUILD_TYPE=Debug
+    cmake --build build
+- uses: github/codeql-action/analyze@v3
+
+# Java with Maven
+- uses: github/codeql-action/init@v3
+  with:
+    languages: java-kotlin
+- run: mvn -DskipTests compile
+- uses: github/codeql-action/analyze@v3
+
+# .NET
+- uses: github/codeql-action/init@v3
+  with:
+    languages: csharp
+- run: dotnet restore && dotnet build --no-restore
+- uses: github/codeql-action/analyze@v3
+
+# Go / Rust build proof before Semgrep or other SAST
+- run: go build ./...
+- run: cargo build --workspace --all-features
+- run: semgrep --config=auto --error
+```
+
+**Finding classification:** A compiled-language CodeQL or equivalent SAST job with no successful build evidence is **High**. Partial module/package compilation without a documented gap list is **Medium**. Missing dependency restore evidence is **Medium**. Build commands that compile only tests, samples, or generated stubs while claiming production coverage are **High**.
+
 **What to verify:**
 
 - SAST runs on every pull request (not just scheduled scans).
@@ -430,6 +509,7 @@ jobs:
 - SAST container/action is pinned to a specific version (not `latest`).
 - Results are uploaded to a central dashboard (Semgrep App, GitHub Security tab, SonarQube).
 - Scan time is under 10 minutes for PR checks (developer experience matters).
+- Compiled-language jobs have successful build/autobuild/manual-build evidence for all production modules.
 
 **Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**.
 
@@ -440,8 +520,8 @@ jobs:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No SAST tooling deployed; CWE Top 5 weaknesses with zero rule coverage for languages in active use. |
-| **High** | SAST not a required CI check; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
-| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
+| **High** | SAST not a required CI check; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping; compiled-language SAST runs without successful build evidence. |
+| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%; partial compiled-language build coverage without gap documentation. |
 | **Low** | Rule naming convention inconsistencies; missing metadata on custom rules; suboptimal scan performance; cosmetic configuration issues. |
 
 ---
@@ -475,11 +555,19 @@ jobs:
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
 
+### Build Coverage Evidence
+
+| Language | Build System | Build Command | Modules/Packages Covered | Dependency Restore | Gaps / Not Evaluable |
+|----------|--------------|---------------|--------------------------|--------------------|----------------------|
+| C/C++ | CMake | `cmake -B build && cmake --build build` | `src/**` | system packages installed | `tools/legacy/**` not compiled |
+| Java | Maven | `mvn -DskipTests compile` | all production modules | Maven dependency resolution | None |
+
 ### Findings
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
 - **Control Reference:** ASVS V.X.X / CWE-XXX
+- **Build Coverage Evidence:** <build command/log/module coverage or Not Evaluable>
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Remediation:** <concrete fix with example>
@@ -556,12 +644,15 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
 - Semgrep Registry: https://semgrep.dev/r
+- Semgrep Supported Languages: https://semgrep.dev/docs/supported-languages
 - CodeQL Documentation: https://codeql.github.com/docs/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
+- CodeQL build options for compiled languages: https://docs.github.com/en/code-security/reference/code-scanning/codeql/codeql-build-options-and-steps-for-compiled-languages
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Adds compiled-language build coverage evidence for C/C++, Java/Kotlin, C#/.NET, Go, Rust, and Swift, including discovery patterns, CI build examples, coverage status fields, and findings classification for missing or partial build evidence.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
