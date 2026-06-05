@@ -62,6 +62,8 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Cloud custody metadata** -- Cloud resource IDs, snapshot/image IDs, provider audit event IDs, KMS key IDs, sharing/copy status, analyst role, and read-only mount method for cloud evidence.
+- [ ] **Planned containment actions** -- Any reboot, shutdown, instance termination, EDR isolation, auto-scaling replacement, or snapshot copy that may destroy volatile evidence or change cloud custody.
 
 ---
 
@@ -119,7 +121,20 @@ RFC 3227 Section 2.1 defines the order of volatility -- evidence sources ranked 
 
 Capture volatile data BEFORE any containment action that would alter system state (network isolation may be acceptable; reboot, shutdown, or reimaging destroys volatile evidence).
 
-#### 3a: Memory Acquisition
+#### 3a: Pre-Containment Volatile Evidence Decision Gate
+
+Before any destructive or state-changing containment action, explicitly decide whether volatile evidence must be captured, skipped, or deferred. This is required for actions such as VM shutdown, instance termination, EDR isolation, pod eviction, container restart, serverless redeploy, disk detach, or auto-scaling replacement.
+
+| Planned Action | Volatile Evidence at Risk | Capture Decision | Evidence Collected | Skip/Deferral Rationale | Approver | Time (UTC) |
+|---|---|---|---|---|---|---|
+| [terminate_instance / isolate_host / restart_pod] | [memory, process tree, network connections, temp FS, runtime events] | [Capture / Skip / Defer] | [Artifact IDs or "None"] | [Business/safety/legal reason] | [Name/team] | [timestamp] |
+
+**Decision rules:**
+- Capture memory, process state, network connections, and temporary file system evidence before containment when those artifacts are material to root-cause or attribution questions.
+- If safety, business continuity, or legal direction requires immediate containment before capture, record the rationale and preserve compensating evidence such as EDR telemetry, hypervisor events, cloud audit logs, and flow logs.
+- For auto-scaling or ephemeral workloads, capture the launch template, image digest, task/pod specification, deployment revision, environment/config snapshot, and runtime logs before replacement data ages out.
+
+#### 3b: Memory Acquisition
 
 Memory is the single most valuable volatile evidence source. It contains running processes, network connections, encryption keys, malware that exists only in memory, and fragments of user activity.
 
@@ -152,7 +167,7 @@ certutil -hashfile E:\evidence\[hostname]_memory_[YYYYMMDD_HHMM].raw SHA256
 # Azure VM: No direct memory access -- use agent-based collection
 ```
 
-#### 3b: Volatile System State
+#### 3c: Volatile System State
 
 Capture the following before any containment action alters system state:
 
@@ -202,7 +217,7 @@ last -50 (Linux)
 schtasks /query /fo csv /v (Windows) / crontab -l; ls /etc/cron.* (Linux)
 ```
 
-#### 3c: Temporary File Systems
+#### 3d: Temporary File Systems
 
 ```
 # Windows temporary files
@@ -339,6 +354,29 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
 
+**Cloud evidence custody register:**
+
+Provider-native snapshots and images can be valid forensic evidence when custody metadata is preserved. Do not mark cloud evidence as weak merely because it is provider-native; distinguish immutable, logged, access-controlled workflows from ad-hoc copies or shared snapshots with incomplete provenance.
+
+| Evidence ID | Provider | Source Resource ID | Snapshot/Image ID | Audit Event ID | Principal | KMS Key | Sharing Status | Copy Lineage | Analyst Access | Read-Only Proof |
+|---|---|---|---|---|---|---|---|---|---|---|
+| EVD-CLOUD-001 | [AWS/Azure/GCP] | [instance/disk/function/task] | [snapshot/image/log export] | [CloudTrail/Activity/Audit event] | [creator principal] | [CMK/provider key ID] | [private/shared/accounts/expiry] | [regions/copies/parent ID] | [read-only role] | [mount option, IAM policy, or access log] |
+
+**Cloud custody checks:**
+- Record the provider audit event ID and principal for snapshot creation, copy, sharing, re-encryption, mount, export, deletion, and access-policy changes.
+- Record KMS key identity and encryption context. If a copy changes encryption context or key custody, preserve both parent and child evidence IDs.
+- Verify sharing status for snapshots and images, including external accounts, vendor accounts, expiration, and access-review owner.
+- Use read-only analysis roles or cloned analysis volumes where possible. Record proof that the examiner could not modify the original evidence snapshot.
+- Preserve provider logs covering the full custody window, not only the incident window.
+
+**Container and serverless evidence prompts:**
+
+| Workload Type | Evidence to Preserve | Notes |
+|---|---|---|
+| Container / Kubernetes | Image digest, container ID, pod spec, deployment revision, namespace, service account, node assignment, runtime events, mounted secrets/config maps, logs, ephemeral filesystem capture decision | Disk imaging is usually insufficient; bind evidence to immutable image and orchestration metadata. |
+| Serverless | Function version/alias, deployment package hash, environment variables, IAM role, trigger source, invocation logs, error logs, configuration history, layer/package versions | There is no persistent disk; logs, config history, package identity, and provider audit events are primary evidence. |
+| Auto-scaling VM | Launch template/version, AMI/image ID, instance metadata, replacement event, load balancer target history, snapshot timing, audit event IDs | Preserve lineage when the compromised instance is replaced before responders can snapshot it. |
+
 ---
 
 ## 4. Findings Classification
@@ -398,9 +436,19 @@ the order of collection, and any evidence that could not be obtained.]
 [List any evidence that could not be collected and the reason]
 
 ### Cloud Evidence (if applicable)
-| Cloud Provider | Resource | Evidence Type | Collected | Notes |
+| Evidence ID | Provider | Source Resource ID | Snapshot/Image/Export ID | Audit Event ID | KMS Key | Sharing Status | Copy Lineage | Analyst Role | Read-Only Proof | Collected |
+|---|---|---|---|---|---|---|---|---|---|---|
+| EVD-CLOUD-001 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config ID] | [Event ID] | [Key ID] | [Private/shared/expired] | [Parent/copy regions] | [Role] | [Policy/mount/access log] | [Yes/No] |
+
+### Volatile Evidence Decisions
+| Planned Containment Action | Evidence at Risk | Capture Decision | Evidence Collected | Skip/Deferral Rationale | Approver | Time (UTC) |
+|---|---|---|---|---|---|---|
+| [Action] | [Memory/process/network/temp/runtime] | [Capture/Skip/Defer] | [Evidence IDs] | [Reason] | [Name/team] | [timestamp] |
+
+### Ephemeral Workload Evidence
+| Workload | Evidence Preserved | Evidence Missing | Replacement/Expiry Risk | Notes |
 |---|---|---|---|---|
-| [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+| [container/serverless/auto-scaling VM] | [Image digest, config, logs, audit events] | [Unavailable evidence] | [TTL/replacement risk] | [Notes] |
 ```
 
 ---
@@ -456,6 +504,14 @@ Disk imaging on a live system can take hours. During that time, volatile evidenc
 ### Pitfall 4: Neglecting Cloud-Specific Evidence Limitations
 
 Applying traditional forensic methods to cloud environments without adaptation leads to evidence gaps. EBS snapshots do not capture unallocated disk space. Serverless environments have no persistent disk. Cloud provider logs have limited retention periods and may not be enabled by default. VPC Flow Logs capture IP-level metadata, not packet content. Understand the evidence limitations of each cloud service and ensure logging is enabled before an incident occurs.
+
+### Pitfall 4a: Losing Cloud Custody Through Copies and Sharing
+
+Provider snapshots can be defensible evidence when creation, access, copy, encryption, sharing, and analysis events are logged and access-controlled. They become weak evidence when copied across regions, re-encrypted, shared with vendor accounts, or mounted for analysis without recording parent snapshot IDs, KMS keys, principals, audit event IDs, and read-only access proof. Treat each copy or share as a custody event and preserve provider logs for the entire custody window.
+
+### Pitfall 4b: Destroying Volatile Evidence During Containment
+
+Cloud containment actions can be more destructive than they appear. Instance termination, EDR isolation, pod restart, serverless redeploy, and auto-scaling replacement can erase memory, process trees, network connections, temporary files, runtime events, and ephemeral filesystem contents. Before taking those actions, record a volatile-evidence decision or preserve compensating telemetry when immediate containment is required.
 
 ### Pitfall 5: Overwriting Evidence with Collection Activity
 
