@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -109,9 +109,65 @@ Also locate supporting security configuration:
 .github/renovate.json
 renovate.json
 .snyk
+.github/rulesets/*.json
+.github/rulesets/*.yaml
+.rulesets/*.json
+.rulesets/*.yaml
 ```
 
 Record all discovered files. If no CI/CD configurations are found, report that finding and halt.
+
+---
+
+### Step 1A: Collect Repository Protection and Workflow Governance Evidence
+
+Collect repository protection evidence before scoring CICD-SEC-1, CICD-SEC-2, CICD-SEC-4, or release controls. Do not treat missing legacy branch protection as a failure until repository rulesets have also been checked.
+
+**Sources to inspect:**
+
+- Legacy branch protection settings for default, release, and maintenance branches.
+- Repository and organization rulesets that target branches, tags, or protected file paths.
+- Ruleset enforcement mode (`active`/enabled vs. evaluate/disabled), target patterns, and source scope.
+- Bypass actors, bypass modes, and whether administrators, broad teams, bots, or GitHub Apps can bypass review or status requirements.
+- Required status checks, including whether each required check is bound to a trusted GitHub App or workflow source rather than "any source".
+- CODEOWNERS or ruleset required-reviewer coverage for `.github/workflows/`, release scripts, deployment manifests, infrastructure-as-code, and provenance/SBOM builder configuration.
+- Release tag rules and whether tags can be created from unprotected branches.
+- Merge queue, emergency merge bypasses, and documented break-glass approval paths.
+
+**Configuration and API evidence:**
+
+```
+# Optional repository exports if provided by the user or platform
+rulesets
+branch_protection
+bypass_actors
+required_status_checks
+required_workflows
+CODEOWNERS
+merge_queue
+tag_protection
+```
+
+If repository settings are not available through files, API output, screenshots, or supplied evidence, mark the affected rows as **Not Evaluable from Config** rather than assuming the control is absent.
+
+**Repository protection evidence table:**
+
+| Target | Legacy branch protection | Ruleset coverage | Enforcement | Bypass actors/admins | Required checks and source | Tag/release coverage | Status |
+|--------|--------------------------|------------------|-------------|----------------------|----------------------------|----------------------|--------|
+| `main` | <present/missing/not evaluable> | <ruleset names/patterns> | <active/evaluate/disabled> | <none/list/risk> | <checks + trusted app/workflow source> | <tags/release branches covered?> | <pass/fail/partial> |
+
+**Workflow change governance table:**
+
+| Protected path | Owner/reviewer gate | Required checks | Release/deploy impact | Status |
+|----------------|---------------------|-----------------|-----------------------|--------|
+| `.github/workflows/**` | <CODEOWNERS/ruleset reviewers> | <checks> | <release/provenance/deploy path affected?> | <pass/fail/partial> |
+
+**Validation scenarios:**
+
+- **Benign ruleset-only protection:** legacy branch protection is disabled, but an active repository ruleset targets `main`, requires reviews, requires trusted status checks, blocks deletion, and has no bypass actors. Do not fail this solely for missing legacy branch protection; score from the effective ruleset evidence.
+- **Risky bypass actor:** a ruleset targets a release branch but allows `RepositoryAdmin`, a broad team, or `deploy-bot` to bypass required reviews or checks. Report a CICD-SEC-1/CICD-SEC-2 weakness unless the bypass is narrowly scoped, audited, and documented as break-glass.
+- **Unprotected workflow definitions:** pull requests can change `.github/workflows/**`, deployment scripts, release manifests, or provenance builder configuration without CODEOWNERS or equivalent ruleset-required reviewers. Report workflow governance risk even if the workflow itself uses least-privilege permissions.
+- **Check-name collision:** required checks are configured by name but are not tied to a trusted app or workflow source where the platform supports source binding. Report the risk that another actor or integration with write permission could satisfy the named check.
 
 ---
 
@@ -152,10 +208,13 @@ Evaluate each CICD-SEC control by inspecting pipeline configurations for the spe
 **What to look for:**
 
 - Workflows that can push to protected branches without required reviews.
-- Missing or insufficient branch protection rules (no required reviewers, no status checks).
+- Missing or insufficient branch protection and ruleset controls (no required reviewers, no status checks, or ruleset in evaluate/disabled mode).
+- Rulesets that appear protective but include broad bypass actors, administrator bypass, or bot bypass using long-lived credentials.
+- Required status checks configured only by name, with no trusted GitHub App or workflow source binding where the platform supports it.
 - Workflows that auto-merge without approval gates.
 - Deployment pipelines that lack manual approval steps for production.
 - Missing environment protection rules on production/staging environments.
+- Release tags created from unprotected release or maintenance branches.
 
 **Grep patterns:**
 
@@ -174,9 +233,16 @@ enable-auto-merge
 environment:
   name: production
   # Should have: url, reviewers, wait-timer
+
+# Look for repository ruleset evidence if exported or checked in
+ruleset
+bypass_actors
+required_status_checks
+required_workflows
+enforcement
 ```
 
-**Finding format:** Report whether deployments to production require human approval, whether branch protection enforces review requirements, and whether any workflow can bypass flow controls.
+**Finding format:** Report whether deployments to production require human approval, whether branch protection or rulesets enforce review requirements, whether any workflow or actor can bypass flow controls, and whether required checks are tied to trusted sources. Treat broad bypass actors, unreviewed emergency merge paths, or unprotected release tags as flow-control weaknesses.
 
 ---
 
@@ -189,6 +255,8 @@ environment:
 - Shared service accounts across environments.
 - Missing `CODEOWNERS` file or broad ownership patterns.
 - Workflows that do not pin the `GITHUB_TOKEN` to minimum required permissions.
+- Missing path-level owner/reviewer gates for workflow definitions, deployment scripts, release configs, infrastructure-as-code, and provenance builder configuration.
+- Bot or service accounts with write access that are not constrained by environment, branch/ruleset target, or GitHub App permissions.
 
 **Specific patterns in GitHub Actions:**
 
@@ -208,6 +276,8 @@ permissions:
 ```
 
 **Finding format:** Report the effective permission model, whether least-privilege is enforced, and whether identity controls (CODEOWNERS, required reviewers) are in place.
+
+**Workflow governance requirement:** Changes to pipeline-defining files must have a reviewer path that is separate from ordinary application code review. If `.github/workflows/**`, deployment manifests, release scripts, or provenance/SBOM builder configuration can be changed without CODEOWNERS or equivalent ruleset-required reviewers, report a CICD-SEC-2 finding even when the runtime workflow permissions are least-privilege.
 
 ---
 
@@ -251,6 +321,7 @@ on: pull_request_target
 ```
 
 - **Indirect PPE:** Workflows that execute scripts, Makefiles, or config files that exist in the repository and can be modified by a pull request.
+- **Workflow definition PPE:** A pull request can modify the workflow, reusable workflow, release script, deployment manifest, or provenance builder configuration that later performs privileged release or deployment actions.
 - **Public fork access:** Whether the repository allows workflows to run on pull requests from forks with access to secrets.
 - Injection of untrusted input into shell commands:
 
@@ -264,7 +335,7 @@ on: pull_request_target
     PR_TITLE: ${{ github.event.pull_request.title }}
 ```
 
-**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, whether PR code can influence privileged pipelines, and whether workflow-definition changes require separate owner approval before they can affect release, deployment, provenance, or artifact-signing paths.
 
 ---
 
@@ -472,6 +543,18 @@ Produce the final report using the following structure:
   - L3: <met/not met> -- <evidence>
 - **Gap to next level:** <what is needed to reach the next SLSA level>
 
+### Repository Protection Evidence
+
+| Target | Legacy Branch Protection | Ruleset Coverage | Enforcement | Bypass Actors/Admins | Required Checks and Source | Tag/Release Coverage | Status |
+|--------|--------------------------|------------------|-------------|----------------------|----------------------------|----------------------|--------|
+| <branch/tag pattern> | <present/missing/not evaluable> | <ruleset names/patterns> | <active/evaluate/disabled> | <none/list/risk> | <checks + trusted app/workflow source> | <covered/missing/not evaluable> | <Pass/Fail/Partial/Not Evaluable> |
+
+### Workflow Change Governance
+
+| Protected Path | Owner/Reviewer Gate | Required Checks | Release/Deploy Impact | Status |
+|----------------|---------------------|-----------------|-----------------------|--------|
+| `.github/workflows/**` | <CODEOWNERS/ruleset reviewers> | <checks> | <release/provenance/deploy path affected?> | <Pass/Fail/Partial/Not Evaluable> |
+
 ### OWASP CICD-SEC Findings
 
 | Control ID | Risk Name | Severity | Status | Finding Summary |
@@ -501,6 +584,7 @@ Produce the final report using the following structure:
 - Passed: X
 - Partial: X
 - Failed: X
+- Not evaluable from config: X
 - Current SLSA Level: L<X>
 - Target SLSA Level: L<X+1>
 ```
@@ -509,7 +593,7 @@ Produce the final report using the following structure:
 
 ## Output Format
 
-The final deliverable is a structured assessment report as shown in Step 4 above. All findings must reference specific control IDs (CICD-SEC-1 through CICD-SEC-10) and SLSA build levels (L1, L2, L3). Every finding must include the file path and, where possible, the relevant line numbers.
+The final deliverable is a structured assessment report as shown in Step 4 above. All findings must reference specific control IDs (CICD-SEC-1 through CICD-SEC-10) and SLSA build levels (L1, L2, L3). Every file-based finding must include the file path and, where possible, the relevant line numbers. Every platform-setting finding must cite the evidence source, such as branch protection settings, ruleset export, API response, screenshot, or state **Not Evaluable from Config** when that evidence is unavailable.
 
 ---
 
@@ -550,6 +634,8 @@ This skill processes user-supplied content including CI/CD configuration files, 
 - SLSA Build Track: https://slsa.dev/spec/v1.0/levels#build-track
 - OWASP Top 10 CI/CD Security Risks: https://owasp.org/www-project-top-10-ci-cd-security-risks/
 - GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+- GitHub Repository Rulesets: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+- GitHub REST API Repository Rulesets: https://docs.github.com/en/rest/repos/rules
 - Sigstore / Cosign: https://docs.sigstore.dev/
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
 
@@ -557,4 +643,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.1.0** -- Added repository ruleset, bypass actor, trusted required-check source, workflow-change governance, and release-tag protection evidence gates.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
