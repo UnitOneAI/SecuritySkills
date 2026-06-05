@@ -93,7 +93,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 
 ### Tri-Layered Risk Assessment Lens (FASA Framework)
 
-When assessing agent architectures, evaluate risks across three interdependent layers derived from the FASA tri-layered risk taxonomy (ArXiv 2603.13151):
+When assessing agent architectures, evaluate risks across three interdependent layers derived from the FASA tri-layered risk taxonomy (arXiv:2603.12644):
 
 | Layer | Scope | Example Risks |
 |---|---|---|
@@ -102,6 +102,10 @@ When assessing agent architectures, evaluate risks across three interdependent l
 | **Information System** | Risks to the broader IT environment the agent operates within | Lateral movement, data exfiltration, credential theft, persistent access |
 
 Use this layered lens throughout Steps 1-7 to ensure findings are not clustered in a single layer while risks in other layers go unassessed.
+
+### Research Source Integrity Gate
+
+Before citing fast-moving agent-security research as evidence in a finding, verify that the source identifier resolves to the cited work and record the check in the assessment notes. At minimum, capture the source URL, exact title, version or retrieval date, and whether it is being used as primary framework evidence or supporting research. If an arXiv ID, DOI, or URL is unresolved or title-mismatched, mark the source as `unresolved` or `title-mismatch` and avoid treating it as authoritative until corrected.
 
 ### Additional Threat Categories
 
@@ -583,7 +587,7 @@ Glob: **/security_architecture*
 8. LangChain Arbitrary Code Execution -- CVE-2023-29374
 9. OWASP Application Security Verification Standard (ASVS), V14: Configuration -- https://owasp.org/www-project-application-security-verification-standard/
 10. Leike, J. et al. "Scalable Agent Alignment via Reward Modeling: a Research Direction" (2018) -- arXiv:1811.07871 -- foundational work on agent alignment and oversight mechanisms
-11. FASA Tri-Layered Risk Taxonomy for AI Agent Systems (2026) -- arXiv:2603.13151
-12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
-13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
+11. Ying, Z. et al. "Uncovering Security Threats and Architecting Defenses in Autonomous Agents: A Case Study of OpenClaw" (2026) -- arXiv:2603.12644 -- includes the FASA tri-layered taxonomy, sequential tool attack chains, and context amnesia.
+12. Li, N. et al. "Security Considerations for Artificial Intelligence Agents" (2026) -- arXiv:2603.12230 -- covers confused-deputy behavior, cascading failures in long-running workflows, layered defenses, and NIST-aligned research gaps.
+13. Research-source verification note: for fast-moving agent-security papers, verify the arXiv/DOI URL, exact title, version, and date checked before using a reference as evidence in a formal assessment.
 14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
