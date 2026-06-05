@@ -1,0 +1,42 @@
+system: billing-platform
+object_classes:
+  - name: invoice
+    sensitivity: financial
+    ownership: tenant_scoped
+paths:
+  - name: invoice_list
+    route: GET /api/invoices
+    actor: customer_admin
+    object_scope_source: signed_session_tenant_claim
+    enforcement_point: orm_global_tenant_scope
+    negative_evidence:
+      cross_tenant_id_rejected: true
+      search_index_isolation_test: true
+  - name: bulk_invoice_export
+    route: POST /api/invoices/export
+    actor: customer_admin
+    object_scope_source: request_body_invoice_ids
+    enforcement_point: service_policy_per_invoice
+    negative_evidence:
+      mixed_tenant_ids_rejected: true
+      unauthorized_ids_omitted_with_audit_event: true
+  - name: webhook_invoice_finalized
+    route: POST /webhooks/invoice-finalized
+    actor: payment_provider
+    object_scope_source: webhook_payload_invoice_id
+    enforcement_point: signed_webhook_then_server_side_invoice_reload_by_tenant
+    negative_evidence:
+      tenant_invoice_mismatch_rejected: true
+  - name: support_impersonation
+    route: POST /admin/impersonations
+    actor: support_admin
+    object_scope_source: approved_case_scope
+    enforcement_point: policy_engine_with_expiring_approval
+    exception_path:
+      approval_required: true
+      audit_event_required: true
+      expires_minutes: 30
+expected_threat_model_outcome:
+  - server-derived tenant scope is supported by a named enforcement point
+  - bulk and webhook object paths include negative authorization evidence
+  - support impersonation is treated as an exception path with approval, expiry, and audit evidence

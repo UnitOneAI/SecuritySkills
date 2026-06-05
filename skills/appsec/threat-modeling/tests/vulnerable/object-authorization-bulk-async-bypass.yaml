@@ -1,0 +1,37 @@
+system: billing-platform
+object_classes:
+  - name: invoice
+    sensitivity: financial
+    ownership: tenant_scoped
+paths:
+  - name: bulk_invoice_export
+    route: POST /api/invoices/export
+    actor: customer_admin
+    object_scope_source: request_body_invoice_ids
+    enforcement_point: route_tenant_check_only
+    negative_evidence:
+      mixed_tenant_ids_rejected: false
+    sample_request:
+      actor_tenant: tenant_a
+      invoice_ids:
+        - inv_tenant_a_001
+        - inv_tenant_b_009
+  - name: webhook_invoice_finalized
+    route: POST /webhooks/invoice-finalized
+    actor: payment_provider
+    object_scope_source: webhook_payload_tenant_id_and_invoice_id
+    enforcement_point: signature_only_no_object_reload
+    negative_evidence:
+      tenant_invoice_mismatch_rejected: false
+  - name: search_invoice_read_model
+    route: GET /api/search?q=invoice
+    actor: customer_user
+    object_scope_source: search_index_document_tenant
+    enforcement_point: root_query_filter_only
+    residual_risk:
+      stale_index_after_membership_removal: true
+expected_threat_model_findings:
+  - bulk export can process mixed-tenant object IDs without per-object authorization
+  - webhook handler trusts payload object scope instead of reloading under tenant context
+  - search read model can preserve stale cross-tenant access after membership changes
+  - object authorization paths should be marked high or not evaluable until negative evidence exists

@@ -13,7 +13,7 @@ phase: [design, review]
 frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -47,6 +47,7 @@ Before beginning the threat model, gather the following. Mark each item as obtai
 - [ ] **Data flow descriptions** — How data moves between components, including protocols (HTTPS, gRPC, AMQP), serialization formats (JSON, Protobuf), and transport security (TLS version, mTLS).
 - [ ] **Trust boundaries** — Where authentication and authorization are enforced; boundaries between internal networks, DMZs, public internet, third-party services, and user devices.
 - [ ] **Authentication and authorization mechanisms** — OAuth 2.0 flows, API keys, JWTs, SAML, RBAC/ABAC policies, service-to-service identity (SPIFFE/mTLS).
+- [ ] **Sensitive object inventory and scope source** -- Tenant-scoped, user-owned, shared, delegated, transferred, or admin-managed object classes, plus whether object scope comes from request parameters, signed session claims, server-side joins, policy engines, or background job context.
 - [ ] **Data classification** — What data is stored or processed (PII, PHI, financial data, credentials, secrets) and its sensitivity level.
 - [ ] **Threat actor profiles** — External attackers, malicious insiders, compromised supply chain, nation-state actors, automated bots.
 - [ ] **Compliance and regulatory requirements** — Applicable standards (SOC 2, PCI DSS, HIPAA, GDPR, FedRAMP).
@@ -258,6 +259,42 @@ Threat: An attacker gains access to resources or actions beyond their authorized
 | Can an attacker exploit deserialization or injection for code execution? | Remote code execution via insecure deserialization |
 | Are default credentials and unnecessary services removed? | Default admin/admin on management interfaces |
 
+### Step 4.5: Object Authorization Abuse-Case Evidence Gate
+
+Before finalizing Elevation of Privilege or Information Disclosure threats for APIs, data stores, GraphQL resolvers, search indexes, background processors, or webhook handlers, build an actor/object/action matrix. This prevents two common threat-modeling mistakes: over-reporting BOLA/IDOR when object scope is derived and enforced server-side, and missing object authorization bypasses in bulk, async, webhook, cache, and read-model paths.
+
+#### Actor/Object/Action Matrix
+
+For every sensitive object class, record the authorization evidence below:
+
+| Evidence Field | What to Capture | Why It Matters |
+|----------------|-----------------|----------------|
+| Actor and role | Customer user, customer admin, support agent, system job, webhook sender, service account, impersonated admin | Authorization behavior depends on the actor and delegated authority. |
+| Object class | Invoice, ticket, organization, file, report, payment method, audit event, search document | Each object class can have different ownership and sharing rules. |
+| Action | Read, list, export, create, update, delete, approve, transfer, impersonate, webhook mutate | Single-object CRUD coverage does not prove bulk or async paths are safe. |
+| Object-scope source | Signed session claim, server-side tenant join, request path ID, request body ID list, queue payload, webhook payload, cache key, search index document | Request-controlled IDs require stronger negative testing than server-derived scope. |
+| Enforcement point | API gateway, controller, service method, policy engine, ORM global scope, database RLS, queue consumer, webhook validator, search filter | The threat model must identify where authorization is actually enforced. |
+| Negative evidence | Cross-tenant test, cross-owner test, bulk mixed-ID test, async replay test, webhook mismatch test, search/index isolation test | Designs should provide proof that unauthorized object attempts fail. |
+| Exception path | Admin impersonation, support tooling, break-glass, delegated access, shared ownership, transfer workflow | Legitimate cross-boundary access needs approval, audit, and scope limits. |
+| Residual risk | Cache staleness, membership removal delay, eventual consistency, stale search index, queued job replay, missing tenant fixture | Object authorization can fail outside the request-time happy path. |
+
+#### Abuse-Case Prompts
+
+- Can a caller mix authorized and unauthorized IDs in a bulk export, batch update, report download, GraphQL list, or search request?
+- Does every background job, scheduled task, queue consumer, and webhook handler reload the target object under the expected tenant/user scope instead of trusting payload IDs?
+- Do nested GraphQL resolvers, joins, and read models reapply object scope after the root resolver is authorized?
+- Are cached authorization decisions invalidated when membership, ownership, delegation, or tenant assignments change?
+- Can support/admin impersonation intentionally cross object boundaries, and if so, is it approved, scoped, time-bounded, and audited?
+- Are shared, delegated, transferred, or group-owned objects handled by policy rules rather than simple `owner_id == user_id` checks?
+
+#### Evaluation Guidance
+
+- Mark a route as **Not Evaluable** when the design shows request-controlled object IDs but provides no enforcement point or negative authorization evidence.
+- Mark bulk, export, search, reporting, webhook, or async paths as **High** when they can process mixed-tenant or cross-owner object IDs without per-object scope checks.
+- Treat server-derived tenant scope as lower risk only when the evidence identifies the signed claim/session source, the server-side join or policy, and a negative test or design proof.
+- Treat admin/support impersonation as acceptable only when approval, audit event, actor identity, target scope, and expiry are documented.
+- Record stale cache, stale search index, queued event replay, and membership-removal delay as residual risks when they can preserve access after authorization changes.
+
 ### Step 5: Build Component-Threat Matrix
 
 Synthesize the STRIDE-per-element analysis into a heatmap-style matrix. For each component, rate the threat level (H=High, M=Medium, L=Low, N=None) per STRIDE category based on Step 4 findings, then derive an overall risk.
@@ -400,6 +437,14 @@ Produce the threat register as a structured table. Each row represents one ident
 | TM-005 | Denial of Service | Unbounded file upload allows resource exhaustion via large payload submission | File Upload `/api/v1/upload` | T1499.003 — Application Exhaustion Flood | High | Medium | High | Enforce max file size (10MB), implement request timeout, add rate limiting per user | Storage Team | Open |
 | TM-006 | Elevation of Privilege | IDOR vulnerability allows regular users to access other users' records by modifying resource ID | User Profile `/api/v1/users/{id}` | T1068 — Exploitation for Privilege Escalation | High | High | Critical | Implement object-level authorization checks, validate resource ownership at service layer | Backend Team | Open |
 
+### Object Authorization Abuse-Case Matrix
+
+Include this matrix when the system exposes tenant-scoped, user-owned, shared, delegated, or admin-managed objects.
+
+| Object Class | Actor/Role | Action/Path | Object-Scope Source | Enforcement Point | Negative Evidence | Exception Path | Residual Risk | Verdict |
+|--------------|------------|-------------|---------------------|-------------------|-------------------|----------------|---------------|---------|
+| Invoice | customer_admin | `POST /api/invoices/export` | request body `invoice_ids[]` | service policy per invoice | mixed-tenant export rejected | none | none | Pass/Fail/Not Evaluable |
+
 ## 6. Framework Reference
 
 ### STRIDE (Microsoft, 2003)
@@ -467,6 +512,10 @@ Threat models become stale as architectures evolve. New services, changed data f
 
 A threat register full of identified threats but no prioritized, assignable mitigations provides no security value. Every identified threat must have a corresponding mitigation with a clear owner, a severity-based SLA, and a tracking mechanism (e.g., linked Jira ticket or GitHub issue). If a threat is accepted rather than mitigated, document the risk acceptance with an approving authority and review date.
 
+### Pitfall 6: Modeling Authorization Only at Single-Object CRUD Paths
+
+Threat models often identify IDOR on `/objects/{id}` but miss bulk exports, search indexes, GraphQL nested resolvers, background jobs, webhooks, reporting endpoints, and cache-backed read models. Object authorization evidence must cover every path that reads, lists, mutates, exports, transfers, or replays sensitive object identifiers.
+
 ## 8. Prompt Injection Safety Notice
 
 This skill processes user-supplied content that may include system descriptions, architecture diagrams, configuration files, and design documents. The agent must adhere to the following safety constraints:
@@ -489,3 +538,10 @@ This skill processes user-supplied content that may include system descriptions,
 8. **NIST SP 800-154** — Guide to Data-Centric System Threat Modeling — https://csrc.nist.gov/publications/detail/sp/800-154/draft
 9. **STRIDE Original Paper** — Kohnfelder, L. & Garg, P. (1999). "The Threats to Our Products." Microsoft Internal Document.
 10. **OWASP Risk Rating Methodology** — https://owasp.org/www-community/OWASP_Risk_Rating_Methodology
+11. **OWASP API Security Top 10 2023 API1: Broken Object Level Authorization** -- https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/
+12. **OWASP ASVS Authorization Verification Requirements** -- https://owasp.org/www-project-application-security-verification-standard/
+
+## 10. Changelog
+
+- **1.0.1** -- Added object authorization abuse-case evidence gates for actor/object/action matrices, scope-source proof, enforcement points, and negative evidence across single-resource, bulk, async, webhook, cache, and search/read-model paths.
+- **1.0.0** -- Initial release. Structured STRIDE threat modeling with actor profiles, data-flow and trust-boundary analysis, ATT&CK mapping, risk rating, and threat register output.
