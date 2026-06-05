@@ -1,0 +1,21 @@
+flow: internet_to_private_app_443
+static_rule:
+  id: sg-private-app-443
+  action: allow
+  source: 0.0.0.0/0
+  destination: app-subnet
+  port: 443
+route_table:
+  default_route: none
+load_balancer_public: false
+internet_gateway_attached: false
+ingress_path: none
+return_path: private_only
+stateful_symmetry: not_applicable
+transitive_exposure: none
+evidence_source: route_table_export_and_reachability_analyzer
+exposure_verdict: not_reachable
+
+# Benign fixture:
+# The static allow rule looks broad, but route and load-balancer evidence show
+# there is no effective internet path to the destination.

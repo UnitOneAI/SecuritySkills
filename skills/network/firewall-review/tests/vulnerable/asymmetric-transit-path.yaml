@@ -1,0 +1,26 @@
+flow: internet_to_app_443
+static_rule:
+  id: sg-app-443
+  action: allow
+  source: 0.0.0.0/0
+  destination: app-subnet
+  port: 443
+ingress_path:
+  - internet_gateway
+  - edge_firewall_a
+  - app_subnet_route_table
+return_path:
+  - app_subnet_route_table
+  - transit_gateway
+  - edge_firewall_b
+  - internet_gateway
+stateful_symmetry: asymmetric
+ha_state_sync_proven: false
+transitive_exposure:
+  - partner_vpc_10.40.0.0_16
+evidence_source: route_table_export
+
+# Vulnerable fixture:
+# The static rule is not enough to score this flow. Forward and return paths use
+# different stateful firewalls and a partner network is reachable through
+# transit, so inspection and logging evidence must be validated.

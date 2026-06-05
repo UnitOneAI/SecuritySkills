@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -153,6 +153,52 @@ For each overly permissive rule, document:
 
 ---
 
+#### 2.2.1 Effective Path Evidence
+
+Do not score exposure from a static permit rule alone. Confirm whether traffic
+has an effective path through routing, NAT, load balancers, peering, transit
+attachments, and upstream/downstream policy layers.
+
+For each high-risk allow rule or apparent internet/partner exposure, record:
+
+- **Ingress path:** Source network, public/private load balancer, route table,
+  NAT, transit gateway, peering attachment, and firewall/interface where the
+  packet is enforced.
+- **Return path:** Route table and next hop for responses. Stateful inspection
+  requires forward and return traffic to traverse the same stateful enforcement
+  point or a synchronized cluster.
+- **Enforcement point identity:** The firewall, security group, NACL, cloud
+  firewall policy, network policy, or proxy that actually permits or denies the
+  flow after route resolution.
+- **Transitive exposure:** Partner VPC/VNet, transit gateway, peering,
+  service-networking, shared-services, or VPN paths that make a private allow
+  rule reachable from outside the intended segment.
+- **Evidence source:** Route table export, packet-tracer/simulation result,
+  flow log, cloud reachability analyzer, firewall session log, or architecture
+  diagram version.
+
+```
+Effective Path Evidence:
+- Flow:                 [source -> destination:port]
+- Static Rule:          [rule id / security group / ACL]
+- Ingress Path:         [route/NAT/LB/transit/firewall sequence]
+- Return Path:          [route/NAT/LB/transit/firewall sequence]
+- Stateful Symmetry:    [Same Firewall | HA Sync | Asymmetric | Unknown]
+- Enforcement Point:    [device/policy/resource id]
+- Transitive Exposure:  [None | Peering | Transit | VPN | Partner | Unknown]
+- Evidence Source:      [packet trace / route table / flow log / analyzer]
+- Exposure Verdict:     [Reachable | Not Reachable | Needs Validation]
+```
+
+**Finding classification:** Asymmetric routing around a stateful firewall is
+**High** when it can bypass logging, inspection, or return-flow enforcement.
+Transitive exposure through peering/transit attachments is **High** when it
+reaches sensitive destinations outside the documented trust boundary. Apparent
+internet exposure with no effective route is **Informational** or **Low** after
+evidence is recorded.
+
+---
+
 #### 2.3 Shadowed Rules Analysis (NIST SP 800-41, Section 4.3)
 
 A shadowed rule is one that can never match traffic because a more general rule above it matches first. Shadowed rules indicate rule base mismanagement and may mask security gaps.
@@ -265,8 +311,8 @@ Produce the final report using the following structure.
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Missing default deny; any/any inbound rules. Immediate exploitation risk. |
-| **High** | Overly permissive outbound rules; shadowed deny rules; no logging on deny actions; missing anti-spoofing; unused rules to decommissioned resources. |
-| **Medium** | Shadowed permit rules; missing egress DNS restriction; unused rules (active resources); missing logging on sensitive permits; missing stealth rules. |
+| **High** | Overly permissive outbound rules; shadowed deny rules; no logging on deny actions; missing anti-spoofing; unused rules to decommissioned resources; asymmetric routing around stateful inspection; undocumented transitive exposure to sensitive destinations. |
+| **Medium** | Shadowed permit rules; missing egress DNS restriction; unused rules (active resources); missing logging on sensitive permits; missing stealth rules; effective path cannot be validated for high-risk allow rules. |
 | **Low** | Rule documentation gaps; suboptimal rule ordering with no current security impact; cosmetic rule base issues. |
 
 ---
@@ -317,6 +363,11 @@ Produce the final report using the following structure.
 | SMTP (25)     | Yes/No    | <mail server IPs>      |
 | HTTPS (443)   | Yes/No    | <proxy or direct>      |
 
+### Effective Path Evidence
+| Flow | Static Rule | Ingress Path | Return Path | Stateful Symmetry | Enforcement Point | Transitive Exposure | Evidence Source | Exposure Verdict |
+|------|-------------|--------------|-------------|-------------------|-------------------|---------------------|-----------------|------------------|
+| internet -> app:443 | sg-app-443 | [LB -> route -> firewall] | [firewall -> NAT -> internet] | Same Firewall | fw-edge-a | None | packet trace | Reachable |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -359,6 +410,16 @@ Produce the final report using the following structure.
 
 4. **Assuming hit count of zero means the rule is unused.** Hit counters reset on firewall reload or failover. Verify the counter baseline timestamp before recommending rule removal. Cross-reference with SIEM/flow data where available.
 
+5. **Scoring static rules without route-path evidence.** A permissive rule may
+not be reachable if no route, NAT, load balancer, or upstream policy exposes the
+destination. Conversely, a private-looking rule may be reachable through peering
+or transit. Always validate the effective path before final exposure scoring.
+
+6. **Missing asymmetric return paths.** Stateful firewalls depend on seeing both
+directions of a flow unless HA state sync is proven. If ingress and return
+traffic traverse different devices, inspection, logging, and policy enforcement
+may be incomplete.
+
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
 ---
@@ -386,4 +447,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.1.0** -- Added effective path evidence gates for route/NAT/LB/transit context, stateful symmetry, transitive exposure, and path-validation fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
