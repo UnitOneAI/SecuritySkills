@@ -156,19 +156,32 @@ SigninLogs
 // Impossible Travel Detection
 // ATT&CK: T1078 -- Valid Accounts (compromised credentials)
 // Detects successful logins from geographically distant locations within
-// a time window that makes physical travel impossible
+// a time window that makes physical travel impossible.
+//
+// Tuning note: keep trusted VPN/SASE/eIdP egress ranges and workload identities
+// out of the core alert path. Without these gates, impossible-travel rules are
+// noisy for employees who authenticate through corporate proxies or services.
 let travel_speed_kmh = 900;  // Maximum plausible travel speed (commercial flight)
-let min_distance_km = 500;   // Minimum distance to flag (avoids VPN/proxy noise)
+let min_distance_km = 500;   // Minimum distance to flag (avoids local GeoIP noise)
 let time_window = 24h;
+let trusted_egress_ips = dynamic(["198.51.100.10", "203.0.113.20"]); // Replace with SASE/VPN/proxy IPs
+let excluded_identity_patterns = dynamic(["svc-", "app-", "automation", "break-glass"]);
 SigninLogs
 | where TimeGenerated > ago(time_window)
 | where ResultType == 0  // Successful logins only
+| where IPAddress !in (trusted_egress_ips)
+| where UserPrincipalName !has_any (excluded_identity_patterns)
 | where isnotempty(LocationDetails.geoCoordinates.latitude)
 | extend
     Latitude = todouble(LocationDetails.geoCoordinates.latitude),
     Longitude = todouble(LocationDetails.geoCoordinates.longitude),
     City = tostring(LocationDetails.city),
-    Country = tostring(LocationDetails.countryOrRegion)
+    Country = tostring(LocationDetails.countryOrRegion),
+    IdentityType = case(
+        UserPrincipalName has_any (excluded_identity_patterns), "workload_or_breakglass",
+        UserPrincipalName has "#EXT#", "guest",
+        "interactive_user")
+| where IdentityType == "interactive_user"
 | sort by UserPrincipalName asc, TimeGenerated asc
 | serialize
 | extend
@@ -177,8 +190,10 @@ SigninLogs
     PrevTime = prev(TimeGenerated, 1),
     PrevCity = prev(City, 1),
     PrevCountry = prev(Country, 1),
-    PrevUser = prev(UserPrincipalName, 1)
+    PrevUser = prev(UserPrincipalName, 1),
+    PrevIPAddress = prev(IPAddress, 1)
 | where UserPrincipalName == PrevUser
+| where PrevIPAddress !in (trusted_egress_ips)
 | extend
     TimeDiffHours = datetime_diff('minute', TimeGenerated, PrevTime) / 60.0,
     // Haversine formula for distance calculation
@@ -198,8 +213,17 @@ SigninLogs
     TimeDiffHours = round(TimeDiffHours, 1),
     DistanceKm = round(DistanceKm, 0),
     RequiredSpeedKmh = round(RequiredSpeedKmh, 0),
-    IPAddress
+    IPAddress,
+    PrevIPAddress,
+    IdentityType
 ```
+
+**False-positive tuning:**
+
+- Maintain `trusted_egress_ips` from corporate VPN, SASE, proxy, and egress NAT inventories.
+- Exclude workload, automation, break-glass, and other non-human identities from the interactive-user alert path.
+- Treat guest accounts and risky identity classes separately if the environment needs different thresholds.
+- Document each exclusion source and review it during detection lifecycle updates so attackers cannot hide behind stale allowlists.
 
 ---
 
