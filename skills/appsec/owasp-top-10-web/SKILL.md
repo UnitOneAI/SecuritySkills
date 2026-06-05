@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -81,6 +81,7 @@ Before including any finding in the report, apply the following verification gat
 - Direct object references (IDOR) where user-supplied IDs are used to fetch records without ownership validation.
 - Endpoints that rely solely on client-side enforcement (hidden UI elements) rather than server-side checks.
 - CORS misconfigurations that permit arbitrary origins or reflect the `Origin` header without validation.
+- CSRF gaps on browser-reachable state-changing routes that accept ambient credentials such as cookies, Basic/Digest auth, or client certificates.
 - Missing HTTP method restrictions (e.g., a route that accepts PUT/DELETE but only intended for GET).
 - JWT or session tokens that contain role claims without server-side verification against a trusted source.
 - Path traversal in file-serving endpoints.
@@ -113,12 +114,25 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 \.\.\/|\.\.\\|path\.join.*req\.|sendFile.*req\.
 ```
 
+**Credential-Aware CSRF Gate:**
+
+Before reporting missing CSRF protection, identify how the endpoint authenticates the browser request:
+
+1. **Ambient credentials accepted:** Report CSRF risk only when a state-changing endpoint can be authenticated by browser-managed credentials, such as session cookies, remember-me cookies, Basic/Digest auth, client certificates, or refresh cookies.
+2. **Explicit bearer-token-only APIs:** Do not report a missing CSRF token by default when the endpoint rejects cookies and requires an `Authorization: Bearer ...` header or another explicit non-ambient credential that a cross-site form/image request cannot attach.
+3. **Hybrid designs:** Split the finding by credential type. A JSON API may be bearer-only while the refresh, logout, password-change, or account-linking route still accepts a cookie and needs CSRF, state, or Origin/Referer validation.
+4. **SameSite is contextual:** Treat `SameSite=None; Secure` as valid for documented cross-site identity or embedded-app flows when it is paired with CSRF tokens, OAuth/OIDC `state`, or strict Origin/Referer checks. Treat SameSite as defense-in-depth, not as a full replacement for CSRF validation on high-value actions.
+5. **Evidence field:** Include `ambient_credentials_accepted: yes/no/unclear` in CSRF findings so reviewers can see why the issue was or was not reported.
+
+See `csrf-credential-fixtures.md` for benign and vulnerable examples that should guide this gate.
+
 **Mitigations:**
 
 - Enforce authorization server-side on every request using middleware or decorators; adopt deny-by-default.
 - Validate resource ownership — confirm the authenticated user owns or has explicit permission to the requested resource.
 - Use indirect references or opaque tokens instead of sequential database IDs.
-- Enable CSRF protection framework-wide; use `SameSite` cookie attributes.
+- Enable CSRF protection on browser-authenticated state-changing routes; combine synchronizer tokens or double-submit tokens with `SameSite` cookie attributes and Origin/Referer checks for high-value actions.
+- For bearer-token-only APIs, reject cookie/session credentials on the route so the CSRF decision remains explicit and auditable.
 - Restrict CORS to an explicit allowlist of origins; never reflect arbitrary `Origin` values.
 - Constrain file paths with canonicalization and chroot/jail patterns; reject `..` sequences.
 
@@ -635,6 +649,7 @@ Present findings in this structure:
 - **Location:** [file:line or file:function]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
 - **Evidence:** [Code snippet or configuration excerpt]
+- **Ambient Credentials Accepted:** [yes/no/unclear; required for CSRF-related findings]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
 - **Verification:** [How to confirm the fix is effective]
 
@@ -685,7 +700,9 @@ Present findings in this structure:
 
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
-5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+5. **Reporting CSRF without credential transport context.** CSRF depends on the browser automatically attaching credentials. A route that only accepts an explicit bearer token and rejects cookies is different from a cookie-authenticated form post, refresh-cookie endpoint, or account settings route.
+
+6. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
 ## Prompt Injection Safety Notice
 

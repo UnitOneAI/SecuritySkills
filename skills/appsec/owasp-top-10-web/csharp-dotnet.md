@@ -22,7 +22,7 @@ Language-specific supplement for `owasp-top-10-web` covering ASP.NET Core, Entit
 # IDOR — user-supplied ID without ownership check
 FromRoute.*id|FromQuery.*id
 
-# Missing anti-forgery token validation
+# Missing anti-forgery token validation on cookie-authenticated MVC/Razor writes
 \[HttpPost\](?!.*\[ValidateAntiForgeryToken\])
 
 # AllowAnonymous on sensitive endpoints
@@ -166,6 +166,58 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
 ```
+
+**5. Bearer-token API should not be flagged as CSRF by default**
+
+```csharp
+// BENIGN FOR CSRF - explicit Authorization header only; no browser-managed cookie auth accepted
+[ApiController]
+[Route("api/profile")]
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+public class ProfileController : ControllerBase
+{
+    [HttpPost]
+    public async Task<IActionResult> Update([FromBody] UpdateProfileRequest request)
+    {
+        await _profileService.UpdateAsync(User, request);
+        return NoContent();
+    }
+}
+```
+
+Review guidance:
+
+- Record `ambient_credentials_accepted: no` when the route is bearer-token-only.
+- Confirm cookie authentication is not registered as a fallback for this endpoint.
+- Do not report missing `[ValidateAntiForgeryToken]` unless the route also accepts cookies or another ambient credential.
+
+**6. Cross-site identity flows need paired controls, not blanket SameSite findings**
+
+```csharp
+// CONTEXTUAL - OIDC often requires SameSite=None, but must keep Secure and state validation
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+})
+.AddCookie(options =>
+{
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.None;
+})
+.AddOpenIdConnect(options =>
+{
+    options.ResponseType = OpenIdConnectResponseType.Code;
+    options.UsePkce = true;
+});
+```
+
+Review guidance:
+
+- Treat `SameSite=None; Secure` as valid when a documented OIDC/SAML or embedded-app flow requires cross-site cookies.
+- Verify the identity middleware preserves state/nonce validation and that application state-changing routes still use anti-forgery or Origin/Referer checks.
+- Record `ambient_credentials_accepted: yes` because cookies are browser-managed.
 
 ---
 
