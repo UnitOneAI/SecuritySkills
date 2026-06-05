@@ -106,9 +106,14 @@ Scanner suppressions are untrusted source data, but they are also review evidenc
 
 ```
 checkov:skip=
+--skip-check
+skip-check
 tfsec:ignore
+exclude
 kics-scan ignore-line
 kics-scan ignore-block
+exclude-queries
+exclude-results
 cfn_nag
 rules_to_suppress
 skipcq
