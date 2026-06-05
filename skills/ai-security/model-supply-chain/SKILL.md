@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -98,6 +98,8 @@ Determine where every model artifact originates and whether its authenticity and
 - Models loaded from shared network drives, team Slack channels, or email attachments with no integrity verification.
 - Absence of SLSA provenance attestations or Sigstore signatures for model artifacts.
 - Models identified only by name ("llama-2-7b") without specifying the exact source organization, revision, or checksum.
+- Registry namespace, owner, or maintainer changes after approval. A stable model name does not prove that the same publisher, repository owner, or artifact set is still trusted.
+- Companion artifacts loaded by `from_pretrained()` or equivalent helpers without a shared manifest: tokenizer files, `config.json`, generation config, adapters, processor configs, and remote code references.
 
 **Detection methods using allowed tools:**
 
@@ -110,13 +112,26 @@ Grep: "huggingface|hf_hub|transformers|diffusers|sentence.transformers" in **/*.
 Grep: "sha256|checksum|hash|verify|digest|signature|sigstore|cosign" in **/*.{py,sh,yaml,yml}
 
 # Check for pinned model versions
-Grep: "revision=|commit_hash|model_version" in **/*.{py,yaml,yml,json}
+Grep: "revision=|commit_hash|model_version|trust_remote_code|tokenizer|AutoTokenizer|adapter" in **/*.{py,yaml,yml,json}
 
 # Find model artifact storage
 Glob: **/*.{pt,bin,safetensors,pkl,onnx,pb,h5,gguf,ggml}
 Glob: **/model_config.json
 Glob: **/config.json
 ```
+
+**Model artifact identity ledger:** For every production or security-relevant model, require a single ledger entry that binds the registry identity and the full fetched artifact set together. The ledger should include:
+
+| Field | Required evidence |
+|---|---|
+| Registry owner trust | registry host, namespace, repository owner, maintainer list or org, owner review date, and namespace transfer/rename check |
+| Immutable revision | commit hash, signed release, artifact version, or internal mirror import ID; mutable tags such as `main`, `latest`, or moving branches are `Not Evaluable` for production |
+| File manifest | every fetched file name, size, SHA256 or stronger digest, media type, and whether the file is required at runtime |
+| Companion artifact identity | tokenizer, `config.json`, `generation_config.json`, processor config, adapter/LoRA files, prompt templates, and any remote-code reference pinned to the same reviewed revision or manifest |
+| Mirror/import control | mirror source URL, upstream commit, importing approver, security review ticket, import timestamp, and last verification time |
+| Deployment binding | environment or release that uses the ledger, rollout/rollback reference, and proof that runtime loading uses the ledger revision rather than a mutable registry default |
+
+If a trusted internal mirror is used, mark it high confidence only when the mirror records the upstream owner, immutable revision, full file manifest, import approver, and last verification time. A mirror that stores checksums without the reviewed upstream identity is only partial evidence.
 
 **Real-world case -- PoisonGPT (Mithril Security, 2023):** Researchers at Mithril Security demonstrated that a model on Hugging Face Hub could be surgically modified to spread targeted misinformation while maintaining normal performance on standard benchmarks. They took GPT-J-6B, used the ROME (Rank-One Model Editing) technique to alter specific factual associations, and uploaded the modified model under a name resembling a legitimate organization. Users downloading the model by name would receive the poisoned version with no indication of tampering. The attack succeeded because Hugging Face Hub at the time did not enforce model signing, and most download code did not verify checksums against a trusted source. This demonstrated that model provenance verification is not optional -- it is the first line of defense against supply chain compromise.
 
@@ -127,6 +142,9 @@ Glob: **/config.json
 | Models loaded via `pickle.load` or `torch.load` without `weights_only=True` | Critical |
 | No checksum or signature verification on model download | High |
 | Model source unpinned (no commit hash, revision, or version lock) | High |
+| Model weights pinned but tokenizer/config/adapter artifacts remain mutable or unverified | High |
+| Registry owner, namespace, or maintainer trust record missing for a production model | High |
+| Production deployment depends on `main`, `latest`, or another mutable tag/branch with no trusted mirror manifest | High / Not Evaluable |
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
@@ -382,6 +400,12 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|---|---|
 | [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
 
+## Model Artifact Identity Ledger
+
+| Model | Registry owner trust | Immutable revision | File manifest/digests | Tokenizer/config/adapters pinned | Mirror/import approver | Last verification | Runtime binding |
+|---|---|---|---|---|---|---|---|
+| [name] | [owner/namespace reviewed?] | [commit/release/import ID] | [complete/partial/missing] | [complete/partial/missing] | [ticket/person] | [date] | [deployment/release evidence] |
+
 ## Findings
 
 ### Finding [N]: [Title]
@@ -392,7 +416,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 - **SLSA Level Gap:** [current level -> recommended level]
 - **Location:** [file path and line numbers, or architectural component]
 - **Description:** [What the vulnerability is and why it matters]
-- **Evidence:** [Code pattern, configuration, or architectural observation]
+- **Evidence:** [Code pattern, configuration, model artifact identity ledger gap, unpinned companion artifact, mutable registry reference, or architectural observation]
+- **Artifact identity impact:** [affected owner/namespace, revision, file manifest, tokenizer/config/adapter identity, mirror/import control, and runtime binding]
 - **Recommendation:** [Specific defensive measure]
 - **Priority:** [P0 / P1 / P2 / P3]
 
@@ -440,6 +465,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 4. **Assuming Hugging Face models are vetted.** Hugging Face Hub is a hosting platform, not a curation service. Any user can upload any model. While Hugging Face has introduced malware scanning and model signing capabilities, the majority of hosted models have no cryptographic provenance. Treat Hugging Face models as untrusted artifacts requiring verification, the same way you treat npm packages.
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
+
+6. **Pinning only the weight file.** A deployment can pin the largest model file and still pull a mutable tokenizer, config, processor, adapter, prompt template, or remote-code file. Treat the deployable model as an artifact set, not a single binary.
 
 ---
 
