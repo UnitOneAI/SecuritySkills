@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -60,8 +60,27 @@ Identify every point where user-supplied or externally sourced content reaches t
 3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
 4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
 5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
+6. **Model-visible extraction channels** — Text produced from OCR, image captions, image `alt`/`title` attributes, PDF text layers, spreadsheet cells, HTML metadata, OpenGraph/Twitter-card fields, redirects, canonical URLs, and link-preview unfurlers before the model call.
 
-**Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
+**Deliverable:** A table or diagram listing each input surface, its data type, extractor, trust level, user controllability, and whether it flows into the system prompt, user prompt, retrieved-context block, or tool arguments.
+
+### Step 1.1: Build a Model-Visible Content Source Matrix
+
+Before testing payloads, enumerate each transformation that turns external content into model-visible text. This prevents two common mistakes: missing hidden extractor channels, and over-reporting defensive training fixtures that quote attack strings but never reach a model as executable context.
+
+| Source | Extractor or unfurler | User controllable? | Visible to human? | Model destination | Required containment |
+|--------|----------------------|--------------------|-------------------|-------------------|----------------------|
+| Uploaded image | OCR, vision caption, `alt`/`title` text | Yes/No | Sometimes | RAG chunk, chat context, tool summary | Quote and attribute extracted text as untrusted data |
+| Uploaded PDF | Rendered page, embedded text layer, annotations, metadata | Yes/No | Sometimes | Document summary or retrieval chunk | Preserve visible-vs-extracted differences and source page |
+| External URL | HTML body, title, OpenGraph, Twitter card, redirect target, canonical URL | Yes | Sometimes | Link preview, browser summary, citation context | Record final URL and metadata fields separately |
+| Training or test fixture | Raw fixture text, screenshot caption, expected-output block | Usually | Yes | Test harness, report evidence | Treat as quoted evidence unless the app sends it into live prompts |
+
+For each row, record:
+
+- **Extractor provenance:** extractor name, source file or URL, transformation step, confidence if available, and whether the extracted text differs from visible content.
+- **Prompt boundary:** exact destination field or template section, such as `system`, `developer`, `user`, retrieved context, tool arguments, or output post-processing.
+- **Containment treatment:** whether the application quotes, attributes, fences, labels, or otherwise marks extracted content as untrusted data.
+- **False-positive control:** if the string is a defensive sample, training fixture, expected-output assertion, or documentation example, only report it when there is evidence that it is sent to the model without data boundaries.
 
 ---
 
@@ -89,14 +108,20 @@ For each external content source identified in Step 1, determine whether an adve
 - **RAG pipeline inputs** — Documents, web pages, or knowledge base entries that are retrieved and inserted into the LLM context. Can an attacker contribute content to these sources?
 - **Email and messaging integrations** — If the LLM processes emails or messages, an attacker can send a message containing hidden instructions.
 - **Web browsing and scraping** — If the LLM fetches web content, any page it visits could contain injected instructions (including in HTML comments, hidden text, or metadata).
+- **Multimodal extraction paths** — If the LLM receives OCR output, generated captions, image `alt` text, PDF text layers, annotations, or spreadsheet cell text, each extracted field is an untrusted source even when the visible artifact looks harmless.
+- **Link previews and metadata** — If the application unfurls URLs, OpenGraph descriptions, Twitter-card fields, page titles, redirects, and canonical URLs may become model-visible before the user sees the destination page.
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Defensive samples and fixtures** — If a repository contains prompt-injection examples for training or tests, verify whether the content is quoted evidence or is actually fed into a live prompt. Do not report fixture text as an active vulnerability without that model-flow evidence.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
 - Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
+- Vision, OCR, URL-preview, PDF, or HTML-metadata extractors whose output is appended to prompts without labeling it as external data
+- Prompt templates that merge extracted text into `system` or `developer` instructions instead of a quoted context block
+- Test fixtures or training examples that are accidentally loaded into production prompt context
 
 ---
 
@@ -151,6 +176,16 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 - Are those constraints enforced only through prompt instructions or also through output validation?
 - Does the application handle edge cases where the model might produce disallowed content?
 
+### 4.6 Model-Visible Extractor Abuse
+
+The attacker places instructions in content that is not obvious in the main user-visible text but is later extracted and sent to the model.
+
+**What to evaluate:**
+- Does OCR output, image `alt` text, PDF text-layer content, or generated captions enter the same prompt context as trusted instructions?
+- Do link unfurlers include OpenGraph/Twitter-card metadata, page titles, canonical URLs, or redirect targets without labeling them as external data?
+- Does the application record source provenance for each extracted field so reviewers can tell which extractor produced it?
+- Are defensive fixtures, screenshots, and expected-output examples explicitly fenced or quoted so the model treats them as evidence rather than instructions?
+
 ---
 
 ## Step 5: Defense Evaluation
@@ -202,6 +237,14 @@ Evaluate which of the following mitigations are implemented and how effectively.
   - **AgentDojo** -- Evaluates agent robustness against injection attacks across diverse tool-use scenarios with realistic adversarial content.
   - **fabraix/playground** (https://github.com/fabraix/playground) -- Open-source library of AI agent exploit PoCs that can serve as a test harness for validating direct and indirect injection defenses against published attack patterns.
 
+### 5.8 Extracted Content Containment
+
+- **Quote and attribute extracted text:** OCR, captions, metadata, and PDF text layers should be inserted as quoted external data with source labels, not blended into instruction text.
+- **Preserve visible-vs-extracted differences:** Reports should flag when a PDF text layer, image alt text, or metadata field differs materially from the rendered page or visible UI.
+- **Constrain link previews:** URL unfurlers should record final URL, redirect chain, metadata fields, and fetcher identity. The model should not treat metadata as page-grounded evidence unless it is attributed separately.
+- **Gate high-impact tool use:** If extracted text can influence email, ticket, file, browser, or payment tools, require independent authorization and human-readable summaries that show the extracted source.
+- **Maintain benign fixture handling:** Security training samples and test fixtures should be explicitly marked as quoted examples. A finding requires evidence that such text reaches a live model context without boundaries.
+
 ---
 
 ## Step 6: Report Findings
@@ -234,10 +277,15 @@ Each finding should be assigned a severity based on potential impact:
 ### Interaction Surface Map
 [Table from Step 1]
 
+### Model-Visible Content Source Matrix
+| Source | Extractor/unfurler | User controllable | Visible to human | Prompt destination | Containment |
+|--------|--------------------|-------------------|------------------|--------------------|-------------|
+| <image/pdf/url/etc.> | <OCR/metadata/link preview/etc.> | Yes/No | Yes/No/Partial | <system/user/context/tool> | <quoted/attributed/fenced/none> |
+
 ### Findings
 
 #### Finding [N]: [Title]
-- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking]
+- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking | Model-Visible Extractor Abuse]
 - Vector: [Direct | Indirect]
 - Severity: [Critical | High | Medium | Low | Informational]
 - Location: [file path and line numbers, or architectural component]
@@ -274,6 +322,10 @@ Each finding should be assigned a severity based on potential impact:
 4. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
+
+6. **Ignoring extractor-only content.** Reviewers often inspect visible document text or page body content while missing OCR output, generated captions, image alt text, PDF text layers, and link-preview metadata. If an extractor sends text to the model, that text needs the same untrusted-content handling as a RAG chunk.
+
+7. **Over-reporting defensive examples.** Security labs, training fixtures, documentation, and expected-output tests intentionally quote injection strings. Treat those strings as evidence unless there is a concrete flow showing that they are merged into a live model prompt without boundaries.
 
 ---
 
