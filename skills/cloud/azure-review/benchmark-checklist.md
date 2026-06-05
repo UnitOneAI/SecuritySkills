@@ -1,12 +1,21 @@
-# CIS Azure Foundations Benchmark v2.1.0 -- Detailed Checklist
+# Legacy CIS Azure Foundations Benchmark v2.1.0 -- Detailed Checklist
 
-This file contains the detailed CIS benchmark checklist items for the Azure Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+This file contains the detailed CIS benchmark checklist items for historical or explicitly legacy Azure Security Posture Review runs. See [SKILL.md](SKILL.md) for the main skill definition, current benchmark scope, process overview, and output format.
+
+> Current benchmark warning: Do not use this checklist to score CIS Azure v6.0.0 assessments. v6.0.0 must be scored from its own CIS benchmark source, and Entra ID findings are out of the default Azure Foundations scope unless they are reported separately as CIS Microsoft 365 / Entra findings.
+
+## Scope Guardrails
+
+- Use this checklist only when `legacy_baseline = true` or the user explicitly asks for CIS Microsoft Azure Foundations Benchmark v2.1.0.
+- Do not copy v2.1.0 recommendation IDs into current v6.0.0 reports unless the exact v6.0.0 CIS source confirms the mapping.
+- Mark v6.0.0 exact IDs as `Not Evaluable -- benchmark source unavailable` when the current CIS benchmark source is unavailable.
+- Treat Section 1 Entra ID controls as legacy-only Azure v2.1.0 controls. For current assessments, route Entra evidence to the Microsoft 365 / Entra scope described in `SKILL.md`.
 
 ---
 
 ## Section 1 -- Identity and Access Management
 
-Evaluate Entra ID and IAM configurations against CIS Azure v2.1.0 Section 1 recommendations.
+Evaluate Entra ID and IAM configurations against CIS Azure v2.1.0 Section 1 recommendations only when a legacy v2.1.0 assessment is explicitly requested.
 
 ### CIS 1.1 -- Security Defaults and Conditional Access
 
@@ -675,7 +684,7 @@ resource "azurerm_linux_web_app" {
 
 ### CIS 9.5 -- Ensure that Register with Entra ID is enabled on App Service
 
-Check for identity configuration:
+Check for App Service managed identity configuration. This is Azure App Service resource evidence, not a replacement for current Microsoft 365 / Entra tenant-policy review.
 
 ```hcl
 resource "azurerm_linux_web_app" {
