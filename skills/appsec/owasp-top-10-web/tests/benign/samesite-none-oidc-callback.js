@@ -2,6 +2,13 @@ const express = require("express");
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
+app.use((req, _res, next) => {
+  req.session = {
+    oidcState: "state-from-login-initiation",
+    oidcNonce: "nonce-from-login-initiation",
+  };
+  next();
+});
 
 function validateOidcCallback(req, res, next) {
   const expectedState = req.session && req.session.oidcState;

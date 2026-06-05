@@ -2,6 +2,22 @@ const express = require("express");
 
 const app = express();
 app.use(express.json());
+app.use((req, _res, next) => {
+  req.cookies = Object.fromEntries(
+    (req.get("Cookie") || "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const separator = part.indexOf("=");
+        if (separator === -1) {
+          return [part, ""];
+        }
+        return [part.slice(0, separator), decodeURIComponent(part.slice(separator + 1))];
+      }),
+  );
+  next();
+});
 
 function bearerApi(req, res, next) {
   const header = req.get("Authorization");
