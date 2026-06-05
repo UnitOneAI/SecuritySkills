@@ -10,10 +10,10 @@ description: >
 tags: [incident-response, forensics, evidence, cloud]
 role: [soc-analyst, security-engineer]
 phase: [respond]
-frameworks: [NIST-SP-800-86, RFC-3227]
+frameworks: [NIST-SP-800-86, NIST-SP-800-101, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -28,7 +28,7 @@ argument-hint: "[target-file-or-directory]"
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 30-60 min
 > **Output:** Evidence collection plan with volatility-ordered acquisition steps, chain-of-custody forms, integrity hashes, and cloud forensics considerations
-> **Version:** 1.1.0
+> **Version:** 1.1.1
 
 ---
 
@@ -63,9 +63,11 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Mobile/BYOD scope** -- Whether phones, tablets, unmanaged laptops, MDM-controlled devices, or cloud backups are in scope; lock state, owner consent/legal authority, and privacy minimization requirements.
 - [ ] **Containment timeline** -- Planned isolation, shutdown, termination, auto-scaling replacement, EDR isolation, or account-disable actions that could destroy volatile evidence.
 - [ ] **Cloud custody inputs** -- Cloud account/project/subscription, region, resource IDs, snapshot/image IDs, provider audit event IDs, KMS/key identifiers, sharing status, copy lineage, and analyst IAM role.
-- [ ] **Ephemeral workload scope** -- Container, Kubernetes, serverless, or PaaS resources where disk imaging is incomplete and logs, image digests, runtime specs, environment/config snapshots, and ephemeral filesystem limits must be recorded.
+- [ ] **Ephemeral workload scope** -- Container, Kubernetes, serverless, SaaS, or PaaS resources where disk imaging is incomplete or unavailable and logs, image digests, runtime specs, environment/config snapshots, provider audit trails, and ephemeral filesystem limits must be recorded.
+- [ ] **Raw artifact preference** -- Native evidence containers such as EVTX, JSON, PCAP, E01, AFF4, memory images, cloud log objects, or provider exports should be preserved before rendered text, screenshots, or analyst summaries.
 
 ---
 
@@ -209,9 +211,13 @@ listdlls.exe (Windows, Sysinternals) / cat /proc/[pid]/maps (Linux)
 # Logged-in users
 query user (Windows) / w (Linux)
 
-# Recent logon events
+# Recent logon events - triage query only, not the primary preserved artifact
 wevtutil qe Security /q:"*[System[EventID=4624]]" /c:50 /f:text (Windows)
 last -50 (Linux)
+
+# Preserved Windows forensic artifact
+wevtutil epl Security E:\evidence\[hostname]_Security_[YYYYMMDD_HHMM].evtx
+certutil -hashfile E:\evidence\[hostname]_Security_[YYYYMMDD_HHMM].evtx SHA256
 
 # Scheduled tasks / cron jobs
 schtasks /query /fo csv /v (Windows) / crontab -l; ls /etc/cron.* (Linux)
@@ -298,11 +304,14 @@ Preserve logs before rotation policies destroy them. Export and hash logs from e
 
 **Log export procedure:**
 ```
-1. Export raw logs to write-protected storage
+1. Export raw/native logs to write-protected storage
 2. Compute SHA-256 hash of each exported log file
 3. Document: source, time range, export method, hash value
 4. Store alongside disk and memory evidence in the case folder
+5. Keep rendered text, screenshots, and query output as triage notes unless the native source is unavailable
 ```
+
+Preserve native event-log formats before text rendering. For Windows, use EVTX export (`wevtutil epl`) and hash the EVTX file before using `wevtutil qe ... /f:text` output for triage or reporting. For SIEM and cloud sources, preserve the original JSON, object, bundle, or provider export with metadata and checksum; do not rely on a copied dashboard view as the primary artifact.
 
 ### Step 6: Cloud Forensics
 
@@ -358,7 +367,17 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 | Sharing and access control | Shared accounts/projects, expiry, analyst role, read-only mount proof, and access-review record | Prevents uncontrolled vendor or external-account access to evidence. |
 | Integrity and immutability | Object lock, snapshot lock, vault lock, retention policy, hash/export checksum, and write-blocking equivalent | Establishes tamper resistance for cloud-native evidence. |
 
-Provider-native snapshots are acceptable evidence when the report records source identity, provider audit events, key custody, sharing status, lineage, read-only analysis controls, and integrity/immutability settings. Do not treat a cloud snapshot as automatically weak evidence, and do not treat it as equivalent to a physical bitstream image. Score it according to the documented custody controls and cloud evidence limitations.
+**Cloud evidence integrity gates:**
+
+| Integrity Gate | Evidence to Preserve | Pass / N/A Criteria |
+|---|---|---|
+| CloudTrail validation | Log file validation status, digest files, digest chain coverage, and digest retention path | Pass when digest files verify the investigation period; N/A only for non-AWS sources with equivalent provider validation evidence. |
+| Immutable archive | Separate archive account/project/subscription, restricted write role, S3 Object Lock or equivalent WORM/retention control, retention date, and delete-protection proof | Pass when evidence is stored outside the compromised blast radius with enforced retention. |
+| Data-event coverage | CloudTrail data events, storage access logs, database audit logs, or service-specific data-plane logs enabled before the incident | Pass when data-plane activity exists for the relevant service; record a gap if it was not enabled before the incident. |
+| Provider export integrity | Object version ID, generation number, checksum, signed URL expiry, export job ID, or provider audit event proving export creation | Pass when the preserved object/export can be tied to provider-side metadata and a hash. |
+| Service-domain evidence | Control-plane logs, data-plane logs, configuration snapshots, image/package digests, invocation traces, and queue/dead-letter records for services without disk images | Use `N/A - service-domain evidence preserved` when no meaningful disk image exists but compensating service evidence is complete. |
+
+Provider-native snapshots and service-domain records are acceptable evidence when the report records source identity, provider audit events, key custody, sharing status, lineage, read-only analysis controls, and integrity/immutability settings. Do not treat a cloud snapshot as automatically weak evidence, and do not treat it as equivalent to a physical bitstream image. Do not fail a serverless, SaaS, PaaS, or managed-service investigation only because there is no disk image; score it according to documented custody controls, preserved service-domain evidence, and cloud evidence limitations.
 
 **Cloud forensic considerations:**
 - Snapshots are not bitstream images -- they capture allocated blocks only, not unallocated space or slack
@@ -377,6 +396,19 @@ Provider-native snapshots are acceptable evidence when the report records source
 | Kubernetes pod/workload | Pod spec, deployment/statefulset/daemonset spec, node name, container IDs, events, logs, volume mounts, service account, network policy | Pods may be rescheduled or garbage-collected before disk-like evidence exists. |
 | Serverless function | Function version/alias, package hash, environment variables, IAM role, trigger config, invocation logs, tracing spans, dead-letter queue records | Ephemeral filesystem and runtime memory are usually unavailable after execution. |
 | PaaS/database service | Configuration export, audit logs, backup/snapshot ID, network access settings, IAM bindings, diagnostic logs | Provider-managed internals may be inaccessible; custody depends on audit and export records. |
+
+### Step 7: Mobile and BYOD Scope Guard
+
+Mobile devices and personally owned devices require explicit authorization, privacy controls, and scope limits. Follow NIST SP 800-101 Rev 1 principles before collecting from phones, tablets, unmanaged laptops, MDM-managed devices, or cloud backups.
+
+| Decision Point | Required Evidence | Forensic Handling |
+|---|---|---|
+| Authority and consent | Legal hold, owner consent, employment policy, warrant/subpoena, or written authorization | Do not collect personal-device content without documented authority and approved minimization boundaries. |
+| Lock and power state | Locked/unlocked state, power state, battery level, screen status, SIM/eSIM state, and passcode availability | Preserve state before manipulation; avoid actions that trigger wipe, encryption lock, or app-session invalidation. |
+| Network isolation | Faraday bag, airplane mode decision, MDM network isolation, or carrier/SIM action | Balance remote-wipe risk against volatile network/session evidence; record the decision and approver. |
+| MDM and cloud backup | MDM inventory/profile state, compliance status, remote commands, backup metadata, app logs, and device sync records | Preserve management-plane and backup evidence when device imaging is not possible or disproportionate. |
+| Application scope | Relevant app data, message headers, authentication/session logs, push-notification records, and cloud service access logs | Prefer targeted collection and service-side logs over broad personal-content acquisition where possible. |
+| Privacy minimization | Data categories excluded, reviewer roles, redaction plan, retention limit, and privileged or protected data handling | Restrict access and document why each collected category is necessary for the incident. |
 
 ---
 
@@ -399,8 +431,8 @@ Produce the evidence collection report with these exact sections:
 ```markdown
 ## Forensic Evidence Collection Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** forensics-checklist v1.1.0
-**Frameworks:** NIST SP 800-86, RFC 3227
+**Skill:** forensics-checklist v1.1.1
+**Frameworks:** NIST SP 800-86, NIST SP 800-101 Rev 1, RFC 3227
 **Examiner:** [Name or "AI-assisted -- human examiner required for court-admissible evidence"]
 
 ### Collection Summary
@@ -408,27 +440,28 @@ Produce the evidence collection report with these exact sections:
 the order of collection, and any evidence that could not be obtained.]
 
 ### Evidence Inventory
-| Evidence ID | Type | Source System | Collection Time (UTC) | SHA-256 Hash | Examiner | Storage Location |
-|---|---|---|---|---|---|---|
-| EVD-0001 | Memory dump | [hostname] | [timestamp] | [hash] | [name] | [location] |
-| EVD-0002 | Disk image (E01) | [hostname] | [timestamp] | [hash] | [name] | [location] |
-| EVD-0003 | Log export | [source] | [timestamp] | [hash] | [name] | [location] |
+| Evidence ID | Type | Artifact Role | Source System | Collection Time (UTC) | SHA-256 Hash | Examiner | Storage Location |
+|---|---|---|---|---|---|---|---|
+| EVD-0001 | Memory dump | Preserved forensic artifact | [hostname] | [timestamp] | [hash] | [name] | [location] |
+| EVD-0002 | Disk image (E01) | Preserved forensic artifact | [hostname] | [timestamp] | [hash] | [name] | [location] |
+| EVD-0003 | EVTX / cloud log export | Preserved forensic artifact | [source] | [timestamp] | [hash] | [name] | [location] |
+| EVD-0004 | Rendered query output | Triage output | [source] | [timestamp] | [hash or N/A] | [name] | [location] |
 
 ### Volatility Order Compliance
 | RFC 3227 Priority | Evidence Source | Collected | Notes |
 |---|---|---|---|
-| 1 | Registers/cache | [Yes/No/N/A] | [Notes] |
-| 2 | Routing/ARP/process table/memory | [Yes/No] | [Notes] |
-| 3 | Temporary file systems | [Yes/No] | [Notes] |
-| 4 | Disk | [Yes/No] | [Notes] |
-| 5 | Remote logging data | [Yes/No] | [Notes] |
-| 6 | Physical configuration | [Yes/No] | [Notes] |
-| 7 | Archival media | [Yes/No/N/A] | [Notes] |
+| 1 | Registers/cache | [Yes/No/N/A with compensating evidence] | [Notes] |
+| 2 | Routing/ARP/process table/memory | [Yes/No/N/A with compensating evidence] | [Notes] |
+| 3 | Temporary file systems | [Yes/No/N/A with compensating evidence] | [Notes] |
+| 4 | Disk | [Yes/No/N/A with compensating evidence] | [Notes] |
+| 5 | Remote logging data | [Yes/No/N/A with compensating evidence] | [Notes] |
+| 6 | Physical configuration | [Yes/No/N/A with compensating evidence] | [Notes] |
+| 7 | Archival media | [Yes/No/N/A with compensating evidence] | [Notes] |
 
 ### Pre-Containment Volatile Evidence Gate
 | Planned Action | Volatile Evidence Needed First | Collected Before Action | Evidence ID / Reason Skipped | Approver |
 |---|---|---|---|---|
-| [Terminate/isolate/reboot/snapshot/disable credential] | [Memory/process/network/session/etc.] | [Yes/No/N/A] | [EVD ID or reason] | [Name/role] |
+| [Terminate/isolate/reboot/snapshot/disable credential] | [Memory/process/network/session/etc.] | [Yes/No/N/A with compensating evidence] | [EVD ID, reason, or compensating evidence] | [Name/role] |
 
 ### Chain of Custody
 [Include chain of custody form for each evidence item]
@@ -439,7 +472,7 @@ the order of collection, and any evidence that could not be obtained.]
 | EVD-0001 | [hash] | [hash] | [YES/NO] |
 
 ### Evidence Gaps
-[List any evidence that could not be collected and the reason]
+[List any evidence that could not be collected, the reason, the compensating evidence if applicable, and any privacy/minimization boundary.]
 
 ### Cloud Evidence (if applicable)
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
@@ -451,10 +484,20 @@ the order of collection, and any evidence that could not be obtained.]
 |---|---|---|---|---|---|---|---|---|
 | [EVD-0004] | [Resource ID] | [Snapshot/export ID] | [CloudTrail/Azure/GCP event] | [Key ID] | [Private/shared/expired] | [None/copy chain] | [Role and proof] | [Hash/object lock/snapshot lock] |
 
+### Cloud Evidence Integrity (if applicable)
+| Evidence ID | Validation / Digest | Immutable Archive | Data-Plane Logging | Provider Export Metadata | Disk Image Applicability |
+|---|---|---|---|---|---|
+| [EVD-0004] | [CloudTrail digest/equivalent/N/A] | [Object Lock/WORM/retention] | [Enabled before incident / gap] | [Object version/export job/checksum] | [Yes/No/N/A - service-domain evidence preserved] |
+
 ### Container and Serverless Evidence (if applicable)
 | Evidence ID | Workload | Image / Package Digest | Runtime Spec / Config | Logs / Events | Ephemeral Data Decision |
 |---|---|---|---|---|---|
 | [EVD-0005] | [Pod/function/service] | [Digest/hash] | [Manifest/env/IAM/trigger] | [Log/event export] | [Captured/skipped with reason] |
+
+### Mobile and BYOD Evidence (if applicable)
+| Evidence ID | Device / Account | Authority / Consent | Lock and Isolation State | MDM / Cloud Backup Evidence | Privacy Boundary |
+|---|---|---|---|---|---|
+| [EVD-0006] | [Device/account] | [Legal hold/consent/policy] | [Locked, powered, isolated decision] | [MDM action/backup/app log] | [Minimization and access limits] |
 ```
 
 ---
@@ -523,6 +566,22 @@ A snapshot ID alone does not prove forensic custody. Cloud snapshots can be copi
 
 Cloud containment can be destructive even when it looks reversible. Terminating an instance, replacing a pod, isolating an endpoint, disabling a token, or letting auto-scaling launch a replacement can remove process state, memory, network connections, session context, temporary files, or ephemeral filesystem data. Tie every containment action to a volatile-evidence decision and record skipped evidence with the approving authority.
 
+### Pitfall 8: Failing Cloud-Native Evidence Because There Is No Disk Image
+
+Serverless, SaaS, PaaS, and managed data services may have no meaningful disk image to collect. Treat this as `N/A - service-domain evidence preserved` only when control-plane logs, data-plane logs, configuration snapshots, image/package digests, invocation traces, backup metadata, and immutable archive controls are preserved. Treat it as an evidence gap when those compensating records are missing.
+
+### Pitfall 9: Treating Rendered Text Logs as Primary Evidence
+
+Text query output is useful for triage but weak as the primary preserved artifact. Preserve native EVTX, JSON, PCAP, cloud log objects, provider exports, or SIEM export bundles first, compute hashes, and then generate rendered text for analysis. When native logs are unavailable, record the reason and the compensating source metadata.
+
+### Pitfall 10: Mishandling Mobile or BYOD Collection
+
+Mobile and personally owned devices can be altered by unlock attempts, remote wipe, MDM commands, battery loss, or sync activity. Record lock state, power state, isolation decision, MDM status, cloud backup evidence, consent/legal authority, and the privacy boundary before collecting. Prefer targeted service-side and app-specific evidence when broad device imaging is disproportionate.
+
+### Pitfall 11: Over-Collecting Sensitive Personal or Privileged Data
+
+Forensic scope does not remove privacy, privilege, or minimization obligations. Limit collection to evidence categories needed for the incident, restrict reviewer access, redact where appropriate, and document excluded categories. Broad personal-content capture without a clear authority and minimization plan can compromise both investigation trust and legal defensibility.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -541,7 +600,7 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 
 1. **NIST SP 800-86** -- Guide to Integrating Forensic Techniques into Incident Response -- https://csrc.nist.gov/publications/detail/sp/800-86/final
 2. **RFC 3227** -- Guidelines for Evidence Collection and Archiving -- https://www.rfc-editor.org/rfc/rfc3227
-3. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+3. **NIST SP 800-61 Rev 3** -- Incident Response Recommendations and Considerations for Cybersecurity Risk Management -- https://csrc.nist.gov/pubs/sp/800/61/r3/final
 4. **ISO/IEC 27037:2012** -- Guidelines for Identification, Collection, Acquisition and Preservation of Digital Evidence -- https://www.iso.org/standard/44381.html
 5. **SANS Digital Forensics and Incident Response** -- https://www.sans.org/digital-forensics-incident-response/
 6. **Volatility 3 Framework** -- https://github.com/volatilityfoundation/volatility3
@@ -553,3 +612,13 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 12. **Azure managed disk snapshots** -- https://learn.microsoft.com/en-us/azure/virtual-machines/snapshot-copy-managed-disk
 13. **Google Cloud persistent disk snapshots** -- https://cloud.google.com/compute/docs/disks/create-snapshots
 14. **Kubernetes audit logging** -- https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/
+15. **NIST SP 800-101 Rev 1** -- Guidelines on Mobile Device Forensics -- https://csrc.nist.gov/pubs/sp/800/101/r1/final
+16. **AWS Forensic Evidence Collection** -- Collect and Analyze Forensic Evidence -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/collect-analyze-forensic-evidence.html
+17. **AWS CloudTrail Log File Validation** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-log-file-validation-intro.html
+18. **CISA Incident and Vulnerability Response Playbooks** -- https://www.cisa.gov/news-events/news/incident-and-vulnerability-response-playbooks
+
+---
+
+## 10. Changelog
+
+- **1.1.1** -- Added cloud-native `N/A - service-domain evidence preserved` handling, CloudTrail digest and immutable archive integrity gates, mobile/BYOD scope guardrails, raw EVTX/native-log preservation guidance, and output fields for compensating evidence and privacy minimization.
