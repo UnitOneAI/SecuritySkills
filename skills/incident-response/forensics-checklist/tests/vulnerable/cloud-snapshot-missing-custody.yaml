@@ -1,0 +1,29 @@
+incident_id: IR-2026-1065
+planned_action: terminate_instance
+source:
+  provider: aws
+  account_id: "111122223333"
+  region: us-east-1
+  instance_id: i-0badc0ffee
+snapshot:
+  id: snap-1234567890
+  source_volume_id: unknown
+  created_by: incident-admin
+  cloudtrail_event_id: null
+  kms_key_id: alias/aws/ebs
+  shared_with:
+    - external-vendor-account
+  copy_regions:
+    - eu-west-1
+volatile_evidence:
+  memory_collected: false
+  process_tree_collected: false
+  network_connections_collected: false
+  temporary_files_collected: false
+  skipped_reason: null
+analysis_access:
+  analyst_role: AdministratorAccess
+  read_only_mount_proof: false
+expected_finding: >
+  Flag incomplete cloud snapshot custody and failed pre-containment volatile
+  evidence collection before termination.

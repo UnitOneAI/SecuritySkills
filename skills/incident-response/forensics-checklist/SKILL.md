@@ -7,13 +7,13 @@ description: >
   disk images, or handle cloud forensics. Produces an evidence collection plan
   with volatility-prioritized acquisition steps, integrity verification, and
   chain-of-custody documentation.
-tags: [incident-response, forensics, evidence]
+tags: [incident-response, forensics, evidence, cloud]
 role: [soc-analyst, security-engineer]
 phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -28,6 +28,7 @@ argument-hint: "[target-file-or-directory]"
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 30-60 min
 > **Output:** Evidence collection plan with volatility-ordered acquisition steps, chain-of-custody forms, integrity hashes, and cloud forensics considerations
+> **Version:** 1.1.0
 
 ---
 
@@ -62,6 +63,9 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Containment timeline** -- Planned isolation, shutdown, termination, auto-scaling replacement, EDR isolation, or account-disable actions that could destroy volatile evidence.
+- [ ] **Cloud custody inputs** -- Cloud account/project/subscription, region, resource IDs, snapshot/image IDs, provider audit event IDs, KMS/key identifiers, sharing status, copy lineage, and analyst IAM role.
+- [ ] **Ephemeral workload scope** -- Container, Kubernetes, serverless, or PaaS resources where disk imaging is incomplete and logs, image digests, runtime specs, environment/config snapshots, and ephemeral filesystem limits must be recorded.
 
 ---
 
@@ -117,7 +121,18 @@ RFC 3227 Section 2.1 defines the order of volatility -- evidence sources ranked 
 
 ### Step 3: Volatile Data Capture
 
-Capture volatile data BEFORE any containment action that would alter system state (network isolation may be acceptable; reboot, shutdown, or reimaging destroys volatile evidence).
+Capture volatile data BEFORE any containment action that would alter system state. Network isolation may be acceptable, but reboot, shutdown, termination, auto-scaling replacement, EDR isolation, or reimaging can destroy volatile evidence.
+
+**Pre-containment volatile evidence gate:**
+
+| Planned Action | Volatile Evidence Required First | Evidence ID / Status | If Skipped, Record Reason and Approver |
+|---|---|---|---|
+| Reboot, shutdown, or terminate host/VM | Memory, process tree, active network connections, logged-in users, routing table, temporary file list | [EVD/Collected/Skipped] | [Reason, approver, timestamp] |
+| EDR isolate or firewall block | Active network connections, process tree, listening ports, recent DNS cache, C2 indicators | [EVD/Collected/Skipped] | [Reason, approver, timestamp] |
+| Detach or snapshot disk | Memory, volatile system state, write activity notes, mounted volume map | [EVD/Collected/Skipped] | [Reason, approver, timestamp] |
+| Disable account/token/API key | Current sessions, audit logs, token use, active cloud API calls | [EVD/Collected/Skipped] | [Reason, approver, timestamp] |
+
+If urgent containment must happen before collection, classify the missing evidence as an intentional evidence gap. Do not mark volatility-order compliance as successful unless the skipped item, reason, and approving authority are documented.
 
 #### 3a: Memory Acquisition
 
@@ -332,12 +347,36 @@ gcloud compute disks snapshot [disk-name] --zone [zone] --snapshot-names forensi
 gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-DDT23:59:59Z"'
 ```
 
+**Cloud evidence custody gates:**
+
+| Custody Field | Required Evidence | Why It Matters |
+|---|---|---|
+| Source identity | Account/project/subscription, region, resource ID, volume/disk ID, instance/container/function ID | Proves which asset the evidence came from. |
+| Provider action record | CloudTrail event ID, Azure Activity Log operation/correlation ID, or GCP Audit Log entry for snapshot/export/copy/share actions | Binds custody to provider-side audit evidence, not only responder notes. |
+| Snapshot/image lineage | Snapshot/image ID, source disk, parent snapshot, copy target region/account, creation time, and delete protection status | Shows whether evidence was copied, re-encrypted, shared, or replaced. |
+| Encryption and key custody | KMS/Key Vault/Cloud KMS key ID, key owner, rotation state, and access policy at collection time | Prevents later access disputes and detects default-key or wrong-key acquisition. |
+| Sharing and access control | Shared accounts/projects, expiry, analyst role, read-only mount proof, and access-review record | Prevents uncontrolled vendor or external-account access to evidence. |
+| Integrity and immutability | Object lock, snapshot lock, vault lock, retention policy, hash/export checksum, and write-blocking equivalent | Establishes tamper resistance for cloud-native evidence. |
+
+Provider-native snapshots are acceptable evidence when the report records source identity, provider audit events, key custody, sharing status, lineage, read-only analysis controls, and integrity/immutability settings. Do not treat a cloud snapshot as automatically weak evidence, and do not treat it as equivalent to a physical bitstream image. Score it according to the documented custody controls and cloud evidence limitations.
+
 **Cloud forensic considerations:**
 - Snapshots are not bitstream images -- they capture allocated blocks only, not unallocated space or slack
-- Enable VPC Flow Logs, CloudTrail (with log file validation), and audit logging BEFORE incidents occur
-- Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
-- Multi-region deployments require evidence collection across all regions
-- Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- Enable VPC Flow Logs, CloudTrail (with log file validation), Azure Activity Logs, GCP Audit Logs, and workload logs BEFORE incidents occur
+- Cloud provider logs are primary evidence; without pre-enabled logging, critical evidence may not exist
+- Multi-region and cross-account deployments require evidence collection across all relevant regions, accounts, projects, and subscriptions
+- Snapshot copies can change encryption context, region, ownership, retention, or sharing; record every copy and re-encryption step
+- Analyst access should use a named, time-bound, read-only forensic role and a documented read-only mount or export workflow
+- Serverless and container environments often require logs, image digests, deployment specs, environment/config snapshots, runtime events, and ephemeral filesystem capture rather than VM disk imaging
+
+**Container, Kubernetes, and serverless evidence prompts:**
+
+| Workload Type | Evidence to Preserve | Volatility / Limitation |
+|---|---|---|
+| Container image | Image digest, registry path, SBOM if available, build provenance, deployment manifest, runtime command, mounted secrets/config maps | Tags are mutable; image layers alone may not include runtime secrets or mounted config. |
+| Kubernetes pod/workload | Pod spec, deployment/statefulset/daemonset spec, node name, container IDs, events, logs, volume mounts, service account, network policy | Pods may be rescheduled or garbage-collected before disk-like evidence exists. |
+| Serverless function | Function version/alias, package hash, environment variables, IAM role, trigger config, invocation logs, tracing spans, dead-letter queue records | Ephemeral filesystem and runtime memory are usually unavailable after execution. |
+| PaaS/database service | Configuration export, audit logs, backup/snapshot ID, network access settings, IAM bindings, diagnostic logs | Provider-managed internals may be inaccessible; custody depends on audit and export records. |
 
 ---
 
@@ -360,7 +399,7 @@ Produce the evidence collection report with these exact sections:
 ```markdown
 ## Forensic Evidence Collection Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** forensics-checklist v1.0.0
+**Skill:** forensics-checklist v1.1.0
 **Frameworks:** NIST SP 800-86, RFC 3227
 **Examiner:** [Name or "AI-assisted -- human examiner required for court-admissible evidence"]
 
@@ -386,6 +425,11 @@ the order of collection, and any evidence that could not be obtained.]
 | 6 | Physical configuration | [Yes/No] | [Notes] |
 | 7 | Archival media | [Yes/No/N/A] | [Notes] |
 
+### Pre-Containment Volatile Evidence Gate
+| Planned Action | Volatile Evidence Needed First | Collected Before Action | Evidence ID / Reason Skipped | Approver |
+|---|---|---|---|---|
+| [Terminate/isolate/reboot/snapshot/disable credential] | [Memory/process/network/session/etc.] | [Yes/No/N/A] | [EVD ID or reason] | [Name/role] |
+
 ### Chain of Custody
 [Include chain of custody form for each evidence item]
 
@@ -401,6 +445,16 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### Cloud Evidence Custody (if applicable)
+| Evidence ID | Source Resource | Snapshot/Image/Export ID | Provider Audit Event | KMS/Key ID | Sharing Status | Copy Lineage | Analyst Role / Read-only Proof | Integrity / Retention |
+|---|---|---|---|---|---|---|---|---|
+| [EVD-0004] | [Resource ID] | [Snapshot/export ID] | [CloudTrail/Azure/GCP event] | [Key ID] | [Private/shared/expired] | [None/copy chain] | [Role and proof] | [Hash/object lock/snapshot lock] |
+
+### Container and Serverless Evidence (if applicable)
+| Evidence ID | Workload | Image / Package Digest | Runtime Spec / Config | Logs / Events | Ephemeral Data Decision |
+|---|---|---|---|---|---|
+| [EVD-0005] | [Pod/function/service] | [Digest/hash] | [Manifest/env/IAM/trigger] | [Log/event export] | [Captured/skipped with reason] |
 ```
 
 ---
@@ -461,6 +515,14 @@ Applying traditional forensic methods to cloud environments without adaptation l
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
 
+### Pitfall 6: Treating Cloud Snapshots as Self-Proving Custody
+
+A snapshot ID alone does not prove forensic custody. Cloud snapshots can be copied, shared, re-encrypted, mounted, deleted, or created from the wrong volume through provider APIs. Record provider audit event IDs, source resource IDs, key identity, sharing status, copy lineage, read-only analyst role, and retention or lock settings before relying on a snapshot as evidence.
+
+### Pitfall 7: Destroying Volatile Evidence During Cloud Containment
+
+Cloud containment can be destructive even when it looks reversible. Terminating an instance, replacing a pod, isolating an endpoint, disabling a token, or letting auto-scaling launch a replacement can remove process state, memory, network connections, session context, temporary files, or ephemeral filesystem data. Tie every containment action to a volatile-evidence decision and record skipped evidence with the approving authority.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -487,3 +549,7 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
 9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
 10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+11. **AWS EBS Snapshots** -- https://docs.aws.amazon.com/ebs/latest/userguide/ebs-snapshots.html
+12. **Azure managed disk snapshots** -- https://learn.microsoft.com/en-us/azure/virtual-machines/snapshot-copy-managed-disk
+13. **Google Cloud persistent disk snapshots** -- https://cloud.google.com/compute/docs/disks/create-snapshots
+14. **Kubernetes audit logging** -- https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/

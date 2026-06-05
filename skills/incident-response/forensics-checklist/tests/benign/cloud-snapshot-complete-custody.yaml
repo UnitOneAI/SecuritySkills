@@ -1,0 +1,32 @@
+incident_id: IR-2026-1065
+planned_action: isolate_instance
+source:
+  provider: aws
+  account_id: "111122223333"
+  region: eu-west-2
+  instance_id: i-0defaced
+  volume_id: vol-0evidence
+snapshot:
+  id: snap-0evidence
+  source_volume_id: vol-0evidence
+  created_by: forensic-response-role
+  cloudtrail_event_id: 9f2b4b7e-0000-4000-a123-9b8c7d6e5f4a
+  kms_key_id: arn:aws:kms:eu-west-2:111122223333:key/forensics-cmk
+  shared_with: []
+  copy_regions: []
+  snapshot_lock: governance
+volatile_evidence:
+  memory_collected: true
+  process_tree_collected: true
+  network_connections_collected: true
+  temporary_files_collected: true
+  evidence_ids:
+    - EVD-0001
+    - EVD-0002
+analysis_access:
+  analyst_role: arn:aws:iam::111122223333:role/forensic-read-only
+  read_only_mount_proof: true
+expected_classification: >
+  Treat provider-native snapshot custody as acceptable because source identity,
+  provider audit event, key custody, sharing status, lineage, read-only access,
+  retention, and volatile evidence decisions are documented.
