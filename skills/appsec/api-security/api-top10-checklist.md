@@ -17,6 +17,7 @@ BOLA occurs when an API endpoint accepts an object identifier from the client an
 - Authorization logic that checks only whether the user is authenticated, not whether they own or have access to the specific object.
 - Sequential or predictable resource identifiers (auto-increment integers) that enable enumeration.
 - Batch or list endpoints that return objects without filtering by the caller's permissions.
+- WebSocket, SSE, or GraphQL subscription handlers where the connection is authorized once but later messages or subscriptions choose tenant IDs, object IDs, channels, or actions without a fresh authorization check.
 
 ### REST Vulnerable Patterns
 
@@ -101,6 +102,7 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] WebSocket/SSE subscriptions verify authorization for every tenant, channel, object, or topic selected after connection establishment.
 
 ---
 
@@ -233,6 +235,8 @@ const UserType = new GraphQLObjectType({
 **CWE:** CWE-770 (Allocation of Resources Without Limits or Throttling), CWE-400 (Uncontrolled Resource Consumption), CWE-799 (Improper Control of Interaction Frequency)
 **Severity:** High to Medium
 
+For streaming APIs, also review long-lived resource controls: maximum connections, message size, subscription count, idle timeout, heartbeat policy, reconnect backoff, and per-user or per-tenant quotas.
+
 ### Vulnerable Patterns
 
 ```python
@@ -284,6 +288,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
+- [ ] WebSocket/SSE endpoints enforce max connections, max message size, subscription count, idle timeout, heartbeat/reconnect throttling, and per-user or per-tenant quotas.
 
 ---
 
@@ -450,6 +455,18 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+```javascript
+// VULNERABLE: browser-exposed cookie-authenticated WebSocket accepts any Origin
+wss.on("connection", (socket, req) => {
+  const session = parseCookieSession(req.headers.cookie);
+  if (!session?.userId) {
+    socket.close(1008, "unauthorized");
+    return;
+  }
+  socket.on("message", msg => handleAccountCommand(session.userId, msg));
+});
+```
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
@@ -462,6 +479,8 @@ Document doc = builder.parse(request.getInputStream());
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
+- For browser-exposed cookie-authenticated WebSockets, validate `Origin` against an explicit allowlist during the handshake. Document exceptions for non-browser clients that omit `Origin`.
+- For SSE carrying sensitive data, return `Cache-Control: no-store`, avoid long-lived query tokens, redact tokens from logs, and enforce short replay windows.
 
 ### Review Checklist
 
@@ -472,6 +491,8 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
+- [ ] Browser-exposed cookie-authenticated WebSockets validate `Origin` during the handshake.
+- [ ] SSE endpoints carrying sensitive or tenant data prevent caching and avoid leaking tokens through query strings, referrers, or logs.
 
 ---
 
@@ -488,6 +509,7 @@ Document doc = builder.parse(request.getInputStream());
 - API endpoints exposed to the public internet that should be internal-only.
 - Deprecated endpoints that remain functional after the announced retirement date.
 - Different security configurations between environments (staging allows unauthenticated access, production does not, but staging is publicly accessible).
+- WebSocket, SSE, GraphQL subscription, webhook callback, or gateway upgrade routes that are present in code but missing from the API inventory, threat model, or operational runbook.
 
 ### Review Procedure
 
@@ -498,6 +520,7 @@ Document doc = builder.parse(request.getInputStream());
 4. Flag any endpoint marked as deprecated that is still reachable.
 5. Check for environment-specific routes (debug, test, internal) that should not exist in production.
 6. Verify that older API versions have equivalent security controls to current versions.
+7. Compare WebSocket/SSE route registrations and gateway upgrade paths against the API inventory.
 ```
 
 ### Remediation Guidance
@@ -507,6 +530,7 @@ Document doc = builder.parse(request.getInputStream());
 - Remove debug, test, and playground endpoints from production builds using build-time flags or environment checks.
 - Segment internal APIs from external APIs at the network level (separate API gateways, VPC isolation).
 - Scan for shadow APIs by comparing routing tables against documentation on every deploy.
+- Include streaming routes in inventory generation: WebSocket upgrade paths, SSE endpoints, GraphQL subscription transports, gateway route rules, and topic/channel names where feasible.
 
 ### Review Checklist
 
@@ -515,6 +539,7 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] No debug, test, or playground endpoints are accessible in production.
 - [ ] Internal APIs are not reachable from external networks.
 - [ ] CI/CD pipelines validate that code routes match the API specification.
+- [ ] WebSocket/SSE/subscription routes are documented with owner, data sensitivity, credential type, origin policy, authorization cadence, and resource limits.
 
 ---
 
