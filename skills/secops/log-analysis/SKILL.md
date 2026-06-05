@@ -144,9 +144,40 @@ These Event IDs are the most security-relevant events in the Windows Security Ev
 | 5 | Service | Service start under a service account | Expected for known services; new service logons are suspicious |
 | 7 | Unlock | Workstation unlock | Normal for workstations |
 | 8 | NetworkCleartext | Logon with plaintext credentials over network | Security concern -- credentials exposed; legacy protocol indicator |
-| 9 | NewCredentials | Caller cloned token with new credentials (runas /netonly) | Lateral movement technique; always investigate |
+| 9 | NewCredentials | Caller cloned token with new credentials (runas /netonly) | Context-dependent: benign for approved alternate-credential workflows; suspicious when unexpected or followed by unusual outbound access |
 | 10 | RemoteInteractive | RDP logon | Expected for designated jump servers; suspicious on workstations or non-RDP servers |
 | 11 | CachedInteractive | Logon with cached domain credentials | Normal when DC is unreachable; suspicious if DC is available |
+
+**LogonType 9 (NewCredentials) triage context:**
+
+LogonType 9 is generated when a caller clones the current local token and supplies alternate credentials for outbound network connections, commonly through `runas /netonly`. This can support legitimate administration, but it is also useful to adversaries using alternate credentials for lateral movement. Do not treat every Type 9 event as malicious without enrichment.
+
+| Context Field | Benign Indicator | Suspicious Indicator |
+|---------------|------------------|----------------------|
+| Source host role | Admin workstation, jump host, or management server | Random user workstation or server with no admin workflow |
+| Process and command line | `runas.exe /netonly`, approved admin console, ticketed maintenance | Unknown process, script interpreter, encoded command, missing command line where logging should exist |
+| Account pairing | Expected admin/user pair with documented role | Unusual privileged account, disabled user, contractor, or service account used interactively |
+| Related 4648 event | Explicit credential use aligns with same user, process, and time window | 4648 absent when expected, or credentials used for unrelated target |
+| Outbound target | Approved admin endpoint, management console, or single expected server | SMB/RDP/WinRM to many hosts, sensitive servers, or hosts outside normal scope |
+| Time and change context | Approved change window or recurring admin workflow | Off-hours use with no ticket, shortly after suspicious authentication failures |
+
+**Benign fixture:**
+
+```text
+4624 LogonType=9, ProcessName=C:\Windows\System32\runas.exe
+CommandLine=runas /netonly /user:DOMAIN\readonly-admin mmc.exe
+SourceHost=ADMIN-WS-01, Target outbound host=DC-01, ChangeTicket=CHG-1234
+Expected result: document as approved alternate-credential use, not a high-severity finding by itself.
+```
+
+**Suspicious fixture:**
+
+```text
+4624 LogonType=9 on DEV-LAPTOP-22
+ProcessName=powershell.exe, CommandLine unavailable
+Related events: 4648 explicit credentials, followed by LogonType=3 SMB sessions to 12 servers
+Expected result: escalate as possible credential replay or lateral movement.
+```
 
 #### Process and Service Events
 
@@ -257,11 +288,21 @@ Identify deviations from established baselines that may indicate malicious activ
 
 1. **Select the log source** and the specific metric to baseline (e.g., daily count of Event ID 4625 per source IP).
 2. **Collect 30-90 days** of historical data during a known-clean period.
-3. **Calculate statistics:** mean, median, standard deviation, 95th percentile, 99th percentile.
+3. **Calculate distribution evidence:** mean, median, standard deviation, 95th percentile, 99th percentile, zero-rate, sample size, outliers, and missing bins.
 4. **Identify recurring patterns:** daily cycles (business hours vs. off-hours), weekly cycles (weekday vs. weekend), monthly cycles (month-end processing).
-5. **Set thresholds:** Define anomaly thresholds at mean + 2 standard deviations for moderate alerts and mean + 3 standard deviations for high-priority alerts.
-6. **Document exclusions:** Record known legitimate outliers (patch Tuesday, quarterly audits, penetration tests) that should not trigger anomaly alerts.
+5. **Set thresholds:** Choose the threshold method based on the data shape. Mean + 2/3 standard deviations is acceptable only for stable distributions without dominant outliers. For sparse, near-zero, heavy-tailed, or entity-specific streams, prefer percentiles, median absolute deviation, peer-group baselines, first-seen logic, or explicit rare-event rules.
+6. **Document exclusions:** Record known legitimate outliers (patch Tuesday, quarterly audits, penetration tests) with owner, ticket/reference, expiry, and review date.
 7. **Review and update baselines** quarterly or after significant environment changes.
+
+**Baseline method selection:**
+
+| Log Pattern | Preferred Baseline Method | Why |
+|-------------|---------------------------|-----|
+| Stable high-volume metric | Mean/stddev or percentile, after outlier review | Enough samples exist for basic statistics |
+| Sparse admin event | Rare-event rule, peer-group comparison, or ticket/change-window context | One event can be normal or suspicious depending on context |
+| Heavy-tailed operational bursts | Percentile, median absolute deviation, or trimmed baseline | Large benign bursts should not hide low-and-slow attacks |
+| Strong schedule pattern | Separate baselines by hour/day or maintenance window | One global baseline creates false positives and false negatives |
+| Entity-specific behavior | Per-user, per-host, per-source, or peer-group baseline | Global thresholds mask anomalies on low-volume entities |
 
 **Baseline metrics to establish:**
 
