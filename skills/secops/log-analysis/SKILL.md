@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -147,6 +147,33 @@ These Event IDs are the most security-relevant events in the Windows Security Ev
 | 9 | NewCredentials | Caller cloned token with new credentials (runas /netonly) | Lateral movement technique; always investigate |
 | 10 | RemoteInteractive | RDP logon | Expected for designated jump servers; suspicious on workstations or non-RDP servers |
 | 11 | CachedInteractive | Logon with cached domain credentials | Normal when DC is unreachable; suspicious if DC is available |
+
+#### Windows Authentication Field Evidence Gate
+
+Before classifying Windows authentication findings from Event ID 4624 or 4625, require a field-level decision rather than relying on the Event ID alone. Event IDs identify the record family; the decisive evidence comes from the logon type, failure codes, account context, source fields, and host role.
+
+Use this gate for password spray, brute force, lateral movement, RDP, service-account, scheduled-task, and account-lockout investigations:
+
+| Field | Applies To | Why It Matters | Triage Guidance |
+|-------|------------|----------------|-----------------|
+| Event ID | 4624, 4625 | Separates successful and failed authentication outcomes. | Do not assign severity from Event ID alone; continue through this matrix. |
+| LogonType | 4624, 4625 | Distinguishes console, network, batch, service, unlock, cleartext, runas /netonly, RDP, and cached logons. | Treat LogonType 9 (NewCredentials) and LogonType 10 (RemoteInteractive) as context-sensitive lateral movement signals, not automatic compromise. |
+| Status / SubStatus | 4625 | Explains why the logon failed. | Distinguish `0xC000006A` bad password, `0xC0000064` unknown user, `0xC0000234` locked account, `0xC0000071` expired password, `0xC0000072` disabled account, and `0xC000015B` missing logon right before labeling brute force. |
+| FailureReason | 4625 | Human-readable failure summary. | Use it to sanity-check Status/SubStatus, but prefer the codes when values conflict or are localized. |
+| AuthenticationPackage | 4624, 4625 | Shows Kerberos, NTLM, or Negotiate context. | NTLM for a privileged or sensitive account may be higher risk if Kerberos is expected; Kerberos failures may need 4771/4768 correlation. |
+| LogonProcess | 4624, 4625 | Identifies the trusted logon process path, such as User32, Advapi, or NtLmSsp. | Mismatch between process and expected workflow can separate service drift from interactive misuse. |
+| Source Network Address / WorkstationName | 4624, 4625 | Identifies where the attempt appears to originate. | Source Network Address is `-`, `::1`, or `127.0.0.1` indicates missing, local, or loopback context; mark as Needs More Context unless process, host role, and account context explain it. |
+| TargetUserName / TargetDomainName | 4624, 4625 | Separates local, domain, machine, and well-known principals. | Machine accounts ending in `$`, local accounts, service accounts, and privileged users need separate baselines. |
+| Account class | 4624, 4625 | Human, service, machine, break-glass, shared, and privileged accounts have different expected patterns. | A service account retry storm after password rotation is different from a domain admin spray or workstation RDP logon. |
+| Privileged membership | 4624, 4625, 4672 | Adds impact context for successful or repeated authentication. | Correlate 4624 with 4672 and group membership before escalating valid-account findings. |
+| Destination host role | 4624, 4625 | Same event has different meaning on DCs, file servers, jump hosts, workstations, and kiosks. | LogonType 3 is expected on file servers; LogonType 3 from an admin account to a workstation is higher risk. |
+
+**Decision rules:**
+
+- Classify as **Suspicious** only when the decisive fields conflict with known-good behavior, such as a privileged account using LogonType 3 or 10 from an unusual source, repeated `0xC000006A` failures across many users from one source, or LogonType 9 on a workstation without a documented administrative workflow.
+- Classify as **Benign / Expected** when the fields match documented behavior, such as known service-account LogonType 5 activity, scheduled-task LogonType 4 on an automation host, or approved RDP LogonType 10 on a jump server during an expected window.
+- Classify as **Needs More Context** when decisive fields are absent or ambiguous, including blank source fields, loopback addresses, unknown account class, missing host role, or Status/SubStatus values that indicate operational issues rather than credential guessing.
+- Correlate ambiguous 4624/4625 events with 4648, 4672, 4771, 4768, Sysmon process events, EDR telemetry, and change-management records before assigning P1/P2 severity.
 
 #### Process and Service Events
 
@@ -337,7 +364,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -376,6 +403,11 @@ Produce log analysis findings in this structure:
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
+
+### Windows Auth Field Evidence
+| Event ID | User / Domain | LogonType | Status / SubStatus | Auth Package | Source / Workstation | Account Class | Host Role | Assessment |
+|----------|---------------|-----------|--------------------|--------------|----------------------|---------------|-----------|------------|
+| [4624/4625] | [user/domain] | [type + meaning] | [codes or N/A] | [Kerberos/NTLM/Negotiate] | [IP/workstation/null/local] | [human/service/machine/privileged] | [DC/file server/jump host/workstation] | [Suspicious / Benign / Needs More Context] |
 
 ### Visibility Gaps
 [Log sources that were not available but would have provided relevant data]
@@ -447,6 +479,8 @@ The absence of logs can be as significant as their presence. If a server that no
 
 A single Event ID can have very different meanings depending on the context. Event ID 4624 (successful logon) with LogonType 3 (network) is routine on a file server but suspicious on a developer workstation receiving inbound network logons. Always consider the LogonType, source/destination, user, time of day, and host role when interpreting events.
 
+For Windows authentication events, also inspect Status/SubStatus, FailureReason, AuthenticationPackage, LogonProcess, source address, workstation, account class, privileged membership, and destination host role. Bare 4624/4625 counts should not be used as high-confidence evidence until the Windows authentication field evidence gate has a Suspicious, Benign, or Needs More Context assessment.
+
 ### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
@@ -471,10 +505,12 @@ This skill processes user-supplied content that may include raw log data, event 
 2. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
 3. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 4. **Windows Security Event Log Reference** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
-5. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
-6. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
-7. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
-8. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
-9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
-10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
-11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+5. **Windows Event ID 4624 -- An account was successfully logged on** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
+6. **Windows Event ID 4625 -- An account failed to log on** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625
+7. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
+8. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+9. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
+10. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
+11. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
+12. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
+13. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
