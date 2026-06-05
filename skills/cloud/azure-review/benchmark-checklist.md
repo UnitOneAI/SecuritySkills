@@ -675,6 +675,133 @@ resource "azurerm_linux_web_app" {
 
 ### CIS 9.5 -- Ensure that Register with Entra ID is enabled on App Service
 
+---
+
+## Supplemental Section -- Azure Container Apps and Workload Identity
+
+Evaluate Azure Container Apps and external workload identity federation evidence when `azurerm_container_app`, ARM/Bicep `Microsoft.App/containerApps`, managed identities, Key Vault references, or `azuread_application_federated_identity_credential` resources are present.
+
+### AZ-ACA-01 -- Avoid direct Container Apps secret values in production IaC
+
+Check Terraform:
+
+```hcl
+# Vulnerable for production
+resource "azurerm_container_app" "webhook" {
+  secret {
+    name  = "stripe-webhook-secret"
+    value = "whsec_plaintext_value"
+  }
+}
+```
+
+Prefer Key Vault-backed secret references for production:
+
+```hcl
+resource "azurerm_container_app" "api" {
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.runtime.id]
+  }
+
+  secret {
+    name                = "payment-api-key"
+    key_vault_secret_id = "${azurerm_key_vault.app.vault_uri}secrets/payment-api-key/0a1b2c3d4e5f"
+    identity            = azurerm_user_assigned_identity.runtime.id
+  }
+}
+```
+
+Also check ARM/Bicep `configuration.secrets[].value`. Mark direct values in non-production examples separately when evidence proves they are not live secrets.
+
+### AZ-ACA-02 -- Verify managed identity and Key Vault access scope
+
+For Key Vault-backed Container Apps secrets, verify:
+
+- `identity` block on the Container App.
+- Secret-level `identity` value matches the runtime identity.
+- Key Vault RBAC or access policy grants only required secret read permissions.
+- Scope is the specific vault or narrower, not subscription-wide broad access.
+- Purge protection, soft delete, and private endpoint expectations still follow Key Vault checks.
+
+**Fail signal:** Key Vault URI is present but no managed identity, no `Key Vault Secrets User`-equivalent role, or overly broad Key Vault/RBAC scope is evidenced.
+
+### AZ-ACA-03 -- Record secret reference type and version pinning
+
+Classify Container Apps secret use:
+
+| Field | Values |
+|---|---|
+| Secret source | Direct value / Key Vault reference / not evaluable |
+| Reference use | Environment variable / volume / scale rule / other |
+| Version handling | Pinned Key Vault version / latest version / direct value / not applicable |
+| Sensitivity | Production secret / non-production secret / placeholder / not evaluable |
+
+Flag missing version evidence as Medium when change control or reproducibility requires pinned secret versions. Do not fail latest-version references automatically when rotation policy intentionally uses latest.
+
+### AZ-ACA-04 -- Review Container Apps ingress exposure
+
+Check Terraform:
+
+```hcl
+resource "azurerm_container_app" "admin_api" {
+  ingress {
+    external_enabled           = true
+    target_port                = 8080
+    allow_insecure_connections = true
+  }
+}
+```
+
+Record:
+
+- `external_enabled`.
+- `allow_insecure_connections`.
+- Internal Container Apps environment or private endpoint evidence.
+- Client certificate mode where applicable.
+- Application-layer authentication and authorization evidence.
+- Traffic restrictions, allowed origins, upstream gateway, or WAF evidence where relevant.
+
+**Fail signal:** public or admin-oriented ingress is externally enabled without HTTPS-only behavior, auth evidence, private endpoint/internal environment, or compensating upstream controls.
+
+### AZ-WIF-01 -- Review federated identity credential precision
+
+Check Terraform:
+
+```hcl
+resource "azuread_application_federated_identity_credential" "github" {
+  application_id = azuread_application.deploy.id
+  issuer         = "https://token.actions.githubusercontent.com"
+  audiences      = ["api://AzureADTokenExchange"]
+  subject        = "repo:example-org/example-repo:*"
+}
+```
+
+Validate:
+
+- Issuer is expected for the CI/CD platform.
+- Audience is restricted to the intended token exchange.
+- Subject is constrained to repository plus branch, tag, pull request, or environment as appropriate.
+- Wildcards are justified and risk accepted.
+- The federated application or service principal Azure RBAC assignments are scoped to the deployment need.
+
+**Fail signal:** wildcard subject such as `repo:org/repo:*` or broad issuer/audience trust combines with subscription/resource-group Contributor, Owner, or broad Key Vault access.
+
+### AZ-WIF-02 -- Prefer scoped federation over long-lived deployment secrets
+
+Where workload identity federation is available and expected, record whether long-lived client secrets remain for the same deployment path.
+
+**Fail signal:** CI/CD retains a long-lived Entra application secret with broad Azure RBAC while OIDC federation is configured only partially or not at all.
+
+### Not Evaluable Guidance
+
+Mark Container Apps or workload identity checks `Not Evaluable` when:
+
+- Container Apps definitions are present but secret source, identity, or ingress settings are not exported.
+- Key Vault reference exists but role assignment/access policy evidence is missing.
+- External ingress is present but no auth, private endpoint, or upstream authorization evidence is available.
+- Federated identity credential exists but issuer, audience, subject, or Azure RBAC assignment evidence is missing.
+
 Check for identity configuration:
 
 ```hcl
