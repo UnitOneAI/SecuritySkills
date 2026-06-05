@@ -72,6 +72,7 @@ The HIPAA Security Rule (45 CFR Part 164, Subpart C) establishes national standa
 - Incident response and breach notification procedures
 - Access control configurations and user provisioning processes
 - Backup and disaster recovery documentation
+- MDM/UEM/RMM remote action policies, role assignments, and audit logs for devices that store or access ePHI
 - Workforce training records
 - Prior OCR audit findings or corrective action plans
 
@@ -140,6 +141,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Evidence to look for:
   - Risk analysis report with methodology documentation
   - Asset inventory tied to risk analysis scope
+  - Inventory of MDM/UEM/RMM control planes with authority to lock, retire, reset, or wipe ePHI endpoints
   - Threat and vulnerability identification per system
   - Risk ratings/scores with rationale
 - Common gaps:
@@ -211,6 +213,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Identify and respond to suspected or known security incidents
 - Mitigate harmful effects of known security incidents to the extent practicable
 - Document security incidents and their outcomes
+- For suspected destructive/wiper activity, verify procedures can immediately freeze MDM/UEM/RMM remote-wipe actions, preserve administrative audit logs, and require out-of-band approval before any bulk lock, retire, reset, or wipe command is resumed.
 
 #### 164.308(a)(7) — Contingency Plan (Standard)
 
@@ -312,6 +315,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain or use ePHI
 - Verify audit logging is enabled on all ePHI systems
 - Verify logs are reviewed and retained appropriately
+- Include MDM/UEM/RMM administrator actions in audit scope when those control planes can affect endpoints or mobile devices that store or access ePHI.
 
 #### 164.312(c)(1) — Integrity (Standard)
 
@@ -598,4 +602,4 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - HITECH Act, Section 13401-13411 — Security provisions and enforcement
 - H-ISAC (Health Information Sharing and Analysis Center) — https://h-isac.org/
 - CISA Healthcare and Public Health Sector Guidance — https://www.cisa.gov/topics/critical-infrastructure-security-and-resilience/critical-infrastructure-sectors/healthcare-and-public-health-sector
-- KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026) — https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+- KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026) — https://krebsonsecurity.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/

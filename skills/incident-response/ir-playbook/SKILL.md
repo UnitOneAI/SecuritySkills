@@ -62,6 +62,7 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
+- [ ] **Administrative control planes** -- Identity, MDM/UEM, EDR, RMM, and cloud consoles capable of pushing remote commands, wiping devices, retiring devices, deleting resources, or disabling services at scale.
 
 ---
 
@@ -240,6 +241,7 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 2. **Preemptively shut down unaffected systems** if propagation vector is unknown. A wiper that has not triggered is stopped by cold shutdown.
 3. **Verify backup integrity** -- Wipers target Volume Shadow Copies, backup agents, and NAS/SAN. Confirm offline/immutable backups exist before recovery planning.
 4. **Preserve one affected system** (powered off, disk intact) for forensics and attribution.
+5. **Freeze destructive control-plane actions** -- Check MDM/UEM, EDR, RMM, identity, and cloud consoles for pending wipe, retire, delete, quarantine, script, or remote-command jobs. Revoke compromised administrative sessions and require out-of-band approval before allowing bulk remote actions to continue.
 
 **Key differences from ransomware:**
 
@@ -251,6 +253,8 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 | **Attribution** | Lower priority (criminal) | Higher priority (often nation-state; FBI/CISA/ISAC engagement) |
 
 **Nation-state context:** State-sponsored actors (Iranian, Russian, North Korean) increasingly deploy wipers against healthcare and defense supply chains. The 2026 Stryker medtech wiper attack demonstrates ePHI custodians are active targets. IR teams must account for pre-positioned backdoors beyond the wiper payload, potential prior data exfiltration, and the need for FBI/CISA/H-ISAC notification.
+
+**MDM/UEM abuse context:** Some destructive incidents may use legitimate remote-management features rather than custom wiper malware. Treat device-management consoles such as Microsoft Intune as potential blast-radius multipliers: review pending device actions, recent administrator role activations, bulk wipe/retire/delete requests, and multiple-administrator approval status before assuming endpoint isolation alone is sufficient.
 
 #### Step 3.2: Eradication
 
@@ -391,6 +395,11 @@ and recommended immediate actions. Lead with the most critical fact.]
 |---|---|---|
 | [YYYY-MM-DD HH:MM] | [Event description] | [Log source / observation] |
 
+### Administrative Control Plane Review
+| Control Plane | Destructive Capability | Evidence Reviewed | Suspicious Actions | Containment Status |
+|---|---|---|---|---|
+| [MDM/UEM / EDR / RMM / Cloud / Identity] | [wipe / retire / delete / script / disable] | [logs, action queue, admin audit] | [none / list] | [frozen / revoked / monitoring] |
+
 ### Indicators of Compromise
 | Type | Value | First Seen | Confidence | ATT&CK Technique |
 |---|---|---|---|---|
@@ -496,4 +505,6 @@ This skill processes incident data that may include attacker-controlled content 
 10. **FIRST CSIRT Framework** -- https://www.first.org/education/csirt
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
-13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+13. **Microsoft Intune Remote Device Actions** -- https://learn.microsoft.com/en-us/intune/intune-service/remote-actions/
+14. **Microsoft Intune Remote Device Action: Wipe** -- https://learn.microsoft.com/intune/intune-service/remote-actions/devices-wipe
+15. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsecurity.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/

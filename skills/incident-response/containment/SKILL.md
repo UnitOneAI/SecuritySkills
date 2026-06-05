@@ -57,6 +57,7 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
+- [ ] **Administrative control planes** -- MDM/UEM, EDR, RMM, identity, and cloud consoles that can push commands, wipe devices, rotate keys, or disable services at scale.
 
 ---
 
@@ -187,6 +188,7 @@ Wiper and destructive malware require a distinct containment approach from ranso
 3. **Protect backup infrastructure** -- Verify offline/immutable/air-gapped backups are intact. Disconnect backup agents and NAS/SAN replication from the network. Wipers frequently target backup systems (Volume Shadow Copies, vCenter, backup catalogs).
 4. **Block propagation protocols** -- Emergency firewall rules to block SMB (445), WMI (135/5985/5986), RDP (3389), and PsExec/admin shares between all endpoints. Allow only from designated jump servers.
 5. **Disable compromised service accounts** -- Wiper deployment often uses compromised domain admin or service accounts. Disable all accounts showing anomalous activity; reset krbtgt if domain compromise is suspected.
+6. **Freeze destructive control-plane actions** -- Review MDM/UEM, EDR, RMM, and cloud-management consoles for pending wipe, retire, delete, quarantine, script, or remote-command jobs. Revoke compromised administrative sessions and require out-of-band approval before allowing bulk remote actions to continue.
 
 **ATT&CK techniques specific to wiper malware:**
 
@@ -198,6 +200,16 @@ Wiper and destructive malware require a distinct containment approach from ranso
 | T1561.002 -- Disk Wipe: Content | Overwrite or corrupt file content across volumes | Network segmentation to prevent spread; emergency shutdown of at-risk systems |
 | T1047 -- WMI | Remote execution of wiper payload via WMI | Block WMI ports (135, 5985, 5986); disable WinRM on endpoints |
 | T1484.001 -- Domain Policy Modification: GPO | Deploy wiper via Group Policy push | Disconnect domain controllers from network if GPO deployment confirmed |
+| T1098 -- Account Manipulation | Abuse administrative access to device-management or cloud control planes | Revoke sessions for MDM/UEM admins; suspend bulk wipe/retire/delete permissions; require multiple-administrator approval |
+
+**MDM/UEM destructive-action checks:**
+
+| Check | Method | Containment Action |
+|---|---|---|
+| Pending wipe/retire/delete jobs | Review Intune, Jamf, Workspace ONE, Kandji, or equivalent device-action queues | Pause/cancel unauthorized bulk actions before devices check in |
+| Administrative session abuse | Review sign-in logs, conditional access, and privileged role activation for device-management admins | Revoke sessions, reset credentials, and require re-authentication with phishing-resistant MFA |
+| Bulk remote action permissions | Review roles that can issue wipe, retire, delete, lock, script, or reset commands | Temporarily remove high-impact permissions or place them behind multiple-administrator approval |
+| BYOD exposure | Identify personally owned devices enrolled in MDM/UEM where wipe or retire actions may affect personal data | Coordinate legal/HR communications and prioritize selective containment over indiscriminate full wipe |
 
 **Key difference from ransomware containment:** Do not attempt to "monitor and observe" a wiper in progress. Every second of observation is data permanently destroyed. Aggressive, immediate containment is always the correct posture for confirmed wiper activity.
 
@@ -212,6 +224,7 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | C2 communication blocked | Monitor network traffic for C2 indicators | No outbound connections to known C2 IPs/domains |
 | Lateral movement blocked | Monitor authentication logs and network flows between segments | No unauthorized cross-segment authentication |
 | Compromised credentials revoked | Attempt authentication with known-compromised credentials | Authentication fails |
+| Destructive control-plane actions frozen | Review MDM/UEM, EDR, RMM, and cloud action queues | No unauthorized wipe/retire/delete/script actions remain pending |
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
@@ -375,4 +388,6 @@ This skill processes incident data including attacker-controlled indicators (IP 
 9. **MITRE ATT&CK -- Data Destruction (T1485)** -- https://attack.mitre.org/techniques/T1485/
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
-12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+12. **Microsoft Intune Remote Device Actions** -- https://learn.microsoft.com/en-us/intune/intune-service/remote-actions/
+13. **Microsoft Intune Remote Device Action: Wipe** -- https://learn.microsoft.com/intune/intune-service/remote-actions/devices-wipe
+14. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsecurity.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
