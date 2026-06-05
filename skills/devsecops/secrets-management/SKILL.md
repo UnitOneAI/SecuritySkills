@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -279,9 +279,11 @@ Secrets removed from current files may still exist in git history. Verify:
 
 - Git history scanning is part of the detection tool configuration (Gitleaks `--log-opts=all`, TruffleHog `--since-commit` or full scan).
 - If a secret was committed historically and rotated, the rotation is confirmed (not just file deletion).
+- After a live secret exposure, post-rotation invalidation checks confirm the token was not used to create persistent secondary access, such as new SSH keys, deploy keys, OAuth apps, cloud access keys, webhooks, service-account keys, personal access tokens, or backdoor users.
+- Provider audit logs are reviewed from first known exposure through revocation, and suspicious sessions are terminated or forced through re-authentication.
 - BFG Repo Cleaner or `git filter-repo` has been used to purge high-sensitivity secrets from history when warranted.
 
-**Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is **High**.
+**Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is **High**. Rotating a leaked secret without checking for persistent secondary access is **High**.
 
 ---
 
@@ -296,9 +298,9 @@ Verify that a centralized secrets manager is deployed:
 | Platform | What to Verify |
 |----------|---------------|
 | **HashiCorp Vault** | Seal/unseal configuration, auth methods, policy definitions, audit logging enabled |
-| **AWS Secrets Manager** | Automatic rotation Lambda configured, resource policies, KMS key for encryption |
-| **GCP Secret Manager** | IAM bindings (least privilege), rotation schedules, version management |
-| **Azure Key Vault** | Access policies or RBAC, soft-delete enabled, purge protection, diagnostics logging |
+| **AWS Secrets Manager** | Automatic rotation Lambda configured, resource policies, KMS key for encryption, CloudTrail access events |
+| **GCP Secret Manager** | IAM bindings (least privilege), rotation schedules, version management, Cloud Audit Logs |
+| **Azure Key Vault** | Access policies or RBAC, soft-delete enabled, purge protection, diagnostics logging, HSM tier where needed |
 
 **Patterns to check in IaC:**
 
@@ -322,6 +324,22 @@ resource "vault_audit" "syslog" {
 
 ---
 
+#### 4.1.1 Protection Level and Regulated-Data Overlap
+
+Secret stores are often used for adjacent sensitive data, such as PII, PAN fragments, medical identifiers, or regulated customer attributes. Classify those items separately from authentication secrets and verify that storage, audit, masking, retention, and encryption controls match the data class.
+
+**What to verify:**
+
+- High-sensitivity keys are generated and protected by KMS/HSM-backed material where required by risk, regulatory scope, or NIST SP 800-57 Section 6.1 key-generation expectations.
+- Cloud KMS keys use hardware-backed or HSM protection levels for crown-jewel signing keys, root keys, tokenization keys, and envelope-encryption key-encryption keys.
+- Secrets Manager, Vault, Key Vault, and Secret Manager access logs capture subject, secret path/name, action, time, source workload, and result without logging secret values.
+- PII or regulated data stored in a secret manager has field-level encryption, explicit retention rules, least-privilege access, and masking/redaction in downstream observability tools.
+- Secret names, tags, and metadata do not reveal PII or confidential values.
+
+**Finding classification:** Software-only protection for high-sensitivity root or signing keys is **High**. PII or regulated data stored without classification, retention, masking, or audit evidence is **High**. Secret metadata that exposes PII is **Medium**.
+
+---
+
 #### 4.2 Rotation Automation (NIST SP 800-57, Section 5.3 -- Cryptoperiods)
 
 NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key type. For authentication secrets:
@@ -342,6 +360,22 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 - Failed rotations trigger alerts.
 
 **Finding classification:** No rotation for secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**.
+
+---
+
+#### 4.3 Secret Masking in Logs and Observability
+
+Secrets can leak after vault retrieval if applications log raw request bodies, response payloads, exception context, environment dumps, trace attributes, or debug configuration. Verify that secret values and regulated adjacent data are masked before they enter logs, traces, metrics, session replay, or error-reporting systems.
+
+**What to verify:**
+
+- Logging middleware redacts keys matching `password`, `token`, `secret`, `authorization`, `api_key`, `private_key`, and provider-specific credential names before emission.
+- Error handlers do not include raw request/response bodies or environment variables in production logs.
+- Trace/span attributes and metric labels do not include secret values, bearer tokens, session cookies, or PII-bearing identifiers.
+- CI logs mask secrets passed through environment variables, command arguments, and failed test output.
+- Log platforms have retention, access control, and deletion workflows appropriate for any sensitive value that was already ingested.
+
+**Finding classification:** Application or CI logs containing live secrets are **Critical**. Missing redaction for secret-adjacent fields in production observability is **High**. Weak retention/access controls for sensitive logs are **Medium**.
 
 ---
 
@@ -428,11 +462,20 @@ spec:
 
 ### Secrets Inventory (by type, NOT values)
 
-| Secret Type | Storage Method | Rotation Period | Automated | Last Rotated |
-|-------------|---------------|-----------------|-----------|-------------|
-| DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
-| API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
-| TLS cert | cert-manager | 60 days | Yes | Auto |
+| Secret Type | Storage Method | Protection Level | Rotation Period | Automated | Last Rotated |
+|-------------|----------------|------------------|-----------------|-----------|--------------|
+| DB credentials | Vault dynamic | Vault encrypted storage | On-demand | Yes | N/A (dynamic) |
+| API key (Stripe) | AWS SM | KMS software key | 90 days | Yes | 2024-01-15 |
+| Signing root key | Cloud KMS | HSM-backed key | 90 days | Yes | Auto |
+| TLS cert | cert-manager | Kubernetes Secret + KMS envelope | 60 days | Yes | Auto |
+
+### Observability and Masking Controls
+
+| Surface | Redaction Active | Sensitive Fields Covered | Retention | Notes |
+|---------|------------------|--------------------------|-----------|-------|
+| Application logs | Yes/No | token/password/authorization/private_key | <period> | <gaps> |
+| CI logs | Yes/No | env vars / command args / test output | <period> | <gaps> |
+| Traces and metrics | Yes/No | span attributes / labels / IDs | <period> | <gaps> |
 
 ### Findings
 
@@ -502,6 +545,12 @@ spec:
 
 7. **Trusting a baseline because it exists.** A `.secrets.baseline` can permanently hide a real secret if a suppression is stale, poisoned, or never audited. Require explicit audit evidence, not just baseline presence.
 
+8. **Rotating without invalidating secondary access.** A leaked token may have been used to add a deploy key, OAuth app, webhook, cloud access key, or service account before rotation. Review provider audit logs and revoke secondary persistence, not only the original secret.
+
+9. **Forgetting that logs become a second secret store.** Even correctly vaulted secrets can leak through request logging, exception dumps, trace attributes, CI output, or session replay. Treat observability systems as sensitive data stores and require masking before ingestion.
+
+10. **Using a secret manager as an unclassified PII vault.** Storing regulated identifiers in a secret manager does not automatically satisfy data-protection requirements. Confirm field-level encryption, retention, access logging, masking, and metadata hygiene.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -532,6 +581,7 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.3** -- Add HSM/KMS protection-level gates, regulated-data overlap checks, post-incident secondary-access invalidation, and secret masking controls for logs/observability.
 - **1.0.2** -- Add public-by-design key classification, modern provider prefixes, Kubernetes/base64 decode-and-rescan guidance, non-secret high-entropy filters, and detect-secrets baseline audit checks.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
