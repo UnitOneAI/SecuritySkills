@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -73,7 +73,45 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 
 ---
 
+## OWASP Agentic Source Currency Gate
+
+Before assigning OWASP Agentic framework IDs in a report, record the source register below. Do not cite the legacy `AG01`-`AG10` labels in this skill as current official OWASP IDs unless they have been mapped to a source-verified `ASI01`-`ASI10` category.
+
+| Source Field | Required Evidence |
+|---|---|
+| Official source URL | `https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/` |
+| Official resource title | `OWASP Top 10 for Agentic Applications for 2026` |
+| Publication date shown | `December 9, 2025` |
+| Downloaded document title | `OWASP Top 10 For Agentic Applications 2026` |
+| Source version | `Version 2026` |
+| Current OWASP ID scheme | `ASI01` through `ASI10` |
+| Date checked | Record the assessment date, for example `2026-06-05` |
+| Source status | `verified-current`, `verified-legacy`, `unmapped`, or `unverified` |
+
+If the source status is not `verified-current`, report `AG01`-`AG10` only as internal review areas and do not present them as current OWASP Agentic Top 10 identifiers. For current OWASP reporting, include `Primary ASI Category` and `Related ASI Categories` fields in each finding.
+
+### Current OWASP ASI Categories
+
+| ASI ID | Official Category Title | Mapping Guidance for This Skill |
+|---|---|---|
+| ASI01 | Agent Goal Hijack | Map when attacker-controlled instructions, content, tools, or agent messages redirect goals or task selection. |
+| ASI02 | Tool Misuse and Exploitation | Map when the agent misuses legitimate tools, unsafe parameters, tool chains, or tool outputs. |
+| ASI03 | Identity and Privilege Abuse | Map when agent identity, authorization, credentials, or privilege boundaries are abused. |
+| ASI04 | Agentic Supply Chain Vulnerabilities | Map when models, tools, plugins, prompts, dependencies, or registries introduce agentic supply-chain risk. |
+| ASI05 | Unexpected Code Execution (RCE) | Map when agent workflows can trigger unexpected code, command, script, or plugin execution. |
+| ASI06 | Memory & Context Poisoning | Map when persistent memory, retrieved context, scratchpads, or long-term state can be poisoned. |
+| ASI07 | Insecure Inter-Agent Communication | Map when agent-to-agent messages, delegation, shared state, or trust assumptions are unauthenticated or unsafe. |
+| ASI08 | Cascading Failures | Map when agent errors, hallucinations, retries, or multi-step chains propagate across systems. |
+| ASI09 | Human-Agent Trust Exploitation | Map when human approval, trust, delegation, or oversight can be manipulated or bypassed. |
+| ASI10 | Rogue Agents | Map when agents behave autonomously outside intended control, governance, identity, or monitoring boundaries. |
+
+The `AG01`-`AG10` headings below remain useful as internal review areas, but they are not a one-to-one replacement for the current ASI taxonomy. A broad finding can have one primary ASI category and multiple related ASI categories.
+
+---
+
 ## The 10 Threat Categories
+
+The following `AG01`-`AG10` headings are legacy/internal review areas for this skill. Use them to structure analysis, then map findings to source-verified `ASI01`-`ASI10` categories through the source currency gate above before producing an OWASP-labeled report.
 
 ### AG01 — Excessive Agency and Permissions
 
@@ -436,7 +474,7 @@ For practical validation of OWASP Agentic AI risks against concrete exploits, us
 
 ### Step 2 — Threat Assessment
 
-For each of the 10 categories, assess the system and assign a risk rating:
+For each legacy `AG01`-`AG10` review area, assess the system and assign a risk rating. When producing an OWASP-labeled report, also assign a source-verified `Primary ASI Category` and any `Related ASI Categories` from the source currency gate above.
 
 | Rating | Criteria |
 |---|---|
@@ -451,7 +489,7 @@ For each of the 10 categories, assess the system and assign a risk rating:
 
 For each finding, document:
 
-1. The threat category (AG01-AG10).
+1. The internal review area (`AG01`-`AG10`) and the source-verified primary ASI category, if an official OWASP mapping is asserted.
 2. The specific vulnerability or gap identified.
 3. The evidence (file path, code snippet, configuration).
 4. The risk rating with justification.
@@ -483,6 +521,8 @@ Structure the final report as follows:
 ## Executive Summary
 - System under review: [name]
 - Assessment date: [date]
+- OWASP Agentic source: [official source URL, resource title, source version, publication date]
+- OWASP Agentic source status: [verified-current / verified-legacy / unmapped / unverified]
 - Overall risk rating: [CRITICAL / HIGH / MEDIUM / LOW]
 - Total findings: [count by severity]
 - Key recommendation: [one sentence]
@@ -498,6 +538,9 @@ Structure the final report as follows:
 ## Findings by Threat Category
 
 ### AG01 — Excessive Agency and Permissions
+- **Primary ASI Category:** [ASIxx -- title, or `unmapped`]
+- **Related ASI Categories:** [ASIxx -- title, ...]
+- **OWASP source status:** [verified-current / verified-legacy / unmapped / unverified]
 - **Rating:** [rating]
 - **Finding:** [description]
 - **Evidence:** [file path, code reference]
@@ -509,10 +552,10 @@ Structure the final report as follows:
 
 ## Risk Summary Matrix
 
-| Category | Rating | Key Finding | Priority |
-|---|---|---|---|
-| AG01 | [rating] | [one-line summary] | [priority] |
-| ... | ... | ... | ... |
+| Internal Review Area | Primary ASI | Rating | Key Finding | Priority |
+|---|---|---|---|---|
+| AG01 | [ASIxx or unmapped] | [rating] | [one-line summary] | [priority] |
+| ... | ... | ... | ... | ... |
 
 ## Recommendations
 1. [Highest priority recommendation]
@@ -520,9 +563,9 @@ Structure the final report as follows:
 3. [Continue as needed]
 
 ## Framework Compliance Mapping
-| Finding | OWASP Agentic AI | OWASP LLM Top 10 | MITRE ATLAS | NIST AI RMF |
-|---|---|---|---|---|
-| [finding] | [category] | [category] | [technique] | [subcategory] |
+| Finding | OWASP Agentic Source | Primary ASI | Related ASI Categories | OWASP LLM Top 10 | MITRE ATLAS | NIST AI RMF |
+|---|---|---|---|---|---|---|
+| [finding] | [source URL/version/date checked] | [ASIxx -- title] | [ASIxx -- title, ...] | [category] | [technique] | [subcategory] |
 
 ## Appendix
 - Files reviewed: [list]
@@ -534,25 +577,38 @@ Structure the final report as follows:
 
 ## Framework Reference
 
-This skill maps findings to three established frameworks:
+This skill maps findings to established AI and application security frameworks:
 
-### OWASP Agentic AI Threat Categories (via GenAI Security Project)
+### OWASP Agentic Top 10 Source Register
 
-The threat categories (AG01-AG10) used in this skill are based on the agentic AI threat research published through the OWASP GenAI Security Project working group. The categories represent the primary risk areas identified for autonomous AI agent deployments.
+The current official source checked for this skill is the OWASP GenAI Security Project resource `OWASP Top 10 for Agentic Applications for 2026`, published December 9, 2025, with the downloadable document title `OWASP Top 10 For Agentic Applications 2026`, source version `Version 2026`, and ID scheme `ASI01` through `ASI10`. Source checked: 2026-06-05.
 
-**Important:** Readers should verify specific control IDs and category numbering against the latest published version at [genai.owasp.org](https://genai.owasp.org). The OWASP GenAI project actively maintains and revises its guidance. The category names and scopes used here reflect the documented threat areas but may be renumbered or reorganized in subsequent releases.
+**Important:** The legacy `AG01`-`AG10` headings used in this skill are internal review areas, not current official OWASP Agentic Top 10 IDs. Before a report claims OWASP Agentic alignment, verify the official source URL, version, publication date, ID scheme, and date checked. If a finding cannot be mapped to the current ASI taxonomy, mark it `unmapped` rather than forcing a legacy label into an official category.
+
+| ASI ID | Official Category Title |
+|---|---|
+| ASI01 | Agent Goal Hijack |
+| ASI02 | Tool Misuse and Exploitation |
+| ASI03 | Identity and Privilege Abuse |
+| ASI04 | Agentic Supply Chain Vulnerabilities |
+| ASI05 | Unexpected Code Execution (RCE) |
+| ASI06 | Memory & Context Poisoning |
+| ASI07 | Insecure Inter-Agent Communication |
+| ASI08 | Cascading Failures |
+| ASI09 | Human-Agent Trust Exploitation |
+| ASI10 | Rogue Agents |
 
 ### OWASP Top 10 for LLM Applications (2025)
 
 The OWASP LLM Top 10 covers risks to LLM-powered applications broadly. Several categories overlap with agentic risks:
 
-| LLM Top 10 Category | Relevant Agentic Categories |
-|---|---|
-| LLM01 — Prompt Injection | AG02, AG03, AG04, AG05, AG06 |
-| LLM02 — Sensitive Information Disclosure | AG04, AG06, AG10 |
-| LLM06 — Excessive Agency | AG01, AG02, AG03, AG05, AG08 |
-| LLM09 — Misinformation | AG07 |
-| LLM10 — Unbounded Consumption | AG09 |
+| LLM Top 10 Category | Relevant Legacy Review Areas | Related ASI Categories |
+|---|---|---|
+| LLM01 — Prompt Injection | AG02, AG03, AG04, AG05, AG06 | ASI01, ASI02, ASI06, ASI07 |
+| LLM02 — Sensitive Information Disclosure | AG04, AG06, AG10 | ASI03, ASI06, ASI10 |
+| LLM06 — Excessive Agency | AG01, AG02, AG03, AG05, AG08 | ASI02, ASI03, ASI09 |
+| LLM09 — Misinformation | AG07 | ASI08 |
+| LLM10 — Unbounded Consumption | AG09 | ASI08 |
 
 ### MITRE ATLAS
 
@@ -606,14 +662,15 @@ This skill is designed to be resilient against prompt injection. The following r
 
 ## References
 
-1. OWASP GenAI Security Project — [genai.owasp.org](https://genai.owasp.org)
-2. OWASP Top 10 for LLM Applications 2025 — [owasp.org/www-project-top-10-for-large-language-model-applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
-3. MITRE ATLAS — [atlas.mitre.org](https://atlas.mitre.org)
-4. NIST AI Risk Management Framework 1.0 — [nist.gov/aiframework](https://www.nist.gov/aiframework)
-5. Rehberger, J. "Prompt Injection: Exfiltrating ChatGPT/Bing Chat Data via Images" (2023) — [embracethered.com](https://embracethered.com)
-6. Greshake, K. et al. "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection" (2023) — arXiv:2302.12173
-7. Qi, X. et al. "Fine-tuning Aligned Language Models Compromises Safety, Even When Users Do Not Intend To" (2023) — arXiv:2310.03693
-8. OWASP Application Security Verification Standard (ASVS) — [owasp.org/www-project-application-security-verification-standard](https://owasp.org/www-project-application-security-verification-standard/)
-9. LangChain Arbitrary Code Execution — CVE-2023-29374
-10. NIST SP 800-53 Rev. 5, Security and Privacy Controls — [nist.gov](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)
-11. fabraix/playground — Open-source AI agent red-team exploit library with PoCs for OWASP Agentic AI Top 10 risks — https://github.com/fabraix/playground
+1. OWASP Top 10 for Agentic Applications for 2026 -- [genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
+2. OWASP GenAI Security Project -- [genai.owasp.org](https://genai.owasp.org)
+3. OWASP Top 10 for LLM Applications 2025 — [owasp.org/www-project-top-10-for-large-language-model-applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+4. MITRE ATLAS — [atlas.mitre.org](https://atlas.mitre.org)
+5. NIST AI Risk Management Framework 1.0 — [nist.gov/aiframework](https://www.nist.gov/aiframework)
+6. Rehberger, J. "Prompt Injection: Exfiltrating ChatGPT/Bing Chat Data via Images" (2023) — [embracethered.com](https://embracethered.com)
+7. Greshake, K. et al. "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection" (2023) — arXiv:2302.12173
+8. Qi, X. et al. "Fine-tuning Aligned Language Models Compromises Safety, Even When Users Do Not Intend To" (2023) — arXiv:2310.03693
+9. OWASP Application Security Verification Standard (ASVS) — [owasp.org/www-project-application-security-verification-standard](https://owasp.org/www-project-application-security-verification-standard/)
+10. LangChain Arbitrary Code Execution — CVE-2023-29374
+11. NIST SP 800-53 Rev. 5, Security and Privacy Controls — [nist.gov](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)
+12. fabraix/playground — Open-source AI agent red-team exploit library with PoCs for OWASP Agentic AI Top 10 risks — https://github.com/fabraix/playground
