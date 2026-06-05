@@ -1,0 +1,28 @@
+// Vulnerable calibration: impossible-travel logic alerts on raw GeoIP movement only.
+// The rule has no trusted egress, ASN/provider, named-location, or device/session gate.
+let travel_speed_kmh = 900;
+let min_distance_km = 500;
+SigninLogs
+| where ResultType == 0
+| extend
+    Latitude = todouble(LocationDetails.geoCoordinates.latitude),
+    Longitude = todouble(LocationDetails.geoCoordinates.longitude),
+    City = tostring(LocationDetails.city),
+    Country = tostring(LocationDetails.countryOrRegion)
+| sort by UserPrincipalName asc, TimeGenerated asc
+| serialize
+| extend
+    PrevLatitude = prev(Latitude, 1),
+    PrevLongitude = prev(Longitude, 1),
+    PrevTime = prev(TimeGenerated, 1),
+    PrevUser = prev(UserPrincipalName, 1)
+| where UserPrincipalName == PrevUser
+| extend TimeDiffHours = datetime_diff('minute', TimeGenerated, PrevTime) / 60.0
+| extend DistanceKm = 2 * 6371 * asin(sqrt(
+    sin(radians((Latitude - PrevLatitude) / 2)) * sin(radians((Latitude - PrevLatitude) / 2)) +
+    cos(radians(PrevLatitude)) * cos(radians(Latitude)) *
+    sin(radians((Longitude - PrevLongitude) / 2)) * sin(radians((Longitude - PrevLongitude) / 2))
+))
+| where DistanceKm >= min_distance_km
+| extend RequiredSpeedKmh = iff(TimeDiffHours > 0, DistanceKm / TimeDiffHours, real(99999))
+| where RequiredSpeedKmh > travel_speed_kmh

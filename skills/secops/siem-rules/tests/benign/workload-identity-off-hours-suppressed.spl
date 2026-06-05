@@ -1,0 +1,16 @@
+`comment("Benign calibration: workload identities are split from human privileged users")`
+index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624
+    (TargetUserName="admin*" OR TargetUserName="break-glass*" OR TargetUserName="emergency*" OR TargetUserName="svc-*" OR TargetUserName="sa-*")
+| lookup identity_context identity as TargetUserName OUTPUT identity_type, owner, business_hours_exempt
+| eval inferred_identity_type = case(
+    match(TargetUserName, "^(svc-|sa-)"), "workload_identity",
+    match(TargetUserName, "^(admin|break-glass|emergency)"), "human_privileged",
+    true(), "unknown")
+| eval effective_identity_type = coalesce(identity_type, inferred_identity_type)
+| where effective_identity_type IN ("human_privileged", "break_glass")
+| where isnull(business_hours_exempt) OR business_hours_exempt!="true"
+| eval hour = strftime(_time, "%H")
+| eval day_of_week = strftime(_time, "%A")
+| where (hour < 7 OR hour >= 19)
+    OR (day_of_week="Saturday" OR day_of_week="Sunday")
+| stats count as logon_count by TargetUserName, effective_identity_type, owner, LogonType

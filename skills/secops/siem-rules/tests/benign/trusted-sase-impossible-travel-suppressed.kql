@@ -1,0 +1,31 @@
+// Benign calibration: corporate SASE egress movement is suppressed before alerting.
+// TEST-NET IPs are placeholders for Sentinel named locations or an approved egress watchlist.
+let TrustedEgress = datatable(IPAddress:string, TrustSource:string, TrustReason:string)
+[
+    "198.51.100.10", "sentinel-named-location", "corporate SASE egress",
+    "203.0.113.20", "sentinel-named-location", "corporate SASE egress"
+];
+let SuccessfulSignins = SigninLogs
+| where ResultType == 0
+| lookup kind=leftouter TrustedEgress on IPAddress
+| extend IsTrustedEgress = isnotempty(TrustSource)
+| where IsTrustedEgress == false
+| extend
+    Latitude = todouble(LocationDetails.geoCoordinates.latitude),
+    Longitude = todouble(LocationDetails.geoCoordinates.longitude),
+    DeviceId = tostring(DeviceDetail.deviceId),
+    SessionContext = strcat(AppDisplayName, "|", ConditionalAccessStatus);
+SuccessfulSignins
+| sort by UserPrincipalName asc, TimeGenerated asc
+| serialize
+| extend
+    PrevLatitude = prev(Latitude, 1),
+    PrevLongitude = prev(Longitude, 1),
+    PrevDeviceId = prev(DeviceId, 1),
+    PrevSessionContext = prev(SessionContext, 1),
+    PrevUser = prev(UserPrincipalName, 1)
+| where UserPrincipalName == PrevUser
+| extend SameManagedContext = isnotempty(DeviceId)
+    and DeviceId == PrevDeviceId
+    and SessionContext == PrevSessionContext
+| where SameManagedContext == false
