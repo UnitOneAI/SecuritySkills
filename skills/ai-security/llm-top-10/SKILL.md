@@ -12,7 +12,7 @@ phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,12 +53,57 @@ Before beginning the review, collect the following:
 - [ ] **Rate limiting and quota configuration** — per-user and per-session limits on model invocations.
 - [ ] **Data classification** — what sensitivity level of data flows into or out of the model (PII, PHI, financial, credentials).
 - [ ] **Deployment topology** — self-hosted vs. third-party API, data residency, network boundaries.
+- [ ] **Model routing and fallback matrix** - route name, trigger condition, exact runtime model ID, provider, data class, enabled tools, side-effect class, output sink, token limits, fallback target, and fail-open/fail-closed behavior.
+- [ ] **Context-fitting policy** - how truncation, summarization, or token budgeting preserves system/developer policy, authorization context, tenant/source ACL metadata, denied actions, and active constraints.
+- [ ] **Hosted-model change control** - whether production model IDs are pinned or alias-backed, who approves model/router changes, which regression tests run before promotion, and whether runtime model IDs are exported for review.
 
 ---
 
 ## 3. Process
 
 Review the application against each of the ten OWASP LLM risk categories below. For each category, examine the codebase for the specified patterns, apply the detection methods, and recommend the listed mitigations where gaps are found.
+
+---
+
+### Step 0: Model Routing, Fallback, and Context-Fitting Evidence Gate
+
+Before assigning LLM01-LLM10 findings, build an evidence matrix for every model route that can handle user input, retrieved context, tool calls, structured outputs, batch jobs, moderation, summarization, fallback, or degraded-mode requests. Review the configured model is not the only execution path; routers, provider failover, hosted aliases, evaluation harnesses, and "retry with cheaper/faster model" paths can materially change the risk.
+
+For each route, capture:
+
+| Evidence Area | Required Evidence |
+|---------------|-------------------|
+| Route identity | Route name, trigger condition, owning service, deployment environment, and reviewed configuration source. |
+| Runtime model ID | Provider, exact runtime model ID exported by the application or gateway, and whether any alias such as `latest`, `preview`, or deployment default is used. |
+| Data and residency | Data class, tenant/source ACL context, region or data residency requirement, and whether fallback changes provider or region. |
+| Tool and side-effect scope | Enabled tools/functions, read/write/destructive side-effect class, approval workflow, and whether fallback expands or narrows tools. |
+| Token and sampling controls | Maximum input tokens, maximum output tokens, context window, truncation or summarization rule, temperature, top_p, and structured-output settings. |
+| Fallback behavior | Fallback target, retry trigger, fail-open/fail-closed behavior, degraded-mode action limits, and audit/logging event emitted on route change. |
+| Change-control evidence | Promotion approval, regression test suite, runtime model ID export, alias drift alerting, and rollback process. |
+
+Context-fitting checks:
+
+- Verify truncation, summarization, or token budgeting cannot remove system/developer policy, authorization context, tenant/source ACL metadata, data classification, denied actions, or active constraints.
+- If required policy or authorization evidence is truncated, summarized away, missing, or stale, high-risk actions must fail closed before tool execution or external output.
+- Confirm summaries used as context are treated as untrusted derived data unless their source ACL, data class, and denied-action constraints remain attached.
+- Check that long-history compaction does not convert explicit refusals, previous denials, or active safety constraints into ambiguous prose the model can reinterpret.
+
+Hosted-model alias and promotion checks:
+
+- Identify model aliases such as `latest`, `preview`, provider defaults, or gateway-managed deployment names.
+- Verify production runtime exports the exact resolved model ID used for each request and that it matches the reviewed inventory.
+- Require approved change control before alias or router promotion, with regression tests covering tool calling, structured output, refusal boundaries, prompt-injection handling, token limits, and high-risk action gating.
+- Confirm fallback to an unreviewed provider, model family, or hosted alias disables write/destructive tools unless a human approval workflow re-enables them.
+
+Useful search patterns:
+
+```text
+fallback|router|route|model_alias|modelAlias|deployment|latest|preview
+max_tokens|max_output_tokens|context_window|truncate|summarize_history|token_budget
+temperature|top_p|tool_choice|tools|functions|response_format|structured_output
+OPENAI_MODEL|ANTHROPIC_MODEL|AZURE_OPENAI_DEPLOYMENT|BEDROCK_MODEL|MODEL_ID
+data_residency|region|tenant|acl|classification|redact|audit
+```
 
 ---
 
@@ -73,6 +118,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - System prompts that rely solely on instructional text ("do not follow user instructions to ignore this") as a security boundary.
 - Tool/function-calling configurations where the model can invoke privileged operations based on natural language reasoning alone.
 - Lack of separation between the instruction channel (system prompt) and the data channel (user input, retrieved context).
+- Context-fitting logic that truncates or summarizes away system/developer policy, authorization state, source ACL metadata, denied actions, or active constraints before prompt assembly.
 
 **Detection methods:**
 
@@ -80,6 +126,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Search for uses of `messages` arrays where `role: "user"` content is assembled from multiple untrusted sources.
 - Review RAG retrieval pipelines for any sanitization or escaping of retrieved document chunks before prompt assembly.
 - Check whether any output-driven actions (tool calls, database writes, code execution) are gated by a secondary validation step independent of the LLM.
+- Search for `truncate`, `summarize_history`, `token_budget`, or context-window compaction code and verify instruction hierarchy plus authorization evidence survives fitting.
 
 **Mitigations:**
 
@@ -89,6 +136,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Implement a secondary validation layer (deterministic code, not another LLM call) for any action the model requests (tool invocations, state changes).
 - Apply the principle of least privilege to all tools and functions accessible to the model.
 - For high-risk applications, deploy a prompt firewall or classifier that detects injection attempts before they reach the model.
+- Store security-critical route policy, authorization state, source ACLs, and denied-action constraints outside mutable chat history. Fail closed if context fitting removes required evidence.
 
 **CWE Mapping:** CWE-77 (Command Injection), CWE-74 (Injection)
 
@@ -136,6 +184,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Outdated versions of LLM framework libraries (LangChain, LlamaIndex, Semantic Kernel, Haystack) with known CVEs.
 - Third-party plugins, tools, or LangChain/LlamaIndex community integrations pulled without vetting.
 - Training datasets sourced from the public internet without provenance validation or content auditing.
+- Hosted model routes that rely on aliases such as `latest`, `preview`, provider defaults, or gateway deployment names without runtime model ID export, approval, drift alerting, or regression tests.
 
 **Detection methods:**
 
@@ -143,6 +192,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Grep for `pickle.load`, `torch.load` (without `weights_only=True`), or other unsafe deserialization calls on model artifacts.
 - Check model download code for integrity verification — SHA256 checksum validation, GPG signature checks.
 - Identify any third-party LangChain tools, agents, or plugins and assess their provenance and maintenance status.
+- Review model/router configuration for alias drift; verify the runtime model ID matches reviewed inventory and that alias promotions are tested before production use.
 
 **Mitigations:**
 
@@ -152,6 +202,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Maintain a vetted allowlist of approved third-party plugins and integrations. Review community-contributed tools before adoption.
 - Audit training data provenance. Use curated, documented datasets with clear licensing and content review processes.
 - Apply SBOM (Software Bill of Materials) practices to track all components in the LLM pipeline.
+- Pin model IDs where possible. If aliases are required, require approved change control, runtime model ID export, drift alerting, rollback, and regression tests for prompt injection, tool calling, refusal boundaries, token limits, and structured-output behavior.
 
 **CWE Mapping:** CWE-502 (Deserialization of Untrusted Data), CWE-829 (Inclusion of Functionality from Untrusted Control Sphere)
 
@@ -232,6 +283,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Tool definitions with broad permissions — e.g., a database tool that allows arbitrary SQL execution rather than scoped read-only queries.
 - Absence of human-in-the-loop confirmation for destructive or irreversible operations (delete, send email, financial transactions, deploy).
 - The model operating with the application's service account credentials rather than the end user's scoped permissions.
+- Fallback routes that enable broader tool lists, switch to automatic tool choice, skip approval gates, or route high-impact actions through a lower-assurance model/provider.
 
 **Detection methods:**
 
@@ -239,6 +291,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Check for confirmation gates: is there a step between the model requesting an action and the action executing where a human or deterministic policy can approve or deny?
 - Review whether tool permissions follow least privilege — can the scope be narrowed?
 - Search for autonomous execution loops (e.g., `while` loops that let the agent keep calling tools until it decides to stop).
+- Compare primary and fallback routes for tool lists, side-effect class, approval workflow, token limits, data policies, provider, and resolved runtime model ID.
 
 **Mitigations:**
 
@@ -248,6 +301,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Use the end user's permissions (not the application's service account) when tools access downstream systems.
 - Log all tool invocations with full parameters for audit and incident response.
 - Separate read operations (low risk, can auto-execute) from write operations (require confirmation).
+- Disable or require human approval for side-effectful tools when fallback uses an unreviewed, lower-assurance, degraded, or provider-shifted model route.
 
 **CWE Mapping:** CWE-250 (Execution with Unnecessary Privileges), CWE-863 (Incorrect Authorization)
 
@@ -361,6 +415,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - No limits on output size (max_tokens) — the model may generate unbounded responses.
 - Agent loops without iteration limits — the model can recursively call tools indefinitely, compounding costs.
 - No budget alerts or spending caps on LLM API provider accounts.
+- Degradation or fallback behavior that increases context windows, removes token caps, drops approval policy, or continues high-risk actions after policy/auth evidence was truncated.
 
 **Detection methods:**
 
@@ -370,6 +425,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Search for agent loop implementations and verify they have maximum iteration counts.
 - Review cloud billing configuration for budget alerts and hard spending caps.
 - Check for per-user/per-tenant usage tracking and quota enforcement.
+- Review context-fitting order and inspect fallback routes for explicit fail-closed behavior, audit events, reduced action scope, and preserved token/sampling caps.
 
 **Mitigations:**
 
@@ -380,6 +436,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Configure budget alerts and hard spending caps on LLM API provider accounts (OpenAI usage limits, AWS Bedrock budgets, etc.).
 - Implement per-user usage tracking with tiered quotas. Degrade gracefully when quotas are exceeded.
 - Use streaming with server-side timeout to abort long-running completions.
+- Preserve policy/auth metadata outside truncatable history. Fallback behavior should disable write/destructive tools, retain caps, log route changes, and require approval before sending sensitive data to a new model/provider.
 
 **CWE Mapping:** CWE-770 (Allocation of Resources Without Limits or Throttling), CWE-400 (Uncontrolled Resource Consumption)
 
@@ -414,6 +471,21 @@ Structure the findings report as follows:
 [2-3 sentences: overall risk posture, critical findings count, top recommendation]
 
 ## Findings
+
+## Model Routing and Fallback Evidence
+
+| Route | Trigger | Provider / Runtime Model ID | Data Class | Tools / Side Effects | Token & Sampling Policy | Fallback Target | Fail Mode | Evidence |
+|-------|---------|-----------------------------|------------|----------------------|-------------------------|-----------------|-----------|----------|
+| [route-name] | [trigger] | [provider/model-id] | [data class] | [tools and side-effect class] | [input/output caps, temperature/top_p] | [target] | fail-open/fail-closed | [config/log/test evidence] |
+
+## Context-Fitting and Alias-Control Evidence
+
+| Control | Evidence | Status | Notes |
+|---------|----------|--------|-------|
+| Security-critical context survives fitting | [truncation/summarization/token-budget evidence] | Pass/Fail/Unknown | [notes] |
+| Runtime model ID matches reviewed inventory | [export/log/config evidence] | Pass/Fail/Unknown | [notes] |
+| Alias or model promotion is approved and tested | [change-control/regression evidence] | Pass/Fail/Unknown | [notes] |
+| High-risk fallback fails closed when evidence is missing | [policy/test/log evidence] | Pass/Fail/Unknown | [notes] |
 
 ### [FINDING-001] [Title]
 
@@ -464,7 +536,7 @@ Key differences from the 2023 edition:
 
 ## 7. Common Pitfalls
 
-These are the five most frequent mistakes agents make when performing LLM security reviews:
+These are frequent mistakes agents make when performing LLM security reviews:
 
 1. **Reviewing only the prompt, not the data flow.** The prompt is one attack surface. The full data flow — from user input through retrieval, prompt assembly, model inference, output parsing, tool execution, and response rendering — must be traced end to end. Findings missed in output handling (LLM05) and excessive agency (LLM06) are the most common gaps.
 
@@ -475,6 +547,12 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Treating the configured model as the only model.** Routers, gateways, aliases, retries, provider failover, batch jobs, and degraded-mode paths may use a different runtime model with different tools, token limits, data residency, or refusal behavior.
+
+7. **Letting context fitting remove security evidence.** Truncation and summarization must not remove system/developer policy, authorization state, tenant/source ACL metadata, denied actions, data classification, or active constraints before high-risk actions.
+
+8. **Assuming graceful degradation preserves controls.** Fallback routes often reduce latency or cost, but they can also remove approval gates, broaden tools, change providers, or continue after critical evidence is missing. Review fail-open/fail-closed behavior explicitly.
 
 ---
 
@@ -507,3 +585,11 @@ When performing a review using this skill:
 - LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
 - LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
 - LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+- OWASP LLM06:2025 Excessive Agency (risk page): https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
+- OWASP LLM10:2025 Unbounded Consumption (risk page): https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
+
+---
+
+## 10. Changelog
+
+- **1.0.1** - Added model routing and fallback evidence gates, context-window fitting checks, hosted-model alias/change-control requirements, output matrices for route/fallback evidence, and pitfalls for degraded routes that remove policy, tool, or authorization controls.
