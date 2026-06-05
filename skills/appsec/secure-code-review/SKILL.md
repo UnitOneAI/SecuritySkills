@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-1336 (Improper Neutralization of Special Elements Used in a Template Engine)
 
 ### 2.1 Controls to Verify
 
@@ -102,13 +102,60 @@ FileInputStream fis = new FileInputStream(f);
 ```
 Remediation: Canonicalize the resolved path and verify it remains within the expected base directory.
 
-### 2.3 Review Checklist
+**Python -- Server-Side Template Injection (CWE-1336)**
+```python
+# VULNERABLE: attacker-controlled template source is compiled server-side
+@app.post("/preview")
+def preview():
+    return render_template_string(request.form["body"])
+```
+Remediation: Render only trusted templates. Pass untrusted values as template data, not template source, and restrict any user-editable templates to an audited, sandboxed, role-limited workflow.
+
+**JavaScript -- Dynamic Template Selection and Unsafe Helpers (CWE-1336)**
+```javascript
+// VULNERABLE: user input selects the server-side template and a helper exposes command execution
+app.get('/email-preview', (req, res) => {
+  res.render(req.query.template, { user: req.user });
+});
+
+hbs.registerHelper('exec', value => child_process.execSync(value).toString());
+```
+Remediation: Select templates from a server-side allowlist and remove helpers, filters, globals, or loaders that can access the filesystem, network, process execution, secrets, or framework internals.
+
+**Python -- Safe Static Template Rendering (False Positive)**
+```python
+# SAFE FOR SSTI: the template name is static and the user value is data
+@app.get("/profile")
+def profile():
+    return render_template("profile.html", display_name=current_user.display_name)
+```
+Classification: Do not report SSTI solely because a user value appears in a rendered template. Review this pattern for XSS/output encoding, but classify SSTI only when untrusted input can control template source, template name, template expressions, custom helpers, filters, globals, loaders, or sandbox configuration.
+
+### 2.3 Server-Side Template Injection Evidence Gate
+
+For every server-side template render path, record the evidence below before reporting or dismissing SSTI.
+
+| Evidence Field | Required Review Evidence |
+|---|---|
+| Template engine and framework | Identify the engine and integration point, such as Jinja, ERB, Twig, Handlebars, Pug, Thymeleaf, Freemarker, Razor, or a custom renderer. |
+| Source and trust boundary | Identify whether attacker-controlled data reaches the template source, template name/path, expression string, partial, layout, helper/filter input, loader, or sandbox configuration. |
+| Render sink | Name the exact sink, such as `render_template_string`, `Template(...)`, `ERB.new`, `Twig\\Environment::createTemplate`, dynamic `res.render(...)`, or server-side compilation of tenant content. |
+| Data versus code separation | Confirm whether untrusted values are passed only as data to a static trusted template, or whether they are evaluated as template syntax. |
+| Allowlist and canonicalization | For dynamic template names, require a server-side allowlist and path canonicalization that prevents traversal, theme/plugin abuse, or arbitrary template selection. |
+| Sandbox and helper exposure | Review sandbox mode, custom helpers, filters, globals, loaders, partials, and extensions for file, network, process, reflection, secret, or framework-internal access. |
+| Trusted-template workflow | For administrator or tenant-authored templates, require role restrictions, audit logging, preview isolation, versioning, rollback, and explicit approval before production use. |
+| False-positive disposition | If the finding is dismissed, state why the template source/name/expression cannot be attacker-controlled and which XSS/output-encoding checks still apply. |
+
+### 2.4 Review Checklist
 
 - [ ] Every point where user input enters the system is identified.
 - [ ] All SQL queries use parameterized statements or a query builder -- no string concatenation.
 - [ ] HTML output is encoded contextually (HTML body, attribute, JavaScript, URL).
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
+- [ ] Template rendering distinguishes untrusted data passed to static templates from untrusted template source, names, expressions, helpers, filters, globals, loaders, or sandbox controls.
+- [ ] Dynamic template names and tenant/user-editable templates use server-side allowlists, sandboxing, role restrictions, audit logs, preview isolation, and rollback.
+- [ ] Template helpers, filters, globals, partial loaders, and extensions cannot expose filesystem, network, process execution, secrets, reflection, or framework internals to untrusted templates.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
 
 ---
@@ -445,7 +492,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.0.1
 
 ### Summary
 - Critical: [count]
@@ -527,6 +574,12 @@ The final review output must be structured as follows:
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
+### Additional CWE Mappings
+
+| CWE ID | Name | Review Step |
+|---|---|---|
+| CWE-1336 | Improper Neutralization of Special Elements Used in a Template Engine | Step 2 |
+
 ---
 
 ## Common Pitfalls
@@ -537,9 +590,11 @@ The final review output must be structured as follows:
 
 3. **Ignoring indirect injection sinks.** SQL injection and XSS can occur far from the point of user input. Trace data through every transformation -- database reads that reflect previously stored user input (stored XSS), or environment variables populated from untrusted sources, are common blind spots.
 
-4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
+4. **Conflating template data with template source.** A static trusted template that receives user values as data is not automatically SSTI. Trace whether the user can influence template source, template names, expressions, helpers, filters, globals, loaders, or sandbox configuration before reporting CWE-1336.
 
-5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+5. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
+
+6. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
 ---
 
@@ -560,6 +615,9 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
+- **CWE-1336 Template Engine Injection:** https://cwe.mitre.org/data/definitions/1336.html
+- **OWASP WSTG Server-Side Template Injection:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection
+- **PortSwigger Server-Side Template Injection:** https://portswigger.net/web-security/server-side-template-injection
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
