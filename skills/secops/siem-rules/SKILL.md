@@ -54,6 +54,7 @@ Before beginning, gather or confirm:
 - [ ] **Detection objective:** What behavior or threat is being detected? Include ATT&CK technique ID if known.
 - [ ] **Available data tables/indexes:** Which log tables (Sentinel) or indexes (Splunk) contain the relevant data?
 - [ ] **Environment baseline:** Normal volume and patterns for the data source (e.g., average daily failed logon count, typical admin logon hours).
+- [ ] **Trust and identity context:** Trusted egress ranges, VPN/SASE/proxy IPs, ASN/provider data, named locations, device/session identifiers, and identity type mappings for human users, break-glass accounts, service accounts, service principals, and managed identities.
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
@@ -77,6 +78,16 @@ Select the appropriate detection logic pattern based on the threat being detecte
 | **Correlation** | Multi-table joins, multi-stage attacks | High |
 | **Behavioral baseline** | Deviation from normal, first-seen analysis | High |
 | **Impossible travel** | Geographically implausible authentication | High |
+
+#### Pre-Alert Enrichment Gates
+
+Before turning contextual detections into alerts, define the evidence gates that separate suspicious behavior from expected enterprise routing or automation:
+
+- **Trusted network context:** Join or reference trusted egress, VPN, SASE, proxy, NAT, and identity-provider IP ranges. Suppress impossible-travel pairs only when both source IPs are trusted and the device/session context remains continuous.
+- **ASN/provider context:** Capture ASN, ISP, cloud provider, or proxy provider fields when available. Treat unknown or changed ASN/provider context as higher risk than movement between known corporate egress points.
+- **Named location and GeoIP confidence:** Prefer IdP named locations and record GeoIP source/confidence where available. Low-confidence GeoIP should reduce severity or require corroborating signals.
+- **Device, session, and app continuity:** Preserve device ID, session ID, app, conditional access result, and risk state so analysts can distinguish benign roaming from credential reuse.
+- **Identity type:** Split human privileged users, break-glass accounts, service accounts, service principals, and managed identities before applying off-hours thresholds. Automation identities often run outside business hours by design.
 
 ### Step 2: Write the Detection Query
 
@@ -160,6 +171,11 @@ SigninLogs
 let travel_speed_kmh = 900;  // Maximum plausible travel speed (commercial flight)
 let min_distance_km = 500;   // Minimum distance to flag (avoids VPN/proxy noise)
 let time_window = 24h;
+let TrustedEgress = datatable(IPAddress:string, Provider:string, Asn:int, NamedLocation:string)
+[
+    "198.51.100.10", "Corporate SASE", 64512, "Corporate VPN",
+    "203.0.113.20", "Corporate SASE", 64512, "Corporate VPN"
+];
 SigninLogs
 | where TimeGenerated > ago(time_window)
 | where ResultType == 0  // Successful logins only
@@ -167,8 +183,10 @@ SigninLogs
 | extend
     Latitude = todouble(LocationDetails.geoCoordinates.latitude),
     Longitude = todouble(LocationDetails.geoCoordinates.longitude),
+    DeviceId = tostring(DeviceDetail.deviceId),
     City = tostring(LocationDetails.city),
     Country = tostring(LocationDetails.countryOrRegion)
+| join kind=leftouter (TrustedEgress | project IPAddress, CurrentProvider = Provider, CurrentAsn = Asn, CurrentNamedLocation = NamedLocation) on IPAddress
 | sort by UserPrincipalName asc, TimeGenerated asc
 | serialize
 | extend
@@ -177,9 +195,15 @@ SigninLogs
     PrevTime = prev(TimeGenerated, 1),
     PrevCity = prev(City, 1),
     PrevCountry = prev(Country, 1),
+    PrevProvider = prev(CurrentProvider, 1),
+    PrevAsn = prev(CurrentAsn, 1),
+    PrevNamedLocation = prev(CurrentNamedLocation, 1),
+    PrevDevice = prev(DeviceId, 1),
     PrevUser = prev(UserPrincipalName, 1)
 | where UserPrincipalName == PrevUser
 | extend
+    SameTrustedEgress = isnotempty(CurrentNamedLocation) and CurrentNamedLocation == PrevNamedLocation and CurrentAsn == PrevAsn,
+    SameDevice = isnotempty(DeviceId) and DeviceId == PrevDevice,
     TimeDiffHours = datetime_diff('minute', TimeGenerated, PrevTime) / 60.0,
     // Haversine formula for distance calculation
     DistanceKm = 2 * 6371 * asin(sqrt(
@@ -190,6 +214,7 @@ SigninLogs
 | where DistanceKm >= min_distance_km
 | extend RequiredSpeedKmh = iff(TimeDiffHours > 0, DistanceKm / TimeDiffHours, real(99999))
 | where RequiredSpeedKmh > travel_speed_kmh
+| where not(SameTrustedEgress and SameDevice)
 | project
     TimeGenerated,
     UserPrincipalName,
@@ -198,7 +223,14 @@ SigninLogs
     TimeDiffHours = round(TimeDiffHours, 1),
     DistanceKm = round(DistanceKm, 0),
     RequiredSpeedKmh = round(RequiredSpeedKmh, 0),
-    IPAddress
+    IPAddress,
+    CurrentProvider,
+    CurrentNamedLocation,
+    PrevProvider,
+    PrevNamedLocation,
+    DeviceId,
+    SameTrustedEgress,
+    SameDevice
 ```
 
 ---
@@ -214,10 +246,18 @@ SigninLogs
 let business_start = 7;   // 7 AM
 let business_end = 19;    // 7 PM
 let weekend_days = dynamic(["Saturday", "Sunday"]);
-let privileged_patterns = dynamic(["admin", "svc-", "sa-", "break-glass", "emergency"]);
+let PrivilegedIdentityContext = datatable(UserPrincipalName:string, IdentityType:string, IsPrivileged:bool)
+[
+    "admin@example.com", "human-admin", true,
+    "break-glass@example.com", "break-glass", true,
+    "svc-backup@example.com", "service-account", true
+];
 SigninLogs
 | where TimeGenerated > ago(24h)
 | where ResultType == 0
+| join kind=leftouter PrivilegedIdentityContext on UserPrincipalName
+| where IsPrivileged == true
+| where IdentityType in ("human-admin", "break-glass")
 | extend
     HourOfDay = hourofday(TimeGenerated),
     DayOfWeek = dayofweek(TimeGenerated),
@@ -232,10 +272,10 @@ SigninLogs
         "Unknown")
 | where HourOfDay < business_start or HourOfDay >= business_end
     or DayName in (weekend_days)
-| where UserPrincipalName has_any (privileged_patterns)
 | project
     TimeGenerated,
     UserPrincipalName,
+    IdentityType,
     HourOfDay,
     DayName,
     IPAddress,
@@ -299,6 +339,7 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4625
 `comment("Detects logins from geographically distant locations within implausible time")`
 index=o365 sourcetype="o365:management:activity" Operation=UserLoggedIn
 | iplocation ClientIP
+| lookup trusted_egress ip as ClientIP output provider as current_provider asn as current_asn named_location as current_named_location
 | where isnotnull(lat) AND isnotnull(lon)
 | sort 0 UserId _time
 | streamstats current=f window=1
@@ -307,9 +348,15 @@ index=o365 sourcetype="o365:management:activity" Operation=UserLoggedIn
     last(_time) as prev_time,
     last(City) as prev_city,
     last(Country) as prev_country,
-    last(ClientIP) as prev_ip
+    last(ClientIP) as prev_ip,
+    last(current_provider) as prev_provider,
+    last(current_asn) as prev_asn,
+    last(current_named_location) as prev_named_location,
+    last(DeviceId) as prev_device
     by UserId
 | where isnotnull(prev_lat)
+| eval same_trusted_egress=if(isnotnull(current_named_location) AND current_named_location=prev_named_location AND current_asn=prev_asn, 1, 0)
+| eval same_device=if(isnotnull(DeviceId) AND DeviceId=prev_device, 1, 0)
 | eval time_diff_hours = (_time - prev_time) / 3600
 | eval distance_km = 2 * 6371 * asin(sqrt(
     pow(sin((lat - prev_lat) * pi() / 360), 2) +
@@ -319,10 +366,13 @@ index=o365 sourcetype="o365:management:activity" Operation=UserLoggedIn
 | where distance_km >= 500
 | eval required_speed_kmh = if(time_diff_hours > 0, distance_km / time_diff_hours, 99999)
 | where required_speed_kmh > 900
+| where NOT (same_trusted_egress=1 AND same_device=1)
 | eval current_location = City . ", " . Country
 | eval previous_location = prev_city . ", " . prev_country
 | table _time, UserId, current_location, previous_location,
-    time_diff_hours, distance_km, required_speed_kmh, ClientIP, prev_ip
+    time_diff_hours, distance_km, required_speed_kmh, ClientIP, prev_ip,
+    current_provider, prev_provider, current_named_location, prev_named_location,
+    same_trusted_egress, same_device
 ```
 
 ---
@@ -335,7 +385,8 @@ index=o365 sourcetype="o365:management:activity" Operation=UserLoggedIn
 `comment("Privileged Account Off-Hours Logon -- ATT&CK T1078.002")`
 `comment("Detects privileged account logins outside business hours")`
 index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624
-    (TargetUserName="admin*" OR TargetUserName="svc-*" OR TargetUserName="sa-*")
+| lookup identity_context user as TargetUserName output identity_type is_privileged
+| where is_privileged=1 AND (identity_type="human-admin" OR identity_type="break-glass")
 | eval hour = strftime(_time, "%H")
 | eval day_of_week = strftime(_time, "%A")
 | where (hour < 7 OR hour >= 19)
@@ -346,7 +397,7 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624
     values(WorkstationName) as workstations,
     earliest(_time) as first_seen,
     latest(_time) as last_seen
-    by TargetUserName, LogonType
+    by TargetUserName, identity_type, LogonType
 | eval first_seen = strftime(first_seen, "%Y-%m-%d %H:%M:%S")
 | eval last_seen = strftime(last_seen, "%Y-%m-%d %H:%M:%S")
 | eval logon_type_desc = case(
@@ -362,7 +413,7 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624
     true(), "Unknown"
     )
 | sort - logon_count
-| table TargetUserName, logon_type_desc, logon_count, source_ips, workstations, first_seen, last_seen
+| table TargetUserName, identity_type, logon_type_desc, logon_count, source_ips, workstations, first_seen, last_seen
 ```
 
 ---
@@ -433,6 +484,7 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 3. **Threshold selection:** Set the initial threshold at mean + 2 standard deviations to capture anomalous activity while filtering normal variance.
 4. **Iterative tuning:** After deployment, review alerts weekly for the first month. Adjust the threshold based on TP/FP ratio.
 5. **Exclusion management:** Add exclusions for confirmed legitimate activity. Document each exclusion with a ticket reference and review date.
+6. **Trust-gate review:** For identity and network-context rules, review trusted egress, ASN/provider, named-location, device/session, and identity-type lookups before adding suppressions. Suppress only when enrichment evidence explains the activity; do not suppress unknown networks, unmanaged devices, unfamiliar sessions, or risky sign-in states.
 
 **Threshold tuning parameters:**
 
@@ -540,15 +592,29 @@ Produce SIEM rule deliverables in this structure:
 | Account | [UserPrincipalName / TargetUserName] |
 | IP | [IPAddress / IpAddress] |
 | Host | [Computer / ComputerName] |
+| Device | [DeviceId / DeviceDetail.deviceId] |
+| Session | [SessionId / CorrelationId] |
+| ASN/Provider | [ASN / ISP / provider lookup field] |
+
+### Enrichment and Trust Context
+| Context | Lookup/Source | Key Field | Freshness Requirement | Alert Use |
+|---------|---------------|-----------|-----------------------|-----------|
+| Trusted egress / VPN / SASE | [watchlist / lookup name] | [IPAddress / ClientIP] | [review cadence] | [suppress only with matching device/session evidence] |
+| ASN / provider | [GeoIP / threat-intel / asset source] | [ASN / provider] | [review cadence] | [raise severity for unknown or changed providers] |
+| Named location | [IdP named locations / Conditional Access] | [NamedLocation] | [review cadence] | [distinguish corporate routing from anomalous geography] |
+| Identity type | [identity inventory / CMDB / IAM export] | [UserPrincipalName / TargetUserName] | [review cadence] | [separate human admins, break-glass, service accounts, service principals, managed identities] |
+| Device/session continuity | [MDE / IdP / endpoint logs] | [DeviceId / SessionId] | [same alert window] | [validate whether impossible travel reflects same managed device or likely credential reuse] |
 
 ### Known False Positives
 - [List specific FP sources]
 
 ### Tuning Guidance
 - [Specific tuning recommendations]
+- [Trusted-network and identity-type evidence required before adding suppressions]
 
 ### Validation
 - [How to test the rule produces a true positive]
+- [How to test trusted-egress and service-identity scenarios do not alert unless corroborating risk signals are present]
 ```
 
 ---
