@@ -156,6 +156,27 @@ IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-
 
 ---
 
+### Step 2.5: Authentication Recovery and Exception Path Review
+
+Do not treat normal sign-in MFA coverage as complete authentication assurance until recovery, reenrollment, emergency, and exception paths are inventoried separately. A tenant can enforce MFA for interactive login while account takeover remains possible through password reset, MFA reset, helpdesk recovery, device registration, legacy protocols, trusted-location exclusions, or privileged break-glass flows.
+
+**Authentication-path matrix:**
+
+| Path | Assurance Evidence | Allowed Exceptions | Logging / Alerting | Last Tested | Compensating Controls |
+|---|---|---|---|---|---|
+| Normal interactive sign-in | MFA / phishing-resistant MFA policy | user/group/device exclusions | sign-in and policy decision logs | date | step-up auth, risk policy |
+| Password reset / account recovery | identity proofing, second factor, approval | helpdesk override, external IdP | reset event and approver logs | date | callback, ticket approval |
+| MFA enrollment / reenrollment | existing factor or strong proofing required | temporary access pass, admin reset | method-change alert | date | time-boxed TAP, approval |
+| Device join / trusted device registration | compliant-device or managed-device proof | contractors, BYOD, service desks | device registration audit | date | device trust policy |
+| Privileged role activation | JIT/PIM activation with MFA and justification | emergency activation | activation and approval logs | date | time-bound assignment |
+| Legacy protocols / basic auth | disabled or blocked by policy | documented exception only | legacy sign-in detection | date | conditional access block |
+| Session / refresh-token renewal | reauth cadence and revocation capability | remembered device policy | token revocation and CAE logs | date | sign-out/revoke runbook |
+| Admin consent / app authorization | approval workflow and scope review | publisher exceptions | consent audit log | date | app governance review |
+| Break-glass use | dedicated account controls | documented emergency only | high-priority alert | date | offline credential custody |
+
+**Finding classification:** MFA gaps on privileged interactive access remain **Critical** or **High**. Recovery or reenrollment paths that bypass MFA without identity proofing, approval, logging, and time-boxed controls are **High**. Break-glass accounts without monitoring, periodic test evidence, or compensating controls are **High**. Service and workload identities should be assessed under machine-identity controls rather than marked as human MFA failures.
+---
+
 ### Step 3: Least Privilege Audit
 
 **Objective:** Identify over-permissioned accounts and enforce least privilege.
@@ -411,6 +432,20 @@ For each finding, produce a row with:
 - JIT Access (Step 6): [count]
 - Zero Trust (Step 7): [count]
 
+### Authentication Recovery and Exception Paths
+
+| Path | Assurance Level | Exceptions / Bypass Groups | Logging / Alerting | Last Tested | Finding IDs |
+|---|---|---|---|---|---|
+| Normal sign-in | <AAL / MFA strength> | <none/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| Password reset / account recovery | <proofing level> | <none/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| MFA enrollment / reenrollment | <method> | <TAP/admin reset/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| Device join / trusted device registration | <policy> | <none/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| Privileged role activation | <JIT/PIM status> | <none/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| Legacy protocols / basic auth | <blocked/allowed> | <none/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| Session / refresh-token renewal | <reauth/revoke capability> | <none/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| Admin consent / app authorization | <approval workflow> | <none/list> | <enabled/disabled> | <date/unknown> | <ids> |
+| Break-glass use | <controls> | <emergency only/list> | <enabled/disabled> | <date/unknown> | <ids> |
+
 ### Detailed Findings
 [Findings table — see above]
 
@@ -508,4 +543,4 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
-| 1.0.0 | 2025-03-06 | Initial release |
+| 1.0.1 | 2026-06-05 | Added authentication recovery, MFA reenrollment, exception, and break-glass path evidence matrix |`n| 1.0.0 | 2025-03-06 | Initial release |
