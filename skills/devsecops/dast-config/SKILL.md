@@ -327,7 +327,42 @@ env:
 - [ ] Test user does NOT have admin privileges (test with realistic user role).
 - [ ] Session management is configured (ZAP re-authenticates when logged-out indicator is detected).
 
-**Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**.
+#### 4.2 Authenticated Scan State Evidence
+
+Authentication configuration is not enough by itself. ZAP must also maintain the right session state across spider, Ajax Spider, OpenAPI/GraphQL import, requestor, and active scan jobs. Record evidence that protected state-changing requests are accepted after login rather than only proving that the login page succeeds.
+
+| Evidence field | What to record |
+|----------------|----------------|
+| Authentication method | form, browser, header, script, OAuth/SAML helper, or custom script |
+| Session management type | cookie, HTTP authentication header, arbitrary header, browser/client-side, or custom script |
+| Token storage location | cookie, `Authorization` header, custom header, localStorage/sessionStorage, hidden form field |
+| Verification URL | authenticated URL used to prove the user is still logged in |
+| Protected mutation sample | POST/PUT/PATCH/DELETE route or GraphQL mutation exercised after login |
+| Anti-CSRF token names | configured names such as `__RequestVerificationToken`, `csrfmiddlewaretoken`, `authenticity_token`, `_csrf`, `_token`, or custom header token |
+| Token source URL | page or endpoint that generated the token used by the scanner |
+| Active-scan token refresh | whether ZAP is configured to request fresh anti-CSRF tokens when required |
+| Thread/race handling | active scan thread count and evidence that one-time tokens are not reused incorrectly |
+| Failure patterns | observed 401, 403, 419, redirect-to-login, or body-level errors such as `csrf_invalid` and `session_expired` |
+
+**ZAP anti-CSRF checks:**
+
+- [ ] Anti-CSRF token names are configured or auto-detected for the application framework.
+- [ ] The token source URL is visible in ZAP history and maps to the protected form or mutation being scanned.
+- [ ] Active scan is configured to handle anti-CSRF tokens when protected forms or mutation routes use per-request tokens.
+- [ ] Multiple active scan threads have success/failure evidence for token regeneration; do not assume token handling works when concurrency is increased.
+- [ ] Reports distinguish a scanner authentication failure from a real application CSRF finding.
+
+**Session-state checks:**
+
+- [ ] Cookie-based sessions include `Cookie` headers on authenticated requests and fail the verification URL when cookies are removed.
+- [ ] Header-based sessions include the expected `Authorization` or custom header on spider, API import, and active scan requests.
+- [ ] Browser-based SPA sessions prove that localStorage/sessionStorage tokens or in-memory auth state are bridged into non-browser scan jobs when needed.
+- [ ] Protected POST/PUT/PATCH/DELETE requests are accepted during scan, not only GET/dashboard requests.
+- [ ] HTTP 200 responses are inspected for body-level auth or CSRF failures; do not rely on status code alone.
+
+**Not Evaluable:** Mark authenticated active-scan coverage as Not Evaluable when the scan plan has login settings but lacks evidence that session state and anti-CSRF tokens were preserved for protected mutation requests.
+
+**Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**. Authenticated scanning without session-state evidence for active scan jobs is **High**. Missing anti-CSRF token configuration or refresh evidence for protected state-changing requests is **Medium** to **High** depending on how much authenticated mutation surface is skipped.
 
 ---
 
@@ -514,6 +549,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Setting | Status | Evidence |
 |---------|--------|---------|
 | Authenticated scanning | Yes/No | <auth method> |
+| Authenticated scan state | Proven/Not Proven/Not Evaluable | <session mechanism, verification URL, protected mutation sample> |
+| Anti-CSRF token handling | Yes/No/Not Applicable | <token names, source URL, refresh setting, failure patterns> |
 | Scope restrictions | Yes/No | <include/exclude paths> |
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
@@ -563,7 +600,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Identity Management | WSTG-IDNT | Limited |
 | Authentication | WSTG-ATHN | Moderate (with auth scanning) |
 | Authorization | WSTG-ATHZ | Moderate (IDOR, path traversal) |
-| Session Management | WSTG-SESS | Moderate (passive cookie analysis, session fixation) |
+| Session Management | WSTG-SESS | Moderate (passive cookie analysis, session fixation, CSRF token/session-state evidence) |
 | Input Validation | WSTG-INPV | Strong (injection scanners) |
 | Error Handling | WSTG-ERRH | Strong (error message analysis) |
 | Cryptography | WSTG-CRYP | Limited (TLS only) |
@@ -578,11 +615,13 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 2. **Skipping authenticated scanning because "it is hard to configure."** Unauthenticated DAST sees the login page and public content -- typically less than 10% of the application surface. The effort to configure authentication pays for itself immediately. Use browser-based authentication for SPAs and header-based for APIs.
 
-3. **Not excluding destructive endpoints from scan scope.** ZAP's spider will follow every link and form action it finds. If a "Delete Account" or "Reset Database" endpoint is in scope, the scanner will exercise it. Explicitly exclude destructive paths in the scan context.
+3. **Counting a successful login as authenticated coverage.** A scanner can log in successfully and still lose cookies, headers, localStorage state, or per-request CSRF tokens during Ajax crawling, API imports, or active scans. Require protected mutation evidence and auth-failure pattern checks.
 
-4. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+4. **Not excluding destructive endpoints from scan scope.** ZAP's spider will follow every link and form action it finds. If a "Delete Account" or "Reset Database" endpoint is in scope, the scanner will exercise it. Explicitly exclude destructive paths in the scan context.
 
-5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
+5. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+
+6. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
 ---
 
@@ -604,9 +643,14 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP Web Security Testing Guide v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
 - OWASP ZAP Documentation: https://www.zaproxy.org/docs/
 - ZAP Automation Framework: https://www.zaproxy.org/docs/automate/automation-framework/
+- ZAP Authentication - Session Handling: https://www.zaproxy.org/docs/getting-further/authentication/session-handling/
+- ZAP Anti CSRF Handling: https://www.zaproxy.org/docs/desktop/start/features/anticsrf/
+- ZAP Active Scan Options - Handle Anti-CSRF Tokens: https://www.zaproxy.org/docs/desktop/ui/dialogs/options/ascan/
+- ZAP Absence of Anti-CSRF Tokens Alert: https://www.zaproxy.org/docs/alerts/10202/
 - ZAP GitHub Actions: https://www.zaproxy.org/docs/docker/github-actions/
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
 - OWASP API Security Top 10: https://owasp.org/API-Security/
+- OWASP WSTG CSRF Testing: https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/05-Testing_for_Cross_Site_Request_Forgery
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
 - SARIF Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
 
