@@ -65,6 +65,21 @@ kiro spec --skill skills/ai-security/llm-top-10/SKILL.md
 
 Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agent Skills](https://agentskills.io) open standard. Claude Code discovers skills automatically; other tools can load them by path.
 
+## Quality Checks
+
+Run SkillScan against the real skill entrypoints before submitting changes:
+
+```bash
+python -m pip install skillscan-lint
+python scripts/skillscan_lint_skills.py
+```
+
+The helper scans only files named `SKILL.md`. The repository also contains supporting Markdown reference files, and directory-wide SkillScan runs treat those references as standalone skills. By default, the helper skips `QL-015` because SecuritySkills uses intentional placeholders such as `CWE-XXX`, `uid=XXX`, and `attack.tXXXX.XXX` in templates and safe examples. To audit those placeholders explicitly:
+
+```bash
+python scripts/skillscan_lint_skills.py --include-placeholder-rule
+```
+
 ---
 
 ## Skills
