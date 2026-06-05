@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -189,6 +189,53 @@ Key sub-requirements:
 - **3.5.1.2**: Disk-level or partition-level encryption used only to render PAN unreadable on removable electronic media (not for primary storage)
 - **3.6.1**: Key management procedures documented and implemented
 - **3.7.1-3.7.9**: Cryptographic key management processes for all keys used to protect stored account data
+
+Requirement 3 evidence gates:
+
+Before marking any Requirement 3 control "In Place", build a stored-PAN evidence matrix that ties every discovered PAN location to the protection method and key-management evidence that applies to that exact location.
+
+| Evidence field | Required detail |
+|----------------|-----------------|
+| PAN location | Database table/column, object store path, log source, export file, backup set, BI/data-lake copy, support attachment, non-production copy |
+| Data element | PAN only, PAN plus cardholder name, PAN plus service code, PAN plus expiration date, SAD if present |
+| Storage medium | Removable electronic media, non-removable electronic media, database/object store, backup, log, export, archive |
+| Business owner and retention | Owner, retention rule, deletion process, quarterly excess-data review evidence per 3.2.1 |
+| Rendering method | Truncation, tokenization, keyed hash, field/column/file-level strong cryptography, other 3.5.1 method |
+| Key-management linkage | DEK/KEK reference, key store/control boundary, custodian, cryptoperiod, rotation and retirement evidence |
+| Coverage evidence | Discovery source and date, sample ID, scanner/export scope, excluded locations and rationale |
+
+Requirement 3.5.1 and 3.5.1.2 decision rules:
+
+1. If PAN is stored on non-removable electronic media, do not accept disk-level, partition-level, full-volume, cloud-block, or transparent database encryption alone as the rendering method. Require a separate valid PAN rendering mechanism such as field/column/file-level strong cryptography with associated key management, tokenization, truncation, or keyed cryptographic hashing.
+2. If PAN is stored on removable electronic media, disk-level or partition-level encryption can support 3.5.1.2 only when the media classification, detachment risk, encryption strength, key separation, and media custody evidence are documented.
+3. If a token vault, data lake, backup, chargeback export, support log, analytics replica, or non-production copy stores PAN, assess that location independently. Do not inherit the primary database status unless the same rendering method and key-management evidence demonstrably applies.
+4. If discovery coverage is incomplete, map the internal finding to `Not Evaluable` and the formal PCI output to `Not Tested` or `Not in Place`, depending on assessment context. Never count missing PAN inventory or missing location-to-rendering evidence as "In Place".
+
+Requirement 3.6 key architecture evidence:
+
+| Evidence field | What to verify |
+|----------------|----------------|
+| Data-encryption keys | DEK inventory, protected data set, algorithm/strength, owner, storage/control location |
+| Key-encrypting keys | KEK inventory, separation from DEKs, HSM/KMS/SCD boundary, access roles |
+| Key storage and access | Key locations, custodian roles, least-privilege approvals, emergency access, break-glass logging |
+| Separation evidence | Separation between data access roles and key access roles; database/cloud/application admin overlap reviewed |
+| Service provider boundary | Shared-responsibility matrix, provider AOC coverage, customer-managed versus provider-managed key responsibilities |
+
+Requirement 3.7 key lifecycle evidence:
+
+| Lifecycle stage | Required evidence before "In Place" |
+|-----------------|--------------------------------------|
+| Generation | Approved generation process, strength, entropy/source, responsible custodian |
+| Distribution | Secure distribution path, recipient approval, transport protection, receipt record |
+| Storage | Approved storage/control boundary, access controls, monitoring, backup handling |
+| Cryptoperiod | Defined cryptoperiod or targeted risk analysis, review date, expiry trigger |
+| Rotation/rekey | Rotation schedule, rekey trigger, last rotation evidence, failed/stale rotation handling |
+| Retirement/destruction | Retired key inventory, destruction or disablement record, historical PAN decryptability decision |
+| Split knowledge / dual control | Where applicable, custodian split, approval workflow, quorum or dual-control evidence |
+| Substitution prevention | Controls preventing unauthorized key substitution, integrity checks, change approval evidence |
+| Custodian acknowledgment | Assigned custodians, responsibility acknowledgment, training or procedural acceptance |
+
+Use these internal `Not Evaluable` reason codes when evidence is missing: `REQ3-PAN-INVENTORY-MISSING`, `REQ3-STORAGE-MEDIUM-UNKNOWN`, `REQ3-NONREMOVABLE-RENDERING-MISSING`, `REQ3-KEY-ARCHITECTURE-MISSING`, `REQ3-KEY-LIFECYCLE-MISSING`, `REQ3-LOCATION-COVERAGE-GAP`, and `REQ3-CRYPTO-EVIDENCE-NOT-TIED-TO-LOCATION`.
 
 #### Requirement 4: Protect Cardholder Data with Strong Cryptography During Transmission
 
@@ -425,6 +472,24 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 - **Connected-to systems**: [list]
 - **Third-party service providers in scope**: [list]
 
+## Requirement 3 Stored-PAN Evidence Matrix
+
+| PAN Location | Data Element | Storage Medium | Owner / Retention | Rendering Method | Key Evidence | Coverage Status | PCI Status / Reason |
+|--------------|--------------|----------------|-------------------|------------------|--------------|-----------------|---------------------|
+| [system/path] | [PAN/CHD/SAD] | [removable/non-removable/log/export/backup] | [owner/rule] | [tokenization/truncation/keyed hash/field crypto/etc.] | [DEK/KEK/KMS/HSM/custodian evidence] | [complete/gap] | [In Place/Not in Place/Not Tested + reason] |
+
+## Requirement 3 Key Architecture Evidence
+
+| Key / Control Boundary | Protects PAN Location(s) | DEK Evidence | KEK / HSM / KMS / SCD Evidence | Key-Access Roles | Data-Access Roles | Separation Evidence | Gaps |
+|------------------------|--------------------------|--------------|---------------------------------|------------------|-------------------|--------------------|------|
+| [key or boundary] | [locations] | [evidence] | [evidence] | [roles] | [roles] | [approval/log/control] | [missing evidence] |
+
+## Requirement 3.7 Key Lifecycle Evidence
+
+| Key / Key Class | Generation | Distribution | Storage | Cryptoperiod | Rotation / Rekey | Retirement / Destruction | Dual Control / Split Knowledge | Custodian Acknowledgment | PCI Status / Reason |
+|-----------------|------------|--------------|---------|--------------|------------------|--------------------------|--------------------------------|--------------------------|---------------------|
+| [key/class] | [evidence] | [evidence] | [evidence] | [evidence] | [evidence] | [evidence] | [evidence or N/A] | [evidence] | [In Place/Not in Place/Not Tested + reason] |
+
 ## Requirement Assessment Summary
 
 | Req | Title | Sub-Reqs Assessed | In Place | Not in Place | CCW | N/A |
@@ -519,6 +584,17 @@ Maintain an Information Security Policy:                Requirement 12
 4. **Treating compensating controls as permanent solutions.** Compensating controls must be reassessed annually and are expected to be temporary measures while the organization works toward meeting the original requirement. Assessors scrutinize long-standing compensating controls and may reject those that have become routine without progress toward full compliance.
 
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
+
+6. **Accepting storage-layer encryption as complete PAN rendering evidence.** Full-disk, partition-level, cloud-volume, or transparent database encryption can protect media, but it does not by itself prove PAN is unreadable in non-removable electronic storage. Requirement 3 findings must tie each stored-PAN location to a valid rendering method and the supporting key architecture and lifecycle evidence.
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0.1 | 2026-06-05 | Added Requirement 3 stored-PAN rendering, non-removable-media encryption, key architecture, key lifecycle, and Not Evaluable evidence gates. |
+| 1.0.0 | Initial | Baseline PCI DSS v4.0 review skill. |
 
 ---
 
