@@ -268,12 +268,14 @@ Use this gate when ransomware, extortion, a leak-site claim, or a ransom note is
 | Payment-route indicators | Wallet address, portal URL, account handle, or instructions | Store in evidence repository; never include operational payment steps in the report |
 | Evidence location | Forensic case ID, vault path, ticket, hash, screenshot reference | Maintain chain of custody and access controls |
 | Decision owner | Executive/legal/compliance owner and backup | Missing owner blocks any decision-path closure |
+| Legal privilege owner | Internal counsel, external counsel, or breach coach responsible for privilege boundary | Missing privilege owner blocks demand discussion, insurer coordination, and third-party contact |
 
 **Sanctions and Legal Review Gate:**
 
 | Field | Required Evidence | Allowed Output State |
 |-------|-------------------|----------------------|
 | Legal / compliance owner | Named role or counsel team, review timestamp | Pending / completed / not applicable |
+| Legal privilege owner | Counsel or breach-coach role that owns privileged demand-decision records | Pending / assigned / missing / not applicable |
 | Sanctions screening | OFAC/SDN or local equivalent status where applicable | Not started / pending / cleared by legal / prohibited / not applicable |
 | Embargoed jurisdiction check | Jurisdiction and nexus assessment by legal/compliance | Pending / cleared / prohibited / unknown |
 | Payment-facilitator review | Insurer, breach counsel, negotiator, or payment vendor authority | Not authorized / authorized by legal / prohibited / not applicable |
@@ -467,6 +469,7 @@ and recommended immediate actions. Lead with the most critical fact.]
 | Actor / Leak-Site Claim Status | [Unverified / Validated / Disputed / Not applicable] |
 | Decision Owner | [Name / Role / Missing] |
 | Legal / Compliance Review | [Not started / Pending / Completed / Not applicable] |
+| Legal Privilege Owner | [Counsel / Breach coach / Missing / Not applicable] |
 | Sanctions / Local Legal Screening | [Not started / Pending / Cleared by legal / Prohibited / Not applicable] |
 | Default Posture | [Restore-first / No-payment / Leadership decision pending / Not documented] |
 | Decision Path Confidence | [Complete / Not Evaluable until legal-compliance gate is complete] |
