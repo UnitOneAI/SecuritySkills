@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -181,6 +181,34 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Java Repository Source Evidence Gate
+
+For Gradle and Maven projects, do not rely only on the resolved SBOM or dependency list. SBOM output shows what resolved, but it usually does not prove which repositories were queried, whether private coordinates leaked to public repositories, or whether a repository manager forced private groups to an internal source.
+
+Apply this gate when a Java/JVM project has any of the following:
+
+- Private or enterprise group IDs, plugin IDs, artifact IDs, or repository URLs.
+- More than one Maven-compatible repository, including Maven Central plus an internal Nexus, Artifactory, GitHub Packages, or cloud artifact registry.
+- Gradle plugin resolution through `pluginManagement.repositories` or `buildscript.repositories`.
+- Maven parent POMs, active profiles, mirrors, or user/global `settings.xml` that can change effective repository resolution.
+
+| Evidence Area | Gradle Evidence | Maven Evidence | Assessment Guidance |
+|---|---|---|---|
+| Repository inventory | `repositories`, central repository declarations, init scripts, version catalog settings | `repositories` in POMs, parent POMs, active profiles, user/global `settings.xml` | Record every public and private repository that can be searched before deciding dependency-confusion risk. |
+| Private coordinate scope | Internal group/module/plugin IDs and owner namespace conventions | Internal `groupId` / `artifactId` patterns and repository manager namespace rules | Private coordinates without routing evidence are at least Needs More Context. |
+| Repository filtering | Gradle `content` filters, include/exclude rules, `mavenContent`, and `exclusiveContent` | Repository manager routing or allowlist policy; Maven itself may depend on mirrors/profiles rather than per-repository filters | `exclusiveContent` is stronger evidence than ordinary content filters because matching modules cannot be found in other repositories. |
+| Plugin resolution | `pluginManagement.repositories`, `plugins`, `buildscript.repositories`, convention-plugin sources | Maven plugin repositories, build extensions, parent/plugin management sections | Plugin IDs can have a separate public lookup path; review them separately from library dependencies. |
+| Effective resolution | `gradle dependencies`, dependency insight, build scan, repository manager logs | `mvn help:effective-pom`, `mvn help:effective-settings`, dependency tree, repository manager logs | Effective build evidence is required when parent files, profiles, init scripts, or CI settings can override local manifests. |
+| Public-source exposure | Whether Maven Central, Gradle Plugin Portal, or another public source can receive private coordinates | Whether Central or public mirrors are queried before internal routing applies | Flag as Suspicious if private coordinates can be requested from public repositories or public mirrors. |
+| Repository manager policy | Nexus/Artifactory/GitHub Packages routing, blocklists, allowlists, quarantine, audit logs | Same | A single internal proxy can be acceptable when policy proves private groups cannot fall through to public upstreams. |
+
+**Decision rules:**
+
+- Classify as **Suspicious** when private group IDs, plugin IDs, or internal-looking coordinates can resolve from or be queried against public repositories, or when public repositories are ordered before private sources without filters, mirrors, or repository-manager routing evidence.
+- Classify as **Benign / Controlled** when Gradle `exclusiveContent`, repository content filters on every relevant repository, Maven mirrors/effective settings, or repository-manager policies prove that private coordinates resolve only from trusted internal sources.
+- Classify as **Needs More Context** when only an SBOM, lockfile, or manifest is available and effective repository settings, CI init scripts, parent POMs, plugin repositories, or repository-manager rules are missing.
+- Treat dependency repositories and plugin repositories as separate trust decisions; a project can filter library dependencies correctly while still resolving internal plugins through the Gradle Plugin Portal or public Maven plugin repositories.
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -213,6 +241,12 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
 
+### Repository Source Evidence
+
+| Ecosystem | Coordinate / Plugin Scope | Public Repositories | Private Repositories | Filtering / Routing Evidence | Effective Settings Checked | Assessment |
+|---|---|---|---|---|---|---|
+| Gradle/Maven | [group/module/plugin] | [Central/Plugin Portal/etc.] | [internal repo/proxy] | [exclusiveContent/content filter/mirror/allowlist] | [effective-pom/settings/build scan/logs] | [Suspicious / Benign / Needs More Context] |
+
 ### Recommendations
 
 1. [Prioritized list of remediation actions]
@@ -226,8 +260,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Repository-source review**: For Java/JVM builds with private coordinates or multiple repositories, collect Gradle/Maven repository filtering, plugin repository, effective settings, and repository-manager routing evidence before classifying dependency-confusion risk.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +286,6 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Gradle Filtering Repository Content](https://docs.gradle.org/current/userguide/filtering_repository_content.html)
+- [Maven Setting up Multiple Repositories](https://maven.apache.org/guides/mini/guide-multiple-repositories.html)
+- [Maven Introduction to Repositories](https://maven.apache.org/guides/introduction/introduction-to-repositories)
