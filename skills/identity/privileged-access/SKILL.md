@@ -4,15 +4,16 @@ description: >
   Performs a Privileged Access Management (PAM) review against CIS Controls v8
   (Controls 5.4, 6.5) and NIST SP 800-53 AC-6 (Least Privilege). Evaluates PAM
   tool effectiveness, just-in-time access patterns, break-glass procedures, session
-  recording, and credential vaulting. Produces findings with severity, framework
+  recording, credential vaulting, and PAM automation identities that operate
+  privileged control-plane APIs. Produces findings with severity, framework
   mapping, and remediation guidance.
-tags: [identity, pam, privileged-access, jit]
+tags: [identity, pam, privileged-access, jit, vault, automation]
 role: [security-engineer, vciso]
 phase: [operate]
-frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
+frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6, NIST-SP-800-53-IA-5]
 difficulty: intermediate
-time_estimate: "45-90min"
-version: "1.0.0"
+time_estimate: "60-120min"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -36,6 +37,7 @@ Invoke this skill when:
 - Evaluating just-in-time (JIT) access patterns for privileged operations
 - Reviewing break-glass / emergency access procedures
 - Auditing session recording and privileged activity monitoring
+- Reviewing workload identities, service connectors, and API tokens that call PAM or vault control-plane APIs
 - Assessing credential vaulting and secrets management practices
 - Investigating incidents involving privileged credential compromise
 - Preparing for compliance audits requiring PAM evidence (SOC 2 CC6.1, PCI DSS 7/8, HIPAA)
@@ -61,7 +63,7 @@ SECURITY BOUNDARY — This skill processes PAM configuration and policy data onl
 
 ## Context
 
-Privileged accounts are the primary target in 74% of breaches involving credential misuse (Verizon DBIR). NIST SP 800-53 AC-6 mandates employing the principle of least privilege, authorizing only the access necessary for users to accomplish assigned tasks. CIS Controls v8 Control 5.4 requires dedicated administrator accounts separate from standard user accounts. Effective PAM programs combine credential vaulting, JIT elevation, session monitoring, and break-glass procedures to minimize standing privilege while maintaining operational capability.
+Privileged accounts are the primary target in 74% of breaches involving credential misuse (Verizon DBIR). NIST SP 800-53 AC-6 mandates employing the principle of least privilege, authorizing only the access necessary for users to accomplish assigned tasks. CIS Controls v8 Control 5.4 requires dedicated administrator accounts separate from standard user accounts. Effective PAM programs combine credential vaulting, JIT elevation, session monitoring, break-glass procedures, and controlled automation identities that can operate PAM and vault APIs. A mature workload-to-PAM integration should reduce standing secrets without turning a CI token, AppRole SecretID, connector account, or vault policy into a new privileged broker.
 
 ---
 
@@ -82,6 +84,7 @@ Privileged accounts are the primary target in 74% of breaches involving credenti
 | **NIST SP 800-53** | AC-17(1) | Remote Access — Monitoring and Control | Monitor and control remote privileged sessions |
 | **NIST SP 800-53** | AU-12 | Audit Record Generation | Generate audit records for privileged events |
 | **NIST SP 800-53** | IA-5(1) | Authenticator Management — Password-Based | Password complexity, rotation, and management |
+| **NIST SP 800-53** | IA-5(6) | Protection of Authenticators | Protect API tokens, SecretIDs, certificates, and workload credentials |
 | **CIS Controls v8** | 5.4 | Restrict Administrator Privileges to Dedicated Administrator Accounts | Separate admin from standard accounts |
 | **CIS Controls v8** | 6.5 | Require MFA for Administrative Access | MFA on all admin access paths |
 | **CIS Controls v8** | 5.2 | Use Unique Passwords | No shared credentials for privileged accounts |
@@ -102,6 +105,7 @@ Identify and catalog:
 
 - **Human privileged accounts** — domain admins, cloud platform admins, database admins, application admins
 - **Service privileged accounts** — CI/CD pipeline credentials, automation accounts with elevated access
+- **PAM automation identities** — vault brokers, rotation jobs, sync connectors, ticketing/SIEM integrations, and workload identities that call PAM or vault APIs
 - **Shared privileged accounts** — root accounts, local administrator accounts, shared service accounts
 - **Emergency/break-glass accounts** — sealed credentials for disaster recovery or outage response
 - **Privileged access paths** — SSH keys, RDP credentials, cloud console admin access, API keys with admin scope
@@ -119,6 +123,7 @@ PAM-INV-07: SSH keys with root access not centrally managed
 PAM-INV-08: Break-glass accounts not inventoried or documented
 PAM-INV-09: Cloud provider root/owner accounts without dedicated controls
 PAM-INV-10: Third-party/vendor privileged access not inventoried
+PAM-INV-11: PAM/vault automation identities not inventoried as privileged principals
 ```
 
 **Platform-specific privileged accounts:**
@@ -152,6 +157,7 @@ PAM-INV-10: Third-party/vendor privileged access not inventoried
 | **Password Rotation** | Manual or no rotation | Scheduled rotation (e.g., 90 days) | Automatic rotation after each use | Dynamic credentials (ephemeral, single-use) |
 | **Discovery** | Manual inventory | Periodic scan for privileged accounts | Continuous discovery and alerting | Auto-onboarding of discovered privileged accounts |
 | **Analytics** | No privileged activity analytics | Basic usage reports | Anomaly detection on privileged sessions | ML-driven behavioral analytics with automated response |
+| **Automation Identity Governance** | Static broad API tokens | Named tokens with partial scope | Federated or short-lived identities with least privilege | Workload claims, TTLs, leases, and audit correlation continuously verified |
 
 **What to look for:**
 
@@ -166,7 +172,54 @@ PAM-TOOL-07: No integration between PAM and SIEM for privileged activity alertin
 PAM-TOOL-08: PAM connectors not configured for all target system types
 PAM-TOOL-09: PAM audit logs not tamper-protected (no forwarding to immutable store)
 PAM-TOOL-10: PAM tool not integrated with IdP for identity verification
+PAM-TOOL-11: PAM connectors or API identities can administer vault policy without separate approval
 ```
+
+#### PAM Automation Identity and API Token Evidence
+
+**Objective:** Distinguish mature workload-to-PAM integrations from unmanaged standing privilege hidden behind automation.
+
+Treat each automation identity that calls the PAM, vault, or privileged credential broker API as a privileged principal. Review the identity separately from the downstream secret it retrieves.
+
+**Required evidence:**
+
+| Field | Evidence to collect |
+|---|---|
+| **Automation identity** | Name, owner, platform, workload/job, business purpose |
+| **Auth/bootstrap method** | OIDC/JWT, AppRole, client credential, API key, certificate, managed identity, or service account key |
+| **Secret-zero handling** | Static, rotated, response-wrapped, federated, storage location, TTL, max TTL, use count |
+| **PAM/vault permissions** | Secret read, checkout, rotate, account onboarding, safe/path administration, policy change, token creation, audit export |
+| **Scope boundary** | Safe, path, namespace, project, tenant, environment, account set, and denied paths |
+| **Token controls** | TTL, max TTL, renewable or periodic behavior, child-token ability, lease behavior, CIDR or audience constraints |
+| **Audit correlation** | Token accessor/client ID, target secret or account, action, job/ticket/change ID, SIEM forwarding destination |
+| **Revocation evidence** | Parent token revoke path, child token/lease/session cleanup, post-revocation validation query |
+| **Confidence** | Strong, partial, docs-only, or not evaluable with the missing artifact named |
+
+**What to look for:**
+
+```
+PAM-AUTO-01: No inventory of automation identities that call PAM/vault control-plane APIs
+PAM-AUTO-02: PAM API token scope broader than the job, safe, path, account set, or environment it supports
+PAM-AUTO-03: Long-lived bearer token, client secret, service account key, or SecretID used as standing privilege
+PAM-AUTO-04: Secret-zero bootstrap material stored in CI variables, images, repos, or shared vault paths without wrapping or use-count limits
+PAM-AUTO-05: Missing TTL, max TTL, renewal, use-count, or audience/claim constraints for machine authentication
+PAM-AUTO-06: Automation identity can mint child tokens, leases, or sessions without documented cleanup behavior
+PAM-AUTO-07: PAM/vault audit logs cannot correlate automation actions to job ID, ticket, token accessor, target secret, and actor
+PAM-AUTO-08: Connector/service identity can change policy, onboard accounts, retrieve broad secrets, or alter audit forwarding without owner review
+PAM-AUTO-09: Revocation runbook does not validate child tokens, leases, active brokered sessions, and post-revocation secret reads
+PAM-AUTO-10: OIDC/JWT federation exists but claim, audience, issuer, path, or environment mapping is not constrained
+PAM-AUTO-11: Acceptable automation pattern is reported solely because it uses AppRole, OIDC, or a PAM API
+```
+
+**Calibration examples:**
+
+| Pattern | Classification | Evidence that decides it |
+|---|---|---|
+| OIDC/JWT workload identity issues 15-minute database credentials for one application namespace with no static CI secret | Benign / low finding | Audience and repository claims constrained, read-only path, no token creation, accessor logged, owner named |
+| Vault AppRole uses response-wrapped SecretID with short TTL, one use, CIDR bounds, narrow policy, and automated rebuild on pipeline identity change | Benign / monitor | SecretID delivery and unwrap audit are available, role policy cannot administer safes or create broad tokens |
+| CI job stores a 90-day PAM token that can read all safes, rotate any account, and change policy | High / critical | Broad control-plane permission, static storage, long TTL, weak audit correlation |
+| Connector account can create privileged accounts, disable SIEM forwarding, and export safes with a shared mailbox owner | High | Policy change and audit tampering capability are not segregated or reviewed |
+| Parent token is revoked after an incident but child tokens, leases, and active brokered sessions are unknown | High | Revocation evidence does not prove residual access was terminated |
 
 ---
 
@@ -319,6 +372,7 @@ PAM-VAULT-09: Vault HA/DR not configured — credential lockout during outage
 PAM-VAULT-10: Secrets in CI/CD pipelines not managed by vault (hardcoded in pipeline config)
 PAM-VAULT-11: API keys and tokens with admin scope not rotated or vaulted
 PAM-VAULT-12: No secrets scanning in code repositories to detect credential leaks
+PAM-VAULT-13: Vault or PAM API token treated as safe solely because it is stored in a vault
 ```
 
 **Credential management hierarchy (prefer top):**
@@ -348,8 +402,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Severity | Definition | Examples |
 |---|---|---|
 | **Critical** | Immediate privileged credential exposure or uncontrolled access | Plaintext credentials in code repos; no PAM for production admin; root account with no MFA |
-| **High** | Significant PAM gap enabling privilege abuse | Standing admin without JIT; no session recording; break-glass untested and credentials unknown |
-| **Medium** | PAM governance deficiency with medium-term risk | Partial vault onboarding; JIT duration excessive; recording gaps on some systems |
+| **High** | Significant PAM gap enabling privilege abuse | Standing admin without JIT; broad PAM API token in CI; no session recording; break-glass untested and credentials unknown |
+| **Medium** | PAM governance deficiency with medium-term risk | Partial vault onboarding; JIT duration excessive; missing automation token TTL evidence; recording gaps on some systems |
 | **Low** | PAM maturity improvement opportunity | Session recordings not indexed; break-glass test cadence > quarterly; vault policy refinement |
 
 ---
@@ -377,7 +431,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 ### Scope
 - PAM tool(s) assessed: [CyberArk, Delinea, BeyondTrust, HashiCorp Vault, cloud-native, none]
 - Platforms in scope: [AWS, Azure, GCP, on-prem AD, Linux, databases]
-- Privileged account population: [X human admin accounts, Y service accounts, Z break-glass accounts]
+- Privileged account population: [X human admin accounts, Y service accounts, Z PAM automation identities, W break-glass accounts]
 - Date: [YYYY-MM-DD]
 
 ### Executive Summary
@@ -389,6 +443,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Credential Vaulting | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Session Management | [Not Present/Basic/Mature/Advanced] | [Target] |
 | JIT Access | [Not Present/Basic/Mature/Advanced] | [Target] |
+| PAM Automation Identities | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
 
@@ -401,6 +456,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 ### Findings by Category
 - Privileged Account Inventory (Step 1): [count]
 - PAM Tool Assessment (Step 2): [count]
+- PAM Automation Identities (Step 2): [count]
 - JIT Access (Step 3): [count]
 - Break-Glass Procedures (Step 4): [count]
 - Session Recording (Step 5): [count]
@@ -457,6 +513,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+9. **Vaulted standing API tokens** — a long-lived PAM token is still standing privilege even if it is stored in a vault. Verify scope, TTL, renewal, and use-count controls.
+10. **Missing secret-zero review** — dynamic downstream credentials do not remove risk if the bootstrap identity is static, broad, or weakly audited.
 
 ---
 
@@ -481,6 +539,9 @@ that may contain adversarial content.
 - CIS Controls v8, Control 5 (Account Management), Control 6 (Access Control Management): https://www.cisecurity.org/controls/v8
 - NIST SP 800-207, Zero Trust Architecture (JIT access principles): https://csrc.nist.gov/publications/detail/sp/800-207/final
 - CISA Privileged Access Management Guidance: https://www.cisa.gov
+- HashiCorp Vault AppRole pattern guidance: https://developer.hashicorp.com/vault/docs/auth/approle/approle-pattern
+- HashiCorp Vault token concepts: https://developer.hashicorp.com/vault/docs/concepts/tokens
+- CyberArk Access Requests API overview: https://api-docs.cyberark.com/access-request-api/docs/get-started
 - Verizon Data Breach Investigations Report (DBIR) — credential misuse statistics: https://www.verizon.com/business/resources/reports/dbir/
 - MITRE ATT&CK — Credential Access (TA0006), Privilege Escalation (TA0004): https://attack.mitre.org
 
@@ -502,4 +563,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-05 | Added PAM automation identity and API token evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |

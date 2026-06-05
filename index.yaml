@@ -128,13 +128,13 @@ skills:
 
   - id: privileged-access
     name: "Privileged Access Management Review"
-    tags: [identity, pam, privileged-access, jit]
+    tags: [identity, pam, privileged-access, jit, vault, automation]
     role: [security-engineer, vciso]
     phase: [operate]
     activity: [audit, review]
-    frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
+    frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6, NIST-SP-800-53-IA-5]
     difficulty: intermediate
-    time_estimate: "45-90min"
+    time_estimate: "60-120min"
     file: skills/identity/privileged-access/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
