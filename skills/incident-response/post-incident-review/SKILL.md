@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -266,10 +266,10 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 
 **Remediation action template:**
 
-| ID | Finding | Action | Owner | Priority | Deadline | Tracking |
-|---|---|---|---|---|---|---|
-| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] |
-| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Tracking | Closure Criteria |
+|---|---|---|---|---|---|---|---|
+| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] | [Observable condition that proves the gap is fixed] |
+| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] | [Closure criteria] |
 
 **Remediation prioritization:**
 
@@ -279,6 +279,37 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 | P1 | Significant gap that contributed to the incident severity or delayed response | 30 days |
 | P2 | Moderate gap that represents a defense-in-depth weakness | 90 days |
 | P3 | Minor improvement or best-practice enhancement | Next quarter |
+
+#### Remediation Closure Evidence
+
+Do not treat a ticket moving to "Done" as proof that the PIR action reduced
+risk. For every remediation action, define the evidence needed to close the
+action and schedule an effectiveness check after deployment.
+
+For each action item, record:
+
+- **Closure criteria:** The measurable condition that proves the control,
+  process, detection, or playbook change is complete.
+- **Verification evidence:** Pull request, configuration diff, detection rule
+  test result, tabletop record, scan result, audit log, or monitoring screenshot
+  that demonstrates the closure criteria were met.
+- **Independent verifier:** Person or team other than the implementer, when the
+  action is P0/P1 or affects a regulated control.
+- **Residual risk owner:** Named owner who accepts any remaining risk, with an
+  expiration or review date.
+- **Effectiveness check date:** Follow-up date to confirm the remediation
+  prevents recurrence or improves MTTD/MTTC/MTTR as intended.
+
+```
+Closure Evidence Register:
+- Action ID:             [REM-001]
+- Closure Criteria:      [specific pass condition]
+- Verification Evidence: [ticket/PR/rule-test/report link]
+- Independent Verifier:  [name/team or Not Required]
+- Residual Risk Owner:   [name/team or None]
+- Effectiveness Check:   [YYYY-MM-DD]
+- Closure Status:        [Open | Evidence Submitted | Verified | Reopened]
+```
 
 ---
 
@@ -356,7 +387,12 @@ root cause, and the number/priority of remediation actions identified.]
 ### Remediation Plan
 | ID | Finding | Action | Owner | Priority | Deadline | Ticket |
 |---|---|---|---|---|---|---|
-| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
+| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] | [Closure criteria] |
+
+### Remediation Closure Evidence
+| Action ID | Closure Criteria | Verification Evidence | Independent Verifier | Residual Risk Owner | Effectiveness Check | Status |
+|---|---|---|---|---|---|---|
+| REM-001 | [Pass condition] | [Evidence link or artifact] | [Name/team] | [Name/team or None] | [YYYY-MM-DD] | [Open/Evidence Submitted/Verified/Reopened] |
 
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
@@ -412,6 +448,14 @@ When the PIR focuses on who made mistakes rather than what systemic conditions e
 
 Documenting lessons learned and remediation actions in a PIR report that is then filed and forgotten produces zero security improvement. Every remediation action must be entered into the organization's work tracking system (Jira, ServiceNow, Azure DevOps) with an owner, priority, deadline, and scheduled review date. The PIR facilitator should schedule a follow-up review (typically 30 days after the PIR) to verify remediation progress.
 
+### Pitfall 3a: Closing Actions Without Evidence
+
+A remediation ticket can be closed while the original risk remains. Require
+closure criteria, verification evidence, and an effectiveness check for every
+P0/P1 action. If the evidence does not prove the root cause or contributing
+control failure was fixed, reopen the action or record a residual risk owner and
+review date.
+
 ### Pitfall 4: Stopping Root Cause Analysis at the Proximate Cause
 
 "The attacker exploited an unpatched vulnerability" is a proximate cause, not a root cause. The root cause analysis should continue: Why was the system unpatched? Was there a patch management gap? Was the system excluded from scanning? Was the patch tested and rolled back? Was the vulnerability not prioritized? Stopping at the first "why" produces surface-level remediations (patch this specific system) rather than systemic fixes (improve vulnerability prioritization and patch management process).
@@ -445,3 +489,10 @@ This skill processes incident response data including timelines, forensic findin
 7. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
 8. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
 9. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
+
+---
+
+## Changelog
+
+- **1.1.0** -- Added remediation closure evidence gates with closure criteria, verification evidence, independent verifier, residual risk owner, effectiveness check, and PIR fixtures.
+- **1.0.0** -- Initial release with blameless retrospective, timeline reconstruction, RCA, incident metrics, control failure mapping, and remediation planning.
