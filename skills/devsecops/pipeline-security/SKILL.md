@@ -143,6 +143,45 @@ Read each pipeline configuration file and evaluate against SLSA v1.0 build track
 
 ---
 
+### Step 2.5: Release Tag and Artifact Provenance Binding
+
+Before crediting SLSA L2/L3 provenance or CICD-SEC-9 artifact integrity controls, verify that release tags, published artifacts, and provenance subjects all bind back to the same immutable source revision and artifact digest. A pipeline can generate signed provenance but still publish an artifact from a mutable tag, rewritten release asset, or unverified container tag.
+
+**What to look for:**
+
+- Release workflows triggered from tag refs (`refs/tags/*`) that build from the checked-out tag SHA rather than from a mutable branch or manually supplied ref.
+- Provenance or attestation subjects that include the artifact digest, source repository, commit SHA, workflow path, and builder identity.
+- Container images published by immutable digest and version tag; mutable tags such as `latest` are only aliases, not deployment evidence.
+- Release assets uploaded after build completion without digest comparison against the signed provenance subject.
+- Manual `workflow_dispatch` release inputs that allow arbitrary refs, package names, or artifact URLs without approval and verification gates.
+
+**Patterns to check:**
+
+```yaml
+# GitHub Actions release/tag triggers
+on:
+  push:
+    tags:
+      - 'v*'
+
+github.ref_type == 'tag'
+github.sha
+
+# Provenance and release publication
+actions/attest-build-provenance
+slsa-framework/slsa-github-generator
+cosign attest
+cosign verify-attestation
+gh release upload
+upload-artifact
+docker/build-push-action
+provenance: true
+sbom: true
+```
+
+**Finding classification:** Missing binding between release tag, commit SHA, artifact digest, and signed provenance is **High** for release-producing workflows and **Critical** when production deployments consume those artifacts automatically. Mutable deployment references such as `latest` or unpinned release assets are **Medium** unless compensating digest verification is documented. Treat provenance as **Not Applicable** for workflows that do not build, publish, or deploy artifacts, but record that scope decision explicitly.
+---
+
 ### Step 3: OWASP CICD-SEC Risk Evaluation
 
 Evaluate each CICD-SEC control by inspecting pipeline configurations for the specific patterns described below.
@@ -471,6 +510,12 @@ Produce the final report using the following structure:
   - L2: <met/not met> -- <evidence>
   - L3: <met/not met> -- <evidence>
 - **Gap to next level:** <what is needed to reach the next SLSA level>
+- **Release/provenance binding:**
+  - Release/tag ref: <tag/ref or not applicable>
+  - Source commit SHA: <sha or not available>
+  - Artifact digest: <digest or not available>
+  - Provenance subject digest match: <yes/no/not applicable>
+  - Deployment reference immutable: <yes/no/not applicable>
 
 ### OWASP CICD-SEC Findings
 
@@ -557,4 +602,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Added release tag, artifact digest, and provenance-subject binding checks for published artifacts.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
