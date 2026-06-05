@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-05"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -515,6 +515,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/network/dns-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: email-security
+    name: "Email Security Posture Review"
+    tags: [network, email, spf, dkim, dmarc, mta-sts, tls-rpt]
+    role: [security-engineer, vciso]
+    phase: [operate, assess]
+    activity: [review, audit, assess]
+    frameworks: [RFC-9989, RFC-9990, RFC-9991, RFC-7208, RFC-6376, RFC-8461, RFC-8460, CISA-BOD-18-01]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/network/email-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- DevSecOps ------------------------------------------------------------
