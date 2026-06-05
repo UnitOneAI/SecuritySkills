@@ -394,7 +394,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.1.0
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
