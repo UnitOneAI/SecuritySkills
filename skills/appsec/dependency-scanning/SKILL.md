@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -174,10 +174,32 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 4. **Recency check**: Packages created very recently that shadow established package names warrant extra scrutiny.
 5. **Install script inspection**: In npm, review `preinstall`/`postinstall` scripts. Malicious typosquat packages frequently use install hooks to exfiltrate environment variables or credentials.
 
+### Java Repository Source Evidence
+
+For Maven and Gradle projects, dependency confusion risk is not limited to package names. Review the effective repository graph and whether private coordinates can resolve from public or untrusted repositories.
+
+| Ecosystem | Evidence to Collect | Risk Indicator | Acceptable Evidence |
+|---|---|---|---|
+| Gradle dependencies | `repositories` blocks in `settings.gradle(.kts)` and project `build.gradle(.kts)` files | Public and private repositories are both present with no content filter for internal groups | `exclusiveContent` or repository content filters bind internal groups/modules to the private repository |
+| Gradle plugins | `pluginManagement.repositories` in `settings.gradle(.kts)` | Internal plugin IDs can be searched in the public Gradle Plugin Portal | Plugin repository filters or an approved internal plugin mirror/proxy |
+| Maven dependencies | Effective `settings.xml`, active profiles, mirrors, and effective POM repositories | Public repositories are queried before an internal mirror/repository for private group IDs | Internal mirror/repository-manager routing policy, effective settings, or profile evidence |
+| Repository managers | Artifactory, Nexus, or equivalent routing rules | Private coordinates can fall through to public remotes | Allowlist/routing rules that pin private group IDs to internal repositories |
+
+#### Java False-Positive Guards
+
+Do not flag every multi-repository Java build. A project may be acceptable when:
+
+- All dependencies are public and no private/internal group IDs or plugin IDs are present.
+- A repository manager proxies both public and private artifacts with documented allowlist or routing controls.
+- Gradle `exclusiveContent` or content filters prevent public repositories from being queried for internal coordinates.
+- Maven effective settings show mirrors or profiles that route internal group IDs to trusted repositories.
+
 ### Mitigation
 
 - Use scoped packages where possible (`@org/package`).
 - Configure `.npmrc` or pip index settings to point to a private registry with an allow-list for public packages.
+- For Gradle, use `exclusiveContent` or repository content filters so private groups/modules and internal plugins resolve only from approved repositories.
+- For Maven, review effective settings, mirrors, active profiles, and repository-manager routing so private group IDs do not fall through to public repositories.
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
@@ -212,6 +234,13 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Java repository source risk (private Maven/Gradle coordinates can resolve from public or untrusted repositories)
+
+### Repository Source Evidence
+
+| Ecosystem | Private/Internal Coordinates Present? | Effective Repositories Reviewed | Filters/Mirrors/Routing Evidence | Risk |
+|---|---|---|---|---|
+| npm / pip / Go / Rust / Maven / Gradle | [yes/no] | [files or command outputs reviewed] | [registry config, Gradle filters, Maven mirrors, repository-manager policy] | [low/medium/high] |
 
 ### Recommendations
 
@@ -226,8 +255,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Repository source review**: For projects with private packages or custom repositories, review registry configuration and effective repository resolution. For Gradle, check dependency and plugin repositories for `exclusiveContent` or content filters. For Maven, check effective settings, mirrors, active profiles, and repository-manager routing.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +281,7 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Gradle - Filtering Repository Content](https://docs.gradle.org/current/userguide/filtering_repository_content.html)
+- [Gradle - Best Practices for Dependencies](https://docs.gradle.org/current/userguide/best_practices_dependencies.html)
+- [Maven - Setting up Multiple Repositories](https://maven.apache.org/maven2/guides/mini/guide-multiple-repositories.html)
+
