@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -392,6 +392,10 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Release or tag-triggered workflows that check out `main`, `master`, or another branch instead of the event SHA or verified tag target.
+- Lightweight, unsigned, unprotected, or force-movable release tags used as release authority.
+- Provenance that does not bind the artifact subject digest to the source commit, release tag, build target, and workflow identity.
+- Workflow re-runs that can rebuild the same release tag after mutable dependencies, base images, or build inputs have changed.
 
 **Grep patterns:**
 
@@ -402,6 +406,14 @@ cosign attest
 actions/attest-build-provenance
 sigstore
 in-toto
+
+# Look for release source identity checks
+github.sha
+github.ref_name
+github.event.release.target_commitish
+git verify-tag
+git rev-parse
+git tag -v
 
 # Look for SBOM generation
 syft
@@ -414,7 +426,83 @@ image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+**Release source identity evidence gate:**
+
+- [ ] Identify the release trigger: `push.tags`, `release`, `workflow_dispatch`, scheduled promotion, or external release system.
+- [ ] Record the exact commit checked out by the build job and compare it with the release tag target.
+- [ ] Verify whether release tags are annotated or lightweight, signed or unsigned, protected or force-movable.
+- [ ] Confirm that the artifact digest appears in provenance as the subject digest.
+- [ ] Confirm that provenance records the source repository, source commit, workflow path, builder identity, and build target or package path.
+- [ ] Record the command or platform evidence used to verify tag identity, such as `git verify-tag`, `git tag -v`, `git rev-parse "${GITHUB_REF_NAME}^{commit}"`, or artifact attestation verification.
+- [ ] Treat a release workflow that checks out `main`, `master`, or another branch during a tag/release event as High risk unless it proves that branch equals the release tag target at build time.
+
+**Unsafe release workflow: branch checkout during release event**
+
+```yaml
+# BAD: release event publishes the current branch tip, not the release tag target
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: npm publish
+```
+
+**Unsafe release workflow: tag name without tag-governance or digest binding**
+
+```yaml
+# BAD: artifact is pushed by mutable tag name without proving tag immutability
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ghcr.io/acme/app:${GITHUB_REF_NAME} .
+      - run: docker push ghcr.io/acme/app:${GITHUB_REF_NAME}
+```
+
+**Benign release workflow: verified tag target and digest-bound provenance**
+
+```yaml
+# GOOD: checkout is bound to the event commit and provenance is generated for the artifact digest
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - run: git verify-tag "${GITHUB_REF_NAME}"
+      - run: test "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "${GITHUB_SHA}"
+      - run: ./build.sh --output dist/app.tar.gz
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/app.tar.gz
+```
+
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, and whether release artifacts are bound to the intended source commit and release tag. For release-related CICD-SEC-9 findings, include the source commit, release tag, artifact digest, provenance subject digest, tag protection or signature evidence, and verification command or platform evidence.
 
 ---
 
@@ -489,6 +577,7 @@ Produce the final report using the following structure:
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Remediation:** <specific fix>
+- **Release evidence (CICD-SEC-9 only):** source commit, release tag, tag signature/protection state, artifact digest, provenance subject digest, and verification evidence when applicable.
 
 ### Prioritized Remediation Plan
 
@@ -548,8 +637,10 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 - SLSA v1.0 Specification: https://slsa.dev/spec/v1.0/
 - SLSA Build Track: https://slsa.dev/spec/v1.0/levels#build-track
+- SLSA Provenance: https://slsa.dev/spec/v1.0/provenance
 - OWASP Top 10 CI/CD Security Risks: https://owasp.org/www-project-top-10-ci-cd-security-risks/
 - GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+- GitHub Artifact Attestations: https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds
 - Sigstore / Cosign: https://docs.sigstore.dev/
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
 
@@ -558,3 +649,4 @@ This skill processes user-supplied content including CI/CD configuration files, 
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
+- **1.0.1** -- Adds release source-identity gates for tag and release-event artifact provenance.
