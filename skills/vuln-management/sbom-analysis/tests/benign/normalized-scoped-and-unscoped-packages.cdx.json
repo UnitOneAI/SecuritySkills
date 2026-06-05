@@ -1,0 +1,65 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:3b2a58b8-b34e-4f74-9d29-f5d1426a9003",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-06-05T01:32:00Z",
+    "authors": [
+      {
+        "name": "Example SBOM Generator"
+      }
+    ],
+    "component": {
+      "bom-ref": "application",
+      "type": "application",
+      "name": "normalized-auth-service",
+      "version": "2026.6.5"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "npm-scoped-auth",
+      "type": "library",
+      "name": "auth",
+      "version": "1.2.3",
+      "supplier": {
+        "name": "Trusted Security Libraries"
+      },
+      "purl": "pkg:npm/%40trusted/auth@1.2.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "npm-unscoped-auth",
+      "type": "library",
+      "name": "auth",
+      "version": "1.2.3",
+      "supplier": {
+        "name": "Open Source Maintainers"
+      },
+      "purl": "pkg:npm/auth@1.2.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "application",
+      "dependsOn": [
+        "npm-scoped-auth",
+        "npm-unscoped-auth"
+      ]
+    }
+  ]
+}

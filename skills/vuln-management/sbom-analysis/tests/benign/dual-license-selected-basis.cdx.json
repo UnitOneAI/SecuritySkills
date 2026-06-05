@@ -1,0 +1,77 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:3b2a58b8-b34e-4f74-9d29-f5d1426a9004",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-06-05T01:33:00Z",
+    "authors": [
+      {
+        "name": "Example SBOM Generator"
+      }
+    ],
+    "properties": [
+      {
+        "name": "distribution-model",
+        "value": "hosted-saas"
+      }
+    ],
+    "component": {
+      "bom-ref": "application",
+      "type": "application",
+      "name": "license-aware-service",
+      "version": "2026.6.5"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "widget-renderer",
+      "type": "library",
+      "name": "widget-renderer",
+      "version": "2.5.0",
+      "supplier": {
+        "name": "Widget Labs"
+      },
+      "purl": "pkg:npm/widget-renderer@2.5.0",
+      "licenses": [
+        {
+          "expression": "MIT OR GPL-2.0-only"
+        }
+      ],
+      "properties": [
+        {
+          "name": "license:selected-basis",
+          "value": "MIT"
+        },
+        {
+          "name": "license:evidence",
+          "value": "package metadata and legal review ticket LEGAL-42 approve MIT option for hosted SaaS use"
+        }
+      ]
+    },
+    {
+      "bom-ref": "compiler-runtime",
+      "type": "library",
+      "name": "compiler-runtime",
+      "version": "17.0.6",
+      "supplier": {
+        "name": "LLVM Project"
+      },
+      "purl": "pkg:generic/compiler-runtime@17.0.6",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 WITH LLVM-exception"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "application",
+      "dependsOn": [
+        "widget-renderer",
+        "compiler-runtime"
+      ]
+    }
+  ]
+}

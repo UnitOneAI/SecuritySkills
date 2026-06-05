@@ -1,0 +1,83 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:3b2a58b8-b34e-4f74-9d29-f5d1426a9001",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-06-05T01:30:00Z",
+    "authors": [
+      {
+        "name": "Example SBOM Generator"
+      }
+    ],
+    "component": {
+      "bom-ref": "application",
+      "type": "application",
+      "name": "ambiguous-auth-service",
+      "version": "2026.6.5"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "npm-scoped-auth",
+      "type": "library",
+      "name": "auth",
+      "version": "1.2.3",
+      "supplier": {
+        "name": "Trusted Security Libraries"
+      },
+      "purl": "pkg:npm/%40trusted/auth@1.2.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "npm-unscoped-auth",
+      "type": "library",
+      "name": "auth",
+      "version": "1.2.3",
+      "supplier": {
+        "name": "Unknown"
+      },
+      "purl": "pkg:npm/auth@1.2.3",
+      "cpe": "cpe:2.3:a:auth:auth:1.2.3:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "expression": "NOASSERTION"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "application",
+      "dependsOn": [
+        "npm-scoped-auth",
+        "npm-unscoped-auth"
+      ]
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "bom-ref": "CVE-2026-9001",
+      "id": "CVE-2026-9001",
+      "source": {
+        "name": "Example Advisory DB"
+      },
+      "ratings": [
+        {
+          "severity": "high"
+        }
+      ],
+      "affects": [
+        {
+          "ref": "cpe:2.3:a:auth:auth:1.2.3:*:*:*:*:node.js:*:*"
+        }
+      ]
+    }
+  ]
+}
