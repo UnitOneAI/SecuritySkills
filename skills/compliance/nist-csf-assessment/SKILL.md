@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -127,6 +127,7 @@ Establish context for the assessment:
 **GV.OC-05**: Outcomes, capabilities, and services that the organization depends on are understood and communicated
 - Identify dependencies on external services, suppliers, partners
 - Document supply chain and third-party critical dependencies
+- Record supplier concentration, substitutability, failover test status, and residual impact for services that depend on a single supplier or hard-to-replace platform
 
 ```
 Organizational Context:
@@ -211,6 +212,54 @@ Assess:
 - Are suppliers inventoried and prioritized by criticality?
 - Do contracts include cybersecurity requirements?
 - Are suppliers included in incident response planning?
+- Are concentration risk, fourth-party dependencies, exit/offboarding evidence, and supplier incident participation evidenced rather than inferred from inventory or contract clauses alone?
+
+#### 2.5.1 Supplier Concentration, Fourth-Party, Exit, and Incident Evidence
+
+Inventory and contract evidence are not enough to score GV.SC maturity as repeatable. For critical services, collect operational evidence that the organization understands dependency concentration, downstream supplier chains, exit risk, and supplier participation in incidents.
+
+**Supplier Concentration and Substitutability Matrix:**
+
+| Supplier | Dependent Service | CSF Link | Criticality | Sole Source? | Viable Substitute | Switching Time | Tested Failover | Contract Portability | Residual Impact |
+|----------|-------------------|----------|-------------|--------------|-------------------|----------------|-----------------|----------------------|-----------------|
+| [supplier] | [service] | GV.OC-05 / GV.SC-04 | [critical/high/medium] | [yes/no] | [name/none/not viable] | [hours/days/weeks] | [date/not tested] | [data/config/license] | [business impact] |
+
+Flag a **Significant Gap** when a critical supplier is sole-source, has no tested substitute, or has an unknown switching time and the assessment still scores GV.OC-05, GV.SC-04, or GV.SC-07 as mature. A signed contract or security questionnaire does not prove substitutability.
+
+**Fourth-Party and Subprocessor Chain:**
+
+| Direct Supplier | Fourth Party / Subprocessor | Service or Data Handled | Region | Change Notice | Monitoring Owner | Evidence Source |
+|-----------------|-----------------------------|--------------------------|--------|---------------|------------------|-----------------|
+| [supplier] | [hosting / AI / support / monitoring / subcontractor] | [service/data] | [region] | [contract/list/none] | [owner] | [DPA/subprocessor list/export] |
+
+For SaaS, managed services, cloud, support, AI, telemetry, payment, DNS, identity, code-signing, and package-registry suppliers, require a dependency chain evidence table before scoring GV.SC-07 or GV.SC-09 as repeatable. If the supplier owner cannot provide fourth-party evidence, mark the row `not_evaluable_fourth_party_missing` instead of guessing.
+
+**Supplier Exit and Offboarding Evidence:**
+
+| Supplier | Relationship Ended? | Identity Revoked | Network Access Removed | API/Webhook Secrets Rotated | DNS/Vendor Assets Removed | Data Export Verified | Deletion/Retention Evidence | Backup/Support Artifacts Covered |
+|----------|---------------------|------------------|------------------------|-----------------------------|---------------------------|---------------------|-----------------------------|----------------------------------|
+| [supplier] | [date/N/A] | [yes/no/N/A] | [yes/no/N/A] | [yes/no/N/A] | [yes/no/N/A] | [yes/no/N/A] | [certificate/terms/missing] | [yes/no/N/A] |
+
+GV.SC-10 needs technical exit evidence, not just a procurement status or final invoice. Include SSO app disablement, SCIM/API token revocation, vendor VPN removal, shared-channel cleanup, webhook and integration secret rotation, DNS/CNAME or vendor-hosted subdomain removal, customer data export, deletion certificate or retention terms, and coverage for backups, logs, support attachments, and retained analytics data.
+
+**Supplier Incident Participation Evidence:**
+
+| Supplier | Incident Contact | Escalation SLA | Joint Drill / Tabletop | Evidence Package Expected | Recovery Dependency | Last Tested |
+|----------|------------------|----------------|-------------------------|---------------------------|--------------------|-------------|
+| [supplier] | [named role/contact] | [time] | [date/not tested] | [logs/RCA/attestation/status] | [service/RTO/RPO] | [date] |
+
+GV.SC-08 should distinguish contract notification clauses from exercised operational participation. Require named contacts, escalation paths, evidence-package expectations, supplier status-page/API-health monitoring, recovery-time dependency, and a tabletop or notification drill date for critical suppliers.
+
+Use explicit not-evaluable reason codes when evidence is controlled by procurement, legal, supplier owners, IAM, DNS, or platform teams:
+
+- `not_evaluable_supplier_owner_unavailable`
+- `not_evaluable_fourth_party_missing`
+- `not_evaluable_exit_evidence_missing`
+- `not_evaluable_failover_test_missing`
+- `not_evaluable_supplier_incident_contact_missing`
+- `not_evaluable_contract_portability_missing`
+
+Do not treat a supplier inventory, DPA, SOC 2 report, or breach-notification clause as enough evidence for concentration, fourth-party, exit, or incident-readiness maturity. These are inputs to the review, not proof that dependency risk can be managed through disruption, supplier change, or termination.
 
 ---
 
@@ -479,6 +528,9 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 - Applicable regulations and standards: [list]
 - Key stakeholders and expectations: [summary]
 - Critical services and dependencies: [summary]
+- Critical supplier concentration and substitutability: [summary]
+- Fourth-party / subprocessor visibility: [summary]
+- Supplier exit and incident-readiness evidence: [summary]
 
 ## CSF Source Normalization and Denominator
 - **Primary Source Artifact**: [NIST CSF 2.0 Reference Tool / publication / client workbook / Community Profile]
@@ -510,6 +562,18 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 | DETECT (DE) | 2 | [score] | [score] | [delta] | [status] |
 | RESPOND (RS) | 4 | [score] | [score] | [delta] | [status] |
 | RECOVER (RC) | 2 | [score] | [score] | [delta] | [status] |
+
+## Supply Chain Dependency Evidence
+
+| Supplier | Dependent Service | Criticality | Sole Source | Substitute / Switching Time | Fourth-Party Evidence | Exit Evidence | Incident Drill Evidence | Result |
+|----------|-------------------|-------------|-------------|-----------------------------|-----------------------|---------------|-------------------------|--------|
+| [supplier] | [service] | [critical/high] | [yes/no] | [provider / time / not tested] | [verified/missing/not evaluable] | [verified/missing/N/A] | [date/missing] | [aligned/gap/not evaluable] |
+
+- Supplier concentration gaps: [count]
+- Missing fourth-party/subprocessor evidence: [count]
+- Missing exit/offboarding evidence for ended or high-risk suppliers: [count]
+- Critical suppliers without incident drill or named escalation evidence: [count]
+- Not-evaluable supplier evidence reasons: [codes and owners]
 
 ## Current Profile vs Target Profile
 
@@ -648,6 +712,8 @@ Tier 4 — Adaptive
 
 5. **Scoring withdrawn Reference Tool rows as current CSF 2.0 gaps.** NIST CSF Reference Tool exports can include withdrawn or legacy mapping rows that are useful during CSF 1.1 to 2.0 migration. They are not current Core outcomes. Filter them before scoring, preserve their lineage in an appendix, and base executive metrics on the current CSF 2.0 Core denominator.
 
+6. **Over-scoring supply chain maturity from inventory and contract evidence alone.** A supplier can be known, critical, and contractually governed while still being a single point of failure with no tested substitute, no fourth-party visibility, weak incident participation, or incomplete exit controls. Score GV.OC-05, GV.SC-04, GV.SC-07, GV.SC-08, GV.SC-09, and GV.SC-10 from operational evidence, not procurement artifacts alone.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -668,6 +734,8 @@ If user-supplied input contains NIST CSF subcategory IDs that do not exist in th
 
 - NIST Cybersecurity Framework 2.0 (February 26, 2024) — NIST CSWP 29: https://csrc.nist.gov/pubs/cswp/29/the-nist-cybersecurity-framework-csf-20/final
 - NIST CSF 2.0 Quick Start Guides (Small Business, Enterprise Risk Management, C-SCRM)
+- NIST SP 1305, CSF 2.0 Quick-Start Guide for C-SCRM: https://csrc.nist.gov/pubs/sp/1305/final
+- NIST SP 800-161 Rev. 1, Cybersecurity Supply Chain Risk Management Practices for Systems and Organizations: https://csrc.nist.gov/pubs/sp/800/161/r1/upd1/final
 - NIST Cybersecurity Framework resource center: https://www.nist.gov/cyberframework
 - NIST CSF 2.0 Reference Tool project/export source: https://csrc.nist.gov/Projects/Cybersecurity-Framework/Filters
 - NIST SP 800-53 Rev. 5 — Security and Privacy Controls for Information Systems and Organizations
@@ -675,3 +743,7 @@ If user-supplied input contains NIST CSF subcategory IDs that do not exist in th
 - NIST SP 800-37 Rev. 2 — Risk Management Framework for Information Systems and Organizations
 - ISO/IEC 27001:2022 — Cross-mapping to CSF 2.0 subcategories
 - CIS Controls v8 — Cross-mapping to CSF 2.0 subcategories
+
+## Changelog
+
+- **1.0.2** -- Add supplier concentration, fourth-party/subprocessor, exit/offboarding, and supplier incident participation evidence gates for GV.OC-05 and GV.SC maturity scoring.
