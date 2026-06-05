@@ -5,14 +5,15 @@ description: >
   Guide v4.2. Auto-invoked when reviewing OWASP ZAP configurations, DAST CI/CD
   integration, scan policies, or authenticated scanning setups. Produces a DAST
   maturity assessment covering scan policy configuration, active vs passive
-  scanning, API scanning, authentication handling, and results deduplication.
-tags: [devsecops, dast, zap, burp]
+  scanning, OAST callback evidence, API scanning, authentication handling, and
+  results deduplication.
+tags: [devsecops, dast, zap, burp, oast, ssrf]
 role: [security-engineer, appsec-engineer]
 phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DAST Tool Configuration
 
-A structured, repeatable process for reviewing Dynamic Application Security Testing (DAST) tool configurations against OWASP Top 10:2021 and the OWASP Testing Guide v4.2 (WSTG). This skill covers OWASP ZAP configuration, scan policy tuning, active vs. passive scanning, API scanning with OpenAPI import, authenticated scanning, CI/CD integration, scope management, and results deduplication. All findings map to OWASP Top 10 categories and WSTG test IDs.
+A structured, repeatable process for reviewing Dynamic Application Security Testing (DAST) tool configurations against OWASP Top 10:2021 and the OWASP Testing Guide v4.2 (WSTG). This skill covers OWASP ZAP configuration, scan policy tuning, active vs. passive scanning, OAST/Collaborator callback evidence, API scanning with OpenAPI import, authenticated scanning, CI/CD integration, scope management, and results deduplication. All findings map to OWASP Top 10 categories and WSTG test IDs.
 
 ---
 
@@ -34,6 +35,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Review of existing DAST integration in CI/CD pipelines.
 - Authenticated scanning setup or troubleshooting.
 - API security testing configuration (REST, GraphQL).
+- OAST/Collaborator setup for blind SSRF, blind XXE, command injection, and stored/blind XSS evidence.
 - DAST results triage workflow design.
 - Compliance audits requiring dynamic testing evidence (PCI DSS 6.3.2, SOC 2).
 
@@ -68,6 +70,9 @@ Use Glob and Grep to locate DAST tool configurations, scan policies, and CI inte
 **/*burp*
 **/burp-project*.json
 **/burp-config*.json
+**/*collaborator*
+**/*oast*
+**/*interactsh*
 
 # Nuclei
 **/nuclei*
@@ -216,9 +221,61 @@ jobs:
 | A07:2021 Auth Failures | Brute Force (not default), Session Fixation (40013) | WSTG-ATHN-*, WSTG-SESS-* |
 | A08:2021 Software/Data Integrity | Limited DAST coverage | N/A |
 | A09:2021 Logging Failures | Not DAST-testable | N/A |
-| A10:2021 SSRF | SSRF (40046) | WSTG-INPV-19 |
+| A10:2021 SSRF | SSRF (40046) plus OAST/callback evidence for blind cases | WSTG-INPV-19 |
 
 **Finding classification:** Active scanning disabled entirely is **High**. OWASP Top 10 A03 (Injection) scan rules disabled is **Critical**. Missing passive scan rules for security headers is **Medium**.
+
+---
+
+#### 2.3 OAST / Collaborator Evidence Gate
+
+Blind SSRF, blind XXE, blind command injection, and stored/blind XSS often produce no useful in-band HTTP response. If the DAST configuration claims coverage for blind or asynchronous findings, verify an approved out-of-band application security testing (OAST) listener is configured and that callbacks can be correlated to a specific scanner request.
+
+**Approved OAST configuration evidence:**
+
+```yaml
+scan_policy:
+  oast_enabled: true
+  collaborator_server: oast-approved.security.example
+  callback_polling:
+    enabled: true
+    interval_seconds: 30
+    window_minutes: 60
+  interaction_correlation:
+    request_id_header: X-DAST-Request-ID
+    payload_token_prefix: dast-staging-
+    finding_requires:
+      - callback_protocol
+      - callback_timestamp
+      - payload_token
+      - request_id
+      - scanner_job_id
+      - target_route
+      - parameter_or_header
+      - authenticated_role
+  data_handling:
+    capture_full_request_body: false
+    redact_headers:
+      - Authorization
+      - Cookie
+    retention_days: 14
+  allowed_targets:
+    - https://staging.example.com
+  egress_allowlist:
+    - "*.oast-approved.security.example"
+```
+
+**What to verify:**
+
+- OAST/Collaborator server is approved for the scan environment; production or regulated targets use a private or explicitly approved callback domain.
+- Callback polling is enabled and the polling window covers delayed async processors, queued jobs, and stored blind XSS callbacks.
+- Payloads include a unique token and request ID that link the callback to scanner job, target route, parameter/header, authenticated role, protocol, and timestamp.
+- Captured callbacks redact secrets such as Authorization headers, session cookies, full request bodies, API keys, and PII unless separately approved.
+- Payload locations stay inside authorized scope, including headers such as `Referer`, `X-Forwarded-Host`, webhook URLs, XML external entities, and JSON URL fields.
+- DNS-only callbacks are classified as evidence requiring correlation, not automatically as confirmed SSRF; distinguish resolver prefetching, CDN behavior, health checks, and service discovery.
+- Partial egress is documented: DNS-only, HTTP-only, blocked outbound HTTP, internal-only callback, or delayed callback after scan completion.
+
+**Finding classification:** Unapproved public OAST/Collaborator domains used against production or regulated environments are **Critical** if sensitive callback data can leave the organization. Missing OAST listener/polling for scan policies that claim blind SSRF/XXE/command-injection coverage is **High**. OAST hits without request/payload correlation are **Medium** until validated. Approved callback infrastructure with redaction, retention, scope, and correlation evidence is **Pass**.
 
 ---
 
@@ -481,9 +538,9 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions; unapproved public OAST callback capture for production or regulated data. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; blind SSRF/XXE coverage claimed without OAST listener/polling. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules; OAST callback hit lacks request/payload correlation. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -519,6 +576,16 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
 | Results deduplication | Yes/No | <dedup method> |
+
+### OAST / Blind Interaction Evidence
+
+| Setting | Status | Evidence |
+|---------|--------|----------|
+| Approved callback server | Yes/No | <private/approved OAST or Collaborator domain> |
+| Callback polling window | Yes/No | <interval and retention window> |
+| Correlation fields | Yes/No | <request ID, payload token, route, parameter/header, role, protocol, timestamp> |
+| Secret redaction and retention | Yes/No | <headers/body redaction and retention policy> |
+| Finding validation state | Confirmed/Needs correlation/False positive | <why> |
 
 ### Findings
 
@@ -582,7 +649,9 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 4. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
 
-5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
+5. **Treating DNS-only OAST callbacks as confirmed SSRF without correlation.** Resolver prefetching, CDN behavior, health checks, and unrelated service discovery can trigger callbacks. Require payload token, request ID, target route, parameter/header, authenticated role, protocol, and timestamp before confirming exploitability.
+
+6. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
 ---
 
@@ -608,10 +677,14 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
 - OWASP API Security Top 10: https://owasp.org/API-Security/
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
+- OWASP WSTG-INPV-19 SSRF Testing: https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/07-Input_Validation_Testing/19-Testing_for_Server-Side_Request_Forgery
+- PortSwigger OAST overview: https://portswigger.net/burp/application-security-testing/oast
+- PortSwigger Collaborator uses: https://portswigger.net/burp/documentation/collaborator/uses
 - SARIF Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added OAST/Collaborator callback evidence gates for blind SSRF, blind XXE, command injection, and stored/blind XSS testing with approved callback, polling, redaction, and correlation requirements.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.

@@ -556,7 +556,7 @@ skills:
 
   - id: dast-config
     name: "DAST Tool Configuration"
-    tags: [devsecops, dast, zap, burp]
+    tags: [devsecops, dast, zap, burp, oast, ssrf]
     role: [security-engineer, appsec-engineer]
     phase: [build, deploy]
     activity: [configure, test]
