@@ -79,6 +79,102 @@ variable "db_password" {
 }
 ```
 
+### Pulumi Secret-Flow Evidence Gates
+
+Pulumi programs are real code, so sensitive resource arguments may come from SDK calls instead of literal strings. Do not flag a property name such as `password` by itself; trace whether the value is plain config, a Pulumi secret, or exposed after unwrapping.
+
+**Safe patterns:**
+
+```typescript
+const cfg = new pulumi.Config();
+const dbPassword = cfg.requireSecret("dbPassword");
+
+new aws.rds.Instance("db", {
+  username: "app",
+  password: dbPassword,
+});
+```
+
+```python
+cfg = pulumi.Config()
+api_token = cfg.require_secret("apiToken")
+```
+
+**Risky patterns:**
+
+```typescript
+const cfg = new pulumi.Config();
+const dbPassword = cfg.require("dbPassword"); // plain config value
+
+new aws.ssm.Parameter("db-password", {
+  type: "SecureString",
+  value: dbPassword,
+});
+```
+
+```typescript
+const apiToken = cfg.requireSecret("apiToken");
+
+apiToken.apply((token) => {
+  console.log(`deploy token: ${token}`); // plaintext leaves secret wrapper
+  return token;
+});
+```
+
+**Pulumi review checklist:**
+
+- [ ] Stack config files (`Pulumi.<stack>.yaml`) mark sensitive config with `secure:` / secret metadata where applicable.
+- [ ] SDK reads use `requireSecret`, `getSecret`, `pulumi.secret`, or language-equivalent APIs for secret-bearing values.
+- [ ] Plain `require` / `get` values are not passed into password, token, key, connection-string, or credential fields.
+- [ ] `apply()` callbacks do not log, write, return as non-secret, or export plaintext secret values.
+- [ ] `additionalSecretOutputs` is used for provider-computed secret outputs when the provider cannot infer secrecy.
+- [ ] The secrets provider/back end is documented or marked `not evaluable` if state encryption cannot be verified.
+
+### Bicep Secure Parameter and Output Gates
+
+Bicep often contains sensitive-looking property names because Azure resource schemas require them. Classify findings by value origin, not by property name alone.
+
+**Safe pattern:**
+
+```bicep
+@secure()
+param adminPassword string
+
+resource vm 'Microsoft.Compute/virtualMachines@2025-04-01' = {
+  name: 'safe-vm'
+  location: resourceGroup().location
+  properties: {
+    osProfile: {
+      computerName: 'safe-vm'
+      adminUsername: 'azureuser'
+      adminPassword: adminPassword
+    }
+  }
+}
+```
+
+**Risky patterns:**
+
+```bicep
+param adminPassword string
+```
+
+```bicep
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: 'prodsa'
+}
+
+output primaryKey string = storage.listKeys().keys[0].value
+```
+
+**Bicep review checklist:**
+
+- [ ] Sensitive parameters use `@secure()` when passed to password, secret, key, token, certificate, or connection-string fields.
+- [ ] Outputs do not expose secure parameters, `list*()` values, connection strings, storage keys, or deployment-script secret output.
+- [ ] Module outputs are checked for secret propagation before top-level outputs expose them.
+- [ ] `.bicepparam` files do not contain plaintext production credentials.
+- [ ] Findings reference Bicep linter-equivalent rules such as secure input and secret output checks when applicable.
+
 ---
 
 ## Public Exposure Analysis

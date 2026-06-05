@@ -3,11 +3,12 @@ name: iac-security
 description: >
   Performs a security review of Infrastructure as Code templates against the OWASP
   IaC Security Cheat Sheet, SLSA v1.0, and CIS Benchmarks. Auto-invoked when
-  reviewing Terraform, CloudFormation, or Pulumi configurations. Detects hardcoded
-  secrets, public exposure patterns, encryption gaps, overly permissive IAM, and
-  misconfigurations equivalent to Checkov, tfsec, and KICS rules. Produces a
-  structured findings report with remediation guidance.
-tags: [cloud, iac, terraform, cloudformation]
+  reviewing Terraform, CloudFormation, Pulumi, or Bicep configurations. Detects
+  hardcoded secrets, insecure secret flow, public exposure patterns, encryption
+  gaps, overly permissive IAM, and misconfigurations equivalent to Checkov,
+  tfsec, KICS, Pulumi, and Bicep linter rules. Produces a structured findings
+  report with remediation guidance.
+tags: [cloud, iac, terraform, cloudformation, pulumi, bicep]
 role: [cloud-security-engineer, security-engineer, devsecops]
 phase: [build, review]
 frameworks: [OWASP-IaC-Security, SLSA-v1.0, CIS-Benchmarks]
@@ -84,9 +85,15 @@ Use Glob to locate all IaC configuration files.
 **/Pulumi.*.yaml
 **/__main__.py       # Pulumi Python
 **/index.ts          # Pulumi TypeScript
+**/index.js          # Pulumi JavaScript
+**/main.go           # Pulumi Go
+**/Program.cs        # Pulumi .NET
+**/*.bicepparam
 ```
 
 Classify the IaC stack(s) in use. Record the total file count and frameworks detected.
+
+For Pulumi, also record the programming language, stack config files, and configured secrets provider when visible. For Bicep, record parameter files, modules, deployment scripts, and whether secure parameters or secure outputs are used.
 
 ---
 
@@ -157,6 +164,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Fail
 - **Severity:** Critical / High / Medium / Low
 - **Equivalent Rule:** Checkov CKV_XXX_NN / tfsec xxx-xxx / KICS xxxxxxxx
+- **IaC Framework:** Terraform / CloudFormation / Pulumi / Bicep
+- **Evidence Origin:** source / plan / stack config / state / linter / not evaluable
 - **File:** <path>
 - **Line(s):** <line numbers>
 - **Description:** <what was found>
@@ -230,6 +239,8 @@ This skill applies checks equivalent to the following high-impact rules:
 5. **Confusing `aws_s3_bucket_acl` with `aws_s3_bucket_public_access_block`.** The public access block overrides ACLs. Check both, but the access block is the stronger control.
 6. **Terraform state file secrets.** Even when variables are marked `sensitive`, they may appear in plaintext in the state file. Verify state encryption and access controls.
 7. **Provider-specific encryption defaults.** Some providers encrypt by default (e.g., AWS S3 since January 2023). Know the defaults before flagging missing explicit encryption configuration.
+8. **Pulumi secret names are not always plaintext secrets.** A property named `password` is safe when it is fed by `requireSecret()`, `getSecret()`, `pulumi.secret()`, or `additionalSecretOutputs`; it is risky when it comes from plain config or is exposed inside `apply()` callbacks, logs, files, or stack outputs.
+9. **Bicep secure properties need parameter/output evidence.** `adminPassword` and similar properties are expected in Azure templates. Classify them by whether the value comes from `@secure()` parameters/outputs or from plain parameters, literals, `list*` calls, deployment-script output, or module output leakage.
 
 ---
 
@@ -260,9 +271,15 @@ This skill applies checks equivalent to the following high-impact rules:
 - cfn-nag Rules: https://github.com/stelligent/cfn_nag
 - Terraform Security Best Practices: https://developer.hashicorp.com/terraform/cloud-docs/recommended-practices
 - AWS Security Best Practices in IAM: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
+- Pulumi Secrets: https://www.pulumi.com/docs/iac/concepts/secrets/
+- Pulumi Configuration: https://www.pulumi.com/docs/iac/concepts/config/
+- Azure Bicep Secure Parameters: https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/parameters
+- Bicep secure input linter rule: https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/linter-rule-use-secure-value-for-secure-inputs
+- Bicep outputs should not contain secrets: https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/linter-rule-outputs-should-not-contain-secrets
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added Pulumi and Bicep evidence gates for secret-taint flow, stack config, secure parameters, and output leakage.
 - **1.0.0** -- Initial release. Coverage of eight security domains across Terraform, CloudFormation, Pulumi, and Bicep with Checkov/tfsec/KICS rule equivalents.
