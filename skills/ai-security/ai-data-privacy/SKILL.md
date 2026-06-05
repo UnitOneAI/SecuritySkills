@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -76,6 +76,9 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Data processing agreements (DPAs) | Legal/compliance documentation | Establishes legal basis for data processing |
 | Privacy policy | Public-facing policy documents | Defines commitments to users about data handling |
 | Data retention policies | Internal governance docs, code configs | Determines how long AI-processed data persists |
+| Derived AI data inventory | Vector DB schema, chunk manifests, embedding pipelines, cache configs | Shows where source personal data persists after ingestion |
+| Retrieval authorization model | RAG service code, middleware, ACL services, tenant filters | Proves whether query-time access checks protect retrieved content |
+| Deletion job and audit logs | Erasure workflows, queue workers, tombstone tables, reindex jobs | Confirms source deletion propagates to embeddings, caches, and replicas |
 | Logging configuration | Application code, infrastructure configs | Reveals what prompt/completion data is captured |
 | Training/fine-tuning data documentation | Data pipeline docs, dataset cards | Identifies personal data in training corpus |
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
@@ -162,6 +165,7 @@ Grep: "openai|anthropic|api.key|azure.openai|bedrock|vertex.ai|cohere|mistral" i
 
 # Check for access control in RAG retrieval
 Grep: "metadata_filter|access_control|permission|authorization|tenant" in **/*.{py,ts,js}
+Grep: "vectorStore.query|similaritySearch|topK|retriever.invoke|asRetriever|where|filter|tenant_id|acl|document_id" in **/*.{py,ts,js}
 ```
 
 **Model memorization risk:** LLMs can memorize and reproduce training data, including PII. Research by Carlini et al. (2021, 2023) demonstrated that GPT-2 and GPT-3 could be prompted to emit memorized training data including names, phone numbers, email addresses, and physical addresses. The risk is proportional to data frequency in training (repeated PII is more likely to be memorized) and inversely proportional to model size diversity (smaller fine-tuned models on narrow datasets memorize more). For fine-tuned models, this risk is especially acute -- the fine-tuning data is typically smaller and more repetitive than pre-training data, increasing memorization likelihood.
@@ -237,6 +241,74 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 | Backup systems retain AI data beyond primary retention period | Medium |
 | No automated purge mechanism for expired AI data | Medium |
 | Audit logs contain full prompt/completion text with no redaction | Low |
+
+---
+
+### Step 3.5 -- Vector Deletion Propagation and Retrieval Authorization
+
+Assess deletion and access-control propagation for RAG and vector-search systems. Do not score a system as passing because it uses `ttl` or `retention` keywords, and do not score it as failing merely because those keywords are absent. The required evidence is whether source-document deletion and authorization changes propagate to all derived retrieval surfaces.
+
+**Discovery methods using allowed tools:**
+
+```
+# Find vector deletion and propagation paths
+Grep: "vectorStore.delete|deleteMany|delete_document|deleteEmbedding|remove_vectors|delete_vectors" in **/*.{py,ts,js}
+Grep: "source_document_id|document_id|chunk_id|vector_id|embedding_id|tenant_id|namespace" in **/*.{py,ts,js,yaml,yml,json}
+Grep: "tombstone|deletion_audit|erasure|right_to_delete|reindex|invalidate|purge|cleanup" in **/*.{py,ts,js,yaml,yml,json}
+
+# Find retrieval authorization and cache surfaces
+Grep: "similaritySearch|vectorStore.query|retriever|topK|metadata_filter|where|filter" in **/*.{py,ts,js}
+Grep: "tenant|acl|entitlement|permission|group|subscription|authorized|policy" in **/*.{py,ts,js}
+Grep: "rerank|prompt_cache|response_cache|retrieval_cache|chunk_manifest|analytics|snapshot|replica|region" in **/*.{py,ts,js,yaml,yml,json}
+```
+
+**Vector deletion propagation matrix:**
+
+| Surface | Required evidence |
+|---|---|
+| Source document row | Source ID, tenant ID, delete timestamp, requester/legal basis, and audit log entry |
+| Chunk manifest | Chunk IDs linked to source ID, deletion/tombstone status, and stale-manifest cleanup job |
+| Embedding/vector rows | Vector IDs or namespace filter, tenant-scoped delete call, delete result count, and retry/error handling |
+| Vector index/search cache | Reindex job status, cache invalidation, stale retrieval test, and maximum exposure window |
+| Reranker/prompt/response caches | Cache keys tied to source or tenant, invalidation evidence, and retention deadline |
+| Analytics and evaluation tables | Whether derived text, snippets, embeddings, labels, or feedback persist after source deletion |
+| Backups and snapshots | Operational restore window, access restrictions, purge deadline, and whether restored data is re-deleted before serving |
+| Regional replicas | Region list, propagation state per region, lag SLA, and failed-region escalation path |
+| Audit and tombstones | Tombstone schema, immutable audit record, job ID, completion status, and reviewer-verifiable timestamp |
+| Not Evaluable reason | Missing vector schema, unavailable queue logs, opaque managed vector service, missing backup policy, or no safe deletion test |
+
+**Retrieval authorization evidence:**
+
+| Control | Evidence to require |
+|---|---|
+| Tenant boundary | Query-time tenant filter or namespace selection that cannot be supplied solely by the user |
+| User/document ACL | Source-of-truth authorization check for current user, group, role, subscription, or document entitlement |
+| Authorization drift | Evidence that group, tenant, subscription, or document-access changes affect future retrieval without re-ingesting all content |
+| Filter placement | Pre-filter in vector DB query where possible; if post-filtering is used, explain leakage risk and top-k recall tradeoff |
+| Metadata integrity | Metadata fields such as `tenant_id`, `source_document_id`, and ACL tags are written by trusted services, not end-user input |
+| Failure behavior | Missing auth context, missing ACL metadata, or stale entitlement service fails closed rather than returning unfiltered matches |
+| Test evidence | Negative test for cross-tenant/user access and positive test for authorized retrieval after an entitlement change |
+
+**Severity guidance:**
+
+| Condition | Severity |
+|---|---|
+| Cross-tenant or unauthorized RAG retrieval returns personal data, source snippets, or embeddings-derived content | Critical |
+| Erasure request deletes source rows but leaves active embeddings, chunk metadata, or retrieval caches queryable | High |
+| Retrieval query lacks tenant/user/document ACL filters and trusts ingest-time metadata without current authorization | High |
+| Missing tombstone, reindex, cache invalidation, or regional propagation evidence for personal-data deletion | Medium |
+| Backup retention is documented but restore procedures do not prove deleted records are re-deleted before serving | Medium |
+| Evidence is unavailable for a managed vector service, cache, or replica path | Not Evaluable until provider or operational evidence is supplied |
+| Short operational restore window is documented, access-restricted, and excluded from active retrieval | Low / Informational |
+
+**Remediation recommendations:**
+
+- Use stable source IDs, chunk IDs, vector IDs, tenant IDs, and namespaces so deletion can target every derived store precisely.
+- Propagate erasure through queues/jobs with tombstones, retry handling, dead-letter monitoring, and immutable audit logs.
+- Invalidate retrieval, reranker, prompt, response, and analytics caches when source documents or entitlements change.
+- Require query-time authorization filters for tenant, user, group, subscription, and document ACLs before returning vector matches.
+- Validate deletion with a stale-retrieval test: after deleting the source, query by a known phrase and prove no active retrieval path returns the deleted content.
+- Validate authorization drift with a negative test: revoke a user or group entitlement and prove subsequent retrieval fails closed.
 
 ---
 
@@ -419,9 +491,25 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - **Location:** [file path, configuration, or architectural component]
 - **Description:** [What the privacy risk is and why it matters]
 - **Evidence:** [Code pattern, configuration, or architectural observation]
+- **Derived AI data affected:** [source document, chunks, embeddings, caches, backups, replicas, analytics]
+- **Deletion propagation status:** [complete / partial / missing / Not Evaluable, with tombstone or job ID]
+- **Retrieval authorization evidence:** [tenant filter, user/document ACL, entitlement check, fail-closed behavior]
+- **Stale exposure window:** [maximum time deleted or unauthorized data can remain retrievable]
 - **Impact:** [What personal data is at risk and for how many data subjects]
 - **Recommendation:** [Specific remediation with regulatory alignment]
 - **Priority:** [P0 / P1 / P2 / P3]
+
+## Vector Deletion Propagation Matrix
+
+| Source ID | Tenant | Chunks | Embeddings | Caches | Backups | Replicas | Tombstone/Job | Result |
+|---|---|---|---|---|---|---|---|---|
+| [doc-123] | [tenant-a] | [deleted] | [deleted count] | [invalidated] | [restore window] | [us/eu status] | [job-id] | [Pass/Fail/Not Evaluable] |
+
+## Retrieval Authorization Evidence
+
+| Query Path | Tenant Filter | User/Document ACL | Source-of-Truth Check | Fail Closed | Negative Test |
+|---|---|---|---|---|---|
+| [rag/search endpoint] | [field/namespace] | [policy/service] | [yes/no] | [yes/no] | [pass/fail/Not Evaluable] |
 
 ## Privacy Control Summary
 
@@ -430,6 +518,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
+| Vector deletion propagation | [Yes/Partial/No/Not Evaluable] | [description] | [severity] |
+| Retrieval authorization | [Yes/Partial/No/Not Evaluable] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
@@ -471,6 +561,10 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 4. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
+
+6. **Trusting ingest-time metadata for retrieval authorization.** RAG systems often write tenant or ACL metadata during ingestion and later assume it is still correct. Authorization must be checked at query time because user groups, subscriptions, document entitlements, and tenant boundaries can change after embeddings are created.
+
+7. **Deleting source documents but leaving active derived stores.** Source deletion is incomplete if chunks, embeddings, reranker caches, prompt caches, analytics rows, backups, or regional replicas can still return or reconstruct personal data. Require propagation evidence and stale-retrieval tests.
 
 ---
 
