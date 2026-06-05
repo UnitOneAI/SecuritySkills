@@ -60,6 +60,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - Kubernetes manifests (YAML), Helm charts, or Kustomize overlays
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
+- Service mesh security policies, if present (Istio `PeerAuthentication` / `AuthorizationPolicy`, Linkerd policy resources, SPIFFE/SPIRE registration entries)
 - Pod Security Standard configurations or OPA/Gatekeeper policies
 - Container registry configurations (if available)
 
@@ -160,6 +161,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Pod Security | CIS K8s 5.2.x | X | X | X | X | X |
 | RBAC | CIS K8s 5.1.x | X | X | X | X | X |
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
+| Service Mesh / Workload Identity | NIST 800-190 CM-8 | X | X | X | X | X |
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
@@ -184,6 +186,12 @@ Produce the final report using the structure defined in the Output Format sectio
 |----------|-----------|-----------|------------|
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
+
+### Service Mesh / Workload Identity Matrix
+
+| Workload | Namespace | Service Account | Mesh Participation | mTLS Mode | Authorization Policy | Evidence Status |
+|----------|-----------|-----------------|--------------------|-----------|----------------------|-----------------|
+| deploy/payments-api | payments | payments-api | sidecar/ambient enabled | STRICT | principals scoped to caller SAs | Pass |
 
 ### Prioritized Remediation Plan
 
@@ -256,7 +264,8 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Base64 encoding is not encryption.** Kubernetes Secrets store data as base64, which is trivially decodable. Secrets committed to version control in manifests are effectively plaintext.
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
-7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+7. **Service mesh installed does not mean service mesh enforced.** Verify mesh enrollment for each workload, STRICT mTLS or equivalent, selector-to-workload matches, principal-specific authorization, and negative tests for plaintext or wrong-principal traffic. NetworkPolicy and mesh policy are complementary controls, not substitutes for one another.
+8. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
 
 ---
 
@@ -285,6 +294,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Istio PeerAuthentication: https://istio.io/latest/docs/reference/config/security/peer_authentication/
+- Istio Authorization Policy: https://istio.io/latest/docs/reference/config/security/authorization-policy/
+- SPIFFE/SPIRE Concepts: https://spiffe.io/docs/latest/spire-about/spire-concepts/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
