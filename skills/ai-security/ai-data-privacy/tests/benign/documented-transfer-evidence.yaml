@@ -1,0 +1,43 @@
+ai_system:
+  users: EU customers
+  provider: third-party LLM API
+  deployment_region: eu-west
+  data_sent:
+    - prompts
+    - completions
+    - retrieved_rag_snippets
+processor_subprocessor_matrix:
+  - entity: primary_llm_provider
+    role: processor
+    ai_data_handled:
+      - prompts
+      - completions
+    storage_region: eu-west
+    processing_region: eu-west
+    support_access_region: eea_only
+    transfer_mechanism: not_applicable_eea_only
+    evidence:
+      - signed_dpa
+      - current_subprocessor_list
+      - region_configuration_export
+  - entity: vector_database_provider
+    role: processor
+    ai_data_handled:
+      - embeddings
+      - document_metadata
+    storage_region: eu-central
+    processing_region: eu-central
+    support_access_region: eea_only
+    transfer_mechanism: not_applicable_eea_only
+    evidence:
+      - signed_dpa
+      - current_subprocessor_list
+      - tenant_region_setting
+controls:
+  provider_training_disabled: true
+  prompt_retention_days: 30
+  customer_managed_keys: true
+  support_access_approval_required: true
+  transfer_impact_assessment: not_required_no_third_country_transfer
+claimed_result:
+  privacy_risk: Medium

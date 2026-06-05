@@ -1,0 +1,23 @@
+ai_system:
+  users: EU customers
+  provider: third-party LLM API
+  deployment_region: eu-west
+  data_sent:
+    - prompts
+    - completions
+    - retrieved_rag_snippets
+    - evaluation_datasets
+evidence_collected:
+  provider_dpa: present
+  no_provider_training_statement: present
+  prompt_retention_policy: present
+missing:
+  processor_subprocessor_chain: missing
+  storage_processing_support_regions: missing
+  transfer_mechanism: missing
+  scc_module_or_dpf_certification: missing
+  transfer_impact_assessment: missing
+  supplementary_measures: missing
+  encryption_key_control: missing
+claimed_result:
+  privacy_risk: Low
