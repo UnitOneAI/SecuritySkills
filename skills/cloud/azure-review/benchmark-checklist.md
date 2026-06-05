@@ -600,14 +600,31 @@ Same check for classic access policy-based Key Vaults.
 
 ### CIS 8.5 -- Ensure that the Key Vault is Recoverable
 
-**Critical check -- enable soft delete and purge protection:**
+**Critical check -- verify effective recovery controls, not just resource presence:**
 
 ```hcl
 resource "azurerm_key_vault" {
-  soft_delete_retention_days = 90
+  soft_delete_retention_days = 90    # Prefer 90 days for production/high-value vaults
   purge_protection_enabled   = true  # Must be true
 }
 ```
+
+Required evidence:
+
+- `soft_delete_retention_days` is set and appropriate for the vault's business criticality. Treat missing retention evidence from imported or existing vaults as **Not Evaluable** until Azure CLI, ARM export, or inventory evidence confirms the effective value.
+- `purge_protection_enabled = true` for production, customer-managed-key, and high-value vaults. If purge protection is disabled, classify as **High** unless the vault is demonstrably non-production with documented compensating controls and accepted recovery risk.
+- Rollout impact is documented because purge protection is irreversible after enablement.
+- Existing/imported vaults are checked with runtime evidence such as `az keyvault show --query "{softDeleteRetentionInDays:properties.softDeleteRetentionInDays, enablePurgeProtection:properties.enablePurgeProtection}"` or equivalent inventory export. Do not rely only on new IaC defaults.
+
+Flag as **Fail** when:
+
+- Purge protection is disabled or absent for a production/high-value vault.
+- Retention is minimal, for example 7 days, without environment classification and risk acceptance.
+- Review evidence only shows soft delete, but does not confirm purge protection.
+
+Treat as **Not Evaluable** when:
+
+- The vault exists outside the submitted IaC and no CLI, ARM, Bicep, Terraform import, or inventory output confirms the effective retention and purge-protection state.
 
 ### CIS 8.6 -- Enable Role Based Access Control for Azure Key Vault
 
@@ -619,7 +636,7 @@ resource "azurerm_key_vault" {
 
 ### CIS 8.7 -- Ensure that Private Endpoints are used for Azure Key Vault
 
-Check for private endpoint connections to Key Vault:
+Check for private endpoint connections to Key Vault, and verify they create effective private-only access:
 
 ```hcl
 resource "azurerm_private_endpoint" {
@@ -629,6 +646,50 @@ resource "azurerm_private_endpoint" {
   }
 }
 ```
+
+Do not pass this control from private endpoint creation alone. Require evidence for the full access path:
+
+```hcl
+resource "azurerm_key_vault" "prod" {
+  public_network_access_enabled = false
+  network_acls {
+    default_action = "Deny"
+    bypass         = "AzureServices" # Only when scoped and justified
+  }
+}
+
+resource "azurerm_private_dns_zone" "kv" {
+  name = "privatelink.vaultcore.azure.net"
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "kv" {
+  private_dns_zone_name = azurerm_private_dns_zone.kv.name
+  virtual_network_id    = azurerm_virtual_network.prod.id
+}
+```
+
+Required evidence:
+
+- `public_network_access_enabled = false`, or firewall/network ACL evidence showing `default_action = "Deny"` with only documented service-scope exceptions.
+- Trusted-service or public-network exceptions include the exact service scope, business reason, owner, expiry or review cadence, and compensating controls. A broad exception without this context is a finding.
+- The private endpoint targets the same vault under review, uses `subresource_names = ["vault"]`, and is approved, not pending, rejected, or disconnected. For live reviews, confirm with `az network private-endpoint-connection list` or resource inventory evidence.
+- Private DNS for `privatelink.vaultcore.azure.net` exists and is linked to every client VNet that should resolve the vault privately. For custom DNS, require resolver or conditional-forwarder evidence proving private resolution.
+- Client path evidence shows workloads reach the vault through the private endpoint path, for example VNet/subnet membership, hub-spoke routing, private resolver configuration, or test output resolving to the private endpoint IP.
+- Terraform, Bicep, ARM, Azure CLI, and inventory evidence are all acceptable, but the finding must state which evidence source was reviewed.
+
+Flag as **Fail** when:
+
+- A private endpoint exists but `public_network_access_enabled = true` and no restrictive firewall rules or documented exception scope are present.
+- Private DNS zone linkage is absent for client VNets, making public endpoint resolution likely.
+- Private endpoint connection status is not approved.
+- The private endpoint exists for another vault, another subresource, or an unrelated subscription/resource group.
+
+Treat as **Not Evaluable** when:
+
+- IaC shows a private endpoint but omits public network access state, firewall rules, private DNS linkage, or endpoint approval status.
+- Managed services require public or trusted-service access and the review cannot determine the actual service exception scope.
+
+Report output must include these Key Vault fields when applicable: `soft_delete_retention_days`, `purge_protection_enabled`, `public_network_access_enabled`, firewall default action, trusted-service exceptions, private endpoint connection state, private DNS zone/link evidence, client network path evidence, and evidence source.
 
 ---
 

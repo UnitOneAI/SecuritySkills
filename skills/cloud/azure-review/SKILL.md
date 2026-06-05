@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -182,7 +182,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 5 | Logging and Monitoring | Diagnostic settings, activity log alerts (policy, NSG, SQL firewall, public IP), Key Vault logging, Network Watcher |
 | 6 | Networking | NSG rules (RDP, SSH, UDP, HTTP), flow log retention, traffic analytics |
 | 7 | Virtual Machines | Azure Bastion, managed disks, disk encryption with CMK, approved extensions, endpoint protection |
-| 8 | Key Vault | Key/secret expiration, soft delete, purge protection, RBAC authorization, private endpoints |
+| 8 | Key Vault | Key/secret expiration, soft delete retention, purge protection, RBAC authorization, public network access, firewall exceptions, private endpoints, private DNS linkage |
 | 9 | App Service | Authentication, HTTPS redirect, TLS version, client certificates, Entra ID registration, HTTP/2, FTP disabled |
 
 ### CIS Profile Levels
@@ -199,7 +199,8 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **Overlooking `allow_nested_items_to_be_public` on storage accounts.** CIS 3.7 checks the account-level setting, not individual container access levels. The account setting must be `false` to prevent any container from being public.
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
-6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+6. **Key Vault private endpoints without effective private-only access.** Do not treat a private endpoint resource as sufficient by itself. Also verify public network access state, firewall or trusted-service exceptions, approved private endpoint connection status, private DNS zone linkage for `privatelink.vaultcore.azure.net`, and client network path evidence. If those artifacts are missing, mark the Key Vault network finding **Not Evaluable** instead of passing it.
+7. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
 
@@ -224,6 +225,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
+- Azure Key Vault Soft Delete Overview: https://learn.microsoft.com/en-us/azure/key-vault/general/soft-delete-change
+- Azure Key Vault Recovery Management: https://learn.microsoft.com/en-us/azure/key-vault/general/key-vault-recovery
+- Azure Key Vault Network Security: https://learn.microsoft.com/en-us/azure/key-vault/general/how-to-azure-key-vault-network-security
+- Azure Key Vault Private Link: https://learn.microsoft.com/en-us/azure/key-vault/general/private-link-service
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
@@ -231,4 +236,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added Key Vault effective recovery and private-access evidence gates covering soft-delete retention, purge protection, public network access, firewall exceptions, private endpoint approval, private DNS linkage, and CLI or inventory evidence.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
