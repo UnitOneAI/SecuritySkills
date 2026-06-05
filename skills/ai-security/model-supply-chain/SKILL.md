@@ -95,6 +95,8 @@ Determine where every model artifact originates and whether its authenticity and
 
 - Model download code that pulls weights from Hugging Face, S3, GCS, or other sources. Check whether SHA256 checksums or cryptographic signatures are verified after download.
 - Use of `from_pretrained()` calls (Hugging Face transformers, diffusers, sentence-transformers) without pinning to a specific commit hash or revision. Model repos on Hugging Face can be updated at any time; unpinned references pull the latest, potentially compromised weights.
+- Use of `trust_remote_code=True` in Hugging Face loaders without a pinned revision and review of the remote model code. This allows model repositories to execute custom Python code during load.
+- Runtime model downloads via `snapshot_download()`, `hf_hub_download()`, or `from_pretrained()` on every cold start instead of fetching artifacts during a controlled build step.
 - Models loaded from shared network drives, team Slack channels, or email attachments with no integrity verification.
 - Absence of SLSA provenance attestations or Sigstore signatures for model artifacts.
 - Models identified only by name ("llama-2-7b") without specifying the exact source organization, revision, or checksum.
@@ -109,8 +111,13 @@ Grep: "huggingface|hf_hub|transformers|diffusers|sentence.transformers" in **/*.
 # Check for integrity verification
 Grep: "sha256|checksum|hash|verify|digest|signature|sigstore|cosign" in **/*.{py,sh,yaml,yml}
 
-# Check for pinned model versions
+# Check for pinned model versions and remote-code execution
 Grep: "revision=|commit_hash|model_version" in **/*.{py,yaml,yml,json}
+Grep: "trust_remote_code\s*=\s*True|trust_remote_code\s*=\s*true" in **/*.{py,ipynb}
+
+# Check for runtime model downloads and cache-based model acquisition
+Grep: "snapshot_download|hf_hub_download|from_pretrained" in **/*.{py,ipynb}
+Grep: "HF_HOME|TRANSFORMERS_CACHE|local_dir|cache_dir" in **/*.{py,yaml,yml,Dockerfile}
 
 # Find model artifact storage
 Glob: **/*.{pt,bin,safetensors,pkl,onnx,pb,h5,gguf,ggml}
@@ -125,8 +132,11 @@ Glob: **/config.json
 | Condition | Severity |
 |---|---|
 | Models loaded via `pickle.load` or `torch.load` without `weights_only=True` | Critical |
+| Unreviewed Hugging Face remote model code is enabled with `trust_remote_code=True` in a privileged or sensitive runtime | Critical |
+| `trust_remote_code=True` is used without a pinned immutable revision and documented code review | High |
 | No checksum or signature verification on model download | High |
 | Model source unpinned (no commit hash, revision, or version lock) | High |
+| Runtime model downloads occur in production instead of a controlled build/preload step | High |
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
