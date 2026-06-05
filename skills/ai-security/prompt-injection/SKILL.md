@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,11 +57,12 @@ Identify every point where user-supplied or externally sourced content reaches t
 
 1. **User input channels** — Chat interfaces, form fields, API parameters, file uploads, voice input transcriptions, and any other path where a user directly provides text that is included in an LLM prompt.
 2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
-3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
+3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into an instruction-bearing region.
 4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
-5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
+5. **External egress channels** — Any path where model output, tool output, rendered content, notifications, webhooks, exports, issue comments, or generated links can leave the application trust boundary.
+6. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
 
-**Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
+**Deliverable:** A table or diagram listing each input surface, its data type, trust level, whether it flows into the system prompt, developer instructions, user prompt, retrieved context, tool arguments, or rendered output, and whether it can combine with private data access or external egress.
 
 ---
 
@@ -69,16 +70,18 @@ Identify every point where user-supplied or externally sourced content reaches t
 
 For each user input channel identified in Step 1, determine whether an attacker can influence the model's behavior by submitting crafted text. Examine:
 
-- **Prompt concatenation patterns** — Is user input inserted into a prompt template without transformation? Look for string formatting, f-strings, or template literals that embed raw user input alongside system instructions.
+- **Instruction-channel trust crossing** — Is user-controlled text inserted into system/developer instructions, policy text, hidden prompt scaffolding, or other instruction-bearing regions? Normal role-separated chat input in a user message is expected behavior; it becomes a finding when the same data can alter trusted instructions or control metadata.
+- **Prompt concatenation patterns** — Is user input inserted into a prompt template without transformation alongside system instructions? Look for string formatting, f-strings, or template literals only when they collapse trusted instructions and untrusted data into the same prompt region.
 - **Instruction boundary weakness** — Is there any delimiter or structural separation between system instructions and user input? If delimiters are used (e.g., triple quotes, XML tags), are they enforceable or can the user simply close the delimiter?
 - **Multi-turn injection** — Can an attacker embed instructions in earlier conversation turns that alter the model's behavior in subsequent turns?
-- **Parameter injection** — Can user-controlled values (e.g., a "name" field, a search query) that are inserted into prompts carry executable instructions?
+- **Parameter injection** — Can user-controlled values (e.g., a "name" field, a search query) that are inserted into prompts carry executable instructions into an instruction channel, tool selector, routing decision, or policy override?
 
 **What to look for in code:**
-- String concatenation or interpolation with user input going into LLM API calls
-- Prompt templates with placeholder variables filled by user data
+- String concatenation or interpolation that places user input in the same instruction-bearing string as system/developer rules
+- Prompt templates with placeholder variables filled by user data in trusted prompt regions
 - Absence of input validation or sanitization before prompt assembly
 - Raw inclusion of conversation history without filtering
+- Role-separated API calls where user text remains only in the user role should be documented as normal input flow, not automatically reported as a vulnerability
 
 ---
 
@@ -91,12 +94,31 @@ For each external content source identified in Step 1, determine whether an adve
 - **Web browsing and scraping** — If the LLM fetches web content, any page it visits could contain injected instructions (including in HTML comments, hidden text, or metadata).
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
+- **Multi-modal uploads** — Images, audio transcripts, screenshots, and video frames can carry instructions in pixels, alt text, OCR output, EXIF metadata, captions, or transcripts. For vision/audio-enabled models, treat extracted multi-modal content as untrusted context.
+- **Invisible and obfuscated instructions** — Unicode tag characters, zero-width joiners, homoglyphs, bidirectional overrides, HTML comments, CSS-hidden text, and encoded payloads can smuggle instructions past human review and simple blocklists.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
 - Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
+- OCR, transcription, metadata extraction, or document conversion pipelines whose output is promoted into model context without provenance or demarcation
+
+---
+
+## Step 3.5: Record Non-Findings Before Severity Assignment
+
+Prompt injection reviews create noisy reports when they skip explicit false-positive triage. Before assigning severity, record whether any of these non-finding conditions apply:
+
+| Pattern | Treat as a finding only if... |
+|---------|-------------------------------|
+| User text in a user-role message | It can alter system/developer instructions, memory summaries, tool policy, routing, or another higher-trust channel. |
+| Markdown or link generation | The renderer, client, or downstream tool can fetch attacker-controlled URLs, preserve tracking URLs, or induce user/tool exfiltration. |
+| Read-only curated RAG corpus | The attacker can influence corpus content, metadata, ranking, retrieval parameters, or another untrusted context source. |
+| Injection keyword scanner or canary alert | There is corroborating evidence of boundary crossing, prompt leakage, or exploitable output; the signal alone is not proof. |
+| Instruction hierarchy support | A code-enforced authorization, output, or tool boundary also exists for the sensitive operation. |
+
+Document non-findings in the report so reviewers can distinguish "reviewed and safe under stated preconditions" from "not checked."
 
 ---
 
@@ -137,7 +159,7 @@ The attacker causes the model to invoke tools or perform actions that should not
 The attacker causes the model to include sensitive data in its output or to transmit data to an attacker-controlled destination. This includes rendering markdown images with data-encoded URLs, generating links the user might click, or invoking tools that send data externally.
 
 **What to evaluate:**
-- Can the model render markdown images or links (a common exfiltration vector via URL-encoded data)?
+- Can the model render markdown images or links, and does the client actually fetch remote resources or allow external navigation? Report exploitable markdown exfiltration only when the renderer, CSP, sanitizer, or proxy behavior permits outbound requests or user-driven disclosure.
 - Does the model have access to sensitive data (PII, credentials, internal documents) that could be included in responses?
 - Can tool calls be used to send data to arbitrary external endpoints?
 - Are outputs filtered for sensitive data patterns?
@@ -151,6 +173,37 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 - Are those constraints enforced only through prompt instructions or also through output validation?
 - Does the application handle edge cases where the model might produce disallowed content?
 
+### 4.6 Agentic Composition and Lethal-Trifecta Risk
+
+Prompt injection risk is often created by the combination of otherwise legitimate capabilities. Evaluate whether the application simultaneously gives the model:
+
+1. Access to private or sensitive data.
+2. Exposure to untrusted content that can contain instructions.
+3. An external egress channel such as email, web requests, rendered remote markdown, webhooks, browser navigation, file sharing, or arbitrary tool outputs.
+
+This composition is high risk even when each individual tool is "authorized." Treat MCP tool results, plugin responses, browser output, and RAG chunks as possible indirect-injection sources, and verify that tool authorization, destination allowlists, and data-loss controls are enforced outside the model.
+
+### 4.7 Multi-Modal and Invisible-Character Injection
+
+For applications that accept rich input, test whether hidden instructions can reach the model through non-obvious channels:
+
+- **Vision and screenshots** — Text in pixels, UI screenshots, diagrams, QR codes, and image overlays.
+- **OCR and document conversion** — Hidden PDF layers, annotations, comments, alt text, spreadsheet cell notes, and conversion artifacts.
+- **Audio and video** — Speech-to-text transcripts, captions, frame extraction, and generated summaries of media.
+- **Metadata and encoding** — EXIF fields, HTML comments, Unicode tag characters, bidirectional controls, zero-width characters, homoglyphs, and mixed-script confusables.
+
+Record the extraction path, normalization step, reviewer visibility, and whether the extracted content can affect instructions or tool policy. Do not report this class solely because file upload exists; the issue is the hidden content reaching a trusted model decision path.
+
+### 4.8 Evidence-Driven Test Recipes
+
+When practical, attach at least one benign and one vulnerable test recipe to each finding:
+
+- **Benign role separation:** A normal chat request where user content remains in the user role and cannot change system instructions should be marked non-vulnerable.
+- **Instruction-channel crossing:** The same user value placed inside a system prompt, policy block, routing rule, or memory summary should be marked vulnerable.
+- **Renderer-gated exfiltration:** Markdown image/link payloads should be tested with the actual renderer, CSP, URL sanitizer, and network-fetch behavior.
+- **Composition path:** Trace one source-to-sink route from untrusted content to private data access to an outbound channel, including the code-enforced gates that stop or permit it.
+- **Invisible/multi-modal path:** Show the preprocessing output that the model actually receives after OCR, transcription, PDF extraction, or Unicode normalization.
+
 ---
 
 ## Step 5: Defense Evaluation
@@ -160,7 +213,7 @@ Evaluate which of the following mitigations are implemented and how effectively.
 ### 5.1 Input Validation and Sanitization
 
 - Is user input validated for expected format, length, and character set before inclusion in prompts?
-- Are known injection patterns (e.g., "ignore previous instructions") detected and flagged?
+- Are known injection patterns (e.g., "ignore previous instructions") detected only as low-confidence telemetry rather than treated as a primary security control?
 - Is input sanitization applied without relying on an exhaustive blocklist (which is inherently incomplete)?
 
 ### 5.2 Privilege Separation
@@ -185,12 +238,14 @@ Evaluate which of the following mitigations are implemented and how effectively.
 
 - Does the system prompt include canary strings that, if they appear in the model's output, indicate a prompt leaking attempt?
 - Is there automated detection and alerting when canary tokens appear in responses?
+- Are canary alerts triaged with context so legitimate summaries, logs, caching, or paraphrases do not create false confidence or false positives? Canary absence is not proof that no leak occurred.
 
 ### 5.6 Instruction Hierarchy
 
 - Does the application use a model or framework that supports instruction hierarchy (system instructions take precedence over user instructions)?
 - Is the system prompt structurally separated from user input (e.g., via the API's system message role) rather than concatenated in a single string?
 - Are retrieved documents and external content clearly demarcated as data, not instructions?
+- Is instruction hierarchy treated as defense-in-depth rather than an authorization boundary? Verify sensitive actions with code-enforced policy checks independent of model obedience.
 
 ### 5.7 Adaptive Attack Resilience
 
@@ -214,7 +269,7 @@ Each finding should be assigned a severity based on potential impact:
 
 | Severity | Criteria |
 |----------|----------|
-| **Critical** | Attacker can exfiltrate sensitive data, escalate privileges to perform unauthorized actions, or fully hijack the application's behavior via external content in a RAG pipeline. Exploitation requires no special access beyond normal application use. |
+| **Critical** | Attacker can exfiltrate sensitive data, escalate privileges to perform unauthorized actions, or fully hijack behavior through untrusted content combined with sensitive-data access and an egress channel. For RAG, Critical generally requires an attacker-writable or attacker-influenceable corpus, or another practical path to plant content. |
 | **High** | Attacker can reliably override the application's intended behavior, extract the system prompt, or cause the model to invoke unintended tools. Some user interaction may be required. |
 | **Medium** | Attacker can partially influence model behavior, extract non-sensitive system prompt fragments, or cause the model to produce off-task output. Exploitation is inconsistent or requires specific conditions. |
 | **Low** | Minor deviations from intended behavior with limited security impact. The model can be coaxed into slightly off-topic responses but cannot be made to perform harmful actions. |
@@ -234,16 +289,27 @@ Each finding should be assigned a severity based on potential impact:
 ### Interaction Surface Map
 [Table from Step 1]
 
+### Trust Boundary and Composition Map
+| Surface | Trust Level | Model Channel | Private Data Access | External Egress | Boundary Controls |
+|---------|-------------|---------------|---------------------|-----------------|-------------------|
+| [surface] | [trusted/untrusted/mixed] | [system/user/retrieved/tool/output] | [Yes/No; data class] | [Yes/No; destination class] | [authorization, sanitizer, CSP, allowlist, HITL] |
+
 ### Findings
 
 #### Finding [N]: [Title]
-- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking]
+- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking | Agentic Composition | Multi-Modal / Invisible-Character Injection]
 - Vector: [Direct | Indirect]
 - Severity: [Critical | High | Medium | Low | Informational]
 - Location: [file path and line numbers, or architectural component]
+- Trust-boundary crossing: [source channel -> destination channel]
+- Preconditions: [attacker content control, private-data access, egress path, renderer behavior, user interaction]
+- False-positive checks: [role separation, renderer controls, corpus writability, canary caveats, blocklist-only signal, instruction hierarchy caveat]
 - Description: [What the vulnerability is and why it matters]
 - Evidence: [Code pattern or architectural observation that demonstrates the issue]
 - Recommendation: [Specific defensive measure to implement]
+
+### Non-Findings Reviewed
+[List reviewed patterns that were not findings and the controls/preconditions that made them non-exploitable.]
 
 ### Defense Posture Summary
 [Table summarizing which defenses from Step 5 are present, partially present, or absent]
@@ -275,6 +341,12 @@ Each finding should be assigned a severity based on potential impact:
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
 
+6. **Flagging normal role-separated user input as injection.** A user message containing arbitrary text is not itself a vulnerability when it remains in the user role and cannot modify system/developer instructions, tool routing, or policy state. Focus findings on trust-boundary crossings and exploitable consequences.
+
+7. **Testing tools independently but missing composition.** A private-data tool, a web-reading tool, and an outbound communication tool may each look acceptable in isolation. Together they create an exfiltration path if untrusted content can influence tool use. Assess cross-tool data flows, not only per-tool permissions.
+
+8. **Ignoring multi-modal and invisible-text channels.** Vision, OCR, transcription, and document-conversion paths can surface instructions that are invisible or non-obvious to reviewers. Include Unicode, hidden text, metadata, and OCR/transcript extraction in the indirect-injection test plan.
+
 ---
 
 ## References
@@ -284,5 +356,6 @@ Each finding should be assigned a severity based on potential impact:
 - Perez, F. & Ribeiro, I. (2022). "Ignore Previous Prompt: Attack Techniques For Language Models." arXiv:2211.09527.
 - Greshake, K. et al. (2023). "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection." arXiv:2302.12173.
 - Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
+- Willison, S. "The lethal trifecta for AI agents" — private data access, untrusted content exposure, and external communication together create agentic exfiltration risk.
 - Yin, X. et al. "PISmith: RL-Optimized Adaptive Black-Box Prompt Injection Attacks" (2026) -- arXiv:2603.13026
 - fabraix/playground — Open-source AI agent exploit library for testing injection defenses — https://github.com/fabraix/playground
