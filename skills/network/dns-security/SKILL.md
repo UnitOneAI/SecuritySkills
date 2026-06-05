@@ -6,14 +6,14 @@ description: >
   -- Use DNS Filtering Services). Auto-invoked when reviewing DNS configurations,
   DNSSEC deployment, or investigating DNS-based exfiltration and tunneling
   indicators. Produces a DNS security assessment covering DNSSEC validation,
-  protective DNS, and exfiltration detection patterns.
+  protective DNS, DNS transaction hardening, and exfiltration detection patterns.
 tags: [network, dns, dnssec, exfiltration]
 role: [security-engineer]
 phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
-time_estimate: "20-40min"
-version: "1.0.0"
+time_estimate: "30-60min"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DNS Security Review
 
-A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS transaction security, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
 
 ---
 
@@ -294,13 +294,119 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
+### Step 7: DNS Transaction Security (NIST SP 800-81 Rev 2, Sections 3 and 6)
+
+Review zone-transfer, recursion, and dynamic-update paths separately from DNSSEC. DNSSEC validates data authenticity, but it does not prevent unauthorized zone enumeration, resolver abuse, or record modification through insecure operational interfaces.
+
+#### 7.1 Zone Transfer (AXFR/IXFR) Restrictions
+
+For each authoritative zone, verify:
+
+| Evidence | Secure State | Insecure State |
+|----------|--------------|----------------|
+| `allow-transfer` | Specific secondary IPs, ACL names, or TSIG-authenticated servers | `any;`, `0.0.0.0/0`, `::/0`, broad ACL, or missing directive where default allows transfer |
+| TSIG for primary/secondary transfers | `key` and `server` statements or equivalent provider evidence | Unauthenticated zone transfer between nameservers |
+| `also-notify` / notification target | Specific secondaries only | Global or unreviewed notification targets |
+| Cloud DNS provider evidence | Transfer disabled by design or restricted by IAM/provider settings | Public or cross-account transfer path not reviewed |
+
+**Patterns to search:**
+
+```
+allow-transfer { any; };
+allow-transfer { 0.0.0.0/0; };
+allow-transfer { ::/0; };
+allow-transfer { key
+also-notify {
+```
+
+**External validation:** When in scope and authorized, test AXFR from an untrusted network:
+
+```
+dig AXFR example.com @<authoritative-server>
+```
+
+Expected result for unauthorized clients is transfer refusal, not full zone disclosure.
+
+**Finding classification:** Unrestricted AXFR/IXFR to any client is **High**. Missing TSIG or equivalent authentication for inter-nameserver transfers is **Medium**. Missing evidence for cloud provider transfer restrictions is **Medium**.
+
+#### 7.2 Open Recursion Prevention
+
+For each recursive resolver or mixed authoritative/recursive server, verify:
+
+| Evidence | Secure State | Insecure State |
+|----------|--------------|----------------|
+| BIND recursion | `recursion no;` on authoritative-only servers, or recursion limited to trusted ACLs | `recursion yes;` with no client restriction |
+| BIND cache query ACL | `allow-recursion` and `allow-query-cache` limited to trusted networks | `any;`, `0.0.0.0/0`, `::/0`, or missing ACL with recursion enabled |
+| Unbound access control | `access-control` permits only trusted networks and refuses/denies others | `0.0.0.0/0 allow`, broad `allow_snoop`, or missing denies |
+| External test evidence | External clients receive `REFUSED` or no recursion | External clients receive recursive answers |
+| Amplification controls | Rate limiting and source restrictions documented | Open resolver usable for reflection/amplification |
+
+**Patterns to search:**
+
+```
+recursion yes;
+allow-recursion { any; };
+allow-query-cache { any; };
+allow-recursion { 0.0.0.0/0; };
+access-control: 0.0.0.0/0 allow
+access-control: ::/0 allow
+allow_snoop
+```
+
+**External validation:** When authorized, run a recursive query from outside the trusted client range:
+
+```
+dig +recurse @<resolver-ip> example.com A
+```
+
+Expected result is `REFUSED`, no answer, or recursion-available flag absent for untrusted clients.
+
+**Finding classification:** Open recursion from any source is **High** because it enables DNS amplification and bypasses resolver policy. Authoritative-only servers with recursion enabled are **Medium** unless exposed publicly, where treat as **High**.
+
+#### 7.3 Dynamic Update Restrictions
+
+For each authoritative zone, verify:
+
+| Evidence | Secure State | Insecure State |
+|----------|--------------|----------------|
+| `allow-update` | Disabled by default or limited to TSIG keys / tightly scoped update hosts | `any;`, broad networks, or unauthenticated update sources |
+| `update-policy` | Fine-grained grants by TSIG key, name, type, and zone scope | Wildcard grants, broad zonesub grants, or unclear grant subjects |
+| TSIG keys | Keys exist, are scoped to the update function, and are not reused broadly | No TSIG, shared keys across unrelated update clients, or keys committed in repos |
+| Local update path | Localhost/DHCP updates are approved, logged, and scoped | `127.0.0.1` or DHCP update path assumed safe without review |
+| Update logging | Dynamic update attempts and denials are logged | No audit trail for DNS record modification |
+
+**Patterns to search:**
+
+```
+allow-update { any; };
+allow-update { 0.0.0.0/0; };
+allow-update { ::/0; };
+allow-update { 127.0.0.1; };
+update-policy {
+grant * * *;
+grant * zonesub ANY;
+```
+
+**Finding classification:** Unrestricted dynamic updates (`allow-update { any; }` or equivalent) are **Critical** because they allow unauthorized zone-data modification. Dynamic updates without TSIG or equivalent authentication are **High**. Overly broad `update-policy` grants are **Medium** to **High** depending on zone sensitivity.
+
+#### 7.4 DNS Transaction Security Matrix
+
+Record one row per zone or resolver role:
+
+| Asset | Role | Zone/View | allow-transfer | AXFR TSIG | Recursion ACL | allow-update/update-policy | Status |
+|-------|------|-----------|----------------|-----------|---------------|----------------------------|--------|
+| ns1.example.net | authoritative | example.com | restricted to ns2 | yes | disabled | disabled | Pass |
+| resolver1 | recursive | internal view | N/A | N/A | internal CIDRs only | N/A | Pass |
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; unrestricted dynamic updates to authoritative zones. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; open recursion; unrestricted zone transfers. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; missing TSIG for zone transfers or dynamic updates; overly broad update-policy grants. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -327,6 +433,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### DNS Transaction Security
+
+| Asset | Role | Zone/View | allow-transfer | AXFR TSIG | Recursion ACL | allow-update/update-policy | Status |
+|-------|------|-----------|----------------|-----------|---------------|----------------------------|--------|
+| ns1.example.net | authoritative | example.com | Restricted/Open | Yes/No/N/A | Disabled/Open/Restricted | Disabled/Key-only/Open | Pass/Fail |
 
 ### Findings
 
@@ -359,10 +471,10 @@ abcdef0123456789.dnscat.example.com TXT
 | Section | Topic | Key Requirements |
 |---------|-------|-----------------|
 | 2 | DNS Threats | Cache poisoning, unauthorized zone modification, DDoS |
-| 3 | Securing DNS Transactions | TSIG for zone transfers, ACLs on recursive queries |
+| 3 | Securing DNS Transactions | TSIG for zone transfers, ACLs on recursive queries, authenticated dynamic updates |
 | 4 | DNSSEC for Authoritative Servers | Zone signing, key management, algorithm selection, NSEC3 |
 | 5 | DNSSEC for Recursive Resolvers | Validation enablement, trust anchor management, NTA policy |
-| 6 | Securing DNS Infrastructure | Restricting zone transfers, hiding version strings, rate limiting |
+| 6 | Securing DNS Infrastructure | Restricting zone transfers, disabling recursion on authoritative-only servers, hiding version strings, rate limiting |
 
 ### CIS Controls v8
 
@@ -384,6 +496,8 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Assuming DNSSEC protects operational transaction paths.** DNSSEC does not stop unrestricted AXFR, open recursion, or unauthenticated dynamic updates. Always review `allow-transfer`, `allow-recursion`, `allow-query-cache`, `allow-update`, `update-policy`, and TSIG evidence directly.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -399,10 +513,13 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## References
 
-- NIST SP 800-81 Rev 2, Secure Domain Name System (DNS) Deployment Guide: https://csrc.nist.gov/publications/detail/sp/800-81/2/final
-- NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
+- NIST SP 800-81 Rev 2, Secure Domain Name System (DNS) Deployment Guide: https://csrc.nist.gov/pubs/sp/800/81/2/final
+- NIST SP 800-81 Rev 3, current superseding DNS Deployment Guide: https://csrc.nist.gov/pubs/sp/800/81/r3/final
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
+- RFC 2136 -- Dynamic Updates in the Domain Name System: https://datatracker.ietf.org/doc/html/rfc2136
+- RFC 2845 -- Secret Key Transaction Authentication for DNS (TSIG): https://datatracker.ietf.org/doc/html/rfc2845
+- RFC 5936 -- DNS Zone Transfer Protocol (AXFR): https://datatracker.ietf.org/doc/html/rfc5936
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
@@ -413,4 +530,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.1.0** -- Adds DNS transaction security review for AXFR/IXFR restrictions, open recursion prevention, and dynamic update hardening, with evidence matrices, severity guidance, updated NIST mapping, and TSIG/RFC references.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
