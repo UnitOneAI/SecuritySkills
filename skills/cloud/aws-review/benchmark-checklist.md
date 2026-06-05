@@ -1,12 +1,52 @@
-# CIS AWS Foundations Benchmark v3.0.0 -- Detailed Checklist
+# CIS AWS Foundations Benchmark -- Version-Aware Detailed Checklist
 
-This file contains the detailed CIS benchmark checklist items for the AWS Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+This file contains detailed CIS benchmark checklist items for the AWS Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, benchmark-version preflight, and output format.
+
+The original checklist was written for CIS AWS Foundations Benchmark v3.0.0. Current reviews must first identify the selected benchmark version and mapping source. Use this file as evidence guidance and as a legacy v3.0.0 control map; do not treat the fixed v3.0.0 section counts as the denominator for a v5.0.0 Security Hub CSPM assessment.
+
+---
+
+## Benchmark Version Preflight
+
+Before applying any checklist item, capture the benchmark context:
+
+| Field | How to Capture |
+|-------|----------------|
+| `benchmark_version` | From the user request, Security Hub standards subscription, GRC export, or report header. |
+| `security_hub_standard_arn_or_version` | Look for `cis-aws-foundations-benchmark/v/<version>` in Security Hub subscriptions or exported findings. |
+| `control_mapping_source` | AWS Security Hub CSPM version comparison, official CIS material, or an approved internal control crosswalk. |
+| `benchmark_source_date` | Date of the AWS/CIS mapping source or internal GRC mapping. |
+| `legacy_baseline` | Set to true only when v3.0.0 or older was intentionally selected. |
+
+Use this support status vocabulary for each row in the final mapping table:
+
+| Status | Checklist Behavior |
+|--------|--------------------|
+| `current` | Score normally for the selected benchmark version. |
+| `legacy` | Preserve for migration context, but do not count as current v5.0.0 coverage. |
+| `removed` | Do not report as a current failure. Explain that the requirement was removed for the selected version. |
+| `unsupported` | Do not score from Security Hub CSPM alone. Request manual evidence if the risk still matters. |
+| `manual` | Requires evidence outside repository/IaC inspection. |
+| `not_evaluable_from_supplied_evidence` | Applies in principle, but available files cannot prove pass/fail. |
+
+Security Hub CSPM evidence to search for:
+
+```
+cis-aws-foundations-benchmark/v/5.0.0
+cis-aws-foundations-benchmark/v/3.0.0
+aws_securityhub_standards_subscription
+standards_subscription_arn
+StandardsArn
+GeneratorId
+Compliance.SecurityControlId
+Compliance.AssociatedStandards
+```
 
 ---
 
 ## Section 1 -- Identity and Access Management
 
-Evaluate IAM configurations against CIS AWS v3.0.0 Section 1 recommendations.
+Evaluate IAM configurations against the selected CIS AWS benchmark version. The legacy items below map to the v3.0.0 checklist and should be cross-checked against the selected version before scoring.
 
 ### CIS 1.1 -- Maintain current contact details
 
@@ -164,7 +204,7 @@ Look for policies restricting CloudShell access.
 
 ## Section 2 -- Storage
 
-Evaluate S3 and EBS storage configurations against Section 2 recommendations.
+Evaluate storage configurations against the selected benchmark version. The legacy v3.0.0 checklist focuses on S3, EBS, RDS, and EFS. For v5.0.0-aware reviews, first confirm whether the selected mapping adds, removes, or remaps controls for additional storage and messaging services before scoring.
 
 ### CIS 2.1.1 -- Ensure S3 Bucket Policy is set to deny HTTP requests
 
@@ -264,7 +304,7 @@ encrypted = true
 
 ## Section 3 -- Logging
 
-Evaluate logging configurations against Section 3 recommendations.
+Evaluate logging configurations against the selected benchmark version. For v5.0.0-aware reviews, verify whether the selected mapping introduces service-specific logging controls beyond the legacy CloudTrail, AWS Config, VPC Flow Logs, and S3 object-level logging items.
 
 ### CIS 3.1 -- Ensure CloudTrail is enabled in all regions
 
@@ -356,7 +396,7 @@ Same as 3.10 -- verify both read and write events are captured.
 
 ## Section 4 -- Monitoring
 
-Evaluate monitoring and alerting configurations against Section 4 recommendations.
+Evaluate monitoring and alerting configurations against the selected benchmark version. Keep CloudWatch metric-filter checks version-scoped; do not assume the legacy v3.0.0 monitoring IDs are unchanged in newer mappings.
 
 ### CIS 4.1 -- Ensure a log metric filter and alarm exist for unauthorized API calls
 
@@ -409,7 +449,7 @@ aws_securityhub_standards_subscription
 
 ## Section 5 -- Networking
 
-Evaluate network configurations against Section 5 recommendations.
+Evaluate network configurations against the selected benchmark version. The legacy items below cover NACLs, security groups, default security groups, peering route scope, and IMDSv2. For newer mappings, also check whether the selected version adds VPC endpoint, PrivateLink, Network Firewall, EKS, or ECS network controls.
 
 ### CIS 5.1 -- Ensure no Network ACLs allow ingress from 0.0.0.0/0 to remote server administration ports
 
@@ -488,3 +528,43 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+## Current-Version Expansion Gates
+
+When the selected mapping is v5.0.0 or another current Security Hub CSPM standard, add the following gates before final scoring. These gates are deliberately mapping-aware: use official AWS/CIS mapping evidence for exact control IDs instead of inventing IDs from service names.
+
+### Compute and Runtime Services
+
+| Area | Evidence to Search | Scoring Guidance |
+|------|--------------------|------------------|
+| EC2 runtime metadata | `metadata_options`, `http_tokens`, launch templates, Auto Scaling launch configurations | Score only against the selected mapping. If the environment uses launch templates but only instances were checked, mark incomplete evidence. |
+| Lambda | `aws_lambda_function`, `aws_lambda_permission`, `aws_lambda_function_url`, runtime versions, environment encryption, VPC config, logging config | Require mapping evidence before assigning a CIS ID. Missing runtime/logging/VPC evidence is `not_evaluable_from_supplied_evidence` when only partial IaC is supplied. |
+| ECS | `aws_ecs_task_definition`, task execution roles, log configuration, network mode, secrets injection, service discovery | Distinguish task execution role evidence from application task role evidence. |
+| EKS | `aws_eks_cluster`, control plane logging, public endpoint access, node security groups, IAM roles for service accounts | Do not treat generic Kubernetes YAML as proof of AWS managed-control compliance without EKS cluster evidence. |
+
+### Application and Event Services
+
+| Area | Evidence to Search | Scoring Guidance |
+|------|--------------------|------------------|
+| API Gateway / AppSync | `aws_api_gateway_*`, `aws_apigatewayv2_*`, `aws_appsync_graphql_api`, access logging, auth type, WAF association | Record whether the evidence comes from IaC, Security Hub, or manual screenshots/export. |
+| SQS / SNS | `aws_sqs_queue`, `aws_sns_topic`, encryption, queue/topic policy, dead-letter queue evidence | Separate encryption posture from cross-account policy exposure. |
+| Step Functions | `aws_sfn_state_machine`, logging configuration, tracing, encryption, execution history retention | Some controls may be manual or unsupported in Security Hub; mark status explicitly. |
+| EventBridge | `aws_cloudwatch_event_bus`, `aws_cloudwatch_event_rule`, event bus policy, archive/replay settings | Watch for cross-account event bus policies and missing owner context. |
+
+### Version-Mapping Crosswalk
+
+For every control that appears in the final report, add a row like:
+
+```
+control_id: CIS <selected-version-id>
+legacy_ids: [CIS v3.0.0 <old-id>, ...]
+security_hub_control_id: <Security Hub control, if available>
+support_status: current | legacy | removed | unsupported | manual | not_evaluable_from_supplied_evidence
+mapping_source: <AWS Security Hub CSPM version comparison / CIS material / internal crosswalk>
+evidence_source: <file, Security Hub finding, or manual artifact>
+assessment_status: Pass | Fail | Not Applicable | Not Evaluable
+```
+
+Do not include removed, unsupported, or legacy-only controls in the current benchmark denominator. Keep them in a migration appendix when they are useful for explaining why a historical report differs from the current Security Hub score.
