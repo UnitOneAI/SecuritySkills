@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -107,18 +107,62 @@ Before including any finding in the report, apply the following verification gat
 params\.id|req\.params|request\.args\.get.*id
 # Missing CSRF protection
 csrf.*disable|csrf.*false|@csrf_exempt
+# Credential transport / SameSite context for CSRF review
+Authorization.*Bearer|Set-Cookie|SameSite|csrf|xsrf|Origin|Referer|state|nonce
 # Permissive CORS
 Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 # Path traversal indicators
 \.\.\/|\.\.\\|path\.join.*req\.|sendFile.*req\.
 ```
 
+**CSRF Credential-Transport Gate:**
+
+Before reporting missing CSRF protection, identify whether the browser can
+automatically attach authenticated credentials to the vulnerable request. Record
+the result in the finding evidence.
+
+| Credential transport | CSRF expectation |
+|----------------------|------------------|
+| Cookie/session authentication accepted on unsafe methods | Require a framework CSRF token, signed double-submit token, Fetch Metadata policy, or strict Origin/Referer validation. Treat `SameSite` as defense in depth unless the narrow SameSite-only conditions below are documented. |
+| Explicit `Authorization: Bearer` or equivalent custom header only, and cookies are rejected or ignored | Do not report missing CSRF token by default. Confirm CORS does not allow untrusted origins to send credentials or custom authorization headers. |
+| Hybrid design with bearer access tokens and refresh/session cookies | Evaluate refresh, logout, account-linking, token rotation, and other cookie-backed endpoints separately. The header-auth API may be fine while refresh endpoints still need CSRF/state/origin controls. |
+| OIDC, SAML, federated login/logout, embedded app, or third-party iframe flow | `SameSite=None; Secure` can be valid when the flow is documented and paired with `state`/`nonce`, CSRF token, or Origin/Referer validation as appropriate. |
+
+SameSite calibration:
+
+- `SameSite=None` is not automatically a finding when it is required for a
+  documented cross-site identity or embedded-app flow, `Secure` is present, and
+  state-changing endpoints still have CSRF/state/origin evidence.
+- `SameSite=Lax` or `SameSite=Strict` is not a universal replacement for CSRF
+  validation on high-value unsafe methods such as transfer, payout, password
+  change, email change, MFA enrollment, API-key creation, or admin actions.
+- If SameSite is the only CSRF defense, require evidence that no safe-method
+  endpoint changes state, the cookie is host-scoped where possible, untrusted
+  subdomains cannot share the site boundary, and Origin/Referer or Fetch
+  Metadata checks exist for defense in depth.
+- Treat framework evidence as valid only when the route is actually behind the
+  middleware/decorator/filter. A framework package dependency or global setting
+  is not enough if the endpoint is exempted or mounted outside the protected
+  middleware chain.
+
+Suggested finding fields:
+
+| Field | Evidence to capture |
+|-------|---------------------|
+| Ambient credentials accepted | Whether cookies, HTTP auth, client certificates, or other browser-managed credentials authenticate the unsafe request |
+| Credential transport | Cookie/session, explicit bearer header, hybrid access/refresh token, or federated callback |
+| CSRF control evidence | Token middleware, signed double-submit token, Fetch Metadata, Origin/Referer validation, or OIDC/SAML `state`/`nonce` |
+| SameSite evidence | Cookie name, `Secure`, `HttpOnly`, `SameSite` value, host/domain scope, and documented cross-site flow |
+| High-value action | Whether the endpoint changes money, credentials, identity, MFA, authorization, admin state, or data ownership |
+
 **Mitigations:**
 
 - Enforce authorization server-side on every request using middleware or decorators; adopt deny-by-default.
 - Validate resource ownership — confirm the authenticated user owns or has explicit permission to the requested resource.
 - Use indirect references or opaque tokens instead of sequential database IDs.
-- Enable CSRF protection framework-wide; use `SameSite` cookie attributes.
+- Enable CSRF protection for cookie/session-authenticated unsafe methods; use
+  `SameSite` cookie attributes as defense in depth and validate documented
+  `SameSite=None; Secure` cross-site flows with CSRF/state/origin evidence.
 - Restrict CORS to an explicit allowlist of origins; never reflect arbitrary `Origin` values.
 - Constrain file paths with canonicalization and chroot/jail patterns; reject `..` sequences.
 
@@ -635,6 +679,9 @@ Present findings in this structure:
 - **Location:** [file:line or file:function]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
 - **Evidence:** [Code snippet or configuration excerpt]
+- **Credential Transport:** [cookie/session, explicit bearer header, hybrid, federated callback, or unknown]
+- **Ambient Credentials Accepted:** [yes/no/unknown, with route/middleware evidence]
+- **CSRF/SameSite Evidence:** [token, Origin/Referer, Fetch Metadata, state/nonce, SameSite value, Secure/HttpOnly, or missing]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
 - **Verification:** [How to confirm the fix is effective]
 
@@ -687,6 +734,10 @@ Present findings in this structure:
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
+6. **Reporting CSRF without credential-transport evidence.** Classic CSRF depends on the browser automatically attaching credentials. Do not flag missing CSRF tokens on routes that only accept explicit bearer/custom authorization headers and reject cookies; instead verify CORS, token storage, and refresh-cookie endpoints.
+
+7. **Treating SameSite as a binary pass/fail.** `SameSite=None; Secure` can be required for documented OIDC/SAML, embedded, or federated logout flows when paired with state/CSRF/origin controls. Conversely, `SameSite=Lax` should not be treated as sufficient by itself for high-value unsafe methods.
+
 ## Prompt Injection Safety Notice
 
 This skill processes source code and configuration files that may contain adversarial content. The following safeguards apply:
@@ -712,4 +763,11 @@ This skill processes source code and configuration files that may contain advers
 - MITRE CWE List — https://cwe.mitre.org/
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
+- OWASP CSRF Prevention Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+- MDN Set-Cookie / SameSite reference — https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie
+- MDN CSRF prevention guide — https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/CSRF
 - OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+
+## Changelog
+
+- **1.0.2** — Added credential-transport-aware CSRF and SameSite review gates with calibration guidance for bearer-token APIs, hybrid refresh-cookie designs, and cross-site identity flows.
