@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,8 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Affected systems** -- Hostnames, IP addresses, cloud resources, applications, and services impacted or suspected of compromise.
 - [ ] **Timeline** -- When was the activity first observed? When was it reported? Known duration of exposure.
 - [ ] **Indicators of compromise (IOCs)** -- File hashes, IP addresses, domains, URLs, email addresses, registry keys, or behavioral indicators observed.
+- [ ] **SaaS identity and mailbox evidence** -- IdP sign-ins, mailbox audit logs, forwarding/inbox/transport rules, OAuth grants, delegated mailbox access, message trace, and active sessions.
+- [ ] **Business process impact** -- Payment-change requests, vendor bank details, invoice workflow, AP approvals, callback validation, and bank recall window for BEC cases.
 - [ ] **Business context** -- What business functions do the affected systems support? Revenue impact, customer impact, regulatory exposure.
 - [ ] **Current state** -- Is the attack ongoing, contained, or resolved? What actions have already been taken?
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
@@ -127,6 +129,7 @@ Classify the incident using the NIST SP 800-61 taxonomy:
 | **Supply Chain Compromise** | Compromise via trusted third-party software or service | Malicious update, compromised dependency, vendor breach |
 | **Web Application Attack** | Exploitation of web application vulnerabilities | SQL injection, XSS, SSRF, API abuse |
 | **Social Engineering** | Manipulation of personnel to gain access or information | Phishing, BEC, vishing, pretexting |
+| **BEC / SaaS Identity Compromise** | Cloud mailbox, IdP, OAuth consent, or SaaS session takeover without confirmed endpoint malware | Mailbox forwarding rule, malicious OAuth grant, payment redirect, suspicious SaaS login |
 
 #### Step 2.2: Severity Determination
 
@@ -184,6 +187,47 @@ Indicator Analysis Record:
 - ATT&CK Technique:  [T-code and name]
 - Confidence:        [Confirmed | Probable | Suspected]
 ```
+
+#### Step 2.4: BEC / SaaS Identity Incident Branch
+
+Use this branch when the incident involves suspected business-email-compromise, cloud mailbox takeover, malicious OAuth consent, SaaS session theft, or payment-fraud workflow abuse. Do not default to endpoint isolation unless endpoint malware, token theft tooling, or host compromise evidence exists.
+
+**BEC / SaaS identity evidence checklist:**
+
+| Evidence area | Required artifacts |
+|---|---|
+| Identity provider access | User, timestamps, source IP/ASN/geolocation, device, MFA result, risk score, conditional access result, impossible travel, and session IDs |
+| Active sessions | Current refresh tokens, browser sessions, SaaS sessions, app passwords, remembered devices, and revocation status |
+| OAuth / app consent | Enterprise app name, publisher, scopes such as `Mail.Read` or `offline_access`, consent time, consenting user/admin, service principal, and revocation evidence |
+| Mailbox forwarding | SMTP forwarding, inbox rules including hidden rules, transport rules, redirect/forward targets, delegate access, and send-as/send-on-behalf grants |
+| Mailbox audit and message trace | Mailbox audit export, sent/deleted items, suspicious search/export events, message trace, affected recipients, and phishing/BEC lure samples |
+| SaaS data access | SharePoint/OneDrive/Drive/file access, download/share events, CRM/ERP/vendor portal access, and admin actions from the compromised identity |
+| Finance/AP workflow | Payment-recipient change, invoice thread, vendor callback evidence, bank recall deadline, cyber-insurance/legal notification, and IC3/law-enforcement reporting decision |
+| Communications safety | Out-of-band IR channel confirmed; do not coordinate through the affected mailbox or chat session until sessions are revoked |
+| Endpoint boundary | EDR findings, browser token-theft indicators, suspicious downloads, or explicit "no endpoint malware evidence yet" rationale |
+| Not Evaluable reason | Missing mailbox audit license, unavailable IdP logs, delegated SaaS admin access unavailable, message trace retention expired, or finance records unavailable |
+
+**Containment sequence for BEC / SaaS identity cases:**
+
+1. Move response coordination out of the affected mailbox, Teams/Slack chat, or any channel visible to the suspected compromised identity.
+2. Disable or block risky sign-in for the affected user when business impact permits; otherwise apply a temporary conditional-access block and emergency monitoring.
+3. Revoke active sessions, refresh tokens, app passwords, remembered devices, and suspicious MFA methods.
+4. Remove malicious OAuth grants, enterprise apps, service principals, delegated consents, and third-party SaaS sessions.
+5. Export and remove suspicious inbox rules, forwarding settings, transport rules, delegate access, and send-as/send-on-behalf permissions.
+6. Preserve mailbox audit logs, IdP sign-in logs, message traces, sent/deleted items, OAuth grant history, and finance workflow evidence before cleanup where possible.
+7. Reset credentials and require MFA re-registration only after persistence paths are removed or queued for removal.
+8. Validate no post-containment sign-ins, forwarding, OAuth access, or message sending continue from the affected identity.
+9. Run finance/AP fraud workflow: out-of-band vendor callback, payment hold or recall, bank notification, insurer/legal review, and IC3/law-enforcement reporting decision.
+
+**Classification guidance:**
+
+| Condition | Classification / severity guidance |
+|---|---|
+| Malicious OAuth grant or refresh token remains active after password reset | Treat as containment failure; at least SEV-2 when mailbox or sensitive SaaS data is accessible |
+| New forwarding/inbox/transport rule routes invoices, payroll, legal, or customer data externally | Data exfiltration path; evaluate legal/privacy notification and finance fraud exposure |
+| Payment instructions changed or funds transferred | Escalate to legal, finance leadership, bank, cyber insurer, and law enforcement/IC3 decision path |
+| Suspicious login only, no mailbox rule/OAuth/session persistence, no data access, and endpoint clean | SEV-3/SEV-4 depending on privileges and business context; monitor after session revocation |
+| Endpoint malware or token theft evidence exists | Pivot to malware/endpoint containment after preserving SaaS evidence |
 
 ### Phase 3: Containment, Eradication, and Recovery (NIST) / Containment + Eradication + Recovery (SANS)
 
@@ -367,7 +411,7 @@ Produce the incident response report with these exact sections:
 ```markdown
 ## Incident Response Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** ir-playbook v1.0.0
+**Skill:** ir-playbook v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, SANS Incident Handler's Handbook
 **Incident Commander:** [Name or "Unassigned -- assign immediately"]
 
@@ -379,7 +423,7 @@ and recommended immediate actions. Lead with the most critical fact.]
 | Field | Value |
 |---|---|
 | Incident ID | [IR-YYYY-NNNN] |
-| Category | [Unauthorized Access / Malware / Data Exfiltration / DoS / Insider / Supply Chain / Web App / Social Engineering] |
+| Category | [Unauthorized Access / Malware / Data Exfiltration / DoS / Insider / Supply Chain / Web App / Social Engineering / BEC-SaaS Identity] |
 | Severity | [SEV-1 / SEV-2 / SEV-3 / SEV-4] |
 | Functional Impact | [None / Low / Medium / High] |
 | Information Impact | [None / Privacy Breach / Proprietary Breach / Integrity Loss] |
@@ -395,6 +439,27 @@ and recommended immediate actions. Lead with the most critical fact.]
 | Type | Value | First Seen | Confidence | ATT&CK Technique |
 |---|---|---|---|---|
 | [IP/Domain/Hash/...] | [value] | [timestamp] | [Confirmed/Probable/Suspected] | [T-code] |
+
+### BEC / SaaS Identity Evidence
+| Evidence Area | Status | Artifact / Location | Notes |
+|---|---|---|---|
+| IdP sign-in logs | [Collected / Missing / Not Evaluable] | [source] | [IP, ASN, MFA, device, session] |
+| Active session revocation | [Complete / Pending / Not Evaluable] | [source] | [refresh tokens, app passwords, remembered devices] |
+| OAuth grants and app consent | [Reviewed / Removed / Not Evaluable] | [source] | [app, scopes, consent time, owner] |
+| Mail forwarding and inbox rules | [Exported / Removed / Not Evaluable] | [source] | [forwarding, hidden rules, transport rules] |
+| Delegated mailbox access | [Reviewed / Removed / Not Evaluable] | [source] | [delegate, send-as, send-on-behalf] |
+| Message trace and mailbox audit | [Collected / Missing / Not Evaluable] | [source] | [sent/deleted/exported/accessed items] |
+| SaaS file/app access | [Reviewed / Not Evaluable] | [source] | [SharePoint/Drive/CRM/ERP actions] |
+| Endpoint boundary | [Clean / Suspected / Compromised / Not Evaluable] | [source] | [EDR findings or no-malware rationale] |
+
+### Finance / AP Fraud Response
+| Step | Status | Owner | Evidence |
+|---|---|---|---|
+| Out-of-band vendor/customer callback | [Complete / Pending / N/A] | [owner] | [ticket/call log] |
+| Payment hold or bank recall | [Complete / Pending / N/A] | [owner] | [bank case ID] |
+| Invoice/vendor master-data review | [Complete / Pending / N/A] | [owner] | [ERP/AP record] |
+| Cyber insurance / legal review | [Complete / Pending / N/A] | [owner] | [notice/case ID] |
+| IC3/law-enforcement decision | [Filed / Deferred / N/A] | [owner] | [report ID or rationale] |
 
 ### Containment Actions
 | Action | Status | Timestamp | Performed By |
@@ -468,6 +533,14 @@ Reconnecting systems to the network before thoroughly removing all persistence m
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
 
+### Pitfall 6: Treating BEC as Endpoint Malware by Default
+
+Mailbox takeover, malicious OAuth consent, and SaaS refresh-token abuse can persist without endpoint malware. Host isolation alone does not remove inbox rules, forwarding, delegated access, OAuth grants, app passwords, remembered devices, or active SaaS sessions. Preserve and contain mailbox/identity evidence first, then pivot to endpoint containment only when endpoint compromise evidence exists.
+
+### Pitfall 7: Communicating Through the Compromised Mailbox
+
+If the attacker still has access to the mailbox or SaaS chat account, normal email/chat can expose the response plan. Move BEC coordination to an out-of-band channel before discussing containment, finance recall, legal strategy, or user reset steps.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -497,3 +570,6 @@ This skill processes incident data that may include attacker-controlled content 
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
 13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+14. **Microsoft: Respond to a compromised cloud email account** -- https://learn.microsoft.com/en-us/defender-office-365/responding-to-a-compromised-email-account
+15. **Microsoft: Detect and remediate illicit consent grants** -- https://learn.microsoft.com/en-us/defender-office-365/detect-and-remediate-illicit-consent-grants
+16. **FBI IC3** -- https://www.ic3.gov/
