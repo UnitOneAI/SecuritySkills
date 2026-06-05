@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,6 +53,7 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Affected systems inventory** -- Hostnames, IPs, cloud resource IDs, services running on affected systems, and their business function.
 - [ ] **Attack vector and techniques** -- Known MITRE ATT&CK techniques in use (initial access, lateral movement, persistence, C2).
 - [ ] **Attacker access scope** -- What accounts, systems, and network segments has the attacker accessed or potentially compromised?
+- [ ] **Identity/SaaS access scope** -- Impacted IdP users, OAuth grants, enterprise applications, service principals, app passwords, refresh tokens, SaaS admin sessions, mailbox/file-sharing rules, API keys, and cloud STS/session tokens.
 - [ ] **Business criticality of affected systems** -- Revenue impact, customer impact, SLA obligations, regulatory implications of downtime.
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
@@ -121,6 +122,32 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Service account reset** | Reset service account passwords and regenerate keys | Lateral movement via service accounts | Downstream services may break |
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
+| **OAuth grant revocation** | Remove suspicious app consent grants and refresh tokens | BEC, malicious OAuth app, SaaS token theft | Per-user or tenant-wide depending on app scope |
+| **SaaS admin session revocation** | Revoke active sessions in SaaS admin consoles | Compromised admin or delegated admin access | Platform-specific propagation delay |
+| **Service principal credential rotation** | Revoke secrets/certificates and rotate app credentials | Cloud control-plane or CI/CD app compromise | Downstream automation may break |
+
+#### SaaS / OAuth Containment Branch
+
+Use this branch when the incident involves business email compromise, IdP compromise, OAuth consent abuse, SaaS token theft, cloud-console access, or attacker persistence through delegated applications. Password reset alone is insufficient if refresh tokens, enterprise app grants, app passwords, mailbox rules, or service-principal credentials remain valid.
+
+| Containment Check | Evidence to Collect | Containment Action | Residual Risk |
+|---|---|---|---|
+| Refresh tokens | User/app token issue time, sign-in logs, token lifetime policy | Revoke refresh tokens and require re-authentication for affected users/apps | Some SaaS tokens may remain valid until expiry |
+| OAuth grants and consent apps | App ID, publisher, scopes, consent type, consenting user/admin, last activity | Remove malicious grants; disable or delete suspicious enterprise apps | Tenant-wide removal can disrupt legitimate workflows |
+| Delegated admin consent | Admin-consented scopes, app owner, affected resources | Revoke admin consent and require approved re-consent workflow | Privileged apps may have broad data access before revocation |
+| App passwords / legacy auth | Legacy protocol use, app password inventory, last used timestamp | Revoke app passwords and block legacy authentication | Legacy clients may break |
+| Mailbox persistence | Forwarding rules, inbox rules, delegates, transport rules, mailbox audit logs | Remove malicious rules/delegates; preserve export evidence | Rules may reappear if OAuth app remains active |
+| SaaS admin sessions | Active admin sessions, API tokens, device/session IDs | Revoke admin sessions and rotate admin API keys | Some platforms delay session invalidation |
+| Service principals | Secrets/certs, federated credentials, workload identity, role assignments | Rotate credentials; remove unnecessary roles; disable app if malicious | Automation outage risk if dependency mapping is missing |
+| Cloud STS/session tokens | Token issue time, assumed role/session name, expiration, source IP | Revoke where supported; reduce session duration; block source paths | Some STS/session tokens remain valid until expiry |
+| File-sharing exfil paths | External shares, public links, bulk download logs, DLP alerts | Disable external links, revoke sharing grants, quarantine exposed files | Need follow-up to confirm no new access after revocation |
+
+Choose scope deliberately:
+
+- **Per-user revocation** when one user or device is compromised and app consent is not tenant-wide.
+- **Per-app disablement** when one OAuth/SaaS app is malicious, over-scoped, or publisher-untrusted.
+- **Tenant-wide consent cleanup** when a privileged app, admin consent, or IdP administrator is compromised.
+- **Residual risk documentation** when the SaaS provider cannot immediately invalidate tokens or cloud STS sessions.
 
 ### Step 3: Long-Term Containment
 
@@ -212,6 +239,9 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | C2 communication blocked | Monitor network traffic for C2 indicators | No outbound connections to known C2 IPs/domains |
 | Lateral movement blocked | Monitor authentication logs and network flows between segments | No unauthorized cross-segment authentication |
 | Compromised credentials revoked | Attempt authentication with known-compromised credentials | Authentication fails |
+| SaaS/OAuth persistence removed | Review OAuth grants, app passwords, service-principal credentials, SaaS sessions, mailbox rules, and sharing links | No attacker-controlled grant/session/rule remains |
+| Revoked token/app activity stopped | Monitor SaaS audit/API logs after revocation | No new API calls, sign-ins, mailbox/file access, or sharing events from revoked tokens/apps |
+| Residual token lifetime documented | Review provider token/session behavior | Expiry window, owner, and compensating monitoring recorded |
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
@@ -256,7 +286,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.0
+**Skill:** containment v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -279,6 +309,11 @@ threat severity and business criticality, and expected impact on operations.]
 |---|---|---|---|---|---|
 | [Action] | [System/Account/Network] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] |
 
+### SaaS / OAuth Revocation Plan
+| Control Plane | Scope | Revocation Target | Evidence Source | Status | Residual Token Window | Owner |
+|---|---|---|---|---|---|---|
+| [Entra/Google/Okta/GitHub/Slack/Salesforce/AWS/Azure/GCP] | [user/app/tenant] | [refresh token/OAuth grant/admin consent/app password/service principal/session/mailbox rule/share link] | [audit log/export/ticket] | [Planned/In Progress/Complete/Not applicable] | [none/known expiry/unknown] | [Name/team] |
+
 ### Long-Term Containment Actions
 | Action | Target | Duration | Status | Owner |
 |---|---|---|---|---|
@@ -293,6 +328,16 @@ threat severity and business criticality, and expected impact on operations.]
 | Check | Result | Timestamp |
 |---|---|---|
 | [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+
+### SaaS / OAuth Validation
+| Validation Item | Expected Result | Evidence | Result |
+|---|---|---|---|
+| OAuth grants reviewed | Suspicious grants removed or explicitly approved | [app grant export / admin log] | [Pass/Fail/Pending] |
+| Refresh tokens revoked | Affected users/apps must re-authenticate | [IdP audit log] | [Pass/Fail/Pending] |
+| SaaS admin sessions revoked | No active attacker-controlled admin sessions remain | [SaaS admin session log] | [Pass/Fail/Pending] |
+| Mailbox/file-sharing persistence removed | No malicious forwarding, delegation, inbox rule, transport rule, or public link remains | [mailbox/cloud audit export] | [Pass/Fail/Pending] |
+| Revoked app/token activity stopped | No new API, sign-in, mailbox, or file activity from revoked grants/tokens | [post-revocation audit query] | [Pass/Fail/Pending] |
+| Residual lifetime documented | Provider token/session expiry window and compensating monitoring recorded | [risk note / owner signoff] | [Pass/Fail/Pending] |
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
@@ -347,6 +392,10 @@ Disconnecting a business-critical production system from the network stops the a
 ### Pitfall 4: Not Validating Containment Effectiveness
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
+
+### Pitfall 5: Treating Password Reset as Complete SaaS Containment
+
+Modern identity incidents often persist through OAuth grants, refresh tokens, service principals, app passwords, mailbox rules, delegated consent, SaaS admin sessions, or cloud STS tokens. Password reset and MFA reset are not complete containment until those paths are inventoried, revoked where appropriate, and monitored for post-revocation activity.
 
 ---
 
