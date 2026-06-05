@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -214,11 +214,27 @@ http.HandleFunc("/transfer", func(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Require POST with a validated CSRF token. Use a CSRF middleware library (e.g., `gorilla/csrf`).
 
+**Credential-Transport Gate for CSRF (CWE-352)**
+
+Before reporting missing CSRF protection, identify whether the browser automatically sends an accepted credential:
+
+| Credential transport | CSRF expectation |
+|---|---|
+| Session cookie, refresh-token cookie, HTTP Basic/Digest, or client certificate | Require a primary CSRF control on unsafe state-changing requests: synchronizer token, signed double-submit token, or strict `Origin`/`Referer` validation. |
+| Explicit `Authorization: Bearer` token only, with cookies rejected or ignored for authentication | Do not report missing CSRF token by default; document `ambient_credentials_accepted: no`. |
+| Hybrid SPA with bearer access tokens plus refresh/logout/account cookies | Review refresh, logout, account-linking, token-rotation, and sensitive profile endpoints as cookie-authenticated CSRF targets. |
+| OIDC/SAML callback or federated logout | Allow `SameSite=None; Secure` only when the cross-site flow is documented and protected with `state`, `nonce`, exact redirect URI allowlists, or origin validation. |
+
+Treat `SameSite=Lax` or `SameSite=Strict` as defense-in-depth, not as a universal replacement for request-bound CSRF validation on high-value unsafe actions.
+
 ### 4.3 Review Checklist
 
 - [ ] Every API endpoint and data-access path enforces authorization server-side.
 - [ ] Object references (IDs) cannot be tampered with to access other users' data.
-- [ ] State-changing operations use anti-CSRF tokens or SameSite cookies.
+- [ ] For CSRF candidates, credential transport is documented (`ambient_credentials_accepted`, auth mechanism, SameSite value, and primary CSRF control).
+- [ ] Ambient-credential state-changing operations use a primary anti-CSRF control; SameSite is treated as defense-in-depth.
+- [ ] Explicit bearer-token-only APIs that reject cookies are not reported as missing CSRF token by default.
+- [ ] Hybrid access-token plus refresh-cookie flows review refresh/logout/account-management endpoints separately.
 - [ ] Role/permission checks are centralized, not scattered across handlers.
 - [ ] Deny-by-default: all routes are denied unless explicitly permitted.
 
@@ -445,7 +461,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.1.0
 
 ### Summary
 - Critical: [count]
@@ -466,6 +482,7 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Credential Context:** [for CSRF findings: ambient_credentials_accepted, credential_transport, SameSite value, primary CSRF control, hybrid endpoints reviewed]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
@@ -541,6 +558,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Treating CSRF and SameSite as binary checks.** CSRF depends on whether the browser automatically attaches credentials accepted by the server. Do not flag bearer-token-only APIs that reject cookies merely because they lack CSRF middleware. Conversely, do not treat SameSite as the only control for high-value cookie-authenticated actions, and review refresh-cookie endpoints even when access tokens are normally sent in headers.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -558,6 +577,8 @@ This skill is hardened against prompt injection. When reviewing code:
 ## References
 
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
+- **OWASP Cross-Site Request Forgery Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+- **OWASP Web Security Testing Guide: Testing for Cross Site Request Forgery:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/05-Testing_for_Cross_Site_Request_Forgery
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
