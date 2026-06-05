@@ -4,16 +4,16 @@ description: >
   Guides digital forensic evidence collection following NIST SP 800-86 and
   RFC 3227 order of volatility. Auto-invoked when the user needs to collect
   forensic evidence, preserve chain of custody, capture volatile data, create
-  disk images, or handle cloud forensics. Produces an evidence collection plan
-  with volatility-prioritized acquisition steps, integrity verification, and
-  chain-of-custody documentation.
+  disk images, preserve raw event logs, handle mobile/BYOD evidence, or handle
+  cloud forensics. Produces an evidence collection plan with volatility-prioritized
+  acquisition steps, integrity verification, and chain-of-custody documentation.
 tags: [incident-response, forensics, evidence]
 role: [soc-analyst, security-engineer]
 phase: [respond]
-frameworks: [NIST-SP-800-86, RFC-3227]
+frameworks: [NIST-SP-800-86, NIST-SP-800-101-r1, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -24,7 +24,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Digital Forensics Evidence Collection -- NIST SP 800-86 / RFC 3227
 
-> **Frameworks:** NIST SP 800-86 (Guide to Integrating Forensic Techniques into Incident Response), RFC 3227 (Guidelines for Evidence Collection and Archiving)
+> **Frameworks:** NIST SP 800-86 (Guide to Integrating Forensic Techniques into Incident Response), NIST SP 800-101 Rev. 1 (Guidelines on Mobile Device Forensics), RFC 3227 (Guidelines for Evidence Collection and Archiving)
 > **Role:** SOC Analyst, Security Engineer
 > **Time:** 30-60 min
 > **Output:** Evidence collection plan with volatility-ordered acquisition steps, chain-of-custody forms, integrity hashes, and cloud forensics considerations
@@ -43,6 +43,8 @@ Invoke this skill when any of the following conditions are met:
 - **Chain of custody must be established** -- Evidence may be used in legal proceedings, regulatory investigations, insurance claims, or internal disciplinary actions requiring documented provenance.
 - **Cloud environment evidence collection** -- Forensic data must be captured from cloud infrastructure (AWS, Azure, GCP) where traditional disk imaging does not apply.
 - **Log preservation needed** -- Logs at risk of rotation, overwrite, or deletion must be preserved before they are lost.
+- **Mobile or BYOD evidence is in scope** -- iOS/Android devices, MDM state, MFA prompts, mobile app logs, or cloud backups may contain material evidence.
+- **Windows event logs are material evidence** -- Raw `.evtx` export and hash preservation are needed, not only rendered text query output.
 
 **Do not use when:** The task is incident classification and response coordination (use ir-playbook), containment strategy selection (use containment), or post-incident retrospective (use post-incident-review).
 
@@ -62,6 +64,8 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Mobile/BYOD status** -- Device owner, platform, lock state, network state, MDM enrollment, remote wipe risk, consent/legal authority, and whether cloud backup metadata is available.
+- [ ] **Raw log export capability** -- Whether Windows `.evtx`, Linux journal/syslog files, SIEM exports, and cloud audit exports can be preserved in native format with hashes.
 
 ---
 
@@ -195,7 +199,9 @@ listdlls.exe (Windows, Sysinternals) / cat /proc/[pid]/maps (Linux)
 query user (Windows) / w (Linux)
 
 # Recent logon events
-wevtutil qe Security /q:"*[System[EventID=4624]]" /c:50 /f:text (Windows)
+wevtutil qe Security /q:"*[System[EventID=4624]]" /c:50 /f:text (Windows triage view only)
+wevtutil epl Security E:\evidence\[hostname]_Security_[YYYYMMDD_HHMM].evtx (Windows preserved artifact)
+Get-FileHash E:\evidence\[hostname]_Security_[YYYYMMDD_HHMM].evtx -Algorithm SHA256
 last -50 (Linux)
 
 # Scheduled tasks / cron jobs
@@ -216,6 +222,30 @@ ls -latr /tmp /var/tmp /dev/shm
 # Windows: C:\pagefile.sys, C:\hiberfil.sys -- copy before shutdown
 # Linux: Identify swap partitions with 'swapon --show' and image them
 ```
+
+#### 3d: Mobile and BYOD Scope Guard
+
+Mobile devices require a separate preservation decision before responders apply desktop-style memory or disk acquisition assumptions.
+
+```text
+Mobile/BYOD evidence decision record:
+- Device owner: [corporate / employee-owned / third-party]
+- Platform and identifier: [iOS/Android, serial/IMEI/MDM device ID if authorized]
+- Lock state: [unlocked / locked / powered off / unknown]
+- Network state: [online / airplane mode / isolated / unknown]
+- MDM enrollment and last check-in: [tool, timestamp, compliance state]
+- Remote wipe / lock risk: [yes/no/unknown, mitigation]
+- Legal authority or consent: [case reference]
+- Evidence sought: [MFA prompt logs, app logs, cloud backup metadata, device identifiers, screenshots, MDM inventory]
+- Preservation decision: [isolate, keep powered, avoid unlock attempts, preserve cloud backup, defer to mobile forensic specialist]
+```
+
+Guidance:
+
+- Do not power on, power off, unlock, or reset a mobile device without recording the decision and expected evidence impact.
+- If the device is unlocked and authorized for collection, prioritize screenshots, MDM state, app/session state, and cloud backup preservation before the state changes.
+- If the device is locked or employee-owned, record legal/consent constraints and preserve MDM, identity provider, push notification, and cloud backup metadata where authorized.
+- For MFA abuse or account takeover, collect identity provider sign-in logs, push approval logs, device compliance state, and app consent/session evidence alongside any device acquisition.
 
 ### Step 4: Non-Volatile Data Capture (Disk Imaging)
 
@@ -283,11 +313,23 @@ Preserve logs before rotation policies destroy them. Export and hash logs from e
 
 **Log export procedure:**
 ```
-1. Export raw logs to write-protected storage
+1. Export raw logs to write-protected storage in their native format where possible
 2. Compute SHA-256 hash of each exported log file
 3. Document: source, time range, export method, hash value
 4. Store alongside disk and memory evidence in the case folder
 ```
+
+**Windows Event Log preservation:**
+```powershell
+# Triage view for quick scoping, not the primary preserved artifact
+wevtutil qe Security /q:"*[System[EventID=4624]]" /c:50 /f:text
+
+# Preserve the native EVTX container and compute a hash
+wevtutil epl Security E:\evidence\[hostname]_Security_[YYYYMMDD_HHMM].evtx
+Get-FileHash E:\evidence\[hostname]_Security_[YYYYMMDD_HHMM].evtx -Algorithm SHA256
+```
+
+Use rendered text or CSV exports as working copies only. The preserved artifact should retain native metadata, channel structure, and parser compatibility whenever the platform supports it.
 
 ### Step 6: Cloud Forensics
 
@@ -360,8 +402,8 @@ Produce the evidence collection report with these exact sections:
 ```markdown
 ## Forensic Evidence Collection Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** forensics-checklist v1.0.0
-**Frameworks:** NIST SP 800-86, RFC 3227
+**Skill:** forensics-checklist v1.1.0
+**Frameworks:** NIST SP 800-86, NIST SP 800-101 Rev. 1, RFC 3227
 **Examiner:** [Name or "AI-assisted -- human examiner required for court-admissible evidence"]
 
 ### Collection Summary
@@ -401,6 +443,16 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### Mobile/BYOD Evidence (if applicable)
+| Device | Ownership | Lock State | MDM/Cloud Evidence | Consent/Authority | Collection Decision |
+|---|---|---|---|---|---|
+| [device id] | [corporate/BYOD] | [state] | [logs/backup/MDM] | [reference] | [preserve/defer/N/A] |
+
+### Raw Log Preservation
+| Source | Native Artifact | Triage Export | SHA-256 | Notes |
+|---|---|---|---|---|
+| Windows Security | `.evtx` path | text/XML query path | [hash] | [time range, export method] |
 ```
 
 ---
@@ -420,6 +472,10 @@ Published by NIST (August 2006), SP 800-86 provides guidance on integrating fore
 4. **Reporting** -- Documenting the methods, tools, findings, and conclusions of the forensic examination in a format suitable for the intended audience (technical, legal, management).
 
 NIST SP 800-86 covers forensic techniques for files, operating systems, networks, and applications. It emphasizes that forensic considerations should be integrated into the organization's incident response process from the outset, not treated as an afterthought.
+
+### NIST SP 800-101 Rev. 1 -- Guidelines on Mobile Device Forensics
+
+NIST SP 800-101 Rev. 1 covers mobile device forensic procedures including preservation, acquisition, examination, analysis, and reporting. Use it when phones, tablets, MFA approval devices, MDM inventories, mobile app data, or cloud backup metadata may be evidence. Mobile evidence decisions must account for lock state, remote wipe risk, network isolation, consent/legal authority, and whether cloud or MDM telemetry is a safer first preservation path than direct device handling.
 
 ### RFC 3227 -- Guidelines for Evidence Collection and Archiving
 
@@ -461,6 +517,14 @@ Applying traditional forensic methods to cloud environments without adaptation l
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
 
+### Pitfall 6: Treating Rendered Event Text as the Preserved Log
+
+Commands such as `wevtutil qe ... /f:text` are useful for triage but can lose native event-log container metadata and parser compatibility. Preserve `.evtx` or another native artifact where possible, hash it immediately, and use text/XML exports as working copies.
+
+### Pitfall 7: Applying Desktop Acquisition Assumptions to Mobile Devices
+
+Mobile devices can change state quickly through lock timers, network activity, cloud sync, and remote wipe. Before handling a phone or tablet, record ownership, lock state, MDM enrollment, consent/legal authority, and whether cloud or identity-provider logs should be preserved first.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -479,11 +543,21 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 
 1. **NIST SP 800-86** -- Guide to Integrating Forensic Techniques into Incident Response -- https://csrc.nist.gov/publications/detail/sp/800-86/final
 2. **RFC 3227** -- Guidelines for Evidence Collection and Archiving -- https://www.rfc-editor.org/rfc/rfc3227
-3. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
-4. **ISO/IEC 27037:2012** -- Guidelines for Identification, Collection, Acquisition and Preservation of Digital Evidence -- https://www.iso.org/standard/44381.html
-5. **SANS Digital Forensics and Incident Response** -- https://www.sans.org/digital-forensics-incident-response/
-6. **Volatility 3 Framework** -- https://github.com/volatilityfoundation/volatility3
-7. **The Sleuth Kit / Autopsy** -- https://www.sleuthkit.org/
-8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
-9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
-10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+3. **NIST SP 800-101 Rev. 1** -- Guidelines on Mobile Device Forensics -- https://csrc.nist.gov/pubs/sp/800/101/r1/final
+4. **NIST SP 800-61 Rev 2** -- Computer Security Incident Handling Guide -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+5. **Microsoft wevtutil** -- Windows event log export and query utility -- https://learn.microsoft.com/windows-server/administration/windows-commands/wevtutil
+6. **Microsoft Get-FileHash** -- PowerShell file hash calculation -- https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/get-filehash
+7. **ISO/IEC 27037:2012** -- Guidelines for Identification, Collection, Acquisition and Preservation of Digital Evidence -- https://www.iso.org/standard/44381.html
+8. **SANS Digital Forensics and Incident Response** -- https://www.sans.org/digital-forensics-incident-response/
+9. **Volatility 3 Framework** -- https://github.com/volatilityfoundation/volatility3
+10. **The Sleuth Kit / Autopsy** -- https://www.sleuthkit.org/
+11. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
+12. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
+13. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+
+---
+
+## 10. Changelog
+
+- **1.1.0** -- Adds mobile/BYOD scope guard, raw Windows Event Log preservation guidance, and output fields for native log artifacts.
+- **1.0.0** -- Initial release with NIST SP 800-86, RFC 3227 order of volatility, cloud forensics, chain of custody, and evidence integrity guidance.
