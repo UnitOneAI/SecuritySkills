@@ -97,10 +97,12 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 ### Review Checklist
 
 - [ ] Every endpoint that accepts a resource identifier enforces ownership or relationship-based access control.
+- [ ] Sequential IDs are not reported as BOLA unless ownership, tenant, or relationship authorization is missing or bypassable.
 - [ ] Authorization checks happen at the data access layer, not only at the controller/route layer.
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] Negative tests cover path IDs, body IDs, batch/list results, and cross-tenant access attempts.
 
 ---
 
@@ -115,6 +117,8 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 
 - Authentication endpoints without brute-force protection (rate limiting, account lockout, CAPTCHA).
 - JWT validation that is missing or incomplete -- no signature verification, no expiration check, acceptance of the `none` algorithm.
+- JWT/OAuth token confusion -- accepting ID tokens as access tokens, accepting tokens from the wrong issuer/tenant, or failing to validate `aud`, `azp`, `iss`, and environment-specific issuer values.
+- Unsafe JWKS handling -- accepting arbitrary `jku` or `x5u` headers, failing open when JWKS fetch fails, or caching keys without issuer binding.
 - API keys transmitted in URL query strings (logged in server access logs, browser history, proxies).
 - Missing or weak token rotation -- refresh tokens that never expire or are not rotated on use.
 - Password reset or account recovery flows that leak tokens or allow enumeration.
@@ -149,10 +153,20 @@ paths:
           in: query  # Should be in header
 ```
 
+```javascript
+// VULNERABLE: Validates signature but misses issuer/audience and trusts kid-only key lookup
+jwt.verify(token, getKeyFromHeaderKidOnly, {
+  algorithms: ['RS256'],
+  // missing issuer, audience, tenant, and token-use checks
+});
+```
+
 ### Remediation Guidance
 
 - Enforce rate limiting on all authentication endpoints (e.g., 5 attempts per minute per IP/account).
 - Validate JWT signatures using a strong algorithm (RS256, ES256). Reject `none` and `HS256` if RSA is expected (algorithm confusion attack).
+- Validate issuer, audience, authorized party (`azp`) where applicable, token use (`access_token` vs ID token), tenant/realm, and environment-specific issuer values.
+- Bind JWKS keys to a trusted issuer configuration. Ignore attacker-controlled `jku` and `x5u` headers unless explicitly allowlisted, and fail closed when key resolution fails.
 - Transmit API keys and tokens in HTTP headers (`Authorization` header), never in URL query strings.
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
@@ -163,6 +177,9 @@ paths:
 - [ ] All authentication endpoints have brute-force protections (rate limiting, lockout).
 - [ ] JWTs are validated for signature, expiration (`exp`), issuer (`iss`), and audience (`aud`).
 - [ ] The `none` algorithm and algorithm confusion attacks are prevented by explicit algorithm allowlisting.
+- [ ] OAuth token-use checks prevent ID tokens from being accepted where access tokens are required.
+- [ ] JWKS resolution is pinned to trusted issuers and fails closed on fetch or key mismatch errors.
+- [ ] Multi-tenant APIs validate tenant/realm claims and reject staging/dev issuers in production.
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
@@ -278,7 +295,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 
 ### Review Checklist
 
-- [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations.
+- [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations; if only application code is available and gateway/IaC policy is missing, record this as not evaluable rather than confirmed absent.
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
@@ -399,6 +416,14 @@ def register_webhook():
     return jsonify({"status": "registered"})
 ```
 
+```javascript
+// VULNERABLE: Webhook receiver trusts unsigned provider payloads
+app.post('/webhooks/payment', express.json(), async (req, res) => {
+  await markInvoicePaid(req.body.invoice_id);
+  res.sendStatus(204);
+});
+```
+
 ### Remediation Guidance
 
 - Validate and sanitize all user-supplied URLs. Use an allowlist of permitted schemes (`https` only), domains, or IP ranges.
@@ -407,6 +432,7 @@ def register_webhook():
 - Use a dedicated egress proxy for outbound requests that enforces domain allowlists.
 - For cloud environments, use IMDSv2 (requires token-based access to metadata) to mitigate SSRF exploitation against cloud metadata services.
 - Do not return raw responses from fetched URLs to the client; extract only the needed data.
+- For inbound webhooks, verify provider signatures against the raw request body, enforce timestamp freshness, and deduplicate provider event IDs to prevent replay.
 
 ### Review Checklist
 
@@ -415,6 +441,7 @@ def register_webhook():
 - [ ] HTTP redirects are disabled or the final destination is re-validated.
 - [ ] Cloud metadata endpoint access is restricted (IMDSv2 on AWS, equivalent on GCP/Azure).
 - [ ] Raw responses from fetched URLs are never returned directly to the client.
+- [ ] Webhook receivers validate signatures or mTLS, reject stale timestamps, and deduplicate event IDs before triggering state changes.
 
 ---
 
@@ -544,6 +571,16 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```javascript
+// VULNERABLE: Provider webhook updates state without signature or replay validation
+app.post('/provider/events', express.json(), async (req, res) => {
+  if (req.body.type === 'invoice.paid') {
+    await markPaid(req.body.data.invoice_id);
+  }
+  res.sendStatus(204);
+});
+```
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
@@ -552,6 +589,7 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
+- Validate inbound webhook authenticity before treating provider payloads as trusted upstream state. Preserve the raw request body for HMAC checks, enforce timestamp skew limits, deduplicate event IDs, and fail closed on malformed or unsigned events.
 
 ### Review Checklist
 
@@ -560,3 +598,27 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+- [ ] Inbound provider webhooks are authenticated and replay-protected before they update business state.
+
+---
+
+## Cross-Layer Evidence Model
+
+Many API controls are split across source code, gateway/IaC, identity-provider configuration, and runtime settings. Use this table before classifying findings so missing evidence does not become a false positive.
+
+| Control Area | Application Evidence | External Evidence | Reporting Rule |
+|---|---|---|---|
+| Rate limiting / quotas | Middleware, decorators, resolver guards | API Gateway, Kong, Envoy, Cloudflare, ingress, Terraform, Helm | If external evidence is unavailable, report `Not Evaluable from provided evidence` unless an exploit path is demonstrated. |
+| JWT/OAuth validation | Token verification code, auth middleware | IdP client config, JWKS issuer policy, tenant settings | Missing issuer/audience in code can be mitigated by trusted middleware; validate the active enforcement point. |
+| Object authorization | Route handlers, resolvers, data access filters | Policy engines, service authorization sidecars | Must be proven at the object/tenant relationship layer; gateway-only auth is insufficient for BOLA. |
+| GraphQL introspection | GraphQL server config | Gateway auth, persisted-query enforcement, network exposure | Public unauthenticated introspection is a finding; authenticated/internal introspection may be informational with compensating controls. |
+| gRPC method protection | Interceptors, service implementations, proto annotations | Mesh mTLS, gateway transcoding, service auth policy | Confirm both transport authentication and per-method authorization for sensitive RPCs. |
+| Webhook integrity | Raw-body signature checks, event deduplication | Provider signing docs, mTLS, gateway signature verification | Treat unsigned state-changing webhook receivers as API10/API2 findings. |
+
+### Suggested Negative Test Cases
+
+- Sequential REST IDs with a correct `user_id` or `tenant_id` filter should not be reported as BOLA; only note enumeration hardening if needed.
+- App code without local rate-limiting middleware but Terraform/Kong policy enforcing per-route quotas should be marked protected at gateway.
+- Public unauthenticated GraphQL introspection should be reported; authenticated internal introspection with persisted queries and complexity limits should not be high severity by default.
+- gRPC reflection enabled with no method-level authorization should be reported; reflection restricted to authenticated internal tooling should be informational.
+- A webhook receiver without signature verification, timestamp freshness, or event deduplication should be reported before any business-state mutation.

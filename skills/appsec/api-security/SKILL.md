@@ -1,11 +1,13 @@
 ---
 name: api-security
 description: >
-  Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
+  Reviews REST, GraphQL, and gRPC APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
-tags: [appsec, api, rest, graphql]
+  GraphQL schemas, protobuf service definitions, or API gateway policy.
+  Covers BOLA, BFLA, authentication, rate limiting, webhook integrity, and
+  SSRF with explicit evidence-coverage states. Produces findings mapped to
+  API1-API10 with remediation guidance.
+tags: [appsec, api, rest, graphql, grpc]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
@@ -21,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST, GraphQL, and gRPC APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, protobuf service definitions, API gateway configurations, and webhook/API consumer code.
 
 ---
 
@@ -32,12 +34,13 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
 1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions. For gRPC, list every `.proto` service, method, message, and streaming mode.
 3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
-6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer. If only application code is available, mark gateway or platform evidence as not provided instead of assuming it is absent.
+7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, webhook receivers, webhook senders, or service-mesh routes that the API consumes or exposes.
+8. **Record evidence coverage by layer** -- Separate what was reviewed in application code, gateway/IaC, identity provider configuration, service mesh, and runtime/platform settings.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -67,7 +70,18 @@ Each finding produced by this review must include the following fields:
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
 | **Remediation** | Specific fix with code example where possible |
-| **Status** | Open, Mitigated, Accepted Risk, False Positive |
+| **Status** | Open, Mitigated, Accepted Risk, False Positive, Not Evaluable |
+
+### Evidence Coverage States
+
+Use explicit coverage states when a control may live outside the files under review. This prevents false positives caused by missing platform, gateway, or identity-provider context.
+
+| State | Use When |
+|---|---|
+| **Confirmed Missing** | The relevant application, gateway/IaC, IdP, or runtime evidence was reviewed and no control exists. |
+| **Present in Application** | The control is enforced in source code, resolvers, interceptors, serializers, or handlers. |
+| **Present at Gateway/Platform** | The control is enforced by API Gateway, service mesh, WAF, IdP policy, Terraform, Helm, or equivalent platform config. |
+| **Not Evaluable** | The available files do not include the layer where the control is normally configured. Do not report as a confirmed vulnerability unless exploit evidence exists. |
 
 ### Severity Definitions
 
@@ -93,6 +107,15 @@ The final review output must be structured as follows:
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
 **Reviewer:** AI Agent -- api-security skill v1.0.0
+
+### Evidence Coverage
+
+| Layer | Evidence reviewed | Missing evidence | Impact on findings |
+|---|---|---|---|
+| Application code | [routes/controllers/resolvers/interceptors] | [none or gaps] | [confirmed / partial] |
+| API gateway / IaC | [gateway, ingress, Terraform, Helm] | [none or gaps] | [confirmed / not evaluable] |
+| Identity provider | [OAuth/JWT client config, JWKS, tenant policy] | [none or gaps] | [confirmed / not evaluable] |
+| Service mesh / runtime | [mTLS, timeouts, limits, runner/platform settings] | [none or gaps] | [confirmed / not evaluable] |
 
 ### Summary
 
@@ -171,7 +194,7 @@ GraphQL APIs share all ten OWASP API risks with REST but introduce additional at
 }
 ```
 
-**Mitigation:** Disable introspection in production. If introspection is required for internal tooling, restrict it to authenticated internal consumers.
+**Mitigation:** Treat unauthenticated public introspection as a finding. If introspection is required for internal tooling, restrict it to authenticated internal consumers, mTLS/VPN access, or persisted-query workflows with complexity limits. Authenticated internal introspection may be informational rather than a vulnerability when exposure and compensating controls are documented.
 
 ### Query Depth and Complexity Attacks
 
@@ -201,11 +224,41 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 ---
 
+## gRPC-Specific Considerations
+
+gRPC APIs share the same OWASP API risks as REST and GraphQL, but the vulnerable surface appears in protobuf schemas, generated handlers, interceptors, reflection services, and service-to-service transport.
+
+### Discovery Patterns
+
+Review these files when present:
+
+```text
+**/*.proto
+**/*grpc*.{go,java,kt,cs,py,ts,js}
+**/*Interceptor*.{go,java,kt,cs,py,ts,js}
+**/buf.yaml
+**/buf.gen.yaml
+**/prototool.yaml
+```
+
+### gRPC Review Checks
+
+- Authentication must be enforced on services and methods, not only at a gateway boundary.
+- Authorization interceptors must make per-method and per-object decisions for sensitive RPCs.
+- mTLS or signed service tokens should protect service-to-service traffic.
+- Deadlines, timeouts, and maximum receive/send message sizes must be enforced even when clients omit deadlines.
+- Server reflection should be disabled or restricted in production.
+- Protobuf messages should not expose internal/admin-only fields without field-level filtering.
+- Error responses should avoid leaking stack traces, SQL errors, or internal service names.
+- Streaming methods need explicit rate, duration, and message-count limits.
+
+---
+
 ## Common Pitfalls
 
 1. **Confusing authentication with authorization.** An API that verifies the user's identity (authentication) but does not verify the user's permission to access the specific resource or function (authorization) is vulnerable to both BOLA (API1) and BFLA (API5). These are distinct checks that must both be present.
 
-2. **Relying solely on API gateway controls.** API gateways can enforce rate limiting, authentication, and coarse-grained authorization, but they cannot enforce object-level authorization, property-level filtering, or business logic protections. These controls must be implemented in the application layer.
+2. **Overstating missing gateway controls from application code alone.** API gateways can enforce rate limiting, authentication, and coarse-grained authorization, but they cannot enforce object-level authorization, property-level filtering, or business logic protections. If gateway/IaC evidence is absent, mark gateway-only controls as not evaluable rather than confirmed missing. Application-layer object and business checks still require code evidence.
 
 3. **Treating GraphQL as inherently different from REST for security.** GraphQL shares all the same authorization, authentication, and injection risks as REST. The query language adds additional concerns (depth attacks, introspection, alias abuse) but does not eliminate any REST security requirements.
 
@@ -214,6 +267,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Treating webhook receiver security as only SSRF.** Webhook URLs can create SSRF risk when users register outbound callbacks, but webhook receivers also need authentication, signature validation, timestamp freshness, raw-body verification, and replay protection.
 
 ---
 
@@ -237,5 +292,7 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **gRPC Authentication Guide:** https://grpc.io/docs/guides/auth/
+- **ASP.NET Core gRPC Authentication and Authorization:** https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
