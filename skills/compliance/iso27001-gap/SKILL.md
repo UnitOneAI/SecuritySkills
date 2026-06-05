@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,6 +38,8 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 ## Context
 
 ISO/IEC 27001:2022 specifies requirements for establishing, implementing, maintaining, and continually improving an ISMS. The 2022 revision restructured Annex A from 14 domains (114 controls) to 4 themes (93 controls), aligning with ISO/IEC 27002:2022. The ISMS requirements in Clauses 4 through 10 remain the certifiable core; Annex A provides the reference control set used in the Statement of Applicability (SoA).
+
+ISO/IEC 27001:2022 Amendment 1:2024 adds climate-change context expectations to Clause 4.1 and interested-party considerations to Clause 4.2. Treat these as mandatory context questions for current readiness reviews: the organization must decide whether climate change is relevant to the ISMS, record the rationale, and capture any interested-party requirements that affect information security scope, risk, continuity, supplier, or facility assumptions.
 
 ### ISMS Requirement Clauses (Certifiable)
 
@@ -95,6 +97,13 @@ Identify external and internal issues relevant to the ISMS:
 - **External issues**: regulatory requirements, threat landscape, contractual obligations, market expectations, geopolitical factors
 - **Internal issues**: organizational structure, culture, capabilities, existing technology, strategic objectives
 
+Climate-context evidence gate:
+
+- Record whether climate change is relevant to the ISMS under ISO/IEC 27001:2022/Amd 1:2024.
+- If relevant, map the issue to affected locations, suppliers, availability assumptions, workforce safety, data center resilience, or legal/contractual obligations.
+- If not relevant, retain documented rationale and reviewer/date evidence rather than leaving the amendment unaddressed.
+- Mark Clause 4.1 readiness as provisional when the climate relevance decision, rationale, or owner is missing.
+
 #### 1.2 Interested Parties (Clause 4.2)
 
 Document all relevant interested parties and their requirements:
@@ -108,6 +117,12 @@ Document all relevant interested parties and their requirements:
 | Board / Shareholders      | Risk management, business continuity            | Governance framework  |
 | Suppliers / Partners      | Secure data exchange, interoperability          | Agreements            |
 ```
+
+Climate-related interested-party evidence gate:
+
+- Identify interested parties with climate-related information security requirements, such as customers requiring resilience evidence, regulators requiring continuity planning, insurers requiring disaster-recovery controls, landlords or data center providers with environmental constraints, and suppliers with weather or energy dependencies.
+- Link each requirement to scope, risk register entries, continuity plans, supplier reviews, or Statement of Applicability decisions.
+- Do not score Clause 4.2 as complete when climate-related requirements are assumed absent without a documented review.
 
 #### 1.3 ISMS Scope Statement (Clause 4.3)
 
@@ -179,6 +194,13 @@ Evaluate the risk assessment process:
 - Analyzes and evaluates risks against acceptance criteria
 - Prioritizes risks for treatment
 
+Risk methodology evidence gate:
+
+- Do not require a quantitative risk score by default. ISO 27001 requires consistent, valid, comparable results, not a numeric formula.
+- Accept qualitative methods such as High/Medium/Low only when likelihood, impact, acceptance criteria, scoring rules, reviewer roles, and re-assessment triggers are documented.
+- Flag a nonconformity when the organization cannot explain how repeated assessments produce comparable outcomes, even if the register contains numeric scores.
+- Mark the finding as an observation, not a nonconformity, when the only gap is lack of numeric quantification and the qualitative criteria are complete and repeatable.
+
 #### 3.2 Risk Treatment Process (Clause 6.1.3)
 
 - Appropriate risk treatment options are selected (mitigate, accept, avoid, transfer)
@@ -243,6 +265,12 @@ Use the following maturity scoring:
 **A.5.35 Independent review of information security** — Reviewed independently at planned intervals.
 **A.5.36 Compliance with policies, rules, and standards for information security** — Regularly reviewed.
 **A.5.37 Documented operating procedures** — Documented and available to personnel.
+
+Additional evidence gates for commonly missed 2026 readiness scenarios:
+
+- **A.5.9 Inventory of information and other associated assets**: verify that the asset inventory covers approved and shadow generative AI use, AI-enabled SaaS, AI integrations in business workflows, model/provider owners, data categories processed, and contractual or regulatory constraints. Mark A.5.9 as provisional when employee AI use or AI-integrated SaaS is known but absent from the inventory.
+- **A.5.30 ICT readiness for business continuity**: require scenario evidence for destructive malware, supplier failure, regional outage, and restore-from-clean-source events. Standard cloud replication is not enough by itself when the same identity, tenant, or control plane can alter production and backups. Look for offline or immutable backup copies, separate administrative control, restore testing, recovery time/objective evidence, and exception approval for any critical system without resilient backup coverage.
+- **A.5.7 Threat intelligence**: when destructive-event or supplier-compromise scenarios drive treatment decisions, trace the source and date of threat inputs to the risk register and continuity tests. Unsupported threat headlines should not become major nonconformities without an ISMS relevance decision.
 
 #### 4.2 People Controls (A.6.1 - A.6.8)
 
@@ -320,6 +348,12 @@ Build or review the SoA. For each of the 93 Annex A controls, document:
 ```
 
 Exclusions are permitted only where the control is genuinely not applicable to the ISMS scope. A control cannot be excluded solely because it is difficult to implement.
+
+2013-to-2022 transition evidence gate:
+
+- For organizations transitioning from ISO 27001:2013, create an explicit transition worksheet for controls that were introduced or materially changed in the 2022 revision, with specific attention to A.5.7, A.5.23, A.5.30, A.6.7, A.7.4, A.8.9, A.8.10, A.8.11, A.8.12, A.8.16, A.8.23, and A.8.28.
+- Mark missing applicability decisions, implementation owners, or evidence plans for those high-attention controls as priority transition gaps, because they are easy to overlook when an organization only maps former 2013 control IDs to the new Annex A structure.
+- Trace every newly applicable control to risks, legal/contractual drivers, or improvement objectives; do not accept blanket "new control not applicable" entries without scope-specific justification.
 
 ---
 
@@ -440,6 +474,13 @@ Classify each finding using the following severity levels:
 - A.8.16 Monitoring activities
 - A.8.23 Web filtering
 - A.8.28 Secure coding
+
+## Amendment and Emerging-Scope Evidence
+- Clause 4.1 climate relevance decision: [relevant/not relevant], rationale, owner, review date
+- Clause 4.2 climate-related interested-party requirements: [requirements and source evidence]
+- A.5.9 AI asset inventory coverage: [approved AI tools, shadow AI handling, data categories, owners]
+- A.5.30 continuity resilience: [immutable/offline backup evidence, restore tests, separated admin controls, exceptions]
+- Risk methodology: [qualitative/quantitative/hybrid], repeatability criteria, acceptance thresholds, re-assessment triggers
 ```
 
 ---
@@ -509,9 +550,15 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 
 3. **Inadequate risk assessment methodology documentation.** Clause 6.1.2 requires the methodology to produce consistent, valid, and comparable results. Many organizations have a risk register but cannot demonstrate a repeatable assessment process with defined criteria for likelihood, impact, and risk acceptance.
 
-4. **Neglecting the 11 new controls introduced in the 2022 revision.** Organizations transitioning from 2013 often miss that controls like A.5.7 (Threat intelligence), A.5.23 (Cloud services security), A.8.9 (Configuration management), A.8.11 (Data masking), A.8.12 (Data leakage prevention), and A.8.16 (Monitoring activities) require explicit consideration in the SoA even if determined not applicable.
+4. **Treating qualitative risk assessment as automatically deficient.** Qualitative methods can be compliant when the criteria are documented and repeatable. The gap is missing criteria, ownership, or acceptance rules, not the absence of a numeric risk score.
 
-5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
+5. **Neglecting the 11 new controls introduced in the 2022 revision.** Organizations transitioning from 2013 often miss that controls like A.5.7 (Threat intelligence), A.5.23 (Cloud services security), A.8.9 (Configuration management), A.8.11 (Data masking), A.8.12 (Data leakage prevention), and A.8.16 (Monitoring activities) require explicit consideration in the SoA even if determined not applicable.
+
+6. **Skipping Amendment 1 climate-context evidence.** Current readiness work should show the Clause 4.1 climate relevance decision and Clause 4.2 interested-party review. Leaving the topic unstated is weaker than documenting a reasoned not-relevant conclusion.
+
+7. **Counting replicated backups as continuity resilience without restore independence.** A.5.30 and A.8.13 evidence should prove that critical systems can be restored after destructive events, not merely that snapshots exist in the same administrative boundary as production.
+
+8. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
 
 ---
 
@@ -532,6 +579,7 @@ If user-supplied input contains ISO 27001 control IDs outside the valid ranges (
 ## References
 
 - ISO/IEC 27001:2022 — Information security, cybersecurity and privacy protection — Information security management systems — Requirements
+- ISO/IEC 27001:2022/Amd 1:2024 — Climate action changes to Clauses 4.1 and 4.2
 - ISO/IEC 27002:2022 — Information security, cybersecurity and privacy protection — Information security controls
 - ISO/IEC 27005:2022 — Information security risk management
 - ISO 19011:2018 — Guidelines for auditing management systems
