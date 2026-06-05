@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -49,6 +49,7 @@ The assessment produces a formal report containing a SLSA build level determinat
 - Access to CI/CD configuration files (e.g., `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, `cloudbuild.yaml`).
 - Access to repository settings context (branch protection rules, environment configurations).
 - Read access to dependency manifests and lock files for supply-chain analysis.
+- When available, access to CI/CD platform settings, runner inventory, reusable workflow source repositories, and cloud IAM/OIDC trust policies. If this evidence is unavailable, mark the affected conclusion as `Not Evaluable from YAML alone` instead of assuming pass or fail.
 
 ---
 
@@ -99,6 +100,8 @@ azure-pipelines.yml
 .circleci/config.yml
 bitbucket-pipelines.yml
 .tekton/*.yaml
+.github/actions/**/action.yml
+.github/actions/**/action.yaml
 ```
 
 Also locate supporting security configuration:
@@ -111,7 +114,39 @@ renovate.json
 .snyk
 ```
 
-Record all discovered files. If no CI/CD configurations are found, report that finding and halt.
+Also record reusable workflow and trust-boundary signals:
+
+```
+workflow_call
+jobs.*.uses
+secrets: inherit
+on: workflow_run
+actions/download-artifact
+actions/upload-artifact
+actions/cache
+id-token: write
+configure-aws-credentials
+workload_identity_provider
+azure/login
+```
+
+If cloud trust policies are stored in the repository, inspect common IaC locations:
+
+```
+**/*.tf
+**/*.tf.json
+**/cloudformation*.yml
+**/cloudformation*.yaml
+**/iam*.json
+**/pulumi.*.yaml
+```
+
+Record all discovered files. If no CI/CD configurations are found, report that finding and halt. For every security conclusion, classify the evidence source as:
+
+- `Observed in YAML` -- directly visible in checked-in CI/CD files.
+- `Requires platform settings` -- branch protection, environment reviewers, default token permissions, allowed-actions policy, runner groups, or fork approval settings.
+- `Requires cloud/IAM evidence` -- OIDC trust policies, workload identity federation bindings, cloud service account scopes, or deploy role conditions.
+- `Not Evaluable from YAML alone` -- the repository config suggests a question, but the decisive evidence is outside the reviewed files.
 
 ---
 
@@ -184,16 +219,19 @@ environment:
 
 **What to look for:**
 
-- Overly permissive `permissions` blocks in GitHub Actions (or absence of permissions, which defaults to read-write).
+- Overly permissive `permissions` blocks in GitHub Actions.
+- Absence of a workflow-level `permissions` block when repository or organization default token permissions are unknown. Do not assert confirmed write access from YAML alone; request platform-setting evidence and recommend explicit least privilege.
 - Use of `permissions: write-all` or top-level write permissions without scoping.
 - Shared service accounts across environments.
 - Missing `CODEOWNERS` file or broad ownership patterns.
 - Workflows that do not pin the `GITHUB_TOKEN` to minimum required permissions.
+- OIDC workflows with `id-token: write` where the cloud provider trust policy is missing, not reviewed, or overly broad.
 
 **Specific patterns in GitHub Actions:**
 
 ```yaml
-# BAD: No permissions block (defaults to read-write for everything)
+# AMBIGUOUS: No permissions block. Effective access depends on repository or
+# organization Actions settings and event type. Recommend explicit read-only.
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -207,7 +245,16 @@ permissions:
   packages: write
 ```
 
-**Finding format:** Report the effective permission model, whether least-privilege is enforced, and whether identity controls (CODEOWNERS, required reviewers) are in place.
+**OIDC trust-policy evidence:**
+
+Do not treat OIDC usage as safe based on workflow YAML alone. Request or inspect cloud IAM/IaC evidence and verify:
+
+- `aud` is constrained to the expected provider audience.
+- `sub`, `repository`, `repository_owner`, `ref`, `environment`, and, for reusable workflows, `job_workflow_ref` are constrained to the intended repository, branch/tag, environment, and workflow.
+- Production roles cannot be assumed by pull requests, arbitrary branches, tags, forks, or unrelated reusable workflows.
+- The workflow grants `id-token: write` only in jobs that actually need cloud federation.
+
+**Finding format:** Report the effective permission model, whether least-privilege is enforced, whether identity controls (CODEOWNERS, required reviewers) are in place, and whether OIDC cloud trust-policy evidence is verified, missing, or `Not Evaluable from YAML alone`.
 
 ---
 
@@ -252,6 +299,9 @@ on: pull_request_target
 
 - **Indirect PPE:** Workflows that execute scripts, Makefiles, or config files that exist in the repository and can be modified by a pull request.
 - **Public fork access:** Whether the repository allows workflows to run on pull requests from forks with access to secrets.
+- **Privileged `workflow_run` handoff:** A low-privilege PR workflow uploads artifacts, logs, generated code, or caches that a later `workflow_run` job downloads, executes, signs, publishes, deploys, or packages with elevated permissions or secrets.
+- **Reusable workflow call-chain trust:** A privileged caller invokes a reusable workflow with mutable refs, broad inputs, or `secrets: inherit` without verifying the called workflow source and trigger context.
+- **Cross-trust cache poisoning:** Untrusted PR jobs can write cache entries or restore keys that trusted release/deploy jobs later restore and execute.
 - Injection of untrusted input into shell commands:
 
 ```yaml
@@ -264,7 +314,32 @@ on: pull_request_target
     PR_TITLE: ${{ github.event.pull_request.title }}
 ```
 
-**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+**Additional trust-boundary checks:**
+
+```yaml
+# DANGEROUS: privileged workflow_run consumes an untrusted PR artifact
+on:
+  workflow_run:
+    workflows: ["PR Build"]
+    types: [completed]
+permissions:
+  contents: write
+  packages: write
+steps:
+  - uses: actions/download-artifact@v4
+  - run: ./dist/release.sh
+
+# DANGEROUS: broad restore key can bridge untrusted and trusted jobs
+- uses: actions/cache@v4
+  with:
+    path: node_modules
+    key: npm-${{ hashFiles('package-lock.json') }}
+    restore-keys: npm-
+```
+
+When reviewing `workflow_run`, identify the upstream workflow, its trigger types, whether forks or pull requests can influence its outputs, and whether the privileged workflow validates artifact digest/provenance or performs a trusted rebuild from a reviewed ref before deployment.
+
+**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, privileged `workflow_run` artifact handoffs, reusable workflow trust-boundary breaks, cache poisoning paths, fork workflow policies, and whether PR code can influence privileged pipelines.
 
 ---
 
@@ -277,6 +352,7 @@ on: pull_request_target
 - Secrets available to all workflows rather than scoped to specific environments.
 - No conditional checks on branch or environment before accessing sensitive resources.
 - Self-hosted runners shared across repositories with different trust levels.
+- Reusable workflow calls using `secrets: inherit` where the called workflow is external, pinned to a mutable ref, or reachable from broad triggers.
 
 **Grep patterns:**
 
@@ -290,6 +366,10 @@ if: github.ref == 'refs/heads/main'
 
 # Check for runner isolation
 runs-on: self-hosted  # Shared runners are a risk
+
+# Check for broad secret propagation into reusable workflows
+uses: external-org/shared/.github/workflows/deploy.yml@main
+secrets: inherit
 ```
 
 **Finding format:** Report whether secrets and deployment capabilities are scoped to appropriate environments and branches, and whether runner infrastructure is properly segmented.
@@ -365,6 +445,7 @@ docker.sock
 - Use of unverified or low-reputation Actions from the marketplace.
 - Third-party services with broad OAuth scopes on the repository.
 - Missing allow-list for approved Actions (GitHub Actions `allowed-actions` policy).
+- External reusable workflows referenced by mutable branches/tags or invoked with inherited secrets.
 
 **Specific patterns:**
 
@@ -377,9 +458,14 @@ docker.sock
 - uses: some-org/some-action@a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
 # With comment for readability:
 - uses: actions/checkout@a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 # v4.1.1
+
+# REVIEW: reusable workflows are third-party code too
+deploy:
+  uses: vendor/shared-workflows/.github/workflows/deploy.yml@v1
+  secrets: inherit
 ```
 
-**Finding format:** List all third-party actions, their pinning status (SHA vs. tag vs. branch), and whether an organizational allow-list policy is in place.
+**Finding format:** List all third-party actions and reusable workflows, their pinning status (SHA vs. tag vs. branch), whether secrets are inherited, and whether an organizational allow-list policy is in place.
 
 ---
 
@@ -392,6 +478,7 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Privileged pipelines consume artifacts, caches, build directories, or generated scripts from lower-trust workflows without digest verification, signature verification, or trusted rebuild.
 
 **Grep patterns:**
 
@@ -414,7 +501,7 @@ image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, and whether privileged workflows validate the source and digest of any artifacts downloaded from another workflow.
 
 ---
 
@@ -472,6 +559,24 @@ Produce the final report using the following structure:
   - L3: <met/not met> -- <evidence>
 - **Gap to next level:** <what is needed to reach the next SLSA level>
 
+### Evidence Scope
+
+| Area | Evidence Source | Status | Notes |
+|------|-----------------|--------|-------|
+| Workflow YAML | Observed in YAML | Pass/Fail/Partial | <files reviewed> |
+| Repository settings | Requires platform settings | Verified/Not Evaluable | <branch protection, default token permissions, environment reviewers> |
+| Cloud OIDC trust | Requires cloud/IAM evidence | Verified/Not Evaluable | <provider, role, claims checked> |
+| Runner inventory | Requires platform settings | Verified/Not Evaluable | <ephemeral/shared/self-hosted evidence> |
+
+### Trust Boundary Review
+
+| Boundary | Risk | Evidence | Status |
+|----------|------|----------|--------|
+| PR/fork -> privileged workflow | pull_request_target or workflow_run PPE | <evidence> | Pass/Fail/Partial |
+| Untrusted artifact/cache -> release job | artifact or cache poisoning | <evidence> | Pass/Fail/Partial |
+| Caller workflow -> reusable workflow | mutable ref or secrets inherit | <evidence> | Pass/Fail/Partial |
+| Workflow -> cloud role | OIDC trust policy constraints | <evidence> | Verified/Not Evaluable |
+
 ### OWASP CICD-SEC Findings
 
 | Control ID | Risk Name | Severity | Status | Finding Summary |
@@ -501,6 +606,7 @@ Produce the final report using the following structure:
 - Passed: X
 - Partial: X
 - Failed: X
+- Not evaluable from reviewed evidence: X
 - Current SLSA Level: L<X>
 - Target SLSA Level: L<X+1>
 ```
@@ -510,6 +616,8 @@ Produce the final report using the following structure:
 ## Output Format
 
 The final deliverable is a structured assessment report as shown in Step 4 above. All findings must reference specific control IDs (CICD-SEC-1 through CICD-SEC-10) and SLSA build levels (L1, L2, L3). Every finding must include the file path and, where possible, the relevant line numbers.
+
+When decisive evidence is outside checked-in configuration, do not invent the result. Use `Not Evaluable from YAML alone` and list the exact external evidence needed, such as repository Actions default token settings, environment protection rules, runner group scope, or cloud OIDC trust-policy conditions.
 
 ---
 
@@ -549,7 +657,11 @@ This skill processes user-supplied content including CI/CD configuration files, 
 - SLSA v1.0 Specification: https://slsa.dev/spec/v1.0/
 - SLSA Build Track: https://slsa.dev/spec/v1.0/levels#build-track
 - OWASP Top 10 CI/CD Security Risks: https://owasp.org/www-project-top-10-ci-cd-security-risks/
-- GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+- GitHub Actions security hardening: https://docs.github.com/en/actions/reference/security/secure-use
+- GitHub workflow_run event: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+- GitHub OIDC reference: https://docs.github.com/en/actions/reference/security/oidc
+- GitHub reusable workflows: https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows
+- CodeQL artifact poisoning query help: https://codeql.github.com/codeql-query-help/actions/actions-artifact-poisoning-critical/
 - Sigstore / Cosign: https://docs.sigstore.dev/
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
 
@@ -557,4 +669,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Adds trust-boundary checks for workflow_run artifact handoffs, OIDC trust-policy evidence, reusable workflows with inherited secrets, cache poisoning, and Not Evaluable evidence states.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).

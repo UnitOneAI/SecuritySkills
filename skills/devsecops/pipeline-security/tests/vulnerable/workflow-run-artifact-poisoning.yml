@@ -1,0 +1,21 @@
+name: privileged-publish
+
+on:
+  workflow_run:
+    workflows:
+      - pull-request-build
+    types:
+      - completed
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+      - run: ./dist/release.sh

@@ -1,0 +1,28 @@
+name: trusted-release
+
+on:
+  workflow_run:
+    workflows:
+      - pull-request-build
+    types:
+      - completed
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: dist/app.tar.gz
