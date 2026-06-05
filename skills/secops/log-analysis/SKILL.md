@@ -167,6 +167,17 @@ Do not classify Windows authentication findings from Event ID alone. Before mark
 | ProcessName and CallerProcessName | 4648, 4688 correlation | Shows the process that requested explicit credentials or spawned activity after logon | Helps distinguish approved admin tooling from suspicious `runas /netonly`, remote tooling, or unusual script execution |
 | Account group membership and account class | 4624, 4625, 4672 | Adds privilege and expected-use context | Service-account retry storms after password rotation are different from privileged human-account failures from a workstation |
 
+**Common 4625 failure-code examples:**
+
+| Status/SubStatus | Typical Meaning | Triage Use |
+|------------------|-----------------|------------|
+| `0xC000006A` | Bad password | Stronger spray or brute-force signal when repeated across users, sources, or short time windows |
+| `0xC0000064` | User name does not exist | Supports username enumeration or password-spray assessment when paired with distributed targets |
+| `0xC0000234` | Account locked out | May be attack impact or operational lockout noise; correlate with prior failures and lockout policy |
+| `0xC0000072` | Account disabled | Often stale automation or invalid account use; investigate source, recency, and account owner |
+| `0xC0000071` | Password expired | Usually operational drift unless paired with suspicious source, high volume, or privileged account use |
+| `0xC000015B` | Logon type not granted | Indicates a prevented access path; useful for attempted activity but not proof of compromise by itself |
+
 **Decision gate for Event ID 4625 failures:**
 
 1. Group by `TargetUserName`, source field, destination host, `Status`, `SubStatus`, `FailureReason`, and `LogonType`.
