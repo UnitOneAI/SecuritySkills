@@ -331,6 +331,40 @@ env:
 
 ---
 
+### Step 4a: Scan Intent, Role Coverage, and State Safety
+
+Authenticated coverage must be evaluated against the stated scan intent. An unauthenticated baseline or smoke scan can be valid when it is explicitly scoped to public routes, health checks, login, pricing, or availability validation. It is a gap only when the team presents that scan as security coverage for authenticated customer, admin, billing, support, or tenant-isolated workflows.
+
+**DAST coverage matrix:**
+
+| Scan Profile | Intent | Auth Mechanism | Roles Tested | Roles Missing | Tenant Fixtures | Route Groups Covered | Excluded Routes + Reason | Manual Compensation |
+|---|---|---|---|---|---|---|---|---|
+| unauthenticated-smoke | Public smoke / header baseline | None | N/A | All authenticated roles | N/A | `/health`, `/login`, `/pricing` | Authenticated customer data paths require seeded test tenants | Manual authz tests scheduled separately |
+| authenticated-admin | Active security scan | Browser/script/header | `admin` | `billing_admin`, `support_agent`, `read_only_customer` | tenant-a only | admin workflows | billing/support/read-only paths missing credentials | Add role-specific scan users |
+
+**Role and tenant coverage requirements:**
+- Record each intended role or persona, not only whether "authenticated scanning" exists.
+- Include lower-privilege and read-only roles when the application enforces authorization by role; admin-only scans can miss BOLA/BFLA, tenant isolation, and constrained-workflow issues.
+- Use at least two tenant fixtures for tenant-isolation or multi-account applications so the scan plan can exercise cross-tenant negative tests.
+- When MFA/SSO prevents normal scanner login, document the service-account, device-code, OAuth client, or test-bypass flow and its production-equivalence limits.
+- Record scanner-blocking conditions such as WAF rules, rate limits, CAPTCHA, CSRF token rotation, session expiry, or per-request nonce handling.
+
+**State reset and destructive-action guardrails:**
+
+| Environment | Seed Data Owner | Reset Strategy | Destructive Actions Allowed | Cleanup Evidence | Isolation Boundary | Approval |
+|---|---|---|---|---|---|---|
+| staging-dast | AppSec / QA | Recreate tenant fixtures before each run | No production-like payments; delete/reset excluded | CI job link, DB snapshot restore, or cleanup log | Dedicated test tenant / ephemeral namespace | Security + app owner |
+
+- Active DAST should run against staging, ephemeral, or dedicated test tenants where mutation is acceptable and reversible.
+- If the scanner can create, submit, delete, or mutate business records, require seeded data and a reset hook before the scan is considered reproducible.
+- Exclude destructive routes only with explicit justification and compensating manual tests where they are security-relevant.
+- Preserve cleanup proof such as reset job logs, database snapshot restore IDs, tenant recreation logs, or synthetic transaction reversal records.
+- For shared staging, document rate-limit handling and WAF allowlisting so later blocked requests do not create false negatives.
+
+**Finding classification:** Missing role coverage matrix for authenticated applications is **High**. Admin-only scanning presented as full authenticated coverage is **High**. No tenant fixtures for tenant-isolated applications is **High**. No state reset or cleanup proof for mutable active scans is **High**. An explicitly labeled unauthenticated smoke scan is **Low/Informational** unless it is the only security scan.
+
+---
+
 ### Step 5: CI/CD DAST Integration
 
 #### 5.1 Pipeline Integration Patterns
@@ -482,7 +516,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; missing role or tenant coverage; no state reset for mutable active scans. |
 | **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
@@ -514,11 +548,27 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Setting | Status | Evidence |
 |---------|--------|---------|
 | Authenticated scanning | Yes/No | <auth method> |
+| Scan intent classified | Yes/No | <public smoke / active security / API / full authenticated> |
+| Role coverage matrix | Yes/No | <roles tested and roles missing> |
+| Tenant fixture coverage | Yes/No | <tenant fixtures and negative-test plan> |
+| State reset / cleanup proof | Yes/No | <reset hook, seed data, cleanup log> |
 | Scope restrictions | Yes/No | <include/exclude paths> |
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
 | Results deduplication | Yes/No | <dedup method> |
+
+### DAST Coverage Matrix
+
+| Scan Profile | Intent | Auth Mechanism | Roles Tested | Roles Missing | Tenant Fixtures | Route Groups Covered | Excluded Routes + Reason | Manual Compensation |
+|---|---|---|---|---|---|---|---|---|
+| <profile> | <public smoke / active security / API> | <none/browser/header/script> | <roles> | <missing roles> | <tenants> | <routes> | <exclusions> | <manual tests> |
+
+### State Reset and Destructive-Action Guardrails
+
+| Environment | Seed Data Owner | Reset Strategy | Destructive Actions Allowed | Cleanup Evidence | Isolation Boundary | Approval |
+|---|---|---|---|---|---|---|
+| <env> | <owner> | <reset/restore/recreate hook> | <allowed/disallowed> | <evidence> | <tenant/namespace/account> | <approver> |
 
 ### Findings
 
@@ -580,9 +630,15 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 3. **Not excluding destructive endpoints from scan scope.** ZAP's spider will follow every link and form action it finds. If a "Delete Account" or "Reset Database" endpoint is in scope, the scanner will exercise it. Explicitly exclude destructive paths in the scan context.
 
-4. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+4. **Mistaking an unauthenticated smoke scan for security coverage.** A public-route smoke scan is useful for fast feedback, but it does not cover authenticated business workflows. Label scan intent explicitly and avoid reporting public smoke coverage as authenticated DAST.
 
-5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
+5. **Scanning only an administrator role.** Admin scans can reach many pages but miss lower-privilege authorization failures, customer self-service flows, support workflows, and read-only role restrictions. Build role-specific scan profiles for the personas that matter to the application.
+
+6. **Running mutable scans without reset evidence.** Active scanners can create orders, delete records, submit forms, rotate credentials, or corrupt shared staging state. Use seeded tenants, reset hooks, cleanup logs, or ephemeral environments so scan results are reproducible and safe.
+
+7. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+
+8. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
 ---
 
