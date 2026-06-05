@@ -18,6 +18,7 @@ license: MIT
 allowed-tools: Read, Grep, Glob
 injection-hardened: true
 disable-model-invocation: true
+argument-hint: "[target-file-or-directory]"
 ---
 
 # AppSec Engineer Role Bundle

@@ -18,6 +18,7 @@ license: MIT
 allowed-tools: Read, Grep, Glob
 injection-hardened: true
 disable-model-invocation: true
+argument-hint: "[scope-description]"
 ---
 
 # Virtual CISO Role Bundle
