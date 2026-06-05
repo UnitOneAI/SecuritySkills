@@ -5,15 +5,15 @@ description: >
   Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for
   Key Management). Auto-invoked when reviewing secret handling patterns, vault
   configurations, .env files, or credential rotation policies. Produces a secrets
-  management assessment covering detection patterns, rotation automation, vault
-  integration, and agent-specific credential handling.
-tags: [devsecops, secrets, vault, rotation]
+  management assessment covering detection patterns, push protection bypasses,
+  rotation automation, vault integration, and agent-specific credential handling.
+tags: [devsecops, secrets, vault, rotation, secret-scanning, push-protection]
 role: [security-engineer, devsecops]
 phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Secrets Management Review
 
-A structured, repeatable process for evaluating secrets management practices against the OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for Key Management). This skill covers secret detection patterns, rotation automation, vault and cloud secrets manager integration, agent-specific credential handling, .env file exposure, and git history secret leaks. All findings reference framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating secrets management practices against the OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for Key Management). This skill covers secret detection patterns, push protection and bypass governance, rotation automation, vault and cloud secrets manager integration, agent-specific credential handling, .env file exposure, and git history secret leaks. All findings reference framework controls with severity ratings and actionable remediation.
 
 **Important:** This skill analyzes detection patterns and configuration practices. It never extracts, logs, or displays actual secret values. All regex patterns shown are for detection tooling configuration, not for secret extraction.
 
@@ -123,6 +123,9 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 # GitHub Personal Access Token
 (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
 
+# GitHub fine-grained Personal Access Token
+github_pat_[A-Za-z0-9_]{20,}
+
 # GitLab Personal Access Token
 glpat-[A-Za-z0-9\-_]{20,}
 
@@ -183,16 +186,71 @@ Verify that at least one secret detection tool is configured and integrated:
 | **TruffleHog** | Command-line or `.trufflehog.yml` | Pre-commit hook, CI |
 | **detect-secrets** | `.secrets.baseline` | Pre-commit hook, CI |
 | **git-secrets** | `.git/hooks/pre-commit` | Git hook |
+| **GitHub secret scanning / push protection** | Repository/org security settings or API | Push-time blocking and alert workflow |
 
 **What to verify:**
 
 - Tool is configured in CI pipeline (runs on every PR/push).
 - Tool is configured as a pre-commit hook (prevents secrets from entering history).
+- Push protection or equivalent pre-receive blocking is enabled for supported repositories and token types.
+- Delegated bypass or equivalent approval workflow is configured when contributors can bypass secret blocks.
+- Push protection bypasses are reviewed, approved or denied, and expire instead of becoming permanent silent exceptions.
 - Baseline file is maintained (for detect-secrets).
 - Custom rules cover organization-specific secret formats.
-- Allowlist entries are documented with justification (false positive suppression must not create blind spots).
+- Allowlist and baseline entries are documented with owner, reason, path/rule scope, expiry, and last review date (false positive suppression must not create blind spots).
 
-**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit or push-time protection) is **Medium**. Push protection bypasses without review/expiry are **High**. Excessive allowlist entries without justification are **Medium**.
+
+#### 2.4 Push Protection, Bypass, and Suppression Governance
+
+Secret detection is only reliable if bypasses, baselines, and allowlists are treated as controlled exceptions instead of permanent blind spots.
+
+**Review evidence for each detection surface:**
+
+| Surface | Required Evidence |
+|---------|-------------------|
+| Push protection / pre-receive | Enabled scope, token patterns covered, bypass policy, bypass approvers, alert recipients |
+| CI scanner | Workflow trigger, branch coverage, full repository/history mode where needed, fail-closed behavior |
+| Local/pre-commit | Hook or managed pre-commit config, install enforcement, documented opt-out process |
+| Baseline files | Finding fingerprint, file path, reason, owner, expiry, audit result, last updated date |
+| Allowlist rules | Rule id, path/regex/commit scope, allowed secret type, reviewer, expiry, collision risk |
+
+**Controlled exception example:**
+
+```yaml
+exception:
+  detector: GitHub push protection
+  token_type: provider test token
+  path: tests/fixtures/payment-provider-redacted.md
+  reason: documented vendor-provided inert fixture
+  reviewer: security-engineering
+  expiry: 2026-07-01
+  secret_state: confirmed non-production and revoked/unusable
+  rotation_required: no
+```
+
+**Vulnerable exception example:**
+
+```toml
+[[allowlists]]
+description = "ignore old keys"
+paths = ['''.*fixtures.*''']
+regexes = ['''(?i)(api[_-]?key|token|secret).*''']
+```
+
+This hides broad classes of secrets in a high-risk directory without an owner, expiry, exact fingerprint, or proof that matched values are inert.
+
+**What to verify:**
+
+- Bypass reasons distinguish inert examples, generated placeholders, already-revoked secrets, and production credentials.
+- Bypass reviewers are independent from the committer when the secret could grant production or third-party access.
+- Allowlist entries are narrow: exact path plus exact detector rule or fingerprint is preferred over broad regex/path suppression.
+- Expired exceptions fail closed: the scanner should alert again if owner, reason, or expiry is missing or stale.
+- Confirmed real secrets trigger revoke/rotate/redeploy work, not only file deletion or baseline suppression.
+- GitHub fine-grained PATs (`github_pat_...`) and other newer provider token formats are covered by provider patterns or custom rules.
+- When push protection times out or returns a bypass without file details, require a follow-up full scan before marking the push clean.
+
+**Finding classification:** Unreviewed bypass of a production-capable secret is **Critical** until the secret is revoked. Broad scanner allowlists that can hide production-capable secrets are **High**. Missing bypass owner/expiry/reviewer evidence is **Medium**. Controlled inert test-token exceptions with owner and expiry are **Low/Informational**.
 
 ---
 
@@ -357,8 +415,8 @@ spec:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault; broad scanner allowlists or push-protection bypasses that can hide real secrets. |
+| **Medium** | Detection in CI only (no pre-commit or push-time protection); manual rotation process; excessive detection allowlists; bypass exceptions missing owner/expiry/reviewer; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -380,6 +438,15 @@ spec:
 |------|----------|-----------|-------------|--------------|-------------|
 | Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
 | detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
+
+### Push Protection and Suppression Governance
+
+| Control | Status | Evidence | Gaps |
+|---------|--------|----------|------|
+| Push protection / pre-receive blocking | Enabled/Partial/Missing | <settings/export/API evidence> | <unsupported repos or token types> |
+| Delegated bypass review | Enabled/Partial/Missing | <approver roles, request queue, expiry> | <who can self-bypass> |
+| Baseline/allowlist governance | Strong/Partial/Weak | <owner, reason, path/rule scope, expiry> | <broad or stale suppressions> |
+| Post-detection rotation evidence | Strong/Partial/Missing | <rotation ticket, revoked token state, redeploy evidence> | <secrets only deleted from files> |
 
 ### Secrets Inventory (by type, NOT values)
 
@@ -442,6 +509,8 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Treating bypasses and baselines as proof of safety.** A push-protection bypass, Gitleaks allowlist, or detect-secrets baseline proves only that a scanner did not block the change. It does not prove the value is inert, revoked, or acceptable. Require owner, reviewer, expiry, exact scope, and rotation/revocation evidence before downgrading a finding.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -461,6 +530,9 @@ This skill processes configuration files and code that may contain secret values
 - OWASP Secrets Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 - NIST SP 800-57 Part 1 Rev 5: https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final
 - NIST SP 800-57 Part 1 Rev 5 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf
+- GitHub Push Protection: https://docs.github.com/code-security/secret-scanning/protecting-pushes-with-secret-scanning
+- GitHub Delegated Bypass for Push Protection: https://docs.github.com/en/code-security/secret-scanning/using-advanced-secret-scanning-and-push-protection-features/delegated-bypass-for-push-protection/about-delegated-bypass-for-push-protection
+- GitHub Secret Scanning Patterns: https://docs.github.com/en/code-security/secret-scanning/secret-scanning-patterns
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
@@ -471,5 +543,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.1.0** -- Add push protection, delegated bypass, baseline, and allowlist governance gates; add GitHub fine-grained PAT detection coverage and suppression evidence output.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
