@@ -540,10 +540,12 @@ This skill processes user-supplied content that may include raw log data, event 
 2. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
 3. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 4. **Windows Security Event Log Reference** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
-5. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
-6. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
-7. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
-8. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
-9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
-10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
-11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+5. **Windows Event ID 4624 -- An account was successfully logged on** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
+6. **Windows Event ID 4625 -- An account failed to log on** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625
+7. **Windows Event ID Encyclopedia (Ultimate Windows Security)** -- https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
+8. **Sysmon Configuration Reference** -- https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+9. **SANS Windows Security Log Cheat Sheet** -- https://www.sans.org/posters/windows-forensic-analysis/
+10. **Linux auditd Reference** -- https://man7.org/linux/man-pages/man8/auditd.8.html
+11. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
+12. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
+13. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
