@@ -215,6 +215,26 @@ Also verify account-level public access block:
 aws_s3_account_public_access_block
 ```
 
+#### S3 Object Ownership and ACL-Disabled Evidence
+
+Block Public Access reduces public ACL and policy exposure, but it does not prove that ACLs are disabled or that the bucket owner owns every object. For each bucket, also record S3 Object Ownership evidence.
+
+| Evidence Source | What to Verify | Pass / Follow-Up |
+|---|---|---|
+| Terraform `aws_s3_bucket_ownership_controls` | `rule.object_ownership` | `BucketOwnerEnforced` passes ACL-disabled evidence |
+| CloudFormation `OwnershipControls` | `ObjectOwnership` rule | `BucketOwnerEnforced` passes ACL-disabled evidence |
+| AWS CLI / inventory | `get-bucket-ownership-controls` result | Existing/imported buckets have verified ownership mode |
+| Guardrail policy | IAM/SCP condition on `s3:x-amz-object-ownership` | New buckets are required to use `BucketOwnerEnforced` |
+
+Flag these conditions:
+
+- `ObjectWriter` without a documented legacy exception and ACL review.
+- `BucketOwnerPreferred` without bucket policy or client evidence requiring `bucket-owner-full-control` on cross-account `PutObject` requests.
+- Missing ownership-controls evidence for existing or imported buckets where new-bucket defaults cannot be assumed.
+- ACL-dependent clients with no migration plan before moving to `BucketOwnerEnforced`.
+
+Do not treat `BucketOwnerEnforced` buckets as ACL-exposed solely because historical ACL resources are present. With ACLs disabled, access is controlled by policies rather than bucket/object ACL grants.
+
 ### CIS 2.2.1 -- Ensure EBS Volume Encryption is Enabled in all Regions
 
 Check for default EBS encryption:
@@ -488,3 +508,4 @@ resource "aws_launch_template" {
   }
 }
 ```
+
