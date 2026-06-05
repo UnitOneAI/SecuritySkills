@@ -194,7 +194,9 @@ Evaluate which of the following mitigations are implemented and how effectively.
 
 ### 5.7 Adaptive Attack Resilience
 
-> **Warning:** Static prompt injection defenses (hardcoded system prompts, simple keyword filtering) are demonstrably insufficient against adaptive attackers. PISmith (Yin et al. 2026) achieved highest attack success rates across 13 benchmarks using RL-optimized adaptive black-box attacks.
+> **Warning:** Static prompt injection defenses (hardcoded system prompts, simple keyword filtering) are demonstrably insufficient against adaptive attackers. PISmith (Yin et al. 2026), an RL-based red-team framework for prompt injection defenses, achieved the highest attack success rates across 13 benchmarks in the paper's evaluation.
+
+When citing fast-moving prompt-injection research in a formal report, verify the source URL, exact paper title, version, and date checked before treating the paper as supporting evidence.
 
 - **Continuous red-team evaluation:** Prompt injection defenses must be evaluated continuously, not as a one-time test. Adaptive attackers iteratively refine their payloads against deployed defenses. Schedule recurring red-team assessments using automated adversarial tooling alongside manual expert testing.
 - **Agentic benchmark suites:** For applications where LLMs invoke tools or take autonomous actions, standard prompt injection benchmarks are insufficient. Use agentic-specific benchmark suites that test injection in the context of tool use and multi-step workflows:
@@ -284,5 +286,5 @@ Each finding should be assigned a severity based on potential impact:
 - Perez, F. & Ribeiro, I. (2022). "Ignore Previous Prompt: Attack Techniques For Language Models." arXiv:2211.09527.
 - Greshake, K. et al. (2023). "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection." arXiv:2302.12173.
 - Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
-- Yin, X. et al. "PISmith: RL-Optimized Adaptive Black-Box Prompt Injection Attacks" (2026) -- arXiv:2603.13026
+- Yin, C. et al. "PISmith: Reinforcement Learning-based Red Teaming for Prompt Injection Defenses" (2026) -- arXiv:2603.13026
 - fabraix/playground — Open-source AI agent exploit library for testing injection defenses — https://github.com/fabraix/playground
