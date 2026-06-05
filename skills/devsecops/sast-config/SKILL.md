@@ -1,18 +1,18 @@
 ---
 name: sast-config
 description: >
-  Reviews and tunes SAST tool configurations against OWASP ASVS 4.0.3 and
-  CWE Top 25. Auto-invoked when reviewing Semgrep rules, CodeQL queries, SAST
+  Reviews and tunes SAST tool configurations against OWASP ASVS 5.0.0 and
+  CWE Top 25 2025. Auto-invoked when reviewing Semgrep rules, CodeQL queries, SAST
   CI integration, or false positive triage workflows. Produces a SAST maturity
   assessment covering rule authoring, severity tuning, custom rule development,
   and CI integration patterns.
 tags: [devsecops, sast, semgrep, codeql]
 role: [security-engineer, appsec-engineer]
 phase: [build]
-frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
+frameworks: [OWASP-ASVS-5.0.0, CWE-Top-25-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # SAST Tool Configuration and Tuning
 
-A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, and CI integration. All findings map to ASVS controls and CWE identifiers.
+A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 5.0.0 verification requirements and the CWE Top 25 2025 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, and CI integration. All findings map to current ASVS controls, CWE identifiers, and the source date used for the assessment.
 
 ---
 
@@ -41,7 +41,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-SAST tools are only as effective as their configuration. Default rule sets produce high false positive rates that erode developer trust, while overly aggressive tuning creates dangerous blind spots. OWASP ASVS 4.0.3 provides 286 verification requirements across 14 chapters -- a subset of these are automatable via SAST. The CWE Top 25 (2024 edition) identifies the most prevalent and impactful weakness types. Effective SAST tuning maps rules to these frameworks, tunes severity to organizational risk context, and integrates into CI with clear pass/fail criteria that developers can act on.
+SAST tools are only as effective as their configuration. Default rule sets produce high false positive rates that erode developer trust, while overly aggressive tuning creates dangerous blind spots. OWASP ASVS 5.0.0 reorganizes application security verification into 17 chapters, and only a subset of those requirements are automatable via SAST. The CWE Top 25 2025 list changes the priority order and adds access-control, authentication, deserialization, SSRF, and resource-exhaustion weaknesses that require explicit coverage and manual-evidence boundaries. Effective SAST tuning maps rules to current framework versions, records source dates, tunes severity to organizational risk context, and integrates into CI with clear pass/fail criteria that developers can act on.
 
 ---
 
@@ -93,29 +93,68 @@ Categorize by:
 
 ---
 
+### Step 1.5: Framework Source and Rule-Pack Preflight
+
+Before scoring coverage, record the exact framework and rule-pack sources used for the review. Do not assume a registry alias such as `p/cwe-top-25`, `security-extended`, or `latest` maps to the current framework baseline.
+
+Capture:
+
+| Field | Required Evidence |
+|-------|-------------------|
+| `asvs_version` | Default: `OWASP ASVS 5.0.0`; use `ASVS 4.0.3 legacy mode` only when explicitly requested |
+| `asvs_source_url` | Official ASVS release or repository URL used for chapter/control mapping |
+| `cwe_top25_year` | Default: `2025`; record legacy year if an audit requires an older baseline |
+| `cwe_source_url` | Official MITRE CWE Top 25 URL used for ranking |
+| `rule_pack_source` | Semgrep registry pack, CodeQL suite, commercial tool pack, or custom repository |
+| `rule_pack_version` | Release tag, commit SHA, vendor version, or date pulled |
+| `scanner_version` | SAST engine version and language analyzers enabled |
+| `mapping_confidence` | High / Medium / Low, based on whether CWE/ASVS tags are native, manually mapped, or inferred |
+| `manual_evidence_required` | ASVS controls or CWE classes that SAST can only partially evaluate |
+
+**Finding classification:** Missing framework source/version evidence is **High** when reporting ASVS or CWE compliance. Unpinned rule packs or scanner versions are **Medium**. A legacy ASVS/CWE baseline without an explicit report label is **High**.
+
+---
+
 ### Step 2: Rule Coverage Analysis Against CWE Top 25
 
-Map the active SAST rule set against CWE Top 25 (2024) to identify coverage gaps.
+Map the active SAST rule set against CWE Top 25 2025 to identify coverage gaps.
 
 #### 2.1 CWE Top 25 Coverage Matrix
 
 | Rank | CWE ID | Weakness | SAST Detectable | Semgrep Registry | CodeQL Coverage |
 |------|--------|----------|-----------------|-----------------|-----------------|
-| 1 | CWE-787 | Out-of-bounds Write | Partial (C/C++) | Limited | `cpp/overflow-buffer` |
-| 2 | CWE-79 | Cross-site Scripting (XSS) | Yes | `javascript.browser.security.*.xss` | `js/xss`, `js/reflected-xss` |
-| 3 | CWE-89 | SQL Injection | Yes | `python.django.security.injection.sql.*`, `java.lang.security.audit.sqli.*` | `java/sql-injection`, `python/sql-injection` |
-| 4 | CWE-416 | Use After Free | Partial (C/C++) | Limited | `cpp/use-after-free` |
-| 5 | CWE-78 | OS Command Injection | Yes | `python.lang.security.audit.dangerous-subprocess-use.*` | `python/command-injection`, `java/command-injection` |
-| 6 | CWE-20 | Improper Input Validation | Partial | Pattern-dependent | Pattern-dependent |
-| 7 | CWE-125 | Out-of-bounds Read | Partial (C/C++) | Limited | `cpp/out-of-bounds-read` |
-| 8 | CWE-22 | Path Traversal | Yes | `python.lang.security.audit.path-traversal.*` | `python/path-injection`, `java/path-injection` |
-| 9 | CWE-352 | CSRF | Partial | Framework-specific | `java/csrf`, `python/csrf` |
-| 10 | CWE-434 | Unrestricted Upload | Partial | Framework-specific | Pattern-dependent |
+| 1 | CWE-79 | Cross-site Scripting (XSS) | Yes | `javascript.browser.security.*.xss` | `js/xss`, `js/reflected-xss` |
+| 2 | CWE-89 | SQL Injection | Yes | `python.django.security.injection.sql.*`, `java.lang.security.audit.sqli.*` | `java/sql-injection`, `python/sql-injection` |
+| 3 | CWE-352 | Cross-Site Request Forgery | Partial | Framework-specific | `java/csrf`, `python/csrf` |
+| 4 | CWE-862 | Missing Authorization | Partial | Custom rules needed | Custom query needed |
+| 5 | CWE-787 | Out-of-bounds Write | Partial (C/C++) | Limited | `cpp/overflow-buffer` |
+| 6 | CWE-22 | Path Traversal | Yes | `python.lang.security.audit.path-traversal.*` | `python/path-injection`, `java/path-injection` |
+| 7 | CWE-416 | Use After Free | Partial (C/C++) | Limited | `cpp/use-after-free` |
+| 8 | CWE-125 | Out-of-bounds Read | Partial (C/C++) | Limited | `cpp/out-of-bounds-read` |
+| 9 | CWE-78 | OS Command Injection | Yes | `python.lang.security.audit.dangerous-subprocess-use.*` | `python/command-injection`, `java/command-injection` |
+| 10 | CWE-94 | Code Injection | Yes | `python.lang.security.audit.code-injection.*` | `python/code-injection`, language-specific |
+| 11 | CWE-120 | Classic Buffer Overflow | Yes (C/C++) | Limited | `cpp/buffer-overflow` |
+| 12 | CWE-434 | Unrestricted Upload | Partial | Framework-specific | Pattern-dependent |
+| 13 | CWE-476 | NULL Pointer Dereference | Yes (C/C++/Java) | Limited | `cpp/null-dereference` |
+| 14 | CWE-121 | Stack-based Buffer Overflow | Yes (C/C++) | Limited | `cpp/stack-buffer-overflow` |
+| 15 | CWE-502 | Deserialization of Untrusted Data | Partial | `java.lang.security.audit.unsafe-deserialization.*` | `java/unsafe-deserialization` |
+| 16 | CWE-122 | Heap-based Buffer Overflow | Yes (C/C++) | Limited | `cpp/heap-buffer-overflow` |
+| 17 | CWE-863 | Incorrect Authorization | Partial | Custom rules needed | Custom query needed |
+| 18 | CWE-20 | Improper Input Validation | Partial | Pattern-dependent | Pattern-dependent |
+| 19 | CWE-284 | Improper Access Control | Partial | Custom rules needed | Custom query needed |
+| 20 | CWE-200 | Sensitive Information Exposure | Partial | `python.lang.security.audit.logging.*` | `java/sensitive-log`, language-specific |
+| 21 | CWE-306 | Missing Authentication | Partial | Custom rules needed | Custom query needed |
+| 22 | CWE-918 | Server-Side Request Forgery | Yes | `python.lang.security.audit.request-ssrf.*` | `java/ssrf`, `python/ssrf` |
+| 23 | CWE-77 | Command Injection | Yes | Same as CWE-78 rules | Same as CWE-78 |
+| 24 | CWE-639 | Authorization Bypass Through User-Controlled Key | Partial | Custom rules needed | Custom query needed |
+| 25 | CWE-770 | Allocation of Resources Without Limits or Throttling | Partial | Pattern-dependent | Pattern-dependent |
 
 For each CWE, verify:
 - At least one active rule covers the weakness for each language in the codebase.
 - Rule is enabled (not suppressed in configuration).
-- Rule severity matches the CWE's risk (Top 10 CWEs should not be INFO level).
+- Rule severity matches the CWE's 2025 rank and exploitability in the reviewed environment.
+- Authorization and authentication CWEs have manual or dynamic-test evidence when SAST can only infer route/controller coverage.
+- Rule-pack tags explicitly state the CWE mapping or the report labels the mapping as inferred.
 
 **Finding classification:** CWE Top 10 weakness with zero SAST coverage for a language in use is **High**. CWE 11-25 with no coverage is **Medium**.
 
@@ -176,7 +215,7 @@ rules:
       owasp:
         - "A02:2021 - Cryptographic Failures"
       asvs:
-        - "V6.2.1"
+        - "ASVS 5.0 V11 - Cryptography"
       confidence: HIGH
       impact: HIGH
       references:
@@ -195,7 +234,7 @@ rules:
       cwe:
         - "CWE-798: Use of Hard-coded Credentials"
       asvs:
-        - "V2.10.1"
+        - "ASVS 5.0 V6 - Authentication"
       confidence: HIGH
 
   - id: custom.crypto.weak-random
@@ -216,7 +255,7 @@ rules:
       cwe:
         - "CWE-330: Use of Insufficiently Random Values"
       asvs:
-        - "V6.3.1"
+        - "ASVS 5.0 V11 - Cryptography"
 ```
 
 **Rule quality checklist:**
@@ -444,6 +483,18 @@ jobs:
 | **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
 | **Low** | Rule naming convention inconsistencies; missing metadata on custom rules; suboptimal scan performance; cosmetic configuration issues. |
 
+### Coverage Status Codes
+
+Use these status values when mapping ASVS and CWE requirements:
+
+| Status | Meaning |
+|--------|---------|
+| `Covered by SAST` | Active rules directly detect the weakness class for the language in use |
+| `Partially Covered` | SAST detects some sources/sinks or patterns, but misses framework-specific or business-logic cases |
+| `Manual Evidence Required` | Architecture, runtime configuration, access-control model, or business-flow evidence is needed |
+| `Not Evaluable by SAST` | SAST cannot make a defensible conclusion from static code/config alone |
+| `Legacy Mapping` | Assessment uses ASVS 4.0.3, CWE 2024, or another non-current baseline by explicit request |
+
 ---
 
 ## Output Format
@@ -456,15 +507,22 @@ jobs:
 - SAST tool(s): <Semgrep, CodeQL, SonarQube, etc.>
 - Configuration files analyzed: <list of file paths>
 - Date: <assessment date>
-- Frameworks applied: OWASP ASVS 4.0.3, CWE Top 25
+- Frameworks applied: OWASP ASVS 5.0.0, CWE Top 25 2025
+- ASVS source URL and reviewed date: <official release URL>, <date>
+- CWE source URL and reviewed date: <MITRE Top 25 URL>, <date>
+- Rule-pack source/version/date: <registry or vendor source>, <release or commit>, <date pulled>
+- Scanner version(s): <tool and analyzer versions>
+- Mapping confidence: High / Medium / Low
+- Manual evidence required: <ASVS chapters or CWE classes requiring non-SAST evidence>
 
 ### CWE Top 25 Coverage
 
-| CWE ID | Weakness | Language(s) | Rule(s) Active | Severity | Gap |
-|--------|----------|-------------|----------------|----------|-----|
-| CWE-79 | XSS | JS, Python | 3 rules | ERROR | None |
-| CWE-89 | SQLi | Python | 2 rules | ERROR | None |
-| CWE-78 | Cmd Injection | Python | 0 rules | N/A | GAP |
+| Rank | CWE ID | Weakness | Language(s) | Rule(s) Active | Coverage Status | Severity | Gap |
+|------|--------|----------|-------------|----------------|-----------------|----------|-----|
+| 1 | CWE-79 | XSS | JS, Python | 3 rules | Covered by SAST | ERROR | None |
+| 2 | CWE-89 | SQLi | Python | 2 rules | Covered by SAST | ERROR | None |
+| 4 | CWE-862 | Missing Authorization | Java | 1 route rule | Partially Covered | WARNING | Manual endpoint evidence required |
+| 22 | CWE-918 | SSRF | Python | 0 rules | Not Evaluable by SAST | N/A | GAP |
 
 ### CI Integration Status
 
@@ -480,6 +538,9 @@ jobs:
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
 - **Control Reference:** ASVS V.X.X / CWE-XXX
+- **Coverage Status:** Covered by SAST / Partially Covered / Manual Evidence Required / Not Evaluable by SAST
+- **Framework Source:** <ASVS/CWE source and date>
+- **Mapping Confidence:** High / Medium / Low
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Remediation:** <concrete fix with example>
@@ -494,33 +555,57 @@ jobs:
 
 ## Framework Reference
 
-### OWASP ASVS 4.0.3 (SAST-Relevant Chapters)
+### OWASP ASVS 5.0.0 (SAST-Relevant Chapters)
 
-| Chapter | Title | SAST Coverage |
-|---------|-------|---------------|
-| V2 | Authentication | Partial -- hardcoded credentials, weak password checks |
-| V3 | Session Management | Limited -- configuration review only |
-| V4 | Access Control | Partial -- missing authorization checks |
-| V5 | Validation, Sanitization, Encoding | Strong -- injection, XSS, path traversal |
-| V6 | Stored Cryptography | Moderate -- weak algorithms, hardcoded keys |
-| V8 | Data Protection | Partial -- sensitive data in logs |
-| V12 | File and Resources | Moderate -- upload validation, path traversal |
-| V13 | API and Web Service | Partial -- mass assignment, SSRF patterns |
+| ASVS 5.0 Chapter | Title | SAST Coverage | Legacy 4.0.3 Mapping |
+|------------------|-------|---------------|----------------------|
+| V1 | Encoding and Sanitization | Strong -- XSS, injection encoding, output escaping | V5 partial |
+| V2 | Validation and Business Logic | Partial -- input shape, allowlists, some business-rule anti-patterns | V5 partial |
+| V3 | Web Frontend Security | Strong -- DOM XSS, CSP/header patterns, frontend sink use | New |
+| V4 | API and Web Service | Partial -- mass assignment, SSRF, insecure API handlers | V13 |
+| V5 | File Handling | Moderate -- upload validation, path traversal, unsafe file APIs | V12 |
+| V6 | Authentication | Partial -- hardcoded credentials, weak auth checks, bypass branches | V2 |
+| V7 | Session Management | Limited -- cookie/session configuration review | V3 |
+| V8 | Authorization | Partial -- missing authorization checks, IDOR patterns, route guards | V4 |
+| V9 | Self-contained Tokens | Moderate -- JWT algorithm, expiry, audience, issuer, key handling | New |
+| V10 | OAuth and OIDC | Partial -- flow validation, callback handling, token exchange misuse | New |
+| V11 | Cryptography | Moderate -- weak algorithms, hardcoded keys, insecure randomness | V6 |
+| V12 | Secure Communication | Limited -- TLS/client configuration review | New |
+| V13 | Configuration | Limited -- headers, debug flags, unsafe framework defaults | New |
+| V14 | Data Protection | Partial -- sensitive data in logs, secrets, data exposure | V8 |
+| V15 | Secure Coding and Architecture | Limited -- pattern and dependency-level evidence | New |
+| V16 | Security Logging and Error Handling | Partial -- log injection, sensitive logs, unsafe error output | New |
+| V17 | WebRTC | Minimal -- configuration and exposed signaling paths | New |
 
-### CWE Top 25 (2024)
+### CWE Top 25 (2025)
 
 | Rank | CWE | Name |
 |------|-----|------|
-| 1 | 787 | Out-of-bounds Write |
-| 2 | 79 | Improper Neutralization of Input During Web Page Generation (XSS) |
-| 3 | 89 | Improper Neutralization of Special Elements in SQL Command (SQLi) |
-| 4 | 416 | Use After Free |
-| 5 | 78 | Improper Neutralization of Special Elements in OS Command |
-| 6 | 20 | Improper Input Validation |
-| 7 | 125 | Out-of-bounds Read |
-| 8 | 22 | Improper Limitation of a Pathname to a Restricted Directory |
-| 9 | 352 | Cross-Site Request Forgery |
-| 10 | 434 | Unrestricted Upload of File with Dangerous Type |
+| 1 | 79 | Improper Neutralization of Input During Web Page Generation |
+| 2 | 89 | Improper Neutralization of Special Elements in SQL Command |
+| 3 | 352 | Cross-Site Request Forgery |
+| 4 | 862 | Missing Authorization |
+| 5 | 787 | Out-of-bounds Write |
+| 6 | 22 | Improper Limitation of a Pathname to a Restricted Directory |
+| 7 | 416 | Use After Free |
+| 8 | 125 | Out-of-bounds Read |
+| 9 | 78 | Improper Neutralization of Special Elements used in an OS Command |
+| 10 | 94 | Improper Control of Generation of Code |
+| 11 | 120 | Buffer Copy without Checking Size of Input |
+| 12 | 434 | Unrestricted Upload of File with Dangerous Type |
+| 13 | 476 | NULL Pointer Dereference |
+| 14 | 121 | Stack-based Buffer Overflow |
+| 15 | 502 | Deserialization of Untrusted Data |
+| 16 | 122 | Heap-based Buffer Overflow |
+| 17 | 863 | Incorrect Authorization |
+| 18 | 20 | Improper Input Validation |
+| 19 | 284 | Improper Access Control |
+| 20 | 200 | Exposure of Sensitive Information to an Unauthorized Actor |
+| 21 | 306 | Missing Authentication for Critical Function |
+| 22 | 918 | Server-Side Request Forgery |
+| 23 | 77 | Improper Neutralization of Special Elements used in a Command |
+| 24 | 639 | Authorization Bypass Through User-Controlled Key |
+| 25 | 770 | Allocation of Resources Without Limits or Throttling |
 
 ---
 
@@ -551,8 +636,10 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## References
 
-- OWASP ASVS 4.0.3: https://owasp.org/www-project-application-security-verification-standard/
-- CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
+- OWASP ASVS 5.0.0 release: https://github.com/OWASP/ASVS/releases/tag/v5.0.0_release
+- OWASP ASVS project: https://github.com/OWASP/ASVS
+- CWE Top 25 (2025): https://cwe.mitre.org/top25/archive/2025/2025_cwe_top25.html
+- CWE Top 25 methodology (2025): https://cwe.mitre.org/top25/archive/2025/2025_methodology.html
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
 - Semgrep Registry: https://semgrep.dev/r
@@ -564,4 +651,5 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.1.0** -- Refresh default framework mapping to OWASP ASVS 5.0.0 and CWE Top 25 2025. Adds framework source/version preflight, all-25 CWE coverage mapping, ASVS 5.0 chapter mapping, coverage status codes, and report fields for rule-pack source, mapping confidence, and manual evidence requirements.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
