@@ -72,6 +72,35 @@ resource "google_project_iam_member" {
 
 These roles should be granted at the service account level, not project level.
 
+Also build an effective service account impersonation graph before scoring this control. Project, folder, or organization-level grants can apply through inheritance even when a service-account IAM policy looks clean.
+
+**Additional impersonation evidence to collect:**
+
+```
+roles/iam.serviceAccountTokenCreator
+roles/iam.serviceAccountUser
+roles/iam.workloadIdentityUser
+roles/iam.serviceAccountOpenIdTokenCreator
+iam.serviceAccounts.getAccessToken
+iam.serviceAccounts.getOpenIdToken
+iam.serviceAccounts.implicitDelegation
+iam.serviceAccounts.signBlob
+iam.serviceAccounts.signJwt
+iam.serviceAccounts.actAs
+```
+
+For each grant, record the principal, principal type, grant source, resource level, IAM Condition, target service account, target service account privileges, and whether the path is direct, inherited, or chained.
+
+**High-risk patterns:**
+
+- Human, group, domain, or service-account principals with project/folder/org-level Token Creator.
+- Workload identity federation bindings to privileged service accounts without repository, protected ref, immutable subject, and audience constraints.
+- Service-account-to-service-account chains where the target service account has broader project, folder, organization, KMS, storage, database, or deployment privileges.
+
+**Lower-risk pattern:**
+
+- A CI principalSet bound to one deployment service account with an expected audience, trusted repository, protected branch/tag/environment constraints, and no broad group or inherited Token Creator path.
+
 ### CIS 1.7 -- Ensure User-Managed/External Keys for Service Accounts Are Rotated Every 90 Days or Fewer
 
 Check for key rotation mechanisms or expiration policies on service account keys.

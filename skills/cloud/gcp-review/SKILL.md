@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -74,9 +74,53 @@ Use Glob to locate all GCP-related infrastructure definitions.
 **/org-policies/**/*.json
 **/org-policies/**/*.yaml
 **/iam/**/*.json
+**/workload-identity/**/*.json
+**/workload-identity/**/*.yaml
 ```
 
 Record all discovered files. If no GCP configurations are found, report that finding and halt.
+
+---
+
+### Step 1A: Build Effective Service Account Impersonation Graph
+
+Before scoring IAM findings, build an effective impersonation graph for service accounts. Do not treat every impersonation-related grant as equally risky: distinguish tightly constrained workload identity federation from broad human, group, service-account, project, folder, or organization-level grants.
+
+**Roles and permissions to collect:**
+
+- `roles/iam.serviceAccountTokenCreator`
+- `roles/iam.serviceAccountUser`
+- `roles/iam.workloadIdentityUser`
+- `roles/iam.serviceAccountOpenIdTokenCreator`
+- Custom roles containing `iam.serviceAccounts.getAccessToken`, `iam.serviceAccounts.getOpenIdToken`, `iam.serviceAccounts.implicitDelegation`, `iam.serviceAccounts.signBlob`, `iam.serviceAccounts.signJwt`, or `iam.serviceAccounts.actAs`
+- Roles that can change service-account IAM policy, such as `iam.serviceAccounts.setIamPolicy`
+- Service account key creation grants, because keys can create equivalent access outside the impersonation flow
+
+**Evidence to resolve:**
+
+- Grant source: service-account resource, project, folder, or organization.
+- Inheritance path from organization/folder/project to the target service account.
+- Principal type: user, group, domain, service account, workload identity pool principal, principal set, or public principal.
+- IAM Condition expression and whether it constrains repository, branch/tag/ref, environment, audience, subject, tenant, time, and approval context.
+- Workload identity provider attribute mappings and provider allowed audiences.
+- Target service account roles on projects, folders, organizations, KMS keys, buckets, BigQuery datasets, Cloud SQL, deployment resources, and other sensitive assets.
+- Deny policies, principal access boundary policies, and org policies that reduce effective access.
+- Group membership evidence or a clear **Not Evaluable** note if group membership is outside the review scope.
+
+**Impersonation graph table:**
+
+| Principal | Principal Type | Grant Role/Permission | Grant Source | Resource Level | Condition Strength | Target Service Account | Target SA Privileges | Effective Path | Risk |
+|-----------|----------------|-----------------------|--------------|----------------|--------------------|------------------------|----------------------|----------------|------|
+| <member> | <user/group/sa/wif> | <role/permission> | <file/API/export> | <SA/project/folder/org> | <strong/weak/missing/not evaluable> | <service account> | <privileged roles> | <direct/inherited/chained> | <Low/Med/High/Critical> |
+
+**Risk rules:**
+
+- Mark inherited `roles/iam.serviceAccountTokenCreator`, token-signing permissions, or `roles/iam.workloadIdentityUser` to privileged service accounts as **High** unless tightly constrained and backed by group/provider evidence.
+- Mark project, folder, or organization-level Token Creator grants as **High** because they can apply to many service accounts through inheritance.
+- Mark service-account-to-service-account impersonation chains as **High** when the chain reaches a more privileged service account or crosses project/folder boundaries.
+- Mark workload identity federation as **Low/Medium** only when the binding uses immutable subject or principalSet attributes, expected audience, trusted organization/repository, and branch/tag/environment constraints.
+- Mark time-only IAM Conditions as insufficient for CI/CD identities because they do not bind the external token to the expected repository, branch, workflow, or audience.
+- Do not flag well-scoped CI impersonation as high risk when the service-account binding targets one deployment account, has no broad groups, uses expected workload identity audience, and constrains repository plus protected ref.
 
 ---
 
@@ -138,6 +182,18 @@ Produce the final report using the structure defined in the Output Format sectio
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
 
+### Service Account Impersonation Graph
+
+| Principal | Principal Type | Grant Role/Permission | Grant Source | Resource Level | Condition Strength | Target Service Account | Target SA Privileges | Effective Path | Risk |
+|-----------|----------------|-----------------------|--------------|----------------|--------------------|------------------------|----------------------|----------------|------|
+| <member> | <user/group/sa/wif> | <role/permission> | <file/API/export> | <SA/project/folder/org> | <strong/weak/missing/not evaluable> | <service account> | <privileged roles> | <direct/inherited/chained> | <Low/Med/High/Critical> |
+
+### Workload Identity Federation Review
+
+| Provider | Principal Binding | Attribute Mapping | Audience Constraint | Repo/Branch/Environment Constraint | Target Service Account | Status |
+|----------|-------------------|-------------------|---------------------|------------------------------------|------------------------|--------|
+| <provider> | <principal/principalSet> | <immutable claims?> | <expected audience?> | <repo/ref/env condition?> | <service account> | <Pass/Fail/Partial/Not Evaluable> |
+
 ### Detailed Findings
 
 #### [CIS X.Y] <Recommendation Title>
@@ -194,6 +250,8 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Flat IAM review misses effective impersonation.** A project can look compliant when no user has Owner, but a group or federated CI principal with Token Creator on a privileged service account can mint short-lived credentials and inherit that account's privileges.
+8. **Treating all workload identity bindings as equally risky.** Well-constrained workload identity federation with repository, protected ref, immutable subject, and audience restrictions is materially different from broad principalSet bindings with no IAM Condition.
 
 ---
 
@@ -216,6 +274,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Google Cloud Platform Foundation Benchmark v2.0.0: https://www.cisecurity.org/benchmark/google_cloud_computing_platform
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
+- Google Cloud Service Account Authentication Roles: https://cloud.google.com/iam/docs/service-account-permissions
+- Google Cloud Service Account Security Best Practices: https://cloud.google.com/iam/docs/best-practices-service-accounts
+- Google Cloud Workload Identity Federation Best Practices: https://cloud.google.com/iam/docs/best-practices-for-using-workload-identity-federation
+- Google Cloud Policy Analyzer for IAM: https://cloud.google.com/policy-intelligence/docs/analyze-iam-policies
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
@@ -225,4 +287,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added effective service account impersonation graph, workload identity federation constraint review, inherited grant evidence, and IAM Condition risk scoring.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
