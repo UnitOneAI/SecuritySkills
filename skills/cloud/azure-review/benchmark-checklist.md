@@ -609,6 +609,17 @@ resource "azurerm_key_vault" {
 }
 ```
 
+Also record the recovery evidence source and operational impact:
+
+| Evidence | What to Verify | Pass / Follow-Up |
+|---|---|---|
+| Terraform `azurerm_key_vault` | `soft_delete_retention_days`, `purge_protection_enabled` | Retention is documented and purge protection is enabled for production/high-value vaults |
+| Bicep/ARM `Microsoft.KeyVault/vaults` | `enableSoftDelete`, `enablePurgeProtection`, retention settings | Effective template enforces recoverability |
+| Azure CLI / inventory | `az keyvault show` recovery and purge properties | Existing/imported vault settings match policy |
+| Exception record | Reason, environment, owner, expiry | Non-production or migration exceptions are time-bound |
+
+Flag `purge_protection_enabled = false` for production, customer-managed-key, or regulated vaults. If retention is less than the standard policy window, record the owner and justification. Note that purge protection cannot be disabled after it is enabled.
+
 ### CIS 8.6 -- Enable Role Based Access Control for Azure Key Vault
 
 ```hcl
@@ -629,6 +640,22 @@ resource "azurerm_private_endpoint" {
   }
 }
 ```
+
+Private endpoint presence is not enough. Record effective private-access evidence:
+
+| Evidence | What to Verify | Risk if Missing |
+|---|---|---|
+| Key Vault network ACLs | `publicNetworkAccess` / `public_network_access_enabled`, bypass/trusted-services setting, default action, IP/VNet rules | Vault may remain reachable through public endpoint |
+| Private endpoint connection | Approved state, target vault resource ID, `subresource_names = ["vault"]` | Endpoint exists but is not connected to the intended vault |
+| Private DNS | `privatelink.vaultcore.azure.net` zone and VNet link, or equivalent enterprise DNS forwarding | Clients may resolve the public vault endpoint |
+| Client path evidence | Workload subnet/VNet, peering, DNS resolver, and service-specific access path | Application may still require public access exceptions |
+
+Flag these conditions:
+
+- Private endpoint exists while public network access remains enabled with broad firewall rules.
+- Missing private DNS zone link or resolver evidence for workloads expected to use the private endpoint.
+- Trusted-services bypass is enabled without documenting which Azure services need it.
+- Public network access is required for a managed service, but there is no scoped exception, owner, or compensating control.
 
 ---
 
@@ -704,3 +731,4 @@ resource "azurerm_linux_web_app" {
   }
 }
 ```
+
