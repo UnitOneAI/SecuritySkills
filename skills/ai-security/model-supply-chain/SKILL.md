@@ -3,18 +3,19 @@ name: model-supply-chain
 description: >
   Reviews AI/ML model supply chains for security risks including model provenance
   verification, training data lineage, fine-tuning pipeline integrity, inference
-  dependency review, and backdoor detection. Auto-invoked when reviewing systems
+  dependency review, evaluation release binding, and backdoor regression evidence.
+  Auto-invoked when reviewing systems
   that download pre-trained models, fine-tune foundation models, or deploy models
   from third-party sources. Produces a structured assessment mapped to OWASP
   LLM03:2025, SLSA v1.0 supply chain levels, and MITRE ATLAS poisoning and
   supply chain techniques.
-tags: [ai-security, supply-chain, model-provenance]
+tags: [ai-security, supply-chain, model-provenance, evaluation]
 role: [security-engineer, ml-engineer, appsec-engineer]
 phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -24,7 +25,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Model Supply Chain Security Review
 
-This skill guides a structured security assessment of AI/ML model supply chains. It covers the full lifecycle from model acquisition through training data sourcing, fine-tuning, and inference deployment. The methodology is aligned with **OWASP LLM03:2025 (Supply Chain Vulnerabilities)**, **SLSA v1.0 (Supply-chain Levels for Software Artifacts)**, and **MITRE ATLAS** adversarial techniques for ML systems.
+This skill guides a structured security assessment of AI/ML model supply chains. It covers the full lifecycle from model acquisition through training data sourcing, fine-tuning, evaluation release binding, and inference deployment. The methodology is aligned with **OWASP LLM03:2025 (Supply Chain Vulnerabilities)**, **SLSA v1.0 (Supply-chain Levels for Software Artifacts)**, and **MITRE ATLAS** adversarial techniques for ML systems.
 
 ## Prompt Injection Safety Notice
 
@@ -76,6 +77,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Model format and serialization | Weight files (.bin, .safetensors, .pt, .pkl, .onnx) | Pickle-based formats enable arbitrary code execution |
 | Hash/checksum verification code | Download scripts, model loading code | Confirms integrity verification exists |
 | Model card or documentation | Model registry page, repo docs | Reveals training data, intended use, known limitations |
+| Evaluation dataset and run evidence | Experiment tracker, CI release job, eval configs, model registry | Binds release decisions to immutable evaluation evidence |
 | Training data sources | Data pipeline code, dataset configs, documentation | Identifies poisoning surface and licensing risk |
 | Fine-tuning pipeline | Training scripts, configs, orchestration code | Exposes data injection and pipeline tampering risks |
 | Inference dependencies | requirements.txt, pyproject.toml, Dockerfile, package.json | Identifies vulnerable libraries in serving path |
@@ -317,6 +319,41 @@ Grep: "model.card|intended.use|training.data|evaluation|limitations|ethical" in 
 | Limitations section absent or trivially brief | Medium |
 | Model card exists but has not been updated for current model version | Low |
 
+#### 5.1 Evaluation Integrity and Release Binding
+
+Model cards and narrative documentation are not a substitute for release-quality evaluation evidence. For each production or release-candidate model, bind the exact model artifact to the exact evaluation datasets, thresholds, run results, evaluator identity, and decision outcome.
+
+**Required evaluation evidence:**
+
+| Evidence Field | What to Record |
+|---|---|
+| Model artifact identity | Model name, source, revision/commit, artifact checksum, storage location |
+| Clean evaluation set | Dataset ID, revision, checksum or immutable snapshot, owner, and sensitivity classification |
+| Thresholds | Required clean metrics, slice metrics, and safety metrics with approval source |
+| Run result | Run ID, timestamp, evaluator identity, execution environment, dependency/version lock |
+| Release binding | Evidence that the run result applies to the same artifact being promoted |
+| Decision outcome | Release / block / monitor / Not Evaluable / Not Applicable with rationale |
+
+**Detection methods using allowed tools:**
+
+```
+Grep: "evaluate|eval_dataset|validation_data|test_dataset|benchmark|threshold|metric" in **/*.{py,yaml,yml,json,md}
+Grep: "mlflow|wandb|tensorboard|run_id|experiment|artifact_uri" in **/*.{py,yaml,yml,json,md}
+Grep: "dataset_revision|dataset_version|revision=|load_dataset|checksum|sha256" in **/*.{py,yaml,yml,json}
+Grep: "promote|release_candidate|model_registry|stage=|production" in **/*.{py,yaml,yml,json,md}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Production third-party or fine-tuned model has pinned weights but floating evaluation data | High |
+| No release-result binding between model artifact and evaluation run | High |
+| Evaluation gate checks only aggregate clean accuracy for a model class with known targeted/backdoor risk | High |
+| Evaluation evidence exists but lacks dataset checksum, run ID, environment, or evaluator identity | Medium |
+| Raw evaluation data cannot be disclosed, but no hash/version/owner evidence is provided | Medium |
+| Trigger or canary tests are not applicable and the rationale is documented | Informational |
+
 ---
 
 ### Step 6 -- Backdoor Detection Patterns
@@ -328,6 +365,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 **What to look for in code and configuration:**
 
 - Absence of any behavioral testing beyond standard benchmarks. Models evaluated only on accuracy/perplexity without adversarial or out-of-distribution testing.
+- Release gates that record clean benchmark results but do not bind targeted slice, canary, or trigger-regression results to the promoted artifact.
 - No differential testing between the downloaded model and a known-good reference (comparing outputs on a curated test set).
 - Fine-tuning pipelines that do not validate the base model before fine-tuning begins.
 - No monitoring for anomalous model behavior in production (distribution shift in outputs, unexpected confidence patterns, responses that deviate from training data distribution).
@@ -339,16 +377,28 @@ Assess whether architectural and procedural controls exist to detect model backd
 2. **Activation analysis** -- Inspect model internals (attention patterns, neuron activations) for anomalous behavior on trigger-candidate inputs. Tools: TransformerLens, Baukit, pyvene.
 3. **Weight comparison** -- For fine-tuned models, compare weight distributions against the base model. Large, localized weight changes in specific layers may indicate targeted modification (as in the ROME technique used in PoisonGPT).
 4. **Output distribution monitoring** -- Track the distribution of model outputs over time. Sudden shifts in output patterns on specific input categories may indicate backdoor activation.
+5. **Backdoor regression evidence** -- Record targeted slice, canary, or trigger-regression suite ID, dataset revision/checksum, expected threshold, actual result, run ID, evaluator, timestamp, and release decision. If a model class has no meaningful trigger concept, mark the field Not Applicable with rationale instead of forcing generic tests.
+
+**Detection methods using allowed tools:**
+
+```
+Grep: "canary|trigger|backdoor|trojan|slice|adversarial|ood|out.of.distribution|differential" in **/*.{py,yaml,yml,json,md}
+Grep: "attack_success|asr|clean_accuracy|safety_regression|regression_suite" in **/*.{py,yaml,yml,json,md}
+Grep: "not_applicable|not.evaluable|release_decision|block|monitor" in **/*.{py,yaml,yml,json,md}
+```
 
 **What constitutes a finding:**
 
 | Condition | Severity |
 |---|---|
 | No behavioral testing beyond standard benchmarks for externally sourced models | High |
+| No canary, trigger, or targeted-slice regression for applicable high-risk third-party or fine-tuned models | High |
+| Backdoor regression result is not bound to model artifact ID, dataset version, run ID, and timestamp | High |
 | No validation stage between model acquisition and production deployment | High |
 | No production monitoring for anomalous model behavior | Medium |
 | No differential testing against known-good reference | Medium |
 | Backdoor detection tooling not integrated into model evaluation pipeline | Medium |
+| Trigger testing marked Not Applicable without rationale | Medium |
 
 ---
 
@@ -357,8 +407,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Severity | Criteria | Response SLA |
 |---|---|---|
 | **Critical** | Arbitrary code execution via model loading, known exploited CVE in inference path, or confirmed model tampering. Exploitation requires no special access beyond normal deployment flow. | Immediate -- block deployment |
-| **High** | No provenance verification on production models, uncontrolled training data pipeline, or dangerous deserialization patterns. Clear attack path exists. | 7 days -- remediate before next release |
-| **Medium** | Incomplete model documentation, missing reproducibility controls, or absent behavioral testing. Exploitation requires specific conditions or insider access. | 30 days -- schedule remediation |
+| **High** | No provenance verification on production models, uncontrolled training data pipeline, dangerous deserialization patterns, floating evaluation data for pinned production models, or no artifact-to-evaluation release binding. Clear attack path exists. | 7 days -- remediate before next release |
+| **Medium** | Incomplete model documentation, missing reproducibility controls, incomplete evaluation run provenance, or absent behavioral testing. Exploitation requires specific conditions or insider access. | 30 days -- schedule remediation |
 | **Low** | Defense-in-depth gaps, minor documentation omissions, or best practice deviations with limited direct risk. | 90 days -- track in backlog |
 | **Informational** | Recommendations for improvement with no current exploitable risk. | No SLA -- advisory |
 
@@ -382,6 +432,12 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|---|---|
 | [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
 
+## Evaluation Release Binding
+
+| Model | Artifact Revision / Checksum | Eval Dataset Revision / Checksum | Thresholds | Run ID / Environment | Backdoor or Slice Regression | Decision |
+|---|---|---|---|---|---|---|
+| [name] | [revision/checksum] | [dataset revision/checksum] | [clean + slice thresholds] | [run ID, evaluator, timestamp] | [pass/fail/N/A/Not Evaluable] | [Release / Block / Monitor] |
+
 ## Findings
 
 ### Finding [N]: [Title]
@@ -403,6 +459,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Model provenance | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
+| Evaluation release binding | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
 | Model documentation | [description] | [recommendation] | [severity] |
 | Backdoor detection | [description] | [recommendation] | [severity] |
@@ -441,6 +498,12 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
 
+6. **Pinning the model but floating the evaluation set.** A release can look reproducible because the model revision is pinned, while the evaluation dataset silently changes. Pin or hash the evaluation set and bind the result to the promoted artifact.
+
+7. **Treating a model card as release evidence.** A model card is useful documentation, but it does not prove that the exact release candidate passed the exact evaluation suite. Preserve run IDs, environment, evaluator, thresholds, and decision outcome.
+
+8. **Skipping targeted regressions because clean accuracy passed.** Backdoors and slice-specific failures often preserve aggregate clean metrics. Use canary, trigger, or targeted-slice regression where applicable, and document Not Applicable or Not Evaluable cases explicitly.
+
 ---
 
 ## References
@@ -456,3 +519,9 @@ Assess whether architectural and procedural controls exist to detect model backd
 - Hugging Face. "Safetensors: A Simple and Safe Serialization Format" -- https://huggingface.co/docs/safetensors
 - NIST AI Risk Management Framework 1.0 -- https://www.nist.gov/aiframework
 - Open Source Security Foundation (OpenSSF) -- https://openssf.org
+
+---
+
+## Changelog
+
+- **1.0.1** -- Add evaluation release binding, immutable evaluation dataset evidence, and backdoor/canary regression gates.
