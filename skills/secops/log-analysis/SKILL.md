@@ -56,6 +56,7 @@ Before beginning analysis, gather or confirm:
 - [ ] **Time window:** The specific time range to analyze.
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
+- [ ] **Time basis and collection integrity:** Which fields represent event time, collector/forwarder receipt time, and SIEM/index time? What timezone, clock sync, observed skew, ingestion delay, and continuity/heartbeat evidence is available for each source?
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
@@ -275,7 +276,29 @@ Identify deviations from established baselines that may indicate malicious activ
 | New user accounts created | Account management logs | Per day | Persistence detection |
 | Privileged logon count | Authentication logs (4672) | Per day | Privilege abuse detection |
 
-### Step 7: Log Correlation Techniques
+### Step 7: Normalize Time Basis and Collection Integrity
+
+Before building a timeline or correlating across sources, record how each source represents time and whether the collection path is trustworthy enough for chronological ordering.
+
+**Time and integrity review process:**
+
+1. **Identify timestamp fields:** Record event time, collector/forwarder receipt time, and SIEM/index time for each source. Do not assume the SIEM ingestion timestamp is the event timestamp.
+2. **Normalize to UTC:** Convert timestamps to UTC for correlation while preserving the original timestamp, timezone, and any assumptions used for conversion.
+3. **Validate clock sync:** Check NTP/domain time status, source metadata, or observed cross-source skew. Record estimated skew when exact synchronization evidence is unavailable.
+4. **Check ingestion delay:** Compare event time to collector/SIEM receipt time to identify late-arriving logs, backlog, replayed archives, or delayed cloud exports.
+5. **Assess continuity:** Look for heartbeat events, forwarder status, sequence numbers, collector health, expected event volume, and known maintenance windows. Treat unexpected gaps as evidence, not noise.
+6. **Assign time confidence:** Mark each source as High, Medium, Low, or Not Evaluable before using it to establish event order.
+
+**Timestamp confidence guide:**
+
+| Confidence | Criteria | Timeline Use |
+|------------|----------|--------------|
+| High | Explicit timezone, verified clock sync, no unexplained collection gaps, minimal ingestion delay | Safe for primary ordering |
+| Medium | Timezone inferred or minor skew/delay documented, continuity mostly intact | Use for ordering with caveats |
+| Low | Missing timezone, material skew, delayed ingestion, or unexplained source gaps | Use as supporting evidence only |
+| Not Evaluable | Timestamp fields or collection path cannot be verified | Do not use for precise ordering |
+
+### Step 8: Log Correlation Techniques
 
 Combine data from multiple log sources to reconstruct attack sequences and increase detection confidence.
 
@@ -317,6 +340,8 @@ Step 5: Build timeline
   -> Identify gaps in visibility (log sources not available)
 ```
 
+When correlating sources, order events by normalized event time when its confidence is sufficient. Use collector or SIEM/index time to explain late arrival, backlog, or replay behavior, but do not use ingestion time alone to prove attacker sequence unless event time is unavailable and the limitation is documented.
+
 ---
 
 ## 4. Findings Classification
@@ -352,6 +377,11 @@ Produce log analysis findings in this structure:
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
 
+### Time Basis and Collection Integrity
+| Source | Event Time Field | Original Time Zone | Collector/SIEM Time Field | Clock Sync / Skew Evidence | Continuity Evidence | Time Confidence |
+|--------|------------------|--------------------|---------------------------|----------------------------|---------------------|-----------------|
+| [Source] | [Field] | [Timezone or assumption] | [Field] | [NTP/domain time/observed skew] | [Heartbeat, sequence, forwarder status, or gap] | [High/Medium/Low/Not Evaluable] |
+
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
 |---|---------|----------|-------------------|------------|----------|
@@ -363,6 +393,7 @@ Produce log analysis findings in this structure:
 **Severity:** [P1-P4]
 **ATT&CK Mapping:** [Technique ID -- Name]
 **Log Source:** [Source]
+**Time Basis / Confidence:** [Event time, collector/SIEM time, timezone, skew, and confidence]
 **Evidence:**
 [Relevant log entries, timestamps, and entity details]
 
@@ -370,9 +401,9 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Timestamp (UTC) | Original Timestamp / Basis | Source | Event | ATT&CK Technique | Assessment |
+|-----------------|----------------------------|--------|-------|-------------------|------------|
+| [HH:MM:SS] | [Original value, event/collector/SIEM time, confidence] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
@@ -450,6 +481,14 @@ A single Event ID can have very different meanings depending on the context. Eve
 ### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
+
+### Pitfall 6: Mixing Event Time, Collector Time, and SIEM Index Time
+
+Different sources may expose the time an event occurred, the time a collector received it, and the time a SIEM indexed it. These fields can diverge during clock drift, cloud export delays, forwarder backlog, or log replay. Building a timeline from mixed timestamp bases can invert cause and effect. Always document the timestamp basis used for ordering and preserve ingestion-time evidence separately.
+
+### Pitfall 7: Treating Unverified Timezones or Clocks as High Confidence
+
+Missing timezone data, unsynchronized hosts, and unexplained collection gaps reduce timeline confidence even when the event content is otherwise clear. Do not present minute-by-minute ordering as high confidence until clock sync, observed skew, and source continuity have been checked.
 
 ---
 
