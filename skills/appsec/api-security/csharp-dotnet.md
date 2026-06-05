@@ -1,6 +1,6 @@
 # C# and .NET -- API Security Patterns
 
-Language-specific supplement for the `api-security` skill covering ASP.NET Core Web API (controllers and Minimal APIs), GraphQL in .NET (HotChocolate / GraphQL.NET), and gRPC in .NET. All patterns target ASP.NET Core on .NET 6, 7, and 8.
+Language-specific supplement for the `api-security` skill covering ASP.NET Core Web API (controllers and Minimal APIs), GraphQL in .NET (HotChocolate / GraphQL.NET), SignalR hubs, and gRPC in .NET. All patterns target ASP.NET Core on .NET 6, 7, and 8.
 
 ---
 
@@ -1042,6 +1042,202 @@ public class Query
 
 ---
 
+## SignalR Security in .NET
+
+SignalR hubs are API surfaces even though they do not look like ordinary
+controllers. Reviewers should inventory `MapHub<T>()` endpoints, `Hub` classes,
+hub methods, group joins, browser credential flows, and long-lived connection
+behavior alongside REST, GraphQL, and gRPC endpoints.
+
+### Hub Exposure and Origin Policy
+
+SignalR browser clients use HTTP negotiation and may upgrade to WebSockets.
+Cross-origin SignalR connections should be restricted to trusted origins, and
+WebSocket origin checks should not be assumed to behave like ordinary REST CORS.
+
+```csharp
+// VULNERABLE: Allows credentialed cross-origin SignalR connections broadly
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyHeader()
+            .AllowAnyMethod()
+            .SetIsOriginAllowed(_ => true)
+            .AllowCredentials();
+    });
+});
+
+app.MapHub<AccountHub>("/accountHub");
+```
+
+```csharp
+// SECURE: Dedicated SignalR CORS policy with explicit origins and methods
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("SignalRPolicy", policy =>
+    {
+        policy.WithOrigins("https://app.example.com", "https://admin.example.com")
+            .WithMethods("GET", "POST")
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+});
+
+app.MapHub<AccountHub>("/accountHub")
+    .RequireCors("SignalRPolicy")
+    .RequireAuthorization("AuthenticatedUsers");
+```
+
+### Hub Method and Group Authorization
+
+`[Authorize]` on a hub authenticates the connection. It does not prove the
+caller may invoke every hub method, join every group, or subscribe to every
+tenant/channel. Treat client-selected group names, tenant IDs, room IDs, and
+admin commands as BOLA/BFLA surfaces.
+
+```csharp
+// VULNERABLE: Any authenticated user can join any tenant group
+[Authorize]
+public class SupportHub : Hub
+{
+    public Task JoinTenant(string tenantId)
+        => Groups.AddToGroupAsync(Context.ConnectionId, $"tenant:{tenantId}");
+
+    public Task SendAdminCommand(string tenantId, string command)
+        => Clients.Group($"tenant:{tenantId}")
+            .SendAsync("AdminCommand", command);
+}
+```
+
+```csharp
+// SECURE: Authorize group membership and privileged hub methods explicitly
+[Authorize]
+public class SupportHub : Hub
+{
+    private readonly ITenantAuthorization _tenantAuthorization;
+
+    public SupportHub(ITenantAuthorization tenantAuthorization)
+        => _tenantAuthorization = tenantAuthorization;
+
+    public async Task JoinTenant(string tenantId)
+    {
+        var allowed = await _tenantAuthorization
+            .CanJoinTenantAsync(Context.User!, tenantId);
+        if (!allowed)
+            throw new HubException("Not authorized for tenant channel.");
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"tenant:{tenantId}");
+    }
+
+    [Authorize(Policy = "CanSendAdminCommands")]
+    public async Task SendAdminCommand(string tenantId, string command)
+    {
+        var allowed = await _tenantAuthorization
+            .CanManageTenantAsync(Context.User!, tenantId);
+        if (!allowed)
+            throw new HubException("Not authorized for tenant command.");
+
+        await Clients.Group($"tenant:{tenantId}")
+            .SendAsync("AdminCommand", command);
+    }
+}
+```
+
+### Access Tokens in Query Strings
+
+SignalR browser transports can send bearer tokens via the `access_token` query
+parameter for WebSockets and Server-Sent Events. That exception must be tightly
+scoped to hub paths and paired with HTTPS, short token lifetimes, and log
+redaction because ASP.NET Core request logging can include the query string.
+
+```csharp
+// VULNERABLE: Accepts access_token on any route and risks logging bearer tokens
+options.Events = new JwtBearerEvents
+{
+    OnMessageReceived = context =>
+    {
+        var accessToken = context.Request.Query["access_token"];
+        if (!StringValues.IsNullOrEmpty(accessToken))
+            context.Token = accessToken;
+        return Task.CompletedTask;
+    }
+};
+```
+
+```csharp
+// SECURE: Scope query-token support to known hub paths only
+options.Events = new JwtBearerEvents
+{
+    OnMessageReceived = context =>
+    {
+        var accessToken = context.Request.Query["access_token"];
+        var path = context.HttpContext.Request.Path;
+
+        if (!StringValues.IsNullOrEmpty(accessToken)
+            && path.StartsWithSegments("/accountHub"))
+        {
+            context.Token = accessToken;
+        }
+
+        return Task.CompletedTask;
+    }
+};
+
+// Also configure request logging or middleware to redact access_token values.
+```
+
+### Buffer Limits and Detailed Errors
+
+SignalR keeps per-connection buffers for incoming and outgoing messages.
+Removing those limits or exposing detailed errors in production turns a hub into
+a resource-exhaustion and information-disclosure risk.
+
+```csharp
+// VULNERABLE: Detailed errors and unbounded connection buffers
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+    options.MaximumReceiveMessageSize = null;
+});
+
+app.MapHub<ImportHub>("/importHub", options =>
+{
+    options.ApplicationMaxBufferSize = 0;
+    options.TransportMaxBufferSize = 0;
+});
+```
+
+```csharp
+// SECURE: Production-safe error handling and bounded buffers
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    options.MaximumReceiveMessageSize = 32 * 1024;
+});
+
+app.MapHub<ImportHub>("/importHub", options =>
+{
+    options.ApplicationMaxBufferSize = 32 * 1024;
+    options.TransportMaxBufferSize = 32 * 1024;
+});
+```
+
+### SignalR Review Checklist -- .NET
+
+- [ ] Every `MapHub<T>()` endpoint is inventoried with path, auth policy, CORS/origin policy, and browser exposure.
+- [ ] Browser-accessible hubs allow only trusted origins and required methods (`GET`, `POST`) with credentials intentionally enabled.
+- [ ] Hub classes or hub endpoints require authorization by default.
+- [ ] Privileged hub methods use method-level policies, not only hub-level `[Authorize]`.
+- [ ] Group joins and subscriptions validate tenant, room, account, or channel authorization before calling `Groups.AddToGroupAsync`.
+- [ ] `access_token` query-string extraction is restricted to known hub paths and paired with log redaction.
+- [ ] Long-lived connections have a revalidation or disconnect story for account disablement, role changes, tenant removal, and token revocation.
+- [ ] `EnableDetailedErrors` is disabled outside development.
+- [ ] `MaximumReceiveMessageSize`, `ApplicationMaxBufferSize`, and `TransportMaxBufferSize` are explicitly bounded.
+- [ ] Public broadcast hubs still enforce connection count, message rate, and message size limits.
+
+---
+
 ## gRPC Security in .NET
 
 ### mTLS Configuration
@@ -1225,6 +1421,34 @@ MapPost\(.*register.*\)(?![\s\S]*?RequireRateLimiting)
 MapPost\(.*password.*\)(?![\s\S]*?RequireRateLimiting)
 ```
 
+### SignalR Hub Risks
+
+```
+# SignalR hub endpoints and classes
+MapHub<[^>]+>\(
+class\s+\w+\s*:\s*Hub
+
+# Broad credentialed CORS near SignalR
+SetIsOriginAllowed\(\s*_\s*=>\s*true\s*\)
+AllowAnyOrigin\(\)
+AllowCredentials\(\)
+
+# Group or broadcast operations that need authz review
+Groups\.AddToGroupAsync\(
+Clients\.All
+Clients\.Group\(
+
+# Query-string token handling should be hub-path scoped and redacted
+Request\.Query\[\s*"access_token"\s*\]
+Query\.TryGetValue\(\s*"access_token"
+
+# Production disclosure or unbounded buffers
+EnableDetailedErrors\s*=\s*true
+MaximumReceiveMessageSize\s*=\s*null
+ApplicationMaxBufferSize\s*=\s*0
+TransportMaxBufferSize\s*=\s*0
+```
+
 ---
 
 ## References
@@ -1241,4 +1465,6 @@ MapPost\(.*password.*\)(?![\s\S]*?RequireRateLimiting)
 - [Microsoft ASP.NET Core Security Documentation](https://learn.microsoft.com/en-us/aspnet/core/security/)
 - [Microsoft Rate Limiting Middleware](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)
 - [HotChocolate GraphQL Security](https://chillicream.com/docs/hotchocolate/security)
+- [ASP.NET Core SignalR Security Considerations](https://learn.microsoft.com/en-us/aspnet/core/signalr/security)
+- [ASP.NET Core SignalR Authentication and Authorization](https://learn.microsoft.com/en-us/aspnet/core/signalr/authn-and-authz)
 - [ASP.NET Core gRPC Authentication](https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz)
