@@ -5,7 +5,8 @@ description: >
   NIST SP 800-207 zero trust principles, and CIS Controls v8. Auto-invoked when
   reviewing IAM policies, role definitions, user provisioning workflows, or when
   asked to assess identity security posture. Produces findings on least privilege
-  violations, MFA gaps, stale accounts, and service account hygiene with
+  violations, MFA gaps, stale accounts, service account hygiene, cloud-specific
+  privilege escalation patterns, and guest user over-permissioning with
   prioritized remediation.
 tags: [identity, iam, access-control, zero-trust]
 role: [security-engineer, cloud-security-engineer, vciso]
@@ -13,7 +14,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -84,6 +85,7 @@ Identify and catalog:
 - **Service accounts** — application-to-application, daemon accounts, CI/CD pipeline identities
 - **API keys** — long-lived credentials, developer tokens, integration keys
 - **Machine identities** — workload identities, managed identities, instance profiles, certificates
+- **Guest users** — external partners, B2B collaborators, vendor access (NEW in v1.1.0)
 
 **What to look for:**
 
@@ -93,6 +95,7 @@ IAM-INV-02: Identity types are not classified (human vs. machine vs. service)
 IAM-INV-03: Shadow identities — accounts outside the central IdP
 IAM-INV-04: Shared accounts with no individual attribution
 IAM-INV-05: Break-glass / emergency accounts not documented
+IAM-INV-06: Guest user accounts not inventoried or classified (NEW in v1.1.0)
 ```
 
 **Platform-specific checks:**
@@ -101,9 +104,10 @@ IAM-INV-05: Break-glass / emergency accounts not documented
 |---|---|---|
 | **AWS** | `aws iam list-users`, `aws iam list-roles`, `aws iam get-credential-report` | IAM users, roles, access keys, instance profiles |
 | **Azure / Entra ID** | Entra ID > Users, Enterprise Apps, Managed Identities | User accounts, service principals, managed identities, app registrations |
+| **Azure / Entra ID** | Entra ID > External Identities > Guest users | Guest user inventory, invitation status, last activity (NEW in v1.1.0) |
 | **GCP** | `gcloud iam service-accounts list`, `gcloud projects get-iam-policy` | Service accounts, IAM bindings, workload identity federation |
 
-**Output:** Complete identity inventory table with columns: Identity Name, Type (human/service/machine/API key), Provider, Owner, Last Activity Date, Classification.
+**Output:** Complete identity inventory table with columns: Identity Name, Type (human/service/machine/API key/guest), Provider, Owner, Last Activity Date, Classification.
 
 ---
 
@@ -133,15 +137,16 @@ IAM-AUTH-03: SMS-based MFA in use (vulnerable to SIM swap; does not meet AAL2 ph
 IAM-AUTH-04: No phishing-resistant authenticators deployed (FIDO2/WebAuthn for AAL3)
 IAM-AUTH-05: MFA bypass mechanisms exist without compensating controls
 IAM-AUTH-06: Recovery flows bypass MFA (password reset without second factor)
+IAM-AUTH-07: Guest users not required to use MFA (NEW in v1.1.0)
 ```
 
 **Password Policy:**
 
 ```
-IAM-AUTH-07: Password length below 14 characters for privileged accounts
-IAM-AUTH-08: No breached password screening (NIST SP 800-63B Section 5.1.1.2)
-IAM-AUTH-09: Forced periodic rotation without compromise trigger (NIST discourages arbitrary rotation)
-IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-63B Section 5.1.1.1)
+IAM-AUTH-08: Password length below 14 characters for privileged accounts
+IAM-AUTH-09: No breached password screening (NIST SP 800-63B Section 5.1.1.2)
+IAM-AUTH-10: Forced periodic rotation without compromise trigger (NIST discourages arbitrary rotation)
+IAM-AUTH-11: Composition rules used instead of length-based policy (NIST SP 800-63B Section 5.1.1.1)
 ```
 
 **Platform-specific checks:**
@@ -152,6 +157,7 @@ IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-
 | **AWS** | Account-level MFA on root account | Root without hardware MFA is critical severity |
 | **Azure / Entra ID** | Conditional Access policies, Security Defaults | MFA gaps in conditional access, legacy auth protocols allowed |
 | **Azure / Entra ID** | Authentication methods policy | Phishing-resistant methods (FIDO2, Windows Hello) adoption rate |
+| **Azure / Entra ID** | External Identities > Conditional Access for guests | Guest-specific MFA requirements (NEW in v1.1.0) |
 | **GCP** | Organization Policy constraints, 2-Step Verification enforcement | MFA not enforced at org level, allowed authentication methods |
 
 ---
@@ -185,6 +191,7 @@ IAM-PRIV-08: Resource-based policies granting public or overly broad access
 | **AWS** | `aws iam get-account-authorization-details` | Full policy enumeration, inline vs. managed policies |
 | **Azure / Entra ID** | PIM (Privileged Identity Management) role assignments | Permanent vs. eligible assignments, activation requirements |
 | **Azure / Entra ID** | Azure RBAC, custom role definitions | Overly broad custom roles, wildcard actions |
+| **Azure / Entra ID** | Guest user role assignments (NEW in v1.1.0) | Guests with Directory Roles, elevated Azure RBAC |
 | **GCP** | IAM Recommender, Policy Analyzer | Excess permissions, recommended removals |
 | **GCP** | Organization-level IAM bindings | Primitive roles (Owner, Editor) at org/folder level |
 
@@ -256,6 +263,7 @@ IAM-STALE-05: Deprovisioning SLA not met (industry standard: same-day for termin
 IAM-STALE-06: No automated lifecycle management (SCIM provisioning/deprovisioning)
 IAM-STALE-07: Accounts disabled but not deleted after retention period
 IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for privileged, semi-annual for standard)
+IAM-STALE-09: Guest user accounts with no activity > 30 days not removed (NEW in v1.1.0)
 ```
 
 **Platform-specific checks:**
@@ -265,6 +273,7 @@ IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for pr
 | **AWS** | IAM Credential Report: `password_last_used`, `access_key_last_used` | Inactive users, unused access keys |
 | **Azure / Entra ID** | Sign-in logs, last sign-in activity (requires Entra ID P1+) | Inactive users, stale guest accounts |
 | **Azure / Entra ID** | Access Reviews (Entra ID Governance) | Configured and completing on schedule |
+| **Azure / Entra ID** | External Identities > Guest user access reviews (NEW in v1.1.0) | Guest-specific access review policies |
 | **GCP** | Policy Analyzer, Admin Activity audit logs | Service accounts with no API calls, unused IAM bindings |
 
 **Severity Classification:**
@@ -273,6 +282,7 @@ IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for pr
 |---|---|---|
 | Former employee with active admin access | **Critical** | Immediate unauthorized access risk |
 | Orphaned service account with production access | **High** | No owner to monitor or respond to abuse |
+| Stale guest account with data access > 30 days (NEW) | **High** | External party retains access without business justification |
 | Inactive human account > 90 days | **Medium** | Credential stuffing / takeover target |
 | Disabled but not deleted account > 180 days | **Low** | Hygiene improvement |
 
@@ -296,6 +306,7 @@ IAM-JIT-05: JIT requests not logged or auditable
 IAM-JIT-06: Break-glass procedures not defined or not tested
 IAM-JIT-07: No automatic revocation of elevated permissions after timeout
 IAM-JIT-08: Emergency access accounts not monitored with alerting
+IAM-JIT-09: Guest user access not time-bounded (NEW in v1.1.0)
 ```
 
 **Platform-specific checks:**
@@ -306,6 +317,7 @@ IAM-JIT-08: Emergency access accounts not monitored with alerting
 | **AWS** | Permission boundaries + SCPs as guardrails | Boundaries applied to all elevated roles |
 | **Azure / Entra ID** | Privileged Identity Management (PIM) | Eligible vs. active assignments, activation requires MFA + justification |
 | **Azure / Entra ID** | PIM access reviews, time-bound assignments | Maximum activation duration, approval requirements |
+| **Azure / Entra ID** | Entitlement Management for guest access (NEW in v1.1.0) | Time-bound access packages for external users |
 | **GCP** | PAM (Privileged Access Manager), IAM Conditions with time-bound bindings | Conditional role bindings, time-based expiry |
 | **GCP** | `iam.googleapis.com/conditions` | Temporal conditions on role bindings |
 
@@ -366,6 +378,176 @@ IAM-ZT-10: Implicit trust for internal service-to-service communication
 
 ---
 
+## Cloud-Specific Privilege Escalation Detection (NEW in v1.1.0)
+
+### AWS IAM Privilege Escalation Patterns
+
+AWS IAM misconfigurations can enable privilege escalation through specific permission combinations. Review all IAM policies for these dangerous patterns.
+
+#### Critical Permission Combinations
+
+| Pattern | Permissions Required | Escalation Path | Severity |
+|---|---|---|---|
+| **PassRole + EC2** | `iam:PassRole` + `ec2:RunInstances` | Pass privileged role to attacker-controlled EC2 instance | **Critical** |
+| **PassRole + Lambda** | `iam:PassRole` + `lambda:CreateFunction` + `lambda:InvokeFunction` | Create Lambda with privileged role | **Critical** |
+| **CreatePolicyVersion** | `iam:CreatePolicyVersion` | Replace own policy with admin policy | **Critical** |
+| **SetDefaultPolicyVersion** | `iam:SetDefaultPolicyVersion` | Activate dormant admin policy version | **Critical** |
+| **CreateAccessKey** | `iam:CreateAccessKey` | Create keys for other users (including admin) | **High** |
+| **CreateLoginProfile** | `iam:CreateLoginProfile` | Enable console access for programmatic-only users | **High** |
+| **UpdateLoginProfile** | `iam:UpdateLoginProfile` | Reset password for other users | **High** |
+| **AttachUserPolicy** | `iam:AttachUserPolicy` | Attach admin policy to self or others | **Critical** |
+| **AttachRolePolicy** | `iam:AttachRolePolicy` | Escalate attached role permissions | **Critical** |
+| **PutUserPolicy** | `iam:PutUserPolicy` | Create inline admin policy | **Critical** |
+| **PutRolePolicy** | `iam:PutRolePolicy` | Create inline admin policy on role | **Critical** |
+
+**Detection checklist:**
+```yaml
+IAM-ESC-AWS-01: iam:PassRole with ec2:RunInstances on same policy
+IAM-ESC-AWS-02: iam:PassRole with lambda:CreateFunction on same policy
+IAM-ESC-AWS-03: iam:CreatePolicyVersion with Resource: "*"
+IAM-ESC-AWS-04: iam:SetDefaultPolicyVersion with Resource: "*"
+IAM-ESC-AWS-05: iam:CreateAccessKey with Resource not restricted to self
+IAM-ESC-AWS-06: iam:AttachUserPolicy or iam:AttachRolePolicy with Resource: "*"
+IAM-ESC-AWS-07: iam:PutUserPolicy or iam:PutRolePolicy with Resource: "*"
+IAM-ESC-AWS-08: sts:AssumeRole with no external ID condition for cross-account
+```
+
+**Remediation example:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RestrictPassRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::ACCOUNT-ID:role/SpecificRoleName",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Azure AD Privilege Escalation Patterns
+
+#### Guest User Over-Permissioning (NEW in v1.1.0)
+
+Azure AD guest users with excessive permissions are a common misconfiguration that can lead to data exfiltration and lateral movement.
+
+**Vulnerable patterns:**
+```json
+// DANGEROUS: Guest user with Directory Role
+{
+  "@odata.type": "#microsoft.graph.unifiedRoleAssignment",
+  "principalId": "guest-user-object-id",
+  "roleDefinitionId": "9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3",  // Company Administrator
+  "directoryScopeId": "/"
+}
+
+// DANGEROUS: Guest with broad Azure RBAC
+{
+  "properties": {
+    "principalId": "guest-user-object-id",
+    "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",  // Contributor
+    "scope": "/subscriptions/SUBSCRIPTION-ID"
+  }
+}
+```
+
+**Detection checklist:**
+```yaml
+IAM-ESC-AZURE-01: Guest users assigned Directory Roles (Global Admin, User Admin, etc.)
+IAM-ESC-AZURE-02: Guest users with Azure RBAC Contributor or Owner on subscriptions
+IAM-ESC-AZURE-03: Guest users with access to Azure AD admin portal
+IAM-ESC-AZURE-04: Guest users with Application Administrator or Cloud Application Administrator roles
+IAM-ESC-AZURE-05: No Conditional Access policies restricting guest user access
+IAM-ESC-AZURE-06: Guest users with permanent (non-eligible) PIM role assignments
+IAM-ESC-AZURE-07: Guest invitations not restricted by allowed domains list
+IAM-ESC-AZURE-08: Guest users with MS Graph API permissions (Directory.ReadWrite.All, etc.)
+```
+
+**Remediation:**
+```
+1. Restrict guest user directory roles to minimum required
+2. Use Azure AD Entitlement Management for time-bound guest access
+3. Enable access reviews for guest users (monthly recommended)
+4. Configure allowed domains list for B2B collaboration
+5. Apply Conditional Access policies requiring MFA for guests
+6. Use Azure RBAC with custom roles limiting guest permissions
+```
+
+### Cross-Account Role Chaining (NEW in v1.1.0)
+
+Complex role assumption chains across multiple AWS accounts can hide privilege escalation paths.
+
+**Example attack chain:**
+```
+Account A (low-priv) → AssumeRole to Account B → AssumeRole to Account C (admin)
+```
+
+**Detection checklist:**
+```yaml
+IAM-CHAIN-01: Role trust policies allowing AssumeRole from external accounts without conditions
+IAM-CHAIN-02: No maximum session duration limits on cross-account roles
+IAM-CHAIN-03: Cross-account roles without external ID requirement
+IAM-CHAIN-04: Role chains exceeding 2 hops (A → B → C)
+IAM-CHAIN-05: No monitoring of cross-account role assumption patterns
+IAM-CHAIN-06: Service roles with sts:AssumeRole permission to arbitrary accounts
+```
+
+**Remediation:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::TRUSTED-ACCOUNT-ID:root"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "unique-external-id"
+        },
+        "NumericLessThan": {
+          "aws:TokenIssueTime": "${aws:CurrentTime + 3600}"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Temporary Credential Duration Issues (NEW in v1.1.0)
+
+Long-lived temporary credentials increase the exposure window if compromised.
+
+**Detection checklist:**
+```yaml
+IAM-DURATION-01: STS AssumeRole with MaxSessionDuration > 8 hours
+IAM-DURATION-02: No automatic session revocation on suspicious activity
+IAM-DURATION-03: Refresh tokens with excessive lifetime (> 24 hours)
+IAM-DURATION-04: No conditional access requiring re-authentication for sensitive operations
+IAM-DURATION-05: API keys with no expiration date
+IAM-DURATION-06: OAuth tokens with excessive scope or lifetime
+```
+
+**Recommended maximum durations:**
+| Credential Type | Recommended Max | Rationale |
+|---|---|---|
+| Admin role session | 1 hour | Minimize blast radius |
+| Standard user session | 8 hours | Align with work day |
+| Service account token | 1 hour | Auto-rotate frequently |
+| Cross-account role | 1 hour | High-risk, time-bound |
+| API key | 90 days | Rotate regularly |
+
+---
+
 ## Output Format
 
 ### Findings Table
@@ -410,6 +592,8 @@ For each finding, produce a row with:
 - Stale Accounts (Step 5): [count]
 - JIT Access (Step 6): [count]
 - Zero Trust (Step 7): [count]
+- Privilege Escalation (NEW): [count]
+- Guest User Security (NEW): [count]
 
 ### Detailed Findings
 [Findings table — see above]
@@ -427,9 +611,9 @@ For each finding, produce a row with:
 
 | Priority | Timeframe | Example Findings |
 |---|---|---|
-| **P0 — Immediate** | 0-7 days | Root/global admin without MFA, former employee with active access, wildcard admin policies |
-| **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, no stale account process |
-| **P2 — Important** | 31-90 days | No phishing-resistant MFA, incomplete identity inventory, no access review cadence |
+| **P0 — Immediate** | 0-7 days | Root/global admin without MFA, former employee with active access, wildcard admin policies, PassRole escalation |
+| **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, no stale account process, guest with Directory Roles |
+| **P2 — Important** | 31-90 days | No phishing-resistant MFA, incomplete identity inventory, no access review cadence, cross-account role chaining |
 | **P3 — Planned** | 91-180 days | Zero trust maturity gaps, device trust integration, continuous access evaluation |
 
 ---
@@ -504,8 +688,22 @@ This skill processes user-supplied content including IAM policies, access config
 
 ---
 
+## Appendix: AWS Privilege Escalation Quick Reference
+
+| Permission | Risk | Mitigation |
+|---|---|---|
+| `iam:PassRole` | Pass privileged role to compute | Restrict to specific roles and services |
+| `iam:CreatePolicyVersion` | Replace policy with admin version | Deny or restrict to specific policies |
+| `iam:AttachUserPolicy` | Attach admin policy | Deny or restrict to specific policies |
+| `iam:PutUserPolicy` | Create inline admin policy | Deny or use permission boundaries |
+| `lambda:CreateFunction` + `iam:PassRole` | Lambda with privileged role | Restrict PassRole to non-admin roles |
+| `iam:CreateAccessKey` | Create keys for other users | Restrict to self only |
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
 |---|---|---|
 | 1.0.0 | 2025-03-06 | Initial release |
+| 1.1.0 | 2025-06-05 | Added AWS privilege escalation patterns, Azure AD guest user over-permissioning, cross-account role chaining, temporary credential duration checks, guest user security throughout all steps |
