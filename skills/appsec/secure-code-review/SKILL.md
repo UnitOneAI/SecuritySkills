@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -214,11 +214,33 @@ http.HandleFunc("/transfer", func(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Require POST with a validated CSRF token. Use a CSRF middleware library (e.g., `gorilla/csrf`).
 
+**Credential-Transport Gate for CSRF (CWE-352)**
+
+Before reporting missing CSRF protection, identify whether the browser automatically attaches a credential that the route accepts.
+
+| Credential transport | Review decision |
+|---|---|
+| Cookie/session auth | Require a primary CSRF control on unsafe methods: synchronizer token, signed double-submit token, framework anti-forgery middleware, or strict `Origin`/`Referer` validation. Treat `SameSite` as defense-in-depth, not the only control for high-value actions. |
+| HTTP Basic/Digest or client certificate | Treat as ambient browser credentials when the browser can attach them automatically; require the same unsafe-method CSRF review as cookie sessions. |
+| Explicit bearer-token-only API | Do not report missing CSRF tokens by default when the route rejects cookies and only accepts a caller-supplied `Authorization: Bearer` header. Verify CORS, token storage, and fallback cookie behavior separately. |
+| Hybrid access-token plus refresh/session cookie | Evaluate refresh, logout, account-linking, token-rotation, and session-extension endpoints as cookie-authenticated targets even if the main API uses bearer headers. |
+| OIDC/SAML/federated callback or logout | `SameSite=None; Secure` can be valid for documented cross-site identity flows when paired with `state`/`nonce`, exact redirect URI allowlists, and CSRF or `Origin` evidence where applicable. |
+
+Record these fields for every CWE-352 finding or false-positive decision:
+
+- `credential_transport`: cookie/session, basic/digest, client-cert, bearer-only, hybrid-refresh-cookie, OIDC/SAML, or other.
+- `ambient_credentials_accepted`: yes/no/unclear, with the route or middleware evidence.
+- `unsafe_method`: POST, PUT, PATCH, DELETE, state-changing GET, callback, or logout.
+- `primary_csrf_control`: token, signed double-submit, framework middleware, Origin/Referer validation, state/nonce, or missing.
+- `samesite_attribute`: Strict, Lax, None; Secure, missing, or not applicable.
+
 ### 4.3 Review Checklist
 
 - [ ] Every API endpoint and data-access path enforces authorization server-side.
 - [ ] Object references (IDs) cannot be tampered with to access other users' data.
-- [ ] State-changing operations use anti-CSRF tokens or SameSite cookies.
+- [ ] CSRF findings first document credential transport and whether ambient browser credentials are accepted.
+- [ ] Cookie/session, Basic/Digest, client-certificate, and refresh-cookie unsafe endpoints use a primary CSRF control; SameSite alone is not treated as sufficient for high-value actions.
+- [ ] Explicit bearer-token-only APIs that reject cookies are not reported for missing CSRF tokens by default.
 - [ ] Role/permission checks are centralized, not scattered across handlers.
 - [ ] Deny-by-default: all routes are denied unless explicitly permitted.
 
@@ -466,6 +488,10 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Credential Transport:** [cookie/session|bearer-only|hybrid-refresh-cookie|basic/digest|client-cert|other|not applicable]
+- **Ambient Credentials Accepted:** [yes|no|unclear, with route/middleware evidence]
+- **Primary CSRF Control:** [token|signed double-submit|framework middleware|Origin/Referer|state/nonce|missing|not applicable]
+- **SameSite Attribute:** [Strict|Lax|None; Secure|missing|not applicable]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
@@ -541,6 +567,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Reporting CSRF without credential-transport evidence.** Missing CSRF tokens are findings when a browser can attach accepted credentials to unsafe requests. For bearer-token-only APIs that reject cookies, document the false-positive boundary and review CORS, token storage, and refresh-cookie endpoints separately.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -562,4 +590,12 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Cross-Site Request Forgery Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+- **MDN Set-Cookie / SameSite reference:** https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added credential-transport evidence gates for CSRF findings, SameSite calibration, and output fields for ambient credentials and primary CSRF controls.

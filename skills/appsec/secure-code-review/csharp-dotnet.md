@@ -528,7 +528,7 @@ public IActionResult TransferFunds(TransferModel model)
 }
 ```
 
-For API controllers using JWT or token-based auth, CSRF tokens may not be required if cookies are not used for authentication. Document the reasoning.
+For API controllers using JWT or token-based auth, CSRF tokens may not be required if cookies are not used for authentication and the route rejects cookie fallback. Document `credential_transport`, `ambient_credentials_accepted`, CORS behavior, and any refresh/logout/session-extension endpoints. If a SPA uses bearer access tokens but rotates them through an HttpOnly refresh cookie, review the refresh endpoint as a cookie-authenticated CSRF target.
 
 ---
 
