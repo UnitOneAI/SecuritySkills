@@ -1,12 +1,21 @@
-# CIS GCP Foundation Benchmark v2.0.0 -- Detailed Checklist
+# Legacy CIS GCP Foundation Benchmark v2.0.0 -- Detailed Checklist
 
-This file contains the detailed CIS benchmark checklist items for the GCP Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+This file contains the detailed CIS benchmark checklist items for historical or explicitly legacy GCP Security Posture Review runs. See [SKILL.md](SKILL.md) for the main skill definition, current benchmark scope, process overview, and output format.
+
+> Current benchmark warning: Do not use this checklist to score CIS GCP v5.0.0 assessments. v5.0.0 must be scored from its own CIS benchmark source, project-level and organization-level evidence must be tracked separately, and legacy v2.0.0 recommendation IDs must not be reused as current v5.0.0 IDs without source verification.
+
+## Scope Guardrails
+
+- Use this checklist only when `legacy_baseline = true` or the user explicitly asks for CIS Google Cloud Platform Foundation Benchmark v2.0.0.
+- Do not copy v2.0.0 recommendation IDs into current v5.0.0 reports unless the exact v5.0.0 CIS source confirms the mapping.
+- Mark v5.0.0 exact IDs as `Not Evaluable -- benchmark source unavailable` when the current CIS benchmark source is unavailable.
+- Track project-level and organization-level evidence separately. Do not treat an organization policy as project-level evidence, and do not score unavailable organization context as pass.
 
 ---
 
 ## Section 1 -- Identity and Access Management
 
-Evaluate IAM configurations against CIS GCP v2.0.0 Section 1 recommendations.
+Evaluate IAM configurations against CIS GCP v2.0.0 Section 1 recommendations only when a legacy v2.0.0 assessment is explicitly requested.
 
 ### CIS 1.1 -- Ensure that Corporate Login Credentials are Used
 
@@ -737,7 +746,7 @@ resource "google_sql_database_instance" {
 
 ## Section 7 -- BigQuery
 
-Evaluate BigQuery configurations against CIS GCP v2.0.0 Section 7 recommendations.
+Evaluate BigQuery configurations against CIS GCP v2.0.0 Section 7 recommendations only when a legacy v2.0.0 assessment is explicitly requested.
 
 ### CIS 7.1 -- Ensure that BigQuery Datasets Are Not Anonymously or Publicly Accessible
 
