@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -82,6 +82,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
 | Access controls on model storage | Cloud storage IAM, artifact registry permissions | Determines who can replace or modify model weights |
 | Adapter/plugin sources | LoRA configs, adapter download code | Third-party adapters inherit the same supply chain risks |
+| Evaluation datasets and release gates | eval scripts, MLflow/W&B runs, benchmark configs, CI/CD promotion gates | Confirms released model behavior is tied to immutable tests and results |
 
 ---
 
@@ -111,6 +112,10 @@ Grep: "sha256|checksum|hash|verify|digest|signature|sigstore|cosign" in **/*.{py
 
 # Check for pinned model versions
 Grep: "revision=|commit_hash|model_version" in **/*.{py,yaml,yml,json}
+
+# Find evaluation and release-gate evidence
+Grep: "evaluate|eval_dataset|load_dataset|benchmark|canary|backdoor|trigger|slice" in **/*.{py,yaml,yml,json,md}
+Grep: "mlflow|wandb|run_id|metrics|threshold|promote|release_candidate" in **/*.{py,yaml,yml,json,md}
 
 # Find model artifact storage
 Glob: **/*.{pt,bin,safetensors,pkl,onnx,pb,h5,gguf,ggml}
@@ -319,7 +324,56 @@ Grep: "model.card|intended.use|training.data|evaluation|limitations|ethical" in 
 
 ---
 
-### Step 6 -- Backdoor Detection Patterns
+### Step 6 -- Evaluation Integrity and Release Binding
+
+Assess whether evaluation datasets, metrics, and release decisions are immutably tied to the exact model artifact being promoted.
+
+Model cards and narrative documentation are useful, but they are not a substitute for release-quality evaluation evidence. A pinned model with versioned clean and adversarial regression results can be stronger evidence than a model card alone. Conversely, a pinned model evaluated against floating datasets can hide regressions or backdoor behavior.
+
+**What to look for in code and configuration:**
+
+- Evaluation datasets loaded from public hubs or object storage without immutable revision, snapshot, checksum, or dataset version.
+- Release gates that check only aggregate clean accuracy/perplexity and do not bind results to the model artifact hash.
+- Metrics stored without run ID, evaluator identity, timestamp, execution environment, dependency versions, or model artifact ID.
+- Promotion jobs owned by the same training job without independent evaluation or reviewer approval for high-risk models.
+- Private evaluation data with no recorded dataset fingerprint, owner, or snapshot evidence.
+
+**Detection methods using allowed tools:**
+
+```
+# Find evaluation datasets and benchmark configs
+Grep: "load_dataset|eval_dataset|validation_dataset|test_dataset|benchmark" in **/*.{py,yaml,yml,json}
+Grep: "revision=|dataset_version|snapshot|checksum|sha256|fingerprint" in **/*.{py,yaml,yml,json,md}
+
+# Find experiment tracking and release gates
+Grep: "mlflow|wandb|run_id|experiment|metrics|threshold|promote_to_production|release_candidate" in **/*.{py,yaml,yml,json,md}
+Grep: "clean_accuracy|attack_success|asr|canary|slice|trigger|backdoor" in **/*.{py,yaml,yml,json,md}
+```
+
+**Evaluation evidence matrix:**
+
+| Evidence | Required For Production Models |
+|---|---|
+| Model artifact ID | Source, revision, checksum/signature, format |
+| Evaluation dataset identity | Dataset ID, revision/snapshot/checksum/fingerprint, owner |
+| Clean benchmark result | Threshold, actual result, metric definition |
+| Targeted slice/canary result | Applicable slices, trigger/canary set, attack-success threshold |
+| Run binding | Run ID, evaluator identity, timestamp, environment/dependency versions |
+| Decision | Release, block, monitor, or Not Evaluable with rationale |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Production third-party or fine-tuned model has pinned weights but floating evaluation data | High |
+| Release result is not bound to model artifact ID/checksum | High |
+| Known backdoor-risk model class has no targeted slice, trigger, or canary regression evidence | High |
+| Evaluation evidence exists but lacks immutable dataset/run identity | Medium |
+| Human-readable model card missing, but machine-readable provenance and evaluation binding are complete | Low |
+
+---
+
+### Step 7 -- Backdoor Detection Patterns
 
 Assess whether architectural and procedural controls exist to detect model backdoors -- targeted modifications that cause specific misbehavior on trigger inputs while maintaining normal performance on standard benchmarks.
 
@@ -328,6 +382,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 **What to look for in code and configuration:**
 
 - Absence of any behavioral testing beyond standard benchmarks. Models evaluated only on accuracy/perplexity without adversarial or out-of-distribution testing.
+- Absence of release-gated canary, slice, or trigger-regression tests for applicable model classes.
 - No differential testing between the downloaded model and a known-good reference (comparing outputs on a curated test set).
 - Fine-tuning pipelines that do not validate the base model before fine-tuning begins.
 - No monitoring for anomalous model behavior in production (distribution shift in outputs, unexpected confidence patterns, responses that deviate from training data distribution).
@@ -344,11 +399,13 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 | Condition | Severity |
 |---|---|
-| No behavioral testing beyond standard benchmarks for externally sourced models | High |
+| No behavioral testing beyond standard benchmarks for externally sourced or fine-tuned models | High |
+| No canary/slice/trigger regression gate for a model class with known backdoor risk | High |
 | No validation stage between model acquisition and production deployment | High |
 | No production monitoring for anomalous model behavior | Medium |
 | No differential testing against known-good reference | Medium |
 | Backdoor detection tooling not integrated into model evaluation pipeline | Medium |
+| Backdoor/canary testing not applicable, but no rationale recorded | Low |
 
 ---
 
@@ -405,7 +462,14 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
 | Model documentation | [description] | [recommendation] | [severity] |
+| Evaluation integrity | [description] | [recommendation] | [severity] |
 | Backdoor detection | [description] | [recommendation] | [severity] |
+
+## Evaluation Integrity Matrix
+
+| Model | Artifact Revision / Checksum | Evaluation Dataset Revision / Checksum | Clean Threshold / Result | Canary or Slice Threshold / Result | Run ID / Evaluator | Decision |
+|---|---|---|---|---|---|---|
+| [name] | [revision + hash] | [dataset snapshot + hash] | [threshold/result] | [threshold/result or N/A rationale] | [run ID / identity] | [Release / Block / Monitor / Not Evaluable] |
 
 ## Recommendations
 [Prioritized list of remediation actions]
@@ -439,7 +503,11 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 4. **Assuming Hugging Face models are vetted.** Hugging Face Hub is a hosting platform, not a curation service. Any user can upload any model. While Hugging Face has introduced malware scanning and model signing capabilities, the majority of hosted models have no cryptographic provenance. Treat Hugging Face models as untrusted artifacts requiring verification, the same way you treat npm packages.
 
-5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
+5. **Evaluating models only on aggregate benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model can perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
+
+6. **Pinning the model but not the evaluation set.** A fixed model revision evaluated against a floating dataset can produce non-reproducible or misleading release decisions. Pin evaluation datasets, thresholds, and run results to immutable snapshots.
+
+7. **Treating model cards as release evidence.** Model cards are valuable documentation, but release approval should also bind model artifact ID, evaluation dataset identity, metrics, canary/slice coverage, run ID, evaluator identity, and timestamp.
 
 ---
 
@@ -456,3 +524,10 @@ Assess whether architectural and procedural controls exist to detect model backd
 - Hugging Face. "Safetensors: A Simple and Safe Serialization Format" -- https://huggingface.co/docs/safetensors
 - NIST AI Risk Management Framework 1.0 -- https://www.nist.gov/aiframework
 - Open Source Security Foundation (OpenSSF) -- https://openssf.org
+
+---
+
+## Changelog
+
+- **1.0.1** -- Add evaluation dataset provenance, release-result binding, targeted canary/slice regression gates, evaluation integrity matrix, and related finding severity guidance.
+- **1.0.0** -- Initial release. Full coverage of model provenance, training data lineage, fine-tuning pipeline integrity, inference dependency review, model cards, and backdoor detection.
