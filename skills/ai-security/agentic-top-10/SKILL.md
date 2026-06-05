@@ -432,7 +432,11 @@ Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,j
 
 ### Hands-On Assessment Tooling
 
-For practical validation of OWASP Agentic AI risks against concrete exploits, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs that can be used alongside the theoretical framework in Step 2 to test each AG01-AG10 category against real attack scenarios.
+For practical validation of OWASP Agentic AI risks against concrete exploits, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs that can be used alongside the theoretical framework in Step 2 to test each review category against real attack scenarios.
+
+### OWASP Agentic Source Currency Gate
+
+Before presenting findings as mapped to the current OWASP Top 10 for Agentic Applications, record the official source URL, publication date or version label, ID scheme, and date checked. The published OWASP Top 10 for Agentic Applications 2026 uses the `ASI01`-`ASI10` identifier scheme; the `AG01`-`AG10` labels in this skill are legacy/internal review areas until explicitly cross-mapped to the current ASI taxonomy. If a finding cannot be confidently mapped to a current ASI category, mark the OWASP Agentic mapping as `Needs Source Cross-Check` rather than treating a legacy AG label as an official current control ID.
 
 ### Step 2 — Threat Assessment
 
@@ -451,7 +455,7 @@ For each of the 10 categories, assess the system and assign a risk rating:
 
 For each finding, document:
 
-1. The threat category (AG01-AG10).
+1. The internal review category (AG01-AG10) and, when source-verified, the current OWASP Agentic ASI category or categories.
 2. The specific vulnerability or gap identified.
 3. The evidence (file path, code snippet, configuration).
 4. The risk rating with justification.
@@ -487,6 +491,12 @@ Structure the final report as follows:
 - Total findings: [count by severity]
 - Key recommendation: [one sentence]
 
+## Framework Source Register
+| Framework | Source URL | Version / Publication Date | ID Scheme | Date Checked | Confidence |
+|---|---|---|---|---|---|
+| OWASP Top 10 for Agentic Applications | https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/ | 2026 / published Dec 9, 2025 | ASI01-ASI10 | [YYYY-MM-DD] | [Verified / Needs Cross-Check] |
+| OWASP LLM Top 10 | [source URL] | 2025 | LLM01-LLM10 | [YYYY-MM-DD] | [Verified / Needs Cross-Check] |
+
 ## System Architecture Summary
 - Number of agents: [count]
 - Agent framework: [framework name and version]
@@ -499,6 +509,8 @@ Structure the final report as follows:
 
 ### AG01 — Excessive Agency and Permissions
 - **Rating:** [rating]
+- **Primary OWASP ASI Category:** [ASI## / Needs Source Cross-Check / N/A]
+- **Related OWASP ASI Categories:** [ASI##, ASI##]
 - **Finding:** [description]
 - **Evidence:** [file path, code reference]
 - **Impact:** [what could go wrong]
@@ -509,10 +521,10 @@ Structure the final report as follows:
 
 ## Risk Summary Matrix
 
-| Category | Rating | Key Finding | Priority |
-|---|---|---|---|
-| AG01 | [rating] | [one-line summary] | [priority] |
-| ... | ... | ... | ... |
+| Internal Review Area | Primary ASI Mapping | Rating | Key Finding | Priority |
+|---|---|---|---|---|
+| AG01 | [ASI## / Needs Source Cross-Check] | [rating] | [one-line summary] | [priority] |
+| ... | ... | ... | ... | ... |
 
 ## Recommendations
 1. [Highest priority recommendation]
@@ -522,7 +534,7 @@ Structure the final report as follows:
 ## Framework Compliance Mapping
 | Finding | OWASP Agentic AI | OWASP LLM Top 10 | MITRE ATLAS | NIST AI RMF |
 |---|---|---|---|---|
-| [finding] | [category] | [category] | [technique] | [subcategory] |
+| [finding] | [ASI category, source confidence, and legacy/internal AG area if used] | [category] | [technique] | [subcategory] |
 
 ## Appendix
 - Files reviewed: [list]
@@ -536,11 +548,11 @@ Structure the final report as follows:
 
 This skill maps findings to three established frameworks:
 
-### OWASP Agentic AI Threat Categories (via GenAI Security Project)
+### OWASP Top 10 for Agentic Applications (via GenAI Security Project)
 
-The threat categories (AG01-AG10) used in this skill are based on the agentic AI threat research published through the OWASP GenAI Security Project working group. The categories represent the primary risk areas identified for autonomous AI agent deployments.
+The published OWASP Top 10 for Agentic Applications 2026 uses `ASI01`-`ASI10` identifiers. The `AG01`-`AG10` categories used in this skill are internal review areas retained for continuity until the skill is fully migrated to the current ASI taxonomy. When writing formal reports, record the current OWASP source and map findings to ASI identifiers where possible.
 
-**Important:** Readers should verify specific control IDs and category numbering against the latest published version at [genai.owasp.org](https://genai.owasp.org). The OWASP GenAI project actively maintains and revises its guidance. The category names and scopes used here reflect the documented threat areas but may be renumbered or reorganized in subsequent releases.
+**Important:** Readers should verify specific control IDs and category numbering against the latest published version at [genai.owasp.org](https://genai.owasp.org). The OWASP GenAI project actively maintains and revises its guidance. The category names and scopes used here may differ from current ASI identifiers and should not be treated as official current IDs without a source cross-check.
 
 ### OWASP Top 10 for LLM Applications (2025)
 
@@ -605,6 +617,8 @@ This skill is designed to be resilient against prompt injection. The following r
 ---
 
 ## References
+
+- OWASP Top 10 for Agentic Applications 2026 -- https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
 
 1. OWASP GenAI Security Project — [genai.owasp.org](https://genai.owasp.org)
 2. OWASP Top 10 for LLM Applications 2025 — [owasp.org/www-project-top-10-for-large-language-model-applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
