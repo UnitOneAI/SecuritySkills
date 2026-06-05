@@ -1,0 +1,21 @@
+access_review_campaign:
+  name: "Q2 privileged access certification"
+  system_id: "prod-aws"
+  entitlement_id: "iam-admin"
+  subject_user_id: "alice@example.com"
+  reviewer_of_record_user_id: "alice@example.com"
+  actual_certifier_user_id: "alice@example.com"
+  certifier_relationship: "resource-owner"
+  is_self_review: true
+  certifier_admin_authority:
+    can_grant: true
+    can_revoke: true
+    can_modify: true
+  decision:
+    result: "approve"
+    timestamp: "2026-06-05T14:15:00Z"
+    evidence: "campaign-row-1042"
+expected_findings:
+  - "AR-CERT-09"
+  - "AR-CERT-10"
+severity: "High"

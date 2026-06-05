@@ -1,0 +1,28 @@
+access_review_campaign:
+  name: "Q2 production certification"
+  system_id: "production-aws"
+  entitlement_id: "iam-admin"
+  reviewer_of_record_user_id: "engineering-director@example.com"
+  actual_certifier_user_id: "platform-team-lead@example.com"
+  subject_user_id: "ops-admin@example.com"
+  certifier_relationship: "delegated-reviewer"
+  delegation:
+    approved_by: "access-governance-board"
+    reason: "reviewer of record unavailable"
+    valid_from: "2026-06-01"
+    valid_until: "2026-06-14"
+    permitted_scope:
+      systems:
+        - "github-enterprise"
+      environments:
+        - "non-production"
+      entitlements:
+        - "repo-read"
+        - "repo-write"
+      privileged: false
+  decision:
+    result: "approve"
+    timestamp: "2026-06-05T14:15:00Z"
+expected_findings:
+  - "AR-CERT-11"
+severity: "High"

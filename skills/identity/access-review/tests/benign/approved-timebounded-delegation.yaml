@@ -1,0 +1,32 @@
+access_review_campaign:
+  name: "Q2 finance read-only certification"
+  system_id: "finance-saas"
+  entitlement_id: "expense-report-reader"
+  reviewer_of_record_user_id: "finance-operations-manager@example.com"
+  actual_certifier_user_id: "finance-operations-deputy@example.com"
+  subject_user_id: "ap-analyst@example.com"
+  certifier_relationship: "delegated-reviewer"
+  is_self_review: false
+  certifier_admin_authority:
+    can_grant: false
+    can_revoke: false
+    can_modify: false
+  delegation:
+    approved_by: "access-governance-board"
+    reason: "reviewer of record on leave"
+    valid_from: "2026-06-01"
+    valid_until: "2026-06-14"
+    permitted_scope:
+      systems:
+        - "finance-saas"
+      environments:
+        - "production"
+      entitlements:
+        - "read-only finance roles"
+      privileged: false
+  decision:
+    result: "approve"
+    timestamp: "2026-06-05T14:15:00Z"
+    evidence: "ticket GRC-18442"
+expected_findings: []
+expected_result: "passes delegation scope and independence checks"

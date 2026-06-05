@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -147,7 +147,36 @@ AR-CERT-05: No escalation path for entitlements where the certifier is uncertain
 AR-CERT-06: Certification decisions not enforced — revoked entitlements not actually removed
 AR-CERT-07: No SLA for certification completion (recommended: 14 business days)
 AR-CERT-08: Delegated reviews without accountability (certifier delegates but is not tracked)
+AR-CERT-09: Certifier approves their own access (self-review), especially for privileged or production entitlements
+AR-CERT-10: Certifier can grant, revoke, or modify the same entitlement they are certifying
+AR-CERT-11: Delegated reviewer makes decisions outside approved system, entitlement, privilege, or time scope
+AR-CERT-12: Certification campaign marked complete without certifier eligibility evidence
 ```
+
+**Certifier eligibility and delegation evidence:**
+
+| Evidence Field | Purpose |
+|---|---|
+| `reviewer_of_record_user_id` | Accountable owner originally assigned to certify the access. |
+| `actual_certifier_user_id` | Person who made the approve/revoke/modify decision. |
+| `subject_user_id` / `subject_account_id` | Identity whose access is being reviewed. |
+| `entitlement_id` and `system_id` | Access item and system under review. |
+| `certifier_relationship` | Manager, resource owner, group owner, team owner, delegated reviewer, or exception approver. |
+| `is_self_review` | Whether the actual certifier and subject are the same identity or same effective owner. |
+| `certifier_admin_authority` | Whether the certifier can grant, revoke, modify, or approve the reviewed entitlement outside the campaign. |
+| `delegation_approved_by` / `delegation_reason` | Authority and business reason for delegation. |
+| `delegation_valid_from` / `delegation_valid_until` | Time bounds for the delegated certification authority. |
+| `delegation_scope` | Approved systems, environments, entitlement classes, privilege levels, and population. |
+| `decision_timestamp` | When the certification decision was made. |
+| `independence_exception` / `exception_expiry` | Compensating control and expiry when independence is impossible. |
+
+**Eligibility decision logic:**
+
+1. If `actual_certifier_user_id` equals the reviewed subject, or the certifier is the owner of the reviewed shared/service account, flag self-review. Severity is **High** for privileged or production access and **Medium** for low-risk access.
+2. If the certifier can grant, revoke, or modify the same access under review, flag a certifier SoD conflict unless a secondary approval, immutable audit trail, post-review reconciliation, and time-bounded admin activation are evidenced.
+3. If the decision was delegated, compare the actual decision against the approved delegation scope: system, environment, entitlement class, privileged status, population, and validity window.
+4. If reviewer identity, delegation chain, or certifier authority cannot be evidenced, mark the campaign completion as **Provisional** rather than clean.
+5. Treat planned, approved, time-bounded delegation as acceptable when scope is narrow, the delegate is independent, and the reviewer of record remains accountable.
 
 **Rubber-stamp detection criteria:**
 
@@ -252,6 +281,7 @@ AR-SOD-04: SoD analysis not automated (manual review only)
 AR-SOD-05: Emergency/break-glass access bypasses SoD without post-hoc review
 AR-SOD-06: Role combinations that create SoD conflicts not flagged during provisioning
 AR-SOD-07: SoD conflicts in service accounts (single account spans multiple functions)
+AR-SOD-08: Access certifier also has provisioning or administration authority over the entitlement under review
 ```
 
 **Severity classification for SoD violations:**
@@ -292,6 +322,8 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 |---|---|---|
 | Review campaign configuration (scope, reviewers, deadline) | Duration of audit period + 1 year | AC-2(j) |
 | Individual certification decisions (approve/revoke per entitlement) | Duration of audit period + 1 year | AC-6(7) |
+| Certifier eligibility evidence (reviewer of record, actual certifier, independence checks) | Duration of audit period + 1 year | AC-5, AC-6 |
+| Delegation authorization (approver, scope, validity window, reason) | Duration of audit period + 1 year | AC-2(j), AC-5 |
 | Revocation execution confirmation (ticket, timestamp) | Duration of audit period + 1 year | AC-2, CIS 6.2 |
 | Exception approvals with justification and expiry | Duration of exception + 1 year | AC-6 |
 | Review completion metrics (on-time %, revocation %) | Duration of audit period + 1 year | AC-2 |
@@ -303,8 +335,8 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | Severity | Definition | Examples |
 |---|---|---|
 | **Critical** | Immediate unauthorized access risk or active SoD violation in financial/production systems | Terminated employee with active admin access; SoD conflict on payment systems |
-| **High** | Significant privilege excess or governance gap with exploitation potential | Orphaned service accounts with production access; no access review process exists |
-| **Medium** | Governance deficiency increasing risk over time | Rubber-stamped certifications; role explosion; reviews not on cadence |
+| **High** | Significant privilege excess or governance gap with exploitation potential | Orphaned service accounts with production access; no access review process exists; privileged self-review; conflicted certifier with grant/revoke authority |
+| **Medium** | Governance deficiency increasing risk over time | Rubber-stamped certifications; role explosion; reviews not on cadence; out-of-scope delegation for non-privileged access; provisional campaign completion due to missing certifier evidence |
 | **Low** | Process improvement opportunity | Inconsistent role naming; documentation gaps; review SLA slightly exceeded |
 
 ---
@@ -351,6 +383,15 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 - Role Explosion (Step 4): [count]
 - Segregation of Duties (Step 5): [count]
 - Enforcement & Evidence (Step 6): [count]
+
+### Certification Integrity Metrics
+- Self-review decisions: [count]
+- Privileged self-review decisions: [count]
+- Delegated decisions: [count]
+- Out-of-scope delegated decisions: [count]
+- Conflicted certifier decisions: [count]
+- Provisional decisions due to missing certifier evidence: [count]
+- Time-bounded independence exceptions: [count]
 
 ### Detailed Findings
 [Findings table]
@@ -401,6 +442,8 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
 7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+8. **Treating every delegated review as bad** - Delegation can be legitimate when approved, scoped, time-bounded, and independent. Flag missing or out-of-scope delegation, not delegation itself.
+9. **Counting completion without certifier eligibility** - A campaign with 100% decisions can still be unreliable if certifiers approved their own access or could change the reviewed entitlement.
 
 ---
 
@@ -443,4 +486,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-05 | Added certifier independence, self-review, conflicted certifier, and delegation-scope evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
