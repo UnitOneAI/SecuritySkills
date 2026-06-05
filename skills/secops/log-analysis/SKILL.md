@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,9 @@ Before beginning analysis, gather or confirm:
 - [ ] **Time window:** The specific time range to analyze.
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
+- [ ] **Timestamp fields:** Which field represents event occurrence time, device time, collector receipt time, and SIEM ingestion time for each source?
+- [ ] **Timezone and clock context:** Are source timestamps already UTC, do they include offsets, and are there known clock-skew or NTP issues?
+- [ ] **Entity normalization rules:** How are users, hosts, devices, IPs, and cloud principals normalized across source-specific schemas?
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
@@ -121,7 +124,62 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
 
-### Step 2: Critical Windows Event IDs
+### Step 2: Timestamp and Entity Normalization Preflight
+
+Before building a timeline or joining activity across systems, prove that event order and entity pivots are based on comparable fields. Mixed local timestamps, SIEM ingestion time, clock skew, and source-specific identity formats can create false causality.
+
+**Source-quality table:**
+
+| Field | What to Capture | Why It Matters |
+|-------|-----------------|----------------|
+| Log source | Product, table, collector, or dataset name | Identifies parser and schema assumptions |
+| Canonical event-time field | The field used for event occurrence time | Prevents ingestion order from being treated as attack order |
+| Ingestion/collector-time field | Receipt, collector, SIEM ingestion, or normalization time | Exposes delayed delivery, replay, and backlog effects |
+| Timezone or offset source | Explicit offset, source timezone, parser rule, or "unknown" | Prevents local-time and DST conversion mistakes |
+| UTC normalization status | Normalized, inferred, not normalized, or not evaluable | Makes timeline confidence explicit |
+| Observed ingestion lag | Difference between event time and ingestion/collector time | Distinguishes pipeline delay from suspicious sequencing |
+| Clock skew or time-sync status | Known skew, NTP health, or unavailable | Prevents false impossible-travel and lateral-movement order claims |
+| Parser/schema used | CIM, ECS, OCSF, vendor parser, custom mapping | Shows how raw fields were interpreted |
+| Normalized user key | Canonical user identity used for joins | Avoids over-linking `DOMAIN\user`, UPNs, and short names |
+| Normalized host key | Canonical host/device identity used for joins | Avoids NetBIOS, FQDN, and cloud device ID mismatches |
+| Confidence / Not Evaluable reason | High, medium, low, or why it cannot be evaluated | Keeps weak evidence from becoming a strong conclusion |
+
+**Preflight checks:**
+
+1. Select a canonical event-time field for every source before sorting events.
+2. Convert all event times to UTC and preserve the original timestamp and offset where available.
+3. Compare event time to ingestion or collector time and document material lag.
+4. Check clock-skew and time-sync status for sources that drive second-level ordering or impossible-travel claims.
+5. Normalize users, hosts, devices, and IPs into canonical keys before cross-source pivots.
+6. Mark any timeline segment as lower confidence when a source lacks event time, timezone, or clock-health evidence.
+
+**Example normalization issue:**
+
+```text
+VPN event:
+  event_time:  2026-06-05T09:59:58-07:00
+  ingested_at: 2026-06-05T17:00:07Z
+
+Windows Security event:
+  event_time:  2026-06-05T17:00:02Z
+  ingested_at: 2026-06-05T17:00:04Z
+
+Correct UTC event order:
+  VPN login at 16:59:58Z -> privileged logon at 17:00:02Z
+
+Naive ingestion order:
+  privileged logon -> VPN login
+```
+
+If suspicious activity appears only under ingestion-time ordering or raw string sorting, downgrade the finding or mark it not evaluable until timestamp provenance is verified.
+
+**Entity pivot guardrails:**
+
+- Treat `ACME\alice`, `alice@acme.example`, `alice`, and a SaaS principal ID as separate identities until a directory, HRIS, IAM, or SIEM enrichment source confirms the join.
+- Treat `WS-17`, `ws-17.acme.example`, endpoint sensor IDs, and cloud device IDs as separate hosts until a reliable asset inventory or EDR mapping confirms the join.
+- Record join confidence for each cross-source pivot; weak joins belong in analysis notes or visibility gaps, not as the sole basis for a confirmed finding.
+
+### Step 3: Critical Windows Event IDs
 
 These Event IDs are the most security-relevant events in the Windows Security Event Log. Analysts should know these by memory.
 
@@ -172,7 +230,7 @@ These Event IDs are the most security-relevant events in the Windows Security Ev
 | **1102** | Audit log cleared | Adversaries clear event logs to remove evidence. Log clearing on a production system is almost always malicious. | T1070.001 -- Clear Windows Event Logs |
 | **4657** | Registry value modified | Registry modifications can indicate persistence (Run keys), defense evasion, or configuration changes. | T1112 -- Modify Registry |
 
-### Step 3: Critical Sysmon Event IDs
+### Step 4: Critical Sysmon Event IDs
 
 Sysmon (System Monitor) provides enhanced endpoint telemetry beyond native Windows logging.
 
@@ -190,7 +248,7 @@ Sysmon (System Monitor) provides enhanced endpoint telemetry beyond native Windo
 | **23** | FileDelete | File deletion with archiving -- anti-forensics detection |
 | **25** | ProcessTampering | Process image change -- process hollowing/herpaderping |
 
-### Step 4: Linux Authentication Log Patterns
+### Step 5: Linux Authentication Log Patterns
 
 #### /var/log/auth.log and /var/log/secure Patterns
 
@@ -234,7 +292,7 @@ Jan 15 14:30:00 webserver01 useradd[12400]: new user: name=backdoor, UID=1001, G
 | `session opened for user root by (uid=XXX)` where XXX is non-zero | Privilege escalation success | T1548 -- Abuse Elevation Control Mechanism |
 | `sshd.*Did not receive identification string` | Port scanning or reconnaissance | T1046 -- Network Service Discovery |
 
-### Step 5: Anomaly Detection Patterns
+### Step 6: Anomaly Detection Patterns
 
 Identify deviations from established baselines that may indicate malicious activity.
 
@@ -249,7 +307,9 @@ Identify deviations from established baselines that may indicate malicious activ
 | **Relational** | Normal user-to-resource access patterns | Access to resources outside normal scope | Finance user accessing engineering source code repository |
 | **Protocol** | Expected protocols on network segments | Unexpected protocol usage | DNS over HTTPS (DoH) from a workstation, or SMB on an internet-facing interface |
 
-### Step 6: Baseline Establishment
+**Temporal anomaly validation:** Confirm that temporal anomalies remain suspicious after UTC normalization, source clock checks, and event-time versus ingestion-time comparison. Treat missing timezone, missing event time, or material clock skew as a visibility-quality finding unless other evidence independently confirms the activity.
+
+### Step 7: Baseline Establishment
 
 **NIST SP 800-92 alignment:** NIST SP 800-92, Section 4.2, recommends establishing baselines for log data to enable anomaly detection. Baselines should be built from a minimum of 30 days of clean (non-compromised) data.
 
@@ -275,7 +335,7 @@ Identify deviations from established baselines that may indicate malicious activ
 | New user accounts created | Account management logs | Per day | Persistence detection |
 | Privileged logon count | Authentication logs (4672) | Per day | Privilege abuse detection |
 
-### Step 7: Log Correlation Techniques
+### Step 8: Log Correlation Techniques
 
 Combine data from multiple log sources to reconstruct attack sequences and increase detection confidence.
 
@@ -288,6 +348,13 @@ Combine data from multiple log sources to reconstruct attack sequences and incre
 | **Kill chain reconstruction** | Map events to ATT&CK tactics in chronological order | Phishing email -> malicious attachment execution -> C2 callback -> discovery commands -> lateral movement |
 | **IOC sweep** | Search for known indicators across all log sources | Search all logs for a specific IP, domain, hash, or user agent string |
 | **Statistical correlation** | Identify events that co-occur more frequently than expected | Hosts that generate both DNS queries to DGA domains and outbound connections on unusual ports |
+
+**Correlation evidence requirements:**
+
+- Temporal joins must state whether they use canonical event time or ingestion/collector time.
+- Entity pivots must list the normalized user, host, device, or IP key used for each join.
+- Kill-chain reconstructions must preserve uncertainty when any source has low timestamp or entity-join confidence.
+- IOC sweeps should note parser/schema differences that may hide or duplicate indicators across logs.
 
 **Cross-source correlation example -- Compromised Account Investigation:**
 
@@ -337,7 +404,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.1.0
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -351,6 +418,11 @@ Produce log analysis findings in this structure:
 | Systems | [Hostnames, IPs, or network segments] |
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
+
+### Source Quality and Normalization
+| Log Source | Event-Time Field | Ingested/Collector-Time Field | UTC Normalization | Ingestion Lag | Clock Confidence | Normalized User Key | Normalized Host Key | Entity Join Confidence |
+|------------|------------------|-------------------------------|-------------------|---------------|------------------|---------------------|---------------------|------------------------|
+| [Source] | [field] | [field or N/A] | [Normalized / Inferred / Not evaluable] | [value] | [High / Medium / Low] | [key or N/A] | [key or N/A] | [High / Medium / Low] |
 
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
@@ -370,15 +442,17 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Event Time (UTC) | Ingested At (UTC) | Source | Normalized Entity | Source Clock Confidence | Entity Join Confidence | Event | ATT&CK Technique | Assessment |
+|------------------|-------------------|--------|-------------------|-------------------------|------------------------|-------|-------------------|------------|
+| [HH:MM:SS] | [HH:MM:SS or N/A] | [Source] | [User/Host/IP] | [High/Medium/Low] | [High/Medium/Low] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
 
 ### Visibility Gaps
 [Log sources that were not available but would have provided relevant data]
+
+Include timestamp and entity-normalization gaps here, such as missing timezone offsets, unknown clock health, ingestion-only sources, unavailable asset inventory, or unverified user/host joins.
 
 ### Recommendations
 - [ ] [Action 1]
@@ -450,6 +524,14 @@ A single Event ID can have very different meanings depending on the context. Eve
 ### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
+
+### Pitfall 6: Treating Ingestion Order as Attack Order
+
+SIEM ingestion time, collector receipt time, and normalized event time can differ by seconds, minutes, or hours. Backfilled cloud audit logs, offline endpoint buffers, network outages, and collector queues can make a later event appear earlier when sorted by ingestion time. Use canonical event time for causality claims, document ingestion lag, and downgrade findings that are suspicious only under ingestion-time ordering.
+
+### Pitfall 7: Joining Entities Without Normalization Evidence
+
+User and host fields vary across Windows, cloud IAM, EDR, proxy, and SaaS logs. A domain account, UPN, short username, service principal, NetBIOS hostname, FQDN, and device ID may not be interchangeable. Require a normalization rule or enrichment source before treating cross-source activity as the same entity.
 
 ---
 
