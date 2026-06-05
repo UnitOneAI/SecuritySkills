@@ -1,0 +1,14 @@
+authorization_model: hybrid_rbac_abac
+pdp:
+  evaluation_frequency: login_only
+  decision_cache_ttl: 12h
+  fail_on_missing_attributes: permit
+continuous_verification:
+  device_posture_change_invalidates: false
+  user_risk_change_invalidates: false
+  role_assignment_change_invalidates: false
+  relationship_tuple_change_invalidates: false
+  network_zone_change_invalidates: false
+logs:
+  include_policy_version: false
+  include_decision_reason: false

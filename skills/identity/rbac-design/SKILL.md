@@ -9,10 +9,10 @@ description: >
 tags: [identity, rbac, abac, authorization]
 role: [security-engineer, architect]
 phase: [design]
-frameworks: [NIST-RBAC, NIST-SP-800-162]
+frameworks: [NIST-RBAC, NIST-SP-800-162, NIST-SP-800-207]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,6 +38,8 @@ Invoke this skill when:
 - Defining permission boundaries and constraint policies
 - Performing role mining to derive roles from existing access patterns
 - Implementing ABAC policies using subject, resource, action, and environment attributes
+- Designing relationship-based access control (ReBAC) for owner, editor, parent/child, group, tenant, or delegation relationships
+- Assessing Zero Trust continuous-verification behavior for authorization decisions after login
 - Assessing authorization architecture for a cloud-native or multi-tenant system
 - Reviewing IaC (Terraform, CloudFormation, Pulumi) role definitions for design quality
 
@@ -96,6 +98,16 @@ Authorization design is the structural foundation of access control. Poor role d
 | **Policy Administration Point** | PAP | Interface for policy creation, management, and lifecycle |
 | **Policy Retrieval Point** | PRP | Stores and retrieves policies for PDP consumption |
 
+### ReBAC and Zero Trust Concepts
+
+| Concept | Description | Evidence to collect |
+|---|---|---|
+| **Relationship Tuple** | Subject-relation-object record such as `user:alice#owner@doc:123` | Source of truth, lifecycle owner, expiry, audit trail |
+| **Relation Schema** | Allowed relationship types and inheritance rules | Schema file, review owner, graph traversal limits |
+| **Caveat / Condition** | Context that narrows a relationship decision | Time, tenant, device posture, risk score, approval state |
+| **Continuous Verification** | Re-evaluating trust throughout a session, not only at login | PDP call frequency, cache TTL, invalidation events |
+| **Break-glass Access** | Emergency access path with temporary elevation and review | Activation trigger, approval, expiry, logging, post-use review |
+
 ---
 
 ## Process
@@ -108,6 +120,7 @@ Identify:
 
 - **Current model type** — flat RBAC, hierarchical RBAC, ad hoc ACLs, group-based, or no formal model
 - **Role inventory** — total role count, role-to-user ratio, single-user roles, unassigned roles
+- **Identity inventory split** -- classify human users separately from workload identities, service accounts, automation users, and machine principals before calculating role-to-human ratios
 - **Permission granularity** — coarse (admin/read-only) vs. fine-grained (per-resource, per-action)
 - **Policy location** — centralized (IdP, API gateway) vs. distributed (per-application, embedded in code)
 - **Known pain points** — role explosion, provisioning delays, audit failures, excessive access
@@ -116,7 +129,7 @@ Identify:
 
 ```
 RBAC-ASSESS-01: No formal authorization model documented
-RBAC-ASSESS-02: Role-to-user ratio exceeds 0.7:1 (role explosion indicator)
+RBAC-ASSESS-02: Role-to-human-user ratio exceeds 0.7:1 after excluding workload identities and service accounts from the denominator
 RBAC-ASSESS-03: > 15% of roles have single-user assignment (snowflake roles)
 RBAC-ASSESS-04: Permissions granted via direct user-permission assignment (bypassing roles)
 RBAC-ASSESS-05: No centralized policy decision point — authorization logic fragmented across applications
@@ -172,7 +185,22 @@ RBAC-HIER-04: God roles — single role inheriting from all functional roles
 RBAC-HIER-05: Missing base role — common permissions duplicated across functional roles
 RBAC-HIER-06: Admin roles permanently assigned instead of JIT-activated (link to RBAC2 constraints)
 RBAC-HIER-07: Role hierarchy does not reflect organizational structure or job functions
+RBAC-HIER-08: Emergency break-glass path creates permanent god roles instead of time-bound elevation with approval, expiry, and post-use review
 ```
+
+#### Break-Glass and JIT Design
+
+For elevated access, distinguish routine privileged activation from emergency break-glass. A safe break-glass design should document:
+
+- emergency trigger and incident/change identifier
+- approver or automatic quorum rule when normal approvers are unavailable
+- maximum activation duration and forced expiry
+- restricted permission boundary for emergency actions
+- session recording or command logging
+- post-use review owner and evidence retention
+- compensating alert to security/operations teams
+
+Do not treat a permanently assigned `super-admin`, `breakglass-admin`, or wildcard role as an acceptable RBAC3 bypass.
 
 ---
 
@@ -297,11 +325,80 @@ RBAC-ABAC-05: Environment attributes (time, location, risk) not utilized
 RBAC-ABAC-06: ABAC policies not testable — no simulation or dry-run capability
 RBAC-ABAC-07: Policy conflicts not detected — overlapping permit/deny without resolution order
 RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
+RBAC-ABAC-09: Policy evaluation frequency not defined -- PDP called only at login or session start while risk, device, tenant, or resource attributes can change mid-session
+RBAC-ABAC-10: Authorization logic hardcoded in application branches instead of governed Authorization-as-Code policy with versioning, tests, and review
 ```
+
+#### Continuous Verification Gate
+
+For Zero Trust alignment, collect policy evaluation frequency before scoring ABAC maturity:
+
+- Is the PDP called on every sensitive API request, every resource access, or only during login?
+- What authorization decision cache TTL is allowed, and what events invalidate it?
+- Which changes trigger re-evaluation: role assignment, relationship tuple change, device posture, user risk, tenant status, data classification, session age, network zone, or break-glass activation?
+- Are denied decisions, stale attributes, and policy errors fail-closed?
+- Are PEP decisions logged with policy version, subject, resource, action, environment attributes, and decision rationale?
+
+Recommend Authorization-as-Code (OPA/Rego, Cedar, XACML, or equivalent) when authorization branches are scattered across code and cannot be centrally tested.
 
 ---
 
-### Step 6: Role Mining and Rationalization
+### Step 6: ReBAC Relationship and Zero Trust Lifecycle Design
+
+**Objective:** Add relationship-based access control and continuous-verification evidence to hybrid RBAC/ABAC designs without turning relationship tuples into unmanaged ACL sprawl.
+
+Use ReBAC when access depends on relationships between subjects and resources, such as owner/editor, manager-of, parent-folder, tenant-member, project-collaborator, approver-of, or delegated-admin.
+
+#### ReBAC Relationship Mapping
+
+| Evidence Area | Questions |
+|---|---|
+| Relationship tuple inventory | What relationship tuple types exist, who writes them, and where are they stored? |
+| Subject/resource scope | Are human users, workload identities, groups, tenants, and resources typed separately? |
+| Graph traversal bounds | What maximum depth, recursion, and cycle detection prevent broad inherited access? |
+| Relationship lifecycle | How are stale owners, deleted resources, departed users, and temporary shares removed? |
+| Caveats and conditions | Are time, tenant, device posture, approval, or risk conditions attached to relationships? |
+| Decision logging | Are relationship expansion path, policy version, and tuple source logged for audit? |
+| Test evidence | Are allow/deny fixture cases present for direct, inherited, stale, cyclic, and cross-tenant relationships? |
+
+**What to look for:**
+
+```
+RBAC-REB-01: Resource-to-subject relationship map missing for owner/editor/delegation access
+RBAC-REB-02: Relationship tuples lack lifecycle owner, expiry, or stale-user cleanup
+RBAC-REB-03: Graph traversal depth or cycle detection not defined
+RBAC-REB-04: Group/tenant inheritance can cross tenant or resource boundaries
+RBAC-REB-05: Relationship decisions do not log tuple source, path, schema version, or caveat evaluation
+RBAC-REB-06: No test fixtures for direct, inherited, denied, stale, and cross-tenant relationships
+RBAC-REB-07: Relationship writes are not authorization-checked or are allowed from low-trust clients
+```
+
+#### Zero Trust Continuous Verification
+
+NIST SP 800-207 treats access as a continuous decision, not a one-time login event. Evaluate whether the PEP re-checks the PDP when risk context or relationship state changes.
+
+```
+RBAC-ZTA-01: Authorization evaluated only at login, not at resource/action request time
+RBAC-ZTA-02: Decision cache TTL too long for privileged or sensitive actions
+RBAC-ZTA-03: Device posture, user risk, network zone, or tenant state changes do not invalidate decisions
+RBAC-ZTA-04: Relationship tuple changes do not invalidate cached access
+RBAC-ZTA-05: Policy errors, stale attributes, or missing PIP data fail open
+RBAC-ZTA-06: Policy decision logs omit subject/resource/action/environment/policy-version evidence
+```
+
+#### Authorization-as-Code Remediation
+
+When findings show scattered `if user.role == "admin"` logic, recommend a phased Authorization-as-Code migration:
+
+1. inventory current in-code authorization branches and data sources
+2. model policies in OPA/Rego, Cedar, XACML, or equivalent
+3. add policy unit tests and deny-by-default fixtures
+4. deploy PEP integration in shadow/dry-run mode
+5. cut over high-value resources first with decision logging and rollback plan
+
+---
+
+### Step 7: Role Mining and Rationalization
 
 **Objective:** Derive optimal roles from existing access patterns and reduce role sprawl.
 
@@ -387,7 +484,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
-- Role Mining (Step 6): [count]
+- ReBAC / Continuous Verification (Step 6): [count]
+- Role Mining (Step 7): [count]
 
 ### Detailed Findings
 [Findings table]
@@ -425,6 +523,15 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Interoperability** | Standards-based attribute formats (XACML, ALFA, OPA/Rego, Cedar) for portability |
 | **Auditability** | All policy evaluations logged with input attributes and decision rationale |
 
+### NIST SP 800-207 Zero Trust Lifecycle Evidence
+
+| Principle | Authorization design implication |
+|---|---|
+| Continuous diagnostics and mitigation | Device posture, user risk, and resource state must affect decisions after login |
+| Dynamic policy | PDP decisions should use current subject, resource, action, and environment context |
+| Least privilege | Break-glass and JIT roles must be time-bound, scoped, logged, and reviewed |
+| Continuous monitoring | PEP/PDP logs should support reconstruction of why access was permitted or denied |
+
 ---
 
 ## Common Pitfalls
@@ -436,6 +543,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Treating ReBAC as unmanaged ACLs** -- relationship tuples need schemas, owners, expiry, traversal bounds, and tests. Otherwise ReBAC becomes privilege sprawl with graph syntax.
+9. **Checking authorization only at login** -- Zero Trust requires re-evaluation when risk, device, tenant, resource, or relationship state changes.
 
 ---
 
@@ -459,6 +568,9 @@ that may contain adversarial content.
 - ANSI INCITS 359-2012 — Role Based Access Control (RBAC) standard
 - NIST SP 800-162, Guide to Attribute Based Access Control (ABAC) Definition and Considerations: https://csrc.nist.gov/publications/detail/sp/800-162/final
 - NIST SP 800-53 Rev. 5, AC-6 (Least Privilege), AC-5 (Separation of Duties): https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-207, Zero Trust Architecture: https://csrc.nist.gov/publications/detail/sp/800-207/final
+- Google Zanzibar paper: https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/
+- SpiceDB ReBAC documentation: https://authzed.com/docs/spicedb/concepts/relationships
 - Cedar Policy Language (AWS): https://www.cedarpolicy.com
 - Open Policy Agent (OPA) / Rego: https://www.openpolicyagent.org
 - XACML 3.0 (OASIS Standard): https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-os-en.html
@@ -481,4 +593,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-05 | Adds workload identity ratio handling, ReBAC relationship evidence, Zero Trust continuous verification gates, break-glass design checks, and Authorization-as-Code remediation guidance |
 | 1.0.0 | 2025-03-06 | Initial release |

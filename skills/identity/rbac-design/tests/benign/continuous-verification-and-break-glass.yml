@@ -1,0 +1,25 @@
+authorization_model: hybrid_rbac_abac_rebac
+pdp:
+  evaluation_frequency: every_sensitive_request
+  decision_cache_ttl: 60s
+  fail_on_missing_attributes: deny
+continuous_verification:
+  device_posture_change_invalidates: true
+  user_risk_change_invalidates: true
+  role_assignment_change_invalidates: true
+  relationship_tuple_change_invalidates: true
+  network_zone_change_invalidates: true
+logs:
+  include_policy_version: true
+  include_decision_reason: true
+break_glass:
+  role: incident-emergency-operator
+  assignment: jit
+  max_duration: 2h
+  approval_required: true
+  permission_boundary: incident_response_only
+  session_recording: true
+  alert_security_team: true
+  post_use_review:
+    required: true
+    owner: security-operations

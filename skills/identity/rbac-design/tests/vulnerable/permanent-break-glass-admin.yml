@@ -1,0 +1,12 @@
+authorization_model: rbac
+break_glass:
+  role: super-admin
+  assignment: permanent
+  wildcard_permissions: true
+  approval_required: false
+  max_duration: none
+  session_recording: false
+  alert_security_team: false
+  post_use_review:
+    required: false
+    owner: none

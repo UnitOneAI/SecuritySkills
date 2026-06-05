@@ -1,0 +1,16 @@
+authorization_model: rebac
+relationship_store:
+  schema_version: ad_hoc
+  tuples:
+    - "group:all-contractors#member@tenant:finance"
+    - "tenant:finance#viewer@document:*"
+    - "user:departed-owner#owner@folder:payroll"
+  lifecycle_owner: none
+  tuple_expiry: none
+  stale_principal_cleanup: none
+  max_traversal_depth: unlimited
+  cycle_detection: false
+  cross_tenant_guard: false
+  decision_logging:
+    include_tuple_path: false
+    include_schema_version: false
