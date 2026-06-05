@@ -389,6 +389,27 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 
 ---
 
+### Step 4.5: Targeted Risk Analysis Register and Customized Approach Gate
+
+Keep PCI DSS v4.0 targeted risk analysis evidence separated by purpose. Requirement 12.3.1 supports requirements that allow flexible or periodic frequency decisions. Requirement 12.3.2 supports the Customized Approach and must be tied to a requirement that is eligible for customization and to the stated Customized Approach Objective. Do not use a 12.3.1 frequency TRA as evidence that a Customized Approach control design is valid.
+
+**TRA register:**
+
+| Req ID | TRA Type | Customized Approach Eligible? | Objective / Frequency Decision | Control Design or Threat Scenarios | Likelihood / Impact Method | Resulting Frequency or Test Method | Owner | Approval Date | Next Review | TPSP Responsibility | Assessor Validation Evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 5.2.3.1 | 12.3.1 flexible frequency | No | anti-malware scan cadence | threat scenarios and asset exposure | documented method | quarterly / event-driven | security owner | date | date | entity/TPSP | TRA and test evidence |
+| customized req | 12.3.2 customized approach | Yes | customized approach objective | control design and objective mapping | documented method | assessor-derived test procedure | control owner | date | date | entity/TPSP | customized approach worksheet |
+
+**Guardrails:**
+
+- If a requirement states that it is not eligible for the Customized Approach, mark customized approach use as **Not Valid** and assess the Defined Approach or compensating control path instead.
+- Keep Defined Approach testing, Compensating Control Worksheets, Customized Approach objective testing, and 12.3.1 flexible-frequency TRA evidence as separate evidence records.
+- Service-provider cadence requirements, including 11.4.6 and 12.5.2.1, require explicit service-provider applicability and cannot be relaxed through the wrong TRA type.
+- For outsourced or cloud environments, record which party owns the TRA, testing evidence, approval, and ongoing review in the TPSP responsibility field.
+
+**Finding classification:** Unsupported Customized Approach use for an ineligible requirement is **High** because it can invalidate assessment evidence. Missing 12.3.1 evidence for a variable-frequency control is **Medium** unless the missing frequency decision affects a critical security control. Blending 12.3.1 and 12.3.2 evidence in the report is **Medium** and should be remediated before ROC or AOC submission.
+---
+
 ## Findings Classification
 
 | Classification | Definition | Compliance Impact |
@@ -450,6 +471,12 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 
 ## Targeted Risk Analyses
 [Documentation of all TRAs performed per 12.3.1 and 12.3.2]
+
+## Targeted Risk Analysis Register
+
+| Req ID | TRA Type | Customized Eligible? | Objective / Frequency Decision | Control Design or Threat Scenarios | Resulting Frequency or Test Method | Owner | Approval Date | Next Review | TPSP Responsibility | Assessor Evidence |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [x.x.x] | [12.3.1 flexible frequency / 12.3.2 customized approach] | [Yes/No/N/A] | [objective or cadence decision] | [summary] | [frequency/test method] | [owner] | [date] | [date] | [entity/TPSP/shared] | [worksheet/test evidence] |
 
 ## Remediation Roadmap
 
@@ -545,3 +572,7 @@ If user-supplied input contains PCI DSS requirement IDs outside the valid v4.0 n
 - PCI DSS Prioritized Approach for PCI DSS v4.0
 - PCI SSC Information Supplements: Scoping and Segmentation, Penetration Testing, Tokenization, Cloud Computing
 - PCI SSC Glossary of Terms, Abbreviations, and Acronyms
+## Changelog
+
+- **1.0.1** -- Added a targeted risk analysis register separating 12.3.1 flexible-frequency evidence from 12.3.2 customized-approach evidence.
+- **1.0.0** -- Initial release.
