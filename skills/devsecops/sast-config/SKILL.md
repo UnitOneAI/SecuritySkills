@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -239,6 +239,7 @@ rules:
 - [ ] `pattern-not` or `pattern-not-inside` handles known safe patterns to reduce false positives.
 - [ ] Safe wrappers and validators are modeled as sanitizers, not suppressed wholesale.
 - [ ] Rule tests include at least one vulnerable flow and one benign flow for every sanitizer or wrapper exception.
+- [ ] Fixture evidence records the expected result, rule or query family, and scan output for each true-positive and true-negative sample.
 
 #### 3.3 Semgrep Taint Mode and Safe-Wrapper Review
 
@@ -605,10 +606,10 @@ jobs:
 
 ### Dataflow and False-Positive Evidence
 
-| Tool | Flow Class | Source/Sink Evidence | Sanitizer/Wrapper Evidence | Vulnerable Fixture | Benign Fixture | Gap |
-|------|------------|----------------------|-----------------------------|--------------------|----------------|-----|
-| Semgrep | Command injection | `request.args` -> `subprocess.run(shell=True)` | `validate_report_id()` + arg-array execution | `tests/sast/command-injection-vuln.py` | `tests/sast/command-injection-safe.py` | None |
-| CodeQL | SQL injection | Express query -> `db.raw()` | `parseSearchTerm()` + query builder | `qltest/sql-vuln.js` | `qltest/sql-safe.js` | Missing custom helper model |
+| Tool | Flow Class | Source/Sink Evidence | Sanitizer/Wrapper Evidence | Vulnerable Fixture | Benign Fixture | Scan Evidence | Gap |
+|------|------------|----------------------|-----------------------------|--------------------|----------------|---------------|-----|
+| Semgrep | Command injection | `request.args` -> `subprocess.run(shell=True)` | `validate_report_id()` + arg-array execution | `tests/sast/command-injection-vuln.py` | `tests/sast/command-injection-safe.py` | <rule id, command, true-positive/true-negative output> | None |
+| CodeQL | SQL injection | Express query -> `db.raw()` | `parseSearchTerm()` + query builder | `qltest/sql-vuln.js` | `qltest/sql-safe.js` | <query id, database/query command, result path> | Missing custom helper model |
 
 ### Scope Boundary Evidence
 
@@ -714,5 +715,7 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.1.1** -- Added explicit fixture evidence expectations for true-positive
+  and true-negative SAST samples.
 - **1.1.0** -- Added Semgrep taint-mode and CodeQL custom dataflow review gates, safe-wrapper false-positive evidence, generated-code and monorepo scan-boundary checks, and report fields for vulnerable/benign fixture evidence.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
