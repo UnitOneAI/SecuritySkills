@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -589,9 +589,12 @@ Produce SIEM rule deliverables in this structure:
 | Query frequency | [Xm/h] | [How often the rule runs] |
 | Lookback period | [Xm/h] | [Why this window covers late data] |
 | Expected source latency | [Xm/h by source] | [Connector/platform evidence] |
+| Built-in platform delay | [Sentinel delay / Splunk lag / none] | [Scheduler behavior or saved-search setting] |
 | Event/index time mode | [event time / ingestion time / index time / durable] | [Why this mode is correct] |
 | Deduplication key | [entities + window] | [How overlap avoids duplicate incidents] |
 | Backfill posture | [durable search / replay / manual / none] | [How missed late data is recovered or why not] |
+| Late-event validation result | [pass / fail / not evaluated] | [Event ID, event time, ingestion/index time, run time, and alert result] |
+| Not-evaluable reason | [if applicable] | [Missing latency data, scheduler config, or safe replay method] |
 ```
 
 ---
@@ -715,6 +718,7 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.3 | 2026-06-05 | Added explicit built-in platform delay, late-event validation result, and not-evaluable reason fields to the scheduling output template. |
 | 1.0.2 | 2026-06-05 | Added late-event scheduling fixtures for safe overlap/dedup handling, Sentinel connector latency gaps, and Splunk event-time-only searches. |
 | 1.0.1 | 2026-06-04 | Added scheduling and ingestion-delay evidence, late-event validation, Sentinel/Splunk timing guidance, and output fields. |
 | 1.0.0 | 2025-03-06 | Initial release |
