@@ -5,14 +5,15 @@ description: >
   requirements and CWE Top 25. Auto-invoked on pull request reviews, when code
   touching authentication, authorization, cryptography, or input handling is shared.
   Produces findings mapped to ASVS controls and CWE identifiers with severity
-  ratings and specific remediation guidance.
+  ratings and specific remediation guidance, including HTTP parser-boundary
+  review for proxy-backed web applications and webhook handlers.
 tags: [appsec, code-review, sast]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -35,8 +36,9 @@ Before examining any code, establish the review boundary.
 1. **Identify the languages and frameworks** present in the changeset (Python, JavaScript/TypeScript, Go, Java, etc.).
 2. **Catalog the modules under review** -- list every file path and its primary responsibility (route handler, data model, utility, middleware, configuration).
 3. **Determine trust boundaries** -- mark where user-controlled data enters the system (HTTP parameters, headers, file uploads, message queues, environment variables).
-4. **Note dependencies** -- third-party libraries that handle security-sensitive operations (auth libraries, ORM layers, crypto packages, templating engines).
-5. **Map ASVS sections to scope** -- based on what the code does, select which ASVS chapters (V1 through V14) are applicable to this review.
+4. **Map request parser boundaries** -- for HTTP services, record the deployed path from client to CDN/WAF, load balancer, reverse proxy, gateway, service mesh, serverless adapter, framework parser, middleware, and route handler where evidence is available.
+5. **Note dependencies** -- third-party libraries that handle security-sensitive operations (auth libraries, ORM layers, crypto packages, templating engines).
+6. **Map ASVS sections to scope** -- based on what the code does, select which ASVS chapters (V1 through V14) are applicable to this review.
 
 > **Gate:** Do not proceed until the language, trust boundaries, and applicable ASVS sections are documented. This prevents scope creep and ensures coverage.
 
@@ -406,6 +408,89 @@ Remediation: Validate the URL scheme (allow only `https`), resolve the hostname 
 
 ---
 
+## Step 9: HTTP Request Parser Boundary Review
+
+**ASVS Reference:** V5 -- Validation, V13 -- API and Web Service, V14 -- Configuration
+**CWE Coverage:** CWE-444 (Inconsistent Interpretation of HTTP Requests), CWE-20 (Improper Input Validation)
+
+Run this step when the application accepts HTTP traffic through a reverse proxy, API gateway, CDN, WAF, load balancer, service mesh, serverless adapter, webhook receiver, or custom request-body middleware. Request smuggling findings require parser-boundary evidence; do not report header size limits, keep-alive, or raw body access as vulnerabilities by themselves.
+
+### 9.1 Evidence to Collect
+
+| Evidence Area | What to record |
+|---|---|
+| Request path | Client -> CDN/WAF -> load balancer -> gateway/proxy -> service mesh -> framework/serverless adapter -> handler |
+| Protocol transitions | HTTP/2 to HTTP/1 downgrade, HTTP/1.1 keep-alive, chunked encoding, gRPC transcoding, or WebSocket upgrade handling |
+| Header policy | Duplicate-header handling, `Content-Length` / `Transfer-Encoding` conflict handling, hop-by-hop header stripping, header casing/merge behavior |
+| Proxy behavior | Whether proxy config forwards attacker-controlled `Transfer-Encoding`, `Connection`, or duplicate `Content-Length` headers to the backend |
+| Framework parser | Body parser order, raw-body consumers, JSON/form parsers, multipart parser, size limits, read/header timeouts |
+| Webhook route behavior | Whether raw body capture is route-scoped, signature verification happens before parsing/mutation, and the normal parser does not consume the stream first |
+| Validation evidence | Integration test, staging repro, or documented proxy/backend parser compatibility for the deployed path |
+
+### 9.2 Vulnerable and Benign Patterns
+
+**Nginx to Node.js -- Forwarding attacker-controlled transfer encoding (CWE-444)**
+```nginx
+# RISKY: propagates client-controlled Transfer-Encoding to the backend.
+proxy_http_version 1.1;
+proxy_set_header Transfer-Encoding $http_transfer_encoding;
+proxy_pass http://node_backend;
+```
+Remediation: let the proxy normalize request framing, strip hop-by-hop framing headers before forwarding, reject conflicting `Content-Length` / `Transfer-Encoding` inputs, and test through the deployed proxy path.
+
+**JavaScript -- Raw body consumer before framework parser**
+```javascript
+// RISKY: consumes request data, then continues into the normal JSON parser.
+app.use((req, res, next) => {
+  req.raw = [];
+  req.on("data", chunk => req.raw.push(chunk));
+  next();
+});
+app.use(express.json());
+```
+Remediation: avoid global stream consumers. Scope raw-body handling to the exact webhook route, verify the signature before parsing, and do not mutate or partially consume the stream before the framework parser.
+
+**JavaScript -- Route-scoped webhook raw-body handling**
+```javascript
+// ACCEPTABLE PATTERN: raw body is scoped to the signed webhook route.
+app.post(
+  "/webhooks/provider",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  verifyProviderSignature,
+  (req, res) => {
+    const event = JSON.parse(req.body.toString("utf8"));
+    processEvent(event);
+    res.sendStatus(204);
+  }
+);
+app.use(express.json({ limit: "1mb" }));
+```
+This is not a parser-boundary finding when the route is isolated, the raw body is required for signature verification, malformed bodies fail closed, and the same stream is not consumed again by another parser.
+
+### 9.3 Review Checklist
+
+- [ ] The deployed request path is documented for proxy-backed, gateway-backed, and serverless HTTP handlers.
+- [ ] Conflicting `Content-Length` and `Transfer-Encoding` inputs are rejected or normalized at the first trusted boundary.
+- [ ] Hop-by-hop headers such as `Connection`, `Transfer-Encoding`, `TE`, `Trailer`, `Upgrade`, and duplicate `Content-Length` are not forwarded to backends in attacker-controlled form.
+- [ ] HTTP/2 to HTTP/1 downgrade behavior is documented when a load balancer, CDN, or gateway performs protocol translation.
+- [ ] Duplicate headers have a defined policy that is consistent between proxy and backend.
+- [ ] Custom raw-body middleware is route-scoped, does not call downstream parsers with a partially consumed stream, and fails closed on malformed input.
+- [ ] Request body size, header size, read-header timeout, and body read timeout limits are bounded, but not treated as request-smuggling evidence unless a parser mismatch exists.
+- [ ] High-risk findings include validation through the deployed proxy path, not only direct-to-backend tests.
+
+### 9.4 Finding Criteria
+
+| ID | Finding | Report when |
+|---|---|---|
+| SCR-PARSE-01 | CL/TE or duplicate-header ambiguity | The edge proxy and backend can interpret request length or duplicate headers differently, and conflict rejection/normalization evidence is missing |
+| SCR-PARSE-02 | Attacker-controlled framing header forwarded | Proxy config forwards `Transfer-Encoding`, duplicate `Content-Length`, `Connection`, or related hop-by-hop headers to the backend |
+| SCR-PARSE-03 | HTTP/2 downgrade not evaluated | A load balancer/CDN/gateway downgrades to HTTP/1.1 and no evidence shows equivalent framing, duplicate-header, and timeout behavior |
+| SCR-PARSE-04 | Unsafe raw-body middleware order | Middleware consumes or mutates the raw request stream globally before framework parsers, signature verification, or downstream handlers |
+| SCR-PARSE-05 | Direct-backend test only | The finding depends on parser behavior but testing bypassed the deployed proxy/gateway path |
+| SCR-PARSE-06 | Benign size-limit overflag | The only evidence is large header/body limits with strict runtime parser, bounded timeouts, and no proxy/backend parser mismatch |
+
+---
+
 ## Findings Classification
 
 Each finding produced by this review must include the following fields:
@@ -417,6 +502,7 @@ Each finding produced by this review must include the following fields:
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-89) |
 | **ASVS Control** | Applicable ASVS 4.0.3 control ID (e.g., V5.3.4) |
+| **Parser Boundary** | If relevant, edge/proxy/backend/parser path and whether validation used the deployed path |
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
@@ -445,7 +531,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.0.1
 
 ### Summary
 - Critical: [count]
@@ -460,6 +546,7 @@ The final review output must be structured as follows:
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
 - **ASVS Control:** V[x.y.z]
+- **Parser Boundary:** [N/A or proxy/gateway/framework path]
 - **Location:** [file:line]
 - **Description:** [explanation]
 - **Evidence:**
@@ -477,6 +564,13 @@ The final review output must be structured as follows:
 | V2 Authentication | Yes/No | [count] | [result] |
 | V3 Session Management | Yes/No | [count] | [result] |
 | ... | ... | ... | ... |
+
+### Request Parser Boundary Evidence
+| Component | Evidence Reviewed | Parser/Framing Policy | Gaps |
+|---|---|---|---|
+| Edge proxy / load balancer | [config/test] | [CL/TE, duplicate-header, HTTP/2 downgrade policy] | [missing evidence] |
+| Application framework | [code/config] | [body parser order, size/timeouts, raw-body routes] | [missing evidence] |
+| Webhook handler | [route/middleware] | [raw body, signature, replay handling] | [missing evidence] |
 ```
 
 ---
@@ -521,6 +615,7 @@ The final review output must be structured as follows:
 | CWE-287 | Improper Authentication | Step 3 |
 | CWE-190 | Integer Overflow or Wraparound | Step 2 (memory-safe language check) |
 | CWE-502 | Deserialization of Untrusted Data | Step 8 |
+| CWE-444 | Inconsistent Interpretation of HTTP Requests | Step 9 |
 | CWE-77 | Command Injection | Step 2 |
 | CWE-119 | Improper Restriction of Operations within Memory Buffer | Step 2 (memory-safe language check) |
 | CWE-798 | Use of Hard-coded Credentials | Step 3 |
@@ -541,6 +636,12 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Testing only the backend, not the deployed HTTP path.** Request smuggling and parser-confusion findings depend on how the proxy, load balancer, framework, and handler parse the same bytes. Direct-to-backend tests can miss or invent findings.
+
+7. **Treating raw webhook body access as automatically unsafe.** Signed webhooks often require raw bytes. The risk is global or misordered stream consumption, not route-scoped raw-body verification that fails closed.
+
+8. **Flagging header size limits without parser evidence.** Large `MaxHeaderBytes`, body limits, or keep-alive support are not request-smuggling findings unless there is parser mismatch, ambiguous framing, or missing conflict handling.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -560,6 +661,15 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
+- **CWE-444 -- Inconsistent Interpretation of HTTP Requests:** https://cwe.mitre.org/data/definitions/444.html
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
+- **OWASP WSTG -- Testing for HTTP Request Smuggling:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Request_Smuggling
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+
+---
+
+## Changelog
+
+- **1.0.1** -- Adds HTTP request parser-boundary review for CL/TE conflicts, duplicate headers, proxy/backend parser mismatch, HTTP/2 downgrade evidence, route-scoped raw webhook body handling, and deployed-path validation.
+- **1.0.0** -- Initial release. ASVS and CWE-oriented secure code review flow.
