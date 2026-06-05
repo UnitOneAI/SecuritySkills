@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -48,6 +48,7 @@ Before starting, collect or confirm:
 - [ ] **Current scan policies:** Existing scan policy names, configurations, and plugin/check selections
 - [ ] **Scan scope:** Target IP ranges, hostnames, applications, containers, or cloud accounts
 - [ ] **Authentication status:** Are scans currently authenticated (credentialed) or unauthenticated?
+- [ ] **Authenticated coverage evidence:** Per-asset authentication result, privilege level obtained, skipped local/plugin families, credential vault retrieval status, scanner feed date, and unreachable target count
 - [ ] **False positive examples:** Specific findings suspected or confirmed as false positives, with evidence
 - [ ] **Scan frequency:** Current scan schedule and any performance constraints
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
@@ -70,6 +71,7 @@ Systematically identify and classify false positives in scan results to establis
 |---|---|---|---|
 | **Version-based detection without validation** | Scanner detects a vulnerable version string but the specific vulnerable code/feature is not present (backported patch, custom build, or feature disabled) | Compare detected version against actual installed version; verify patch status via package manager (`rpm -q`, `dpkg -l`, `apt list`) | CWE-693 (Protection Mechanism Failure) misidentified |
 | **Banner-based detection** | Scanner reads a service banner that reports an outdated version, but the software has been patched without updating the banner | Verify actual version via authenticated check; compare banner vs. binary version | CWE-200 (Information Exposure) false trigger |
+| **Unauthenticated uncertainty** | Scanner reports fewer findings because credentials, local package checks, registry reads, or config checks failed | Treat as coverage gap; restore authenticated scanning before suppressing or downgrading | False-negative risk, not a confirmed false positive |
 | **Protocol-level detection without exploit validation** | Scanner flags a protocol vulnerability (e.g., SSL/TLS weakness) but the specific cipher suite or configuration is not actually in use | Review actual TLS configuration (`openssl s_client`, `nmap --script ssl-enum-ciphers`); compare against scanner finding | CWE-326 (Inadequate Encryption Strength) false match |
 | **OS/platform misidentification** | Scanner misidentifies the target OS or platform, leading to inapplicable plugin results | Verify OS fingerprint; compare scanner-detected OS against actual OS | N/A -- detection error |
 | **Inherited/container base image findings** | Scanner detects vulnerabilities in a container base image layer that are overridden or not reachable in the final image | Analyze Dockerfile layer order; verify whether vulnerable files exist in the final image | Context-dependent |
@@ -93,9 +95,11 @@ False Positive Record:
 - CWE:                 [CWE-NNN or N/A]
 - Affected Asset:      [hostname/IP]
 - Scanner Severity:    [Critical/High/Medium/Low/Info]
-- FP Pattern:          [Version-based | Banner | Protocol | OS Misidentification | Container | Informational | Compensated]
+- FP Pattern:          [Version-based | Banner | Unauthenticated uncertainty | Protocol | OS Misidentification | Container | Informational | Compensated]
 - Evidence:            [Specific evidence proving false positive]
 - Verification Method: [Package manager check | Authenticated re-scan | Manual testing | Configuration review]
+- Auth Coverage State: [Passed | Partial | Failed | Unknown]
+- Confidence:          [High | Medium | Low | Unauthenticated uncertainty]
 - Disposition:         [Confirmed FP -- suppress | Accepted Risk -- document | True Positive -- remediate]
 ```
 
@@ -164,6 +168,31 @@ Evaluate and configure credential-based (authenticated) scanning for improved ac
 4. **Per-platform credentials:** Maintain separate credentials for Windows (local admin or domain account), Linux/Unix (root or sudo-enabled account), network devices (read-only SNMP community/SSH), databases (read-only DB account), and VMware/cloud APIs
 5. **Credential verification:** Run a credential verification scan before full scan to confirm authentication success across all targets
 
+#### Authenticated Scan Coverage Gate
+
+Before applying severity downgrades, suppressions, or broad false-positive tuning, prove that authenticated coverage is sufficient for the affected assets. A scan with failed credentials can look cleaner than a fully authenticated scan because package, registry, local configuration, and database checks may be skipped.
+
+| Evidence Field | Required Review Evidence |
+|---|---|
+| Asset population | Total assets in scope, scanned assets, unreachable assets, and excluded assets |
+| Authentication status | Per-asset result: authenticated, partial, failed, unauthenticated, agent stale, or unreachable |
+| Privilege level | Actual level obtained: Windows admin, Linux root/sudo, read-only network device, database read-only, cloud read-only, or insufficient |
+| Credential source | Vault lookup success, scanner-native credential use, secret rotation date, and last credential validation |
+| Skipped checks | Plugin families or local checks skipped because authentication, registry, package manager, WMI/WinRM/RPC/SSH/SNMP/API, or agent data failed |
+| Scanner currency | Scanner version, plugin/feed date, policy version, and scan engine/agent version |
+| Scan completeness | Scan window duration, timed-out targets, interrupted scans, agent last check-in, and assets with stale results |
+| Platform edge case | Linux sudo TTY failures, Windows WMI/WinRM/RPC blocks, SNMPv2 incomplete reads, database plugin auth failures, container runtime/package omissions, or stale cloud-agent telemetry |
+| Remediation owner | Owner and due date for failed credentials, unreachable assets, stale agents, or blocked plugin families |
+
+#### Coverage Thresholds for Tuning Decisions
+
+| Coverage State | Criteria | Allowed Tuning Action |
+|---|---|---|
+| **Passed** | >= 95% of in-scope assets authenticated, no critical plugin family skipped, scanner feed current, and failed-auth owners assigned | Severity overrides and suppressions allowed with normal evidence |
+| **Partial** | 80-94% authenticated or limited platform-specific skips with documented owners | Downgrades require caution; suppressions require asset-specific proof |
+| **Failed** | < 80% authenticated, key plugin families skipped, or credential failures concentrated on critical assets | Do not suppress or downgrade based on scan cleanliness; treat as coverage finding |
+| **Unknown** | Authentication result, privilege level, feed date, or skipped-check data missing | Mark confidence low and restore evidence before tuning |
+
 ```
 Authentication Configuration:
 - Scan Type:           [Authenticated | Unauthenticated | Mixed]
@@ -175,6 +204,12 @@ Authentication Configuration:
 - Cloud/API Auth:      [API key with read-only role | N/A]
 - Credential Rotation: [Every N days]
 - Last Verification:   [YYYY-MM-DD, success rate: [N]%]
+- Authenticated Assets:[N authenticated / N total, percentage]
+- Failed Auth Assets:  [N, owner and due date]
+- Unreachable Assets:  [N, owner and due date]
+- Skipped Checks:      [Plugin families/local checks skipped]
+- Scanner Feed Date:   [YYYY-MM-DD]
+- Coverage State:      [Passed | Partial | Failed | Unknown]
 ```
 
 ### Step 4: Severity Override Criteria
@@ -199,6 +234,7 @@ Define criteria for overriding scanner-assigned severity ratings when they do no
 2. **Document both the original and overridden severity:** Maintain traceability from scanner-native severity to adjusted severity
 3. **Review overrides quarterly:** Severity overrides must be re-evaluated as deployment context changes (e.g., system moved from internal to internet-facing)
 4. **Override scope:** Overrides apply to a specific CVE + asset combination, not globally to a CVE across all assets
+5. **Authentication coverage prerequisite:** Severity downgrades and suppressions must reference the Authenticated Scan Coverage Gate. If coverage is Failed or Unknown, mark confidence low and restore coverage before tuning.
 
 ```
 Severity Override Record:
@@ -212,6 +248,8 @@ Severity Override Record:
 - Override Direction:   [Up | Down | Suppress]
 - Justification:       [Specific CVSS 4.0 metric adjustment or business context]
 - CVSS 4.0 Vector:     [Full environmental vector string]
+- Auth Coverage State: [Passed | Partial | Failed | Unknown]
+- Auth Evidence:       [Credential success %, skipped checks, feed date, failed-auth owner]
 - Review Date:         [YYYY-MM-DD, quarterly]
 - Approved By:         [Name, role]
 ```
@@ -303,7 +341,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.0
+**Skill:** scanner-tuning v1.0.1
 **Frameworks:** CVSS 4.0, CWE
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
 
@@ -317,6 +355,7 @@ Highlight the most impactful tuning recommendations.]
 | Setting | Current State | Recommended State | Priority |
 |---|---|---|---|
 | Authentication | [Unauthenticated / Partial / Full] | [Full credentialed] | [High/Medium/Low] |
+| Auth Coverage Gate | [Passed / Partial / Failed / Unknown] | [Passed] | [High/Medium/Low] |
 | Plugin Selection | [All / Custom / Compliance-mixed] | [Separated vuln and compliance policies] | [Priority] |
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
@@ -331,11 +370,19 @@ Highlight the most impactful tuning recommendations.]
 **Estimated False Positive Rate:** [N%]
 **Top FP Contributors:** [List top 3-5 plugins generating the most false positives]
 
+### Authenticated Scan Coverage Gate
+
+| Platform/Scope | Total Assets | Authenticated | Failed Auth | Unreachable | Skipped Checks | Feed Date | Coverage State | Owner |
+|---|---|---|---|---|---|---|---|---|
+| [Windows/Linux/Network/DB/Cloud/Container] | [N] | [N (%)] | [N] | [N] | [plugin families] | [date] | [Passed/Partial/Failed/Unknown] | [owner] |
+
+**Tuning Restriction:** [Severity overrides and suppressions allowed / asset-specific only / blocked until auth coverage restored]
+
 ### Severity Overrides
 
-| CVE ID | Asset | Original Severity | Adjusted Severity | Justification | Review Date |
-|---|---|---|---|---|---|
-| [CVE-ID] | [asset] | [severity] | [severity] | [CVSS 4.0 metric adjustment] | [date] |
+| CVE ID | Asset | Original Severity | Adjusted Severity | Auth Coverage State | Justification | Review Date |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [asset] | [severity] | [severity] | [Passed/Partial/Failed/Unknown] | [CVSS 4.0 metric adjustment] | [date] |
 
 ### Cross-Scanner Correlation
 [If multiple scanners are in use]
@@ -393,11 +440,15 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 2. **Running unauthenticated scans and trusting the severity ratings.** Unauthenticated scans miss 30-40% of vulnerabilities and generate higher false positive rates because they rely on banner grabbing and remote probes rather than verifying installed package versions. Severity ratings from unauthenticated scans are inherently less reliable. Always pursue credentialed scanning for production environments.
 
-3. **Mixing vulnerability and compliance scan policies.** Running CIS Benchmark or DISA STIG compliance checks in the same policy as vulnerability scanning inflates finding counts, confuses triage teams, and blurs the line between configuration hardening and vulnerability remediation. Maintain separate scan policies for vulnerability assessment and compliance auditing.
+3. **Mistaking failed authentication for fewer vulnerabilities.** A failed Windows WMI/WinRM login, Linux sudo issue, SNMP mismatch, stale cloud agent, or skipped package plugin can reduce findings while increasing blind spots. Track failed-auth assets as operational findings.
 
-4. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
+4. **Suppressing partially authenticated findings.** If local checks did not run, a banner mismatch may be uncertainty rather than a confirmed false positive. Restore auth coverage or document low confidence instead of suppressing.
 
-5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
+5. **Mixing vulnerability and compliance scan policies.** Running CIS Benchmark or DISA STIG compliance checks in the same policy as vulnerability scanning inflates finding counts, confuses triage teams, and blurs the line between configuration hardening and vulnerability remediation. Maintain separate scan policies for vulnerability assessment and compliance auditing.
+
+6. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
+
+7. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
 ---
 
