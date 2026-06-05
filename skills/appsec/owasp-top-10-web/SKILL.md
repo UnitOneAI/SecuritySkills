@@ -83,6 +83,7 @@ Before including any finding in the report, apply the following verification gat
 - CORS misconfigurations that permit arbitrary origins or reflect the `Origin` header without validation.
 - Missing HTTP method restrictions (e.g., a route that accepts PUT/DELETE but only intended for GET).
 - JWT or session tokens that contain role claims without server-side verification against a trusted source.
+- GraphQL resolvers, mutations, aliases, or batched operations that rely on UI-level checks instead of resolver-level authorization.
 - Path traversal in file-serving endpoints.
 - Missing `deny-by-default` policies — routes are open unless explicitly restricted rather than closed unless explicitly opened.
 
@@ -107,6 +108,8 @@ Before including any finding in the report, apply the following verification gat
 params\.id|req\.params|request\.args\.get.*id
 # Missing CSRF protection
 csrf.*disable|csrf.*false|@csrf_exempt
+# GraphQL resolver or batching surfaces
+graphql|GraphQL|ApolloServer|express-graphql|@Resolver|@Mutation|DataLoader
 # Permissive CORS
 Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 # Path traversal indicators
@@ -138,6 +141,17 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 - Insufficient randomness — use of `Math.random()`, `random.random()`, or similar non-CSPRNG functions for security-sensitive values.
 - Secrets committed to version control (`.env` files, config files with credentials).
 
+**Randomness verification gate:**
+
+Do not report every non-CSPRNG call as A02. First classify the random value's purpose:
+
+| Randomness Use | Finding? | Review Guidance |
+|----------------|:--------:|-----------------|
+| Session IDs, password reset tokens, OAuth state, CSRF tokens, API keys, invitation codes, MFA secrets, cryptographic keys, salts, lottery/raffle winners, security-sensitive shuffling | Yes | Require CSPRNG evidence and flag `Math.random()`, `random.random()`, `rand()`, or equivalent non-CSPRNG APIs. |
+| UI animation timing, randomized placeholder art, non-security sampling, local visual effects, demo-only examples, tests that do not model production token generation | No | Do not report as Cryptographic Failure; mention only if the value later flows into a security decision. |
+
+For borderline cases, trace whether the random value controls authentication, authorization, monetary value, integrity, secrecy, or user-visible fairness before assigning CWE-330.
+
 **CWE Mappings:**
 
 | CWE | Name |
@@ -163,7 +177,7 @@ md5|sha1|DES|RC4|ECB
 # Hard-coded secrets
 password\s*=\s*["']|secret\s*=\s*["']|api_key\s*=\s*["']|private_key\s*=\s*["']
 # Insecure random
-Math\.random|random\.random|rand\(\)
+Math\.random|random\.random|rand\(|Random\(\)|new Random
 # Missing TLS
 http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
 ```
@@ -562,6 +576,8 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 - PDF generators, image resizers, link previewers, or import-from-URL features.
 - Lack of allowlist validation on destination URLs (scheme, host, port, path).
 - No blocking of requests to private/reserved IP ranges (127.0.0.0/8, 10.0.0.0/8, 169.254.169.254, 172.16.0.0/12, 192.168.0.0/16, fd00::/8).
+- HTTP clients that follow redirects from an initially allowed URL to a private, link-local, loopback, cloud metadata, or unapproved host.
+- DNS rebinding gaps where the hostname is validated once but not re-resolved or pinned before the outbound connection.
 
 **CWE Mappings:**
 
@@ -575,6 +591,8 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 ```
 # HTTP client calls with user input
 requests\.get\(|requests\.post\(|urllib\.request|http\.get\(|fetch\(|axios\(|HttpClient|WebClient|curl_exec
+# Redirect-following defaults or explicit redirect enablement
+allow_redirects\s*=\s*True|maxRedirects|followRedirects|redirect\s*:\s*["']follow["']|CheckRedirect
 # URL parameters
 url=|dest=|redirect=|uri=|callback=|src=.*http
 # Cloud metadata (hardcoded blocking check)
@@ -587,6 +605,7 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 - Block all requests to private and reserved IP ranges, link-local addresses, and cloud metadata endpoints at the network and application layers.
 - Do not send raw server-side responses to the client — parse expected data and return only the necessary fields.
 - Disable HTTP redirects in server-side HTTP clients, or re-validate the destination after each redirect.
+- If redirects are required, enforce the same scheme/host/port/IP-range checks on every hop, cap redirect depth, preserve an audit trail of the redirect chain, and fail closed on DNS changes to private or metadata ranges.
 - Deploy network-level segmentation so the application server cannot reach internal services it does not need.
 - For webhook features, validate callback URLs at registration time and again at invocation time (DNS rebinding defense).
 
@@ -635,6 +654,7 @@ Present findings in this structure:
 - **Location:** [file:line or file:function]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
 - **Evidence:** [Code snippet or configuration excerpt]
+- **Context Check:** [Why this is production-reachable and not a benign/test-only pattern; for randomness, state the security-sensitive purpose; for SSRF, state redirect/DNS/IP-range validation evidence; for GraphQL, state resolver-level authorization evidence]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
 - **Verification:** [How to confirm the fix is effective]
 
