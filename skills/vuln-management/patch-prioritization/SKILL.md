@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,7 +53,7 @@ Before starting, collect or confirm:
 - [ ] **Compliance mandates:** Applicable regulatory requirements (CISA BOD 22-01, PCI DSS 4.0 Requirement 6.3.3, HIPAA, FedRAMP)
 - [ ] **Historical EPSS data:** EPSS score trends over 7/30/90 days if available (API: https://api.first.org/data/v1/epss)
 
-If asset context is missing, assume internet-facing and business-critical, and flag assumptions in the output.
+If asset context is missing, use internet-facing and business-critical as conservative triage defaults, but mark the assignment **Provisional** until an asset owner, inventory source, or exposure scan confirms the context. Do not mark an SLA breach or emergency decision as final solely from assumed context.
 
 ---
 
@@ -76,11 +76,16 @@ Vulnerability Inventory Entry:
 - Asset:               [hostname / IP / application name]
 - Asset Criticality:   [Critical | High | Medium | Low]
 - Exposure:            [Internet-facing | Internal | Air-gapped]
+- Exposure Evidence:   [Inventory | Scan | Owner-confirmed | Assumed/Provisional]
 - Scanner Source:      [Scanner name and plugin/QID]
 - CVSS 4.0 Base:       [0.0 - 10.0]
 - EPSS Score:          [0.0 - 1.0] (as of [date])
 - CISA KEV:            [Yes | No]
+- KEV Due Date:        [YYYY-MM-DD | N/A]
+- KEV Required Action: [Patch | Mitigate | Discontinue | Other | N/A]
+- Known Ransomware Use:[Known | Unknown | N/A]
 - SSVC Decision:       [Immediate | Out-of-Cycle | Scheduled | Defer]
+- Context Confidence:  [Confirmed | Partial | Provisional]
 - Patch Available:     [Yes (version) | No | Workaround Only]
 - Current SLA:         [Tier and deadline]
 - SLA Status:          [Within SLA | At Risk | Breached]
@@ -105,10 +110,36 @@ Assign or validate SLA tiers using the following matrix. SLA tiers are derived f
 
 #### Tier Assignment Rules
 
-1. **CISA KEV override:** Any CVE on the CISA KEV catalog is automatically P0 for federal agencies (BOD 22-01) and minimum P1 for private sector
+1. **CISA KEV catalog handling:** For federal BOD 22-01 handling, use the KEV catalog `dueDate` and `requiredAction` as the mandatory baseline, then tighten only when local exposure, ransomware use, or business impact justifies it. For private-sector handling, treat KEV as strong prioritization evidence, not an automatic 24-hour emergency.
 2. **SSVC primacy:** The SSVC decision outcome is the primary driver; EPSS and CVSS serve as secondary validation
-3. **Upward adjustment only:** If EPSS or KEV status indicates higher urgency than the SSVC decision alone, escalate the tier; never use EPSS to downgrade an SSVC Immediate decision
-4. **Asset criticality modifier:** For non-critical assets (dev, test, sandbox), the SLA tier may be relaxed by one level with documented justification
+3. **EPSS likelihood, not exploitation proof:** Use EPSS score, percentile, and trend as probability signals and policy inputs. EPSS alone cannot set SSVC Exploitation to `Active`; require observable exploitation evidence, KEV listing, vendor confirmation, or credible threat-intelligence reporting.
+4. **Upward adjustment only:** If evidence-backed EPSS trend, KEV status, ransomware use, or local exposure indicates higher urgency than the SSVC decision alone, escalate the tier; never use EPSS to downgrade an SSVC Immediate decision
+5. **Asset criticality modifier:** For non-critical assets (dev, test, sandbox), the SLA tier may be relaxed by one level with documented justification and confirmed exposure/business-impact evidence
+6. **Provisional context:** If asset exposure or business criticality is assumed, label the SLA and breach status provisional until the owner or inventory confirms it.
+
+### Step 2.5: SSVC and Evidence Gate Validation
+
+Before final SLA assignment, record the deployer SSVC decision points and evidence quality. This prevents probabilistic signals from being mistaken for confirmed exploitation.
+
+| Decision Point | Allowed Values | Required Evidence |
+|---|---|---|
+| Exploitation | None, Public PoC, Active | Active requires KEV listing, vendor confirmation, credible threat-intel reporting, or observed exploit telemetry; high EPSS alone is not enough |
+| Exposure | Small, Controlled, Open | Internet routing, network segmentation, authentication boundary, runtime reachability, and whether the vulnerable feature is enabled |
+| Automatable | No, Yes | Exploit chain repeatability, authentication requirements, interaction requirements, and whether scanning/exploitation can be scripted |
+| Human Impact | Low, Medium, High, Very High | Business process impact, safety, financial, privacy, operational, or mission consequences |
+
+```
+SSVC Evidence Gate:
+- CVE ID:                [CVE-YYYY-NNNNN]
+- Exploitation:          [None | Public PoC | Active]
+- Exploitation Evidence: [KEV | Vendor | Threat intel | Telemetry | None]
+- Exposure:              [Small | Controlled | Open]
+- Exposure Evidence:     [Asset owner | Inventory | Scan | Assumed/Provisional]
+- Automatable:           [No | Yes]
+- Human Impact:          [Low | Medium | High | Very High]
+- Context Confidence:    [Confirmed | Partial | Provisional]
+- Final Decision:        [Defer | Scheduled | Out-of-Cycle | Immediate]
+```
 
 ### Step 3: EPSS Trend Analysis
 
@@ -119,6 +150,7 @@ Analyze EPSS score trajectory to identify vulnerabilities with increasing exploi
 1. Retrieve current EPSS score and percentile for each CVE
 2. Compare against 7-day, 30-day, and 90-day historical scores (EPSS API: `https://api.first.org/data/v1/epss?cve=[CVE-ID]`)
 3. Calculate the trend direction and magnitude
+4. Document whether EPSS thresholds come from local policy, temporary triage defaults, or analyst override. FIRST publishes probabilities and example use cases; it does not endorse universal remediation cutoffs.
 
 #### EPSS Trend Classification
 
@@ -138,6 +170,7 @@ EPSS Trend Analysis:
 - 90-day prior EPSS:   [score]
 - Trend:               [Surging | Rising | Stable | Declining]
 - Trend Impact:        [Escalate tier | Monitor | Maintain | Supports deferral]
+- Threshold Source:    [Local policy | Temporary default | Analyst override]
 ```
 
 ### Step 4: Compensating Controls Assessment
@@ -300,6 +333,18 @@ findings requiring immediate action.]
 
 **Patch Posture:** [Critical Backlog | Elevated Risk | On Track | Healthy]
 
+### Evidence Gate Summary
+
+| CVE ID | Exploitation | Exposure | Automatable | Human Impact | Context Confidence | Provisional Assumptions |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [None/Public PoC/Active] | [Small/Controlled/Open] | [No/Yes] | [Low/Medium/High/Very High] | [Confirmed/Partial/Provisional] | [None or assumptions] |
+
+### KEV Action Tracker
+
+| CVE ID | In KEV | Due Date | Required Action | Known Ransomware Use | Local SLA Decision |
+|---|---|---|---|---|---|
+| [CVE-ID] | [Yes/No] | [date/N/A] | [action/N/A] | [Known/Unknown/N/A] | [P0-P5 + rationale] |
+
 ### EPSS Trend Alerts
 [List any CVEs with Surging or Rising EPSS trends and recommended tier adjustments]
 
@@ -344,15 +389,16 @@ findings requiring immediate action.]
 ## Framework Reference
 
 ### SSVC 2.1 (CERT/CC)
-Stakeholder-Specific Vulnerability Categorization. Produces action-oriented decisions (Defer, Scheduled, Out-of-Cycle, Immediate) based on exploitation status, automatability, technical impact, and mission prevalence. Used as the primary driver for SLA tier assignment.
+Stakeholder-Specific Vulnerability Categorization. Produces action-oriented deployer decisions (Defer, Scheduled, Out-of-Cycle, Immediate) based on Exploitation, Exposure, Automatable, and Human Impact. Used as the primary driver for SLA tier assignment.
 - Specification: https://certcc.github.io/SSVC/
 - Repository: https://github.com/CERTCC/SSVC
 
 ### EPSS v3 (FIRST.org)
-Exploit Prediction Scoring System. Provides a daily-updated probability (0.0-1.0) that a CVE will be exploited in the wild within 30 days. Used for trend analysis and tier validation.
+Exploit Prediction Scoring System. Provides a daily-updated probability (0.0-1.0) that a CVE will be exploited in the wild within 30 days. Used for trend analysis and tier validation, not as proof that exploitation is active in a specific environment.
 - Specification: https://www.first.org/epss/
 - API: https://api.first.org/data/v1/epss
 - Data: https://epss.cyentia.com/
+- User guide: https://www.first.org/epss/user-guide.html
 
 ### CISA KEV (DHS/CISA)
 Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with confirmed active exploitation. Federal agencies are bound by BOD 22-01 to remediate within CISA-specified deadlines.
@@ -372,7 +418,13 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 
 4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
 
-5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+5. **Equating high EPSS with active exploitation.** EPSS is a probability estimate and triage input. It can justify monitoring, patch planning, or local-policy escalation, but SSVC `Active` exploitation needs KEV, vendor confirmation, credible threat intelligence, or observed telemetry.
+
+6. **Flattening all KEV entries into a generic 24-hour emergency.** CISA KEV records include required actions and due dates. Preserve those fields, then apply local tightening for ransomware use, open exposure, or business impact.
+
+7. **Treating assumed exposure as confirmed.** Conservative internet-facing/business-critical defaults are useful for triage, but final SLA breach labels and emergency actions must show whether exposure and impact were confirmed or provisional.
+
+8. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
 
 ---
 
@@ -391,6 +443,8 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 - SSVC 2.1 (CERT/CC): https://certcc.github.io/SSVC/
 - SSVC GitHub Repository: https://github.com/CERTCC/SSVC
 - EPSS v3 (FIRST.org): https://www.first.org/epss/
+- EPSS User Guide: https://www.first.org/epss/user-guide.html
+- EPSS Model Documentation: https://www.first.org/epss/model
 - EPSS API Documentation: https://api.first.org/data/v1/epss
 - EPSS Data Portal: https://epss.cyentia.com/
 - CISA KEV Catalog: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
