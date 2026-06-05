@@ -1,0 +1,20 @@
+context_fitting:
+  non_truncatable:
+    - system_policy
+    - developer_policy
+    - tenant_id
+    - source_acl_labels
+    - data_classification
+    - denied_actions
+    - active_constraints
+  truncatable:
+    - untrusted_conversation_history
+    - retrieved_snippet_text
+  summarization:
+    label: untrusted_summary
+    preserve_metadata:
+      - source_acl_labels
+      - tenant_id
+      - data_classification
+  high_risk_actions:
+    on_missing_required_evidence: fail_closed

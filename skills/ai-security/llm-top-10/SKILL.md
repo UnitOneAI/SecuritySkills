@@ -12,7 +12,7 @@ phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -104,6 +104,8 @@ temperature|top_p|tool_choice|tools|functions|response_format|structured_output
 OPENAI_MODEL|ANTHROPIC_MODEL|AZURE_OPENAI_DEPLOYMENT|BEDROCK_MODEL|MODEL_ID
 data_residency|region|tenant|acl|classification|redact|audit
 ```
+
+Use the companion examples under `tests/vulnerable/` and `tests/benign/` when validating whether route fallback, hosted-model aliasing, and context-fitting behavior is evidenced by code, configuration, logs, or regression tests rather than architectural intent alone.
 
 ---
 
@@ -573,23 +575,22 @@ When performing a review using this skill:
 ## 9. References
 
 - OWASP Top 10 for LLM Applications 2025: https://genai.owasp.org/llm-top-10/
-- OWASP LLM AI Security & Governance Checklist: https://genai.owasp.org/llm-top-10/llm-ai-security-and-governance-checklist/
+- OWASP LLM AI Security & Governance Checklist: https://genai.owasp.org/resource/llm-applications-cybersecurity-and-governance-checklist-english/
 - OWASP GenAI Project Home: https://genai.owasp.org/
 - LLM01:2025 Prompt Injection: https://genai.owasp.org/llmrisk/llm01-prompt-injection/
-- LLM02:2025 Sensitive Information Disclosure: https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
-- LLM03:2025 Supply Chain Vulnerabilities: https://genai.owasp.org/llmrisk/llm03-supply-chain-vulnerabilities/
-- LLM04:2025 Data and Model Poisoning: https://genai.owasp.org/llmrisk/llm04-data-and-model-poisoning/
-- LLM05:2025 Improper Output Handling: https://genai.owasp.org/llmrisk/llm05-improper-output-handling/
-- LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm06-excessive-agency/
-- LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm07-system-prompt-leakage/
-- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
-- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
-- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
-- OWASP LLM06:2025 Excessive Agency (risk page): https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
-- OWASP LLM10:2025 Unbounded Consumption (risk page): https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
+- LLM02:2025 Sensitive Information Disclosure: https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/
+- LLM03:2025 Supply Chain Vulnerabilities: https://genai.owasp.org/llmrisk/llm032025-supply-chain/
+- LLM04:2025 Data and Model Poisoning: https://genai.owasp.org/llmrisk/llm042025-data-and-model-poisoning/
+- LLM05:2025 Improper Output Handling: https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/
+- LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
+- LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/
+- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm082025-vector-and-embedding-weaknesses/
+- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm092025-misinformation/
+- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
 
 ---
 
 ## 10. Changelog
 
+- **1.0.2** - Added vulnerable and benign evidence fixtures for fail-open route fallback, scoped fail-closed fallback, context-fitting policy preservation, and hosted-model alias drift; refreshed reachable OWASP reference URLs.
 - **1.0.1** - Added model routing and fallback evidence gates, context-window fitting checks, hosted-model alias/change-control requirements, output matrices for route/fallback evidence, and pitfalls for degraded routes that remove policy, tool, or authorization controls.

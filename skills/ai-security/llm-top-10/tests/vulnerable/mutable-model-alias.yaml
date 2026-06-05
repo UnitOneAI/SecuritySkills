@@ -1,0 +1,12 @@
+llm_routes:
+  support:
+    model: provider/latest
+    fallback_model: provider/preview
+    runtime_model_id_export: false
+    alias_change_approval: false
+    security_regression_tests: []
+    tool_choice: auto
+    tools:
+      - retrieve_ticket
+      - draft_reply
+      - send_reply
