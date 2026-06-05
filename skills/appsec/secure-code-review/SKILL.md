@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -178,7 +178,7 @@ Remediation: Use the framework's built-in session management (e.g., `HttpSession
 ## Step 4: Authorization Review
 
 **ASVS Reference:** V4 -- Access Control
-**CWE Coverage:** CWE-862 (Missing Authorization), CWE-352 (Cross-Site Request Forgery)
+**CWE Coverage:** CWE-862 (Missing Authorization), CWE-639 (Authorization Bypass Through User-Controlled Key), CWE-352 (Cross-Site Request Forgery), CWE-770 (Allocation of Resources Without Limits or Throttling)
 
 ### 4.1 Controls to Verify
 
@@ -191,7 +191,42 @@ Remediation: Use the framework's built-in session management (e.g., `HttpSession
 | V4.2.2 | The application enforces a strong anti-CSRF mechanism |
 | V4.3.1 | Administrative interfaces use appropriate multi-factor or role-based access control |
 
-### 4.2 Vulnerable Patterns by Language
+### 4.2 Endpoint Classification Gate
+
+Before reporting a missing authorization finding, classify the endpoint or resolver by intended exposure. Do not treat every unauthenticated handler as a vulnerability without evidence that it serves protected data or performs a protected action.
+
+| Classification | Examples | Required Evidence | Finding Trigger |
+|---|---|---|---|
+| Public-safe discovery | JWKS, OpenID discovery, health checks, robots/sitemap | Response is non-sensitive, cache/content-type behavior is intentional, no user data or privileged action is reachable | Secrets, user data, admin metadata, unsafe methods, or excessive rate/caching risk |
+| Signed machine callback | Payment, identity, or SaaS provider webhook receivers | Raw-body signature validation, timestamp freshness, replay/idempotency guard, provider/event allowlist | Processing before signature verification, missing replay controls, accepting untrusted event types |
+| Authenticated user route | Profile, order, invoice, settings, tenant data | Authentication plus object ownership, tenant scope, and field-level filtering | Authenticated user can select another user's object or privileged field |
+| Privileged or admin route | User management, billing, exports, policy changes | Role/permission check at trusted service layer, audit event, least-privilege role mapping | Only login is checked, role is client-controlled, or admin action is reachable by ordinary users |
+| Internal-only route | Worker callbacks, service health, maintenance endpoints | Network boundary plus service identity, mTLS/JWT/API-key validation where exposed beyond process-local trust | Boundary is assumed but not enforced, or route is internet-reachable without service identity |
+
+> **Gate:** Record the classification before deciding severity. Public-safe endpoints still need review for accidental disclosure, cache policy, content type, and rate limiting, but they should not be remediated by adding user-session authorization when public access is the correct design.
+
+### 4.3 Signed Callback Review
+
+Machine-to-machine callbacks commonly do not use browser sessions. Review them as message-authenticated entry points instead of ordinary user routes.
+
+- [ ] Signature verification uses the provider's recommended raw request body and canonical header values before parsing or state changes.
+- [ ] Timestamp freshness, nonce/event ID replay protection, and idempotency are enforced before side effects.
+- [ ] The handler allowlists expected event types, account IDs, tenant IDs, or provider environments.
+- [ ] Failure paths return a safe response without leaking verification material or retry-control internals.
+- [ ] Callback side effects run under a least-privilege service identity and are logged with event ID and verification result.
+
+### 4.4 GraphQL Authorization and Query Controls
+
+GraphQL applications can hide many protected operations behind a single `/graphql` route. Reviewing only route middleware is insufficient.
+
+- [ ] Resolver-level authorization is checked for every query, mutation, subscription, and nested field returning sensitive data.
+- [ ] Object ownership and tenant scope are applied inside resolvers, data loaders, and repository/helper functions, not only at the top-level route.
+- [ ] List fields use bounded pagination and cannot be expanded into unbounded nested object graphs.
+- [ ] Query depth, complexity, batch count, and execution timeout controls are configured and tested for expensive nested queries.
+- [ ] Introspection policy matches exposure: public schemas are intentional, while internal/admin schemas require appropriate access control.
+- [ ] Error responses avoid leaking resolver names, table names, stack traces, or authorization decision internals.
+
+### 4.5 Vulnerable Patterns by Language
 
 **Python -- Missing Authorization (CWE-862)**
 ```python
@@ -214,10 +249,28 @@ http.HandleFunc("/transfer", func(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Require POST with a validated CSRF token. Use a CSRF middleware library (e.g., `gorilla/csrf`).
 
-### 4.3 Review Checklist
+**JavaScript -- GraphQL Resolver Missing Ownership Check (CWE-639)**
+```javascript
+// VULNERABLE: authenticated user can request any invoice by ID
+const resolvers = {
+  Query: {
+    invoice: async (_parent, args, ctx) => {
+      requireUser(ctx);
+      return db.invoice.findUnique({ where: { id: args.id } });
+    },
+  },
+};
+```
+Remediation: Scope the lookup to the caller's tenant or account and enforce field-level authorization before returning nested data.
 
-- [ ] Every API endpoint and data-access path enforces authorization server-side.
+### 4.6 Review Checklist
+
+- [ ] Every endpoint, resolver, and data-access path is classified before findings are reported.
+- [ ] Every protected API endpoint and data-access path enforces authorization server-side.
 - [ ] Object references (IDs) cannot be tampered with to access other users' data.
+- [ ] GraphQL resolvers, nested fields, list queries, and data loaders enforce ownership and tenant scope.
+- [ ] GraphQL depth, complexity, batching, timeout, pagination, and introspection policies are documented.
+- [ ] Signed callbacks verify raw-body signatures, timestamp freshness, replay/idempotency, and event allowlists before side effects.
 - [ ] State-changing operations use anti-CSRF tokens or SameSite cookies.
 - [ ] Role/permission checks are centralized, not scattered across handlers.
 - [ ] Deny-by-default: all routes are denied unless explicitly permitted.
@@ -420,6 +473,8 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Endpoint Classification** | Public-safe, signed callback, authenticated user route, privileged/admin route, internal-only route, or not applicable |
+| **Control Evidence** | Authorization, signature, query-control, or boundary evidence used to classify the finding |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -461,6 +516,8 @@ The final review output must be structured as follows:
 - **CWE:** CWE-[number] -- [name]
 - **ASVS Control:** V[x.y.z]
 - **Location:** [file:line]
+- **Endpoint Classification:** [classification or N/A]
+- **Control Evidence:** [ownership check, role check, signature verification, query limit, or missing evidence]
 - **Description:** [explanation]
 - **Evidence:**
   ```[language]
@@ -539,7 +596,11 @@ The final review output must be structured as follows:
 
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
-5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+5. **Treating public or signed endpoints as ordinary user routes.** JWKS, discovery, health, and provider callback handlers may be intentionally unauthenticated. Classify the endpoint first, then verify the security control that matches that design instead of recommending user-session checks that break integrations.
+
+6. **Stopping GraphQL review at the `/graphql` route.** A single authenticated route can still expose resolver-level object access, nested fields, broad list queries, and expensive query shapes. Inspect schema, resolvers, data loaders, pagination, and query-control configuration together.
+
+7. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
 ---
 
@@ -562,4 +623,5 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
