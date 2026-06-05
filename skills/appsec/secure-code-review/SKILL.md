@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-1336 (Server-Side Template Injection)
 
 ### 2.1 Controls to Verify
 
@@ -102,6 +102,33 @@ FileInputStream fis = new FileInputStream(f);
 ```
 Remediation: Canonicalize the resolved path and verify it remains within the expected base directory.
 
+**Python -- Server-Side Template Injection (CWE-1336)**
+```python
+# VULNERABLE: attacker-controlled template source is compiled server-side
+@app.post("/preview")
+def preview():
+    return render_template_string(request.form["body"])
+```
+Remediation: Render only trusted template files or pre-approved templates. Pass untrusted values as data, not as template source, and use an allowlist for any selectable template name.
+
+**JavaScript -- Dynamic Template Selection**
+```javascript
+// VULNERABLE: user input selects the server-side template to render
+app.get("/email-preview", (req, res) => {
+  res.render(req.query.template, { user: req.user });
+});
+```
+Remediation: Map user choices to a fixed allowlist of template identifiers and reject path-like input, absolute paths, traversal sequences, partial names, and tenant-controlled template source unless sandboxed and restricted.
+
+**Safe Template Rendering Example**
+```python
+# SAFE: static template name; user data remains data and is escaped by the engine
+@app.get("/profile")
+def profile():
+    return render_template("profile.html", display_name=current_user.display_name)
+```
+Do not report this as SSTI unless the user controls the template source, template name, expression language, custom helper, filter, loader, or sandbox configuration.
+
 ### 2.3 Review Checklist
 
 - [ ] Every point where user input enters the system is identified.
@@ -110,6 +137,31 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+- [ ] Server-side template rendering separates trusted template source from untrusted data.
+- [ ] Dynamic template names, CMS templates, email previews, themes, and tenant-editable templates use fixed allowlists and cannot select arbitrary files or partials.
+- [ ] Template helpers, filters, globals, loaders, and sandbox settings are reviewed for code execution, file read, secret disclosure, and sandbox escape risk.
+- [ ] SSTI findings record the input source, render sink, template engine, template source/name control, sandbox/helper exposure, and false-positive rationale.
+
+### 2.4 SSTI Search Patterns
+
+Use these patterns to locate likely server-side template injection review points. A match is not a finding until the surrounding source-to-sink path confirms attacker control over template source, template name, expression language, helpers, filters, loaders, or sandbox policy.
+
+```
+# Python / Jinja / Flask
+render_template_string|Environment\.from_string|Template\(
+
+# Node / Express / Handlebars / Pug / EJS
+res\.render\(req\.|render\(.*req\.query|render\(.*req\.body|compile\(.*req\.|registerHelper
+
+# Ruby / ERB / Rails
+ERB\.new|render\s+inline:|render\s+params
+
+# PHP / Twig
+createTemplate|Twig\\Environment|render\(.*\$_(GET|POST|REQUEST)
+
+# Java / JVM template engines
+FreeMarker|Thymeleaf|VelocityEngine|process\(.*request|getTemplate\(.*request
+```
 
 ---
 
@@ -527,6 +579,13 @@ The final review output must be structured as follows:
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
+### Additional CWE Coverage
+
+| CWE ID | Name | Review Step |
+|---|---|---|
+| CWE-1336 | Improper Neutralization of Special Elements Used in a Template Engine | Step 2 |
+| CWE-917 | Improper Neutralization of Special Elements used in an Expression Language Statement | Step 2 |
+
 ---
 
 ## Common Pitfalls
@@ -540,6 +599,8 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Conflating template data with template source.** Static server-side templates that receive escaped user values are usually normal rendering, not SSTI. The higher-risk case is when untrusted input controls the template source, selected template name, expression language, custom helper, filter, loader, or sandbox policy.
 
 ---
 
@@ -562,4 +623,6 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP WSTG Server-Side Template Injection:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-side_Template_Injection
+- **CWE-1336 Template Engine Injection:** https://cwe.mitre.org/data/definitions/1336.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
