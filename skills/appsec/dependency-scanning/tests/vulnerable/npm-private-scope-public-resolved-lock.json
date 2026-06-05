@@ -1,0 +1,15 @@
+{
+  "name": "registry-boundary-vulnerable",
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "dependencies": {
+        "@company/internal-payments": "1.0.0"
+      }
+    },
+    "node_modules/@company/internal-payments": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/@company/internal-payments/-/internal-payments-1.0.0.tgz"
+    }
+  }
+}
