@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -81,6 +81,25 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
 | Data classification scheme | Governance documentation | Defines sensitivity levels applied to AI data flows |
 | Regulatory requirements | Compliance documentation, legal counsel input | Identifies applicable data protection obligations |
+
+### Authoritative Source Currency Gate
+
+Before assigning severity or mapping a finding to NIST AI RMF, NIST SP 800-188, the EU AI Act, a vendor DPA, or another regulatory/standards source, record the exact official source used and whether it was current at review time. Do not let an authoritative-looking citation raise confidence unless the source URL, final URL after redirects, publication/effective date, reviewed date, supported claim, and source confidence are captured.
+
+Use this gate for every `Critical` or `High` finding and for any recommendation that relies on a specific legal, standards, or contractual source.
+
+| Source | Official URL checked | Final URL after redirects | Publication/effective date | Reviewed date | Supported claim | Source status | Confidence |
+|---|---|---|---|---|---|---|---|
+| [NIST AI RMF / NIST SP 800-188 / EU AI Act / vendor DPA] | [URL] | [URL] | [date/Not Evaluable] | [YYYY-MM-DD] | [claim] | [reachable/redirected/stale/unreachable/secondary] | [High/Medium/Low/Not Evaluable] |
+
+**Source currency rules:**
+
+- Prefer official regulator, standards body, or contract/DPA sources over secondary summaries.
+- Record the final official URL when a source redirects to a newer page.
+- Mark stale, unreachable, secondary, or undated sources as evidence gaps unless another official source supports the claim.
+- Classify high-impact regulatory claims as `Not Evaluable` until source confidence is recorded.
+- Recheck vendor DPAs, retention policies, and provider training-use terms because content can change without the URL breaking.
+- Use the current NIST AI RMF landing page `https://www.nist.gov/itl/ai-risk-management-framework`, the NIST AI RMF Playbook page `https://www.nist.gov/itl/ai-risk-management-framework/nist-ai-rmf-playbook`, and the stable NIST SP 800-188 CSRC page `https://csrc.nist.gov/pubs/sp/800/188/final` for NIST-based privacy claims.
 
 ---
 
@@ -389,6 +408,13 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 | **Low** | Minor gap with limited direct privacy risk: defense-in-depth recommendations, documentation improvements, or best practice deviations. | 90 days -- track in backlog |
 | **Informational** | Recommendations for improvement with no current privacy risk. | No SLA -- advisory |
 
+### Source Confidence Handling
+
+- A `Critical` or `High` finding that depends on NIST AI RMF, NIST SP 800-188, EU AI Act, GDPR, CCPA/CPRA, HIPAA, or vendor DPA claims must include source confidence.
+- If the source is stale, unreachable, secondary, or missing a reviewed date, downgrade the standards/regulatory mapping confidence to `Not Evaluable` until an official source is checked.
+- If the underlying privacy exposure is directly observable in code or architecture, keep the technical severity, but call out the missing source currency as a separate evidence gap.
+- Do not claim current NIST AI RMF or SP 800-188 alignment from legacy shortcut or legacy CSRC detail paths alone. Record the current official URL and reviewed date.
+
 ---
 
 ## Output Format
@@ -403,6 +429,13 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 - Data sensitivity: [classification of data processed by AI components]
 - Overall privacy risk: [Critical / High / Medium / Low]
 - Total findings: [count by severity]
+- Source confidence summary: [High/Medium/Low/Not Evaluable]
+
+## Authoritative Source Register
+
+| Source | Official URL checked | Final URL after redirects | Publication/effective date | Reviewed date | Supported claim | Source status | Confidence |
+|---|---|---|---|---|---|---|---|
+| [source] | [URL] | [URL] | [date/Not Evaluable] | [YYYY-MM-DD] | [claim] | [reachable/redirected/stale/unreachable/secondary] | [High/Medium/Low/Not Evaluable] |
 
 ## Data Flow Map
 [Description or reference to diagram showing personal data flows through AI components:
@@ -416,6 +449,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
 - **Regulatory Reference:** [GDPR Article X | CCPA Section X | EU AI Act Article X | HIPAA X]
+- **Source Confidence:** [High | Medium | Low | Not Evaluable] with official URL and reviewed date
 - **Location:** [file path, configuration, or architectural component]
 - **Description:** [What the privacy risk is and why it matters]
 - **Evidence:** [Code pattern, configuration, or architectural observation]
@@ -435,7 +469,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
 
 ## Recommendations
-[Prioritized list of remediation actions with regulatory alignment]
+[Prioritized list of remediation actions with regulatory alignment and source confidence]
 ```
 
 ---
@@ -454,7 +488,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
 
-**NIST AI RMF 1.0:** The AI Risk Management Framework organizes risk management into four functions: GOVERN (policies, roles, culture), MAP (context, risk identification), MEASURE (risk analysis and tracking), and MANAGE (risk response and monitoring). Privacy is addressed across all four functions, with MAP 5.1 and MEASURE 2.9 providing the most direct privacy risk guidance. Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework)
+**NIST AI RMF 1.0:** The AI Risk Management Framework organizes risk management into four functions: GOVERN (policies, roles, culture), MAP (context, risk identification), MEASURE (risk analysis and tracking), and MANAGE (risk response and monitoring). Privacy is addressed across all four functions, with MAP 5.1 and MEASURE 2.9 providing the most direct privacy risk guidance. Record the current official source and reviewed date before relying on this mapping. Reference: [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework)
 
 **OWASP LLM02:2025 -- Sensitive Information Disclosure:** Covers risks where LLMs reveal confidential data including PII from training data (memorization), PII from inference-time context, system prompt content, and internal system details. The 2025 edition expanded this category to explicitly address training data memorization and cross-user data leakage in multi-tenant RAG systems. Reference: [genai.owasp.org](https://genai.owasp.org)
 
@@ -472,11 +506,14 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
+6. **Trusting stale standards links.** A privacy report can look authoritative while relying on stale, redirected, or unreachable source URLs. Always record source status, reviewed date, final URL, supported claim, and confidence before using NIST AI RMF, NIST SP 800-188, regulator, or vendor DPA references to support high-impact findings.
+
 ---
 
 ## References
 
-- NIST AI Risk Management Framework 1.0 (January 2023) -- https://www.nist.gov/aiframework
+- NIST AI Risk Management Framework 1.0 (January 2023) -- https://www.nist.gov/itl/ai-risk-management-framework
+- NIST AI RMF Playbook -- https://www.nist.gov/itl/ai-risk-management-framework/nist-ai-rmf-playbook
 - OWASP Top 10 for LLM Applications (2025), LLM02: Sensitive Information Disclosure -- https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
 - EU AI Act, Regulation (EU) 2024/1689 -- https://eur-lex.europa.eu/eli/reg/2024/1689
 - GDPR, Regulation (EU) 2016/679 -- https://eur-lex.europa.eu/eli/reg/2016/679
@@ -485,5 +522,14 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
 - Ippolito, D. et al. (2023). "Preventing Verbatim Memorization in Language Models Gives a False Sense of Privacy." arXiv:2210.17546
 - Microsoft Presidio (PII detection and anonymization) -- https://github.com/microsoft/presidio
-- NIST SP 800-188, De-Identifying Government Datasets -- https://csrc.nist.gov/publications/detail/sp/800-188/final
+- NIST SP 800-188, De-Identifying Government Datasets -- https://csrc.nist.gov/pubs/sp/800/188/final
 - Article 29 Working Party, Guidelines on Data Protection Impact Assessment (WP 248) -- https://ec.europa.eu/newsroom/article29/items/611236
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.1.0 | 2026-06-05 | Added source currency gates, source confidence handling, and refreshed NIST AI RMF/SP 800-188 references |
+| 1.0.0 | 2025-03-06 | Initial release |
