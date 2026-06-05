@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,6 +52,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - Access to GCP infrastructure-as-code files (Terraform `.tf`, Deployment Manager `.yaml`/`.jinja`)
 - gcloud CLI output or configuration exports (if reviewing a live environment)
 - IAM policy bindings and org policy definitions
+- Effective IAM policy exports for project, folder, organization, and service-account resources when service-account impersonation is in scope
 - VPC and firewall rule definitions
 - Cloud Audit Logs configuration
 
@@ -88,7 +89,41 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Build Service Account Impersonation Graph
+
+For IAM findings that involve service accounts, build an effective impersonation graph before assigning final risk. Static role presence is not enough: the review must identify who can mint tokens, attach service accounts to workloads, sign blobs/JWTs, or federate into deployment identities.
+
+Collect the following grant types from service-account, project, folder, and organization IAM policies:
+
+- `roles/iam.serviceAccountTokenCreator`
+- `roles/iam.serviceAccountUser`
+- `roles/iam.workloadIdentityUser`
+- custom roles that include `iam.serviceAccounts.getAccessToken`, `iam.serviceAccounts.signBlob`, or `iam.serviceAccounts.signJwt`
+
+For each path, record:
+
+| Field | Evidence Required |
+|---|---|
+| Principal | User, group, service account, workload identity principal, or principal set |
+| Grant source | Service-account, project, folder, or organization IAM binding and file/resource path |
+| Target service account | Email/name and project |
+| Target privileges | Roles held by the target service account, especially admin, deploy, KMS, storage, BigQuery, owner/editor, or CI/CD release roles |
+| Condition | IAM Condition expression, title, and whether it constrains repository, branch/tag, audience, environment, time, or request attributes |
+| Inheritance | Whether the binding is inherited from project/folder/org scope or direct on the service account |
+| Effective risk | Critical, High, Medium, Low, Pass, or Not Evaluable |
+
+Risk decision rules:
+
+- Mark broad human, group, domain, or all-authenticated Token Creator paths to privileged service accounts as **High** or **Critical** unless strong conditions and group membership evidence prove a narrow path.
+- Treat service-account-to-service-account impersonation as a chain. Follow the target account's roles and any next-hop impersonation grants before scoring.
+- Treat workload identity federation as lower risk only when repository/project, branch/tag or environment, subject, and audience constraints are present and bound to the expected CI/CD identity.
+- Treat time-only conditions or descriptions without technical predicates as insufficient constraints.
+- Mark inherited project/folder/org Token Creator or Service Account User grants as higher risk than direct service-account grants because the blast radius can include future service accounts.
+- If deny policies, principal access boundary policies, or org policies reduce effective access, record the policy evidence and residual scope instead of flagging the raw grant alone.
+
+---
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -150,6 +185,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Service Account Impersonation Graph
+
+| Principal | Grant Source | Target Service Account | Target Roles | Condition Summary | Inherited? | Effective Risk | Required Action |
+|-----------|--------------|------------------------|--------------|-------------------|------------|----------------|-----------------|
+| <member> | <resource/file/line> | <service-account> | <roles> | <repo/ref/audience/time/none> | Yes/No | Critical/High/Medium/Low/Pass/Not Evaluable | <remove, constrain, verify group, add deny/PAB, or document evidence> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -194,6 +235,8 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Confusing all Token Creator grants with equal risk.** A tightly conditioned workload identity federation binding can be acceptable, while a project-level user or group Token Creator grant can be a privilege-escalation path. Record the condition and target service-account privileges before scoring.
+8. **Missing inherited impersonation paths.** Folder or organization bindings can grant access into a project even when the reviewed Terraform module only shows safe service-account-level bindings.
 
 ---
 
@@ -216,6 +259,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Google Cloud Platform Foundation Benchmark v2.0.0: https://www.cisecurity.org/benchmark/google_cloud_computing_platform
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
+- Google Cloud Service Account Impersonation: https://cloud.google.com/iam/docs/service-account-impersonation
+- Google Cloud Workload Identity Federation: https://cloud.google.com/iam/docs/workload-identity-federation
+- Google Cloud Policy Analyzer: https://cloud.google.com/policy-intelligence/docs/analyze-iam-policies
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
@@ -226,3 +272,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+- **1.1.0** -- Adds effective service-account impersonation graph evidence, inherited binding review, and workload identity federation constraint handling.

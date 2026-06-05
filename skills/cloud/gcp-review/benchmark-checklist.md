@@ -72,6 +72,68 @@ resource "google_project_iam_member" {
 
 These roles should be granted at the service account level, not project level.
 
+#### Effective Service Account Impersonation Graph Evidence
+
+CIS 1.6 is not only a flat project-level role check. Resolve effective service-account impersonation paths before assigning risk.
+
+**Grant types to collect:**
+
+| Grant / Permission | Why It Matters |
+|---|---|
+| `roles/iam.serviceAccountTokenCreator` | Can mint access tokens and sign blobs/JWTs for the target service account. |
+| `roles/iam.serviceAccountUser` | Can attach or run workloads as the target service account. |
+| `roles/iam.workloadIdentityUser` | Allows external or Kubernetes identities to act as the service account. |
+| Custom roles with `iam.serviceAccounts.getAccessToken` | Can mint access tokens even when the predefined role name is absent. |
+| Custom roles with `iam.serviceAccounts.signBlob` or `iam.serviceAccounts.signJwt` | Can sign artifacts or JWTs as the service account. |
+
+**Terraform and policy patterns:**
+
+```
+google_service_account_iam_member
+google_service_account_iam_binding
+google_project_iam_member
+google_project_iam_binding
+google_folder_iam_member
+google_folder_iam_binding
+google_organization_iam_member
+google_organization_iam_binding
+roles/iam.serviceAccountTokenCreator
+roles/iam.serviceAccountUser
+roles/iam.workloadIdentityUser
+iam.serviceAccounts.getAccessToken
+iam.serviceAccounts.signBlob
+iam.serviceAccounts.signJwt
+principalSet://iam.googleapis.com
+google_iam_workload_identity_pool_provider
+```
+
+**Impersonation graph table:**
+
+| Principal | Grant Source | Resource Level | Target Service Account | Target SA Roles | Condition | Risk |
+|---|---|---|---|---|---|---|
+| user/group/serviceAccount/principalSet | file/resource/line | service-account/project/folder/org | service account email | owner/editor/deploy/KMS/etc. | repository/ref/audience/time/none | Critical/High/Medium/Low/Pass/Not Evaluable |
+
+**Risk rules:**
+
+- **High/Critical:** `group:*`, `user:*`, broad `principalSet:*`, or service account chains can impersonate privileged service accounts without repository, branch/tag, audience, environment, or group-membership evidence.
+- **High:** Project, folder, or organization `roles/iam.serviceAccountTokenCreator` or `roles/iam.serviceAccountUser` is granted to a human/group principal. Inherited grants can affect future service accounts, not just those visible in the module.
+- **High:** A service account can impersonate another service account with broader project, deployment, KMS, storage, BigQuery, owner/editor, or IAM roles.
+- **Medium/Not Evaluable:** IAM Conditions exist but are time-only, description-only, or depend on external group membership that is not available for review.
+- **Pass/Low:** Workload identity federation is constrained by subject/repository, branch or tag, expected audience, and a narrow service-account target; the target service account has least-privilege deployment roles.
+- **Pass/Low:** Deny policies or principal access boundary policies are present and demonstrably block the risky impersonation path; record the policy evidence.
+
+**Workload identity federation evidence:**
+
+For CI/CD or external identity providers, record the provider attribute mappings and service-account IAM Condition. Require predicates such as:
+
+```
+assertion.repository == "my-org/prod-deploy"
+assertion.ref == "refs/heads/main"
+assertion.aud == "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/ci/providers/github"
+```
+
+Do not treat workload identity federation as safe when the binding only checks time, issuer, or a broad principal set without repository and ref constraints.
+
 ### CIS 1.7 -- Ensure User-Managed/External Keys for Service Accounts Are Rotated Every 90 Days or Fewer
 
 Check for key rotation mechanisms or expiration policies on service account keys.
