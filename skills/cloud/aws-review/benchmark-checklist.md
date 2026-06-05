@@ -488,3 +488,24 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+Also record the effective source and all metadata sub-options:
+
+| Evidence Source | What to Verify | Pass / False-Positive Guard |
+|---|---|---|
+| `aws_instance.metadata_options` | `http_tokens`, `http_endpoint`, `http_put_response_hop_limit`, `http_protocol_ipv6`, `instance_metadata_tags` | `http_tokens = "required"` or `http_endpoint = "disabled"` |
+| `aws_launch_template.metadata_options` | Same metadata options and launch template version used by Auto Scaling | Active launch template version enforces IMDSv2 or disables IMDS |
+| Auto Scaling metadata options | Launch configuration/template or API `InstanceMetadataOptions` | Auto-scaled instances inherit IMDSv2-required or endpoint-disabled settings |
+| Account-level defaults | `get-instance-metadata-defaults` / IaC equivalent per region | Account default enforces `HttpTokens=required`; note if enforcement blocks noncompliant launches |
+| AMI defaults | AMI `ImdsSupport` / launch documentation | AMI default is `v2.0`, but record when launch parameters override it |
+| Running-instance evidence | `describe-instances` `MetadataOptions` | Effective instances show `HttpTokens=required` or `HttpEndpoint=disabled` |
+
+Flag these conditions:
+
+- `http_tokens = "optional"` with `http_endpoint = "enabled"`.
+- Metadata options omitted and no account-level, AMI, launch-template, or running-instance evidence proves IMDSv2.
+- `http_put_response_hop_limit > 1` without documented container or proxy need.
+- `http_protocol_ipv6 = "enabled"` without an IPv6 metadata access rationale and network controls.
+- `instance_metadata_tags = "enabled"` without approval for exposing instance tags through metadata.
+
+Do not fail an instance solely because `http_tokens` is omitted when `http_endpoint = "disabled"` or when authoritative inherited evidence proves `HttpTokens=required`.
