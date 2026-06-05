@@ -214,11 +214,95 @@ http.HandleFunc("/transfer", func(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Require POST with a validated CSRF token. Use a CSRF middleware library (e.g., `gorilla/csrf`).
 
-### 4.3 Review Checklist
+### 4.3 Endpoint Classification Gate
 
-- [ ] Every API endpoint and data-access path enforces authorization server-side.
+Before flagging missing authorization, classify each route or resolver by the security control it is supposed to use. Not every endpoint should require an end-user session, but every endpoint should have an explicit reason for its exposure.
+
+| Endpoint type | Examples | Required evidence |
+|---|---|---|
+| Public non-sensitive endpoint | `/.well-known/jwks.json`, health checks, robots/sitemap | Contains no private data, has safe cache behavior, and cannot trigger state changes |
+| Signed machine callback | Payment webhooks, CI callbacks, provider notifications | Verifies the provider signature over the raw payload, validates timestamp/replay windows, and is idempotent |
+| Authenticated user endpoint | Profile, invoice, order, project APIs | Requires authentication and enforces object ownership or tenant scoping |
+| Privileged/admin endpoint | User deletion, billing admin, feature flags | Requires authentication, role/permission checks, and auditable authorization decisions |
+| Internal-only endpoint | Metrics, debug, admin health | Bound to a private network, protected by service identity, or explicitly disabled in production |
+
+**TypeScript -- Signed Webhook Without Raw-Body Verification**
+```typescript
+// VULNERABLE: JSON parsing changes the payload before signature verification
+app.post('/webhooks/payments', express.json(), (req, res) => {
+  verifyProviderSignature(JSON.stringify(req.body), req.header('x-signature'));
+  processPaymentEvent(req.body);
+  res.sendStatus(204);
+});
+```
+Remediation: Verify the provider signature against the exact raw request body before parsing or processing. Enforce timestamp tolerance, reject replayed event IDs, and make processing idempotent.
+
+**TypeScript -- Public Discovery Endpoint That Should Not Be Flagged**
+```typescript
+// BENIGN: public keys are intentionally public and do not perform state changes
+app.get('/.well-known/jwks.json', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({ keys: publicJwks });
+});
+```
+Review guidance: do not recommend adding user authentication to discovery endpoints solely because they are public. Instead, verify the endpoint is read-only, contains only public material, has safe cache headers, and cannot be confused with a privileged key-management API.
+
+### 4.4 GraphQL Resolver and Query Abuse Review
+
+When a GraphQL endpoint is in scope, do not treat authentication on the single `/graphql` route as sufficient authorization. Review each resolver and data loader that returns sensitive objects.
+
+**TypeScript -- Resolver-Level IDOR (CWE-862)**
+```typescript
+const resolvers = {
+  Query: {
+    invoice: async (_parent, args, ctx) => {
+      requireUser(ctx);
+      // VULNERABLE: no tenant or owner check on args.id
+      return db.invoice.findUnique({ where: { id: args.id } });
+    },
+  },
+};
+```
+Remediation: scope lookups to the caller's tenant or owner context, for example `where: { id: args.id, tenantId: ctx.user.tenantId }`, and apply the same checks to nested resolvers and data loaders.
+
+**GraphQL -- Query Cost and Nested Exposure**
+```graphql
+query {
+  organization(id: "org_1") {
+    projects {
+      issues {
+        comments {
+          author {
+            teams {
+              members { email }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+Review guidance: verify depth limits, complexity/cost limits, pagination caps, batching limits, resolver timeouts, introspection policy, and error redaction. A depth limit alone is not enough when broad list fields can multiply expensive nested work.
+
+**GraphQL -- Batched Authentication Attempts**
+```graphql
+mutation {
+  a1: login(email: "victim@example.com", password: "guess1") { token }
+  a2: login(email: "victim@example.com", password: "guess2") { token }
+  a3: login(email: "victim@example.com", password: "guess3") { token }
+}
+```
+Review guidance: verify that rate limits, authentication attempt counters, audit logs, and abuse detection count each operation or alias, not only the outer HTTP request.
+
+### 4.5 Review Checklist
+
+- [ ] Every API endpoint, GraphQL resolver, and data-access path has an explicit endpoint classification and matching security control.
 - [ ] Object references (IDs) cannot be tampered with to access other users' data.
 - [ ] State-changing operations use anti-CSRF tokens or SameSite cookies.
+- [ ] Signed machine callbacks verify raw-body signatures, timestamp/replay windows, provider identity, and idempotency before processing.
+- [ ] GraphQL resolvers enforce ownership/tenant checks on top-level and nested fields.
+- [ ] GraphQL endpoints enforce depth, complexity, batching, pagination, timeout, and introspection controls appropriate for the deployment.
 - [ ] Role/permission checks are centralized, not scattered across handlers.
 - [ ] Deny-by-default: all routes are denied unless explicitly permitted.
 
