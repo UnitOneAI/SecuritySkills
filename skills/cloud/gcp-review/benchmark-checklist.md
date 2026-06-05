@@ -41,6 +41,19 @@ resource "google_service_account_key" {
 
 Look for any `google_service_account_key` resources. GCP-managed keys (used automatically by Compute Engine, GKE, etc.) do not require explicit creation.
 
+**Validated hybrid-cloud exception:**
+
+Do not downgrade a user-managed service-account key unless all of this evidence exists:
+
+- The workload is external or legacy on-premises and cannot use Workload Identity Federation, service-account impersonation, or a supported short-lived credential path.
+- The service account does not have project-level Owner, Editor, IAM Admin, Service Account Admin, or broad data-admin roles.
+- Rotation is 90 days or less and enforced by inventory, automation, or an approved ticketed process.
+- The private key is stored in an approved secret manager, not in source, CI variables without masking, or local files.
+- Cloud Audit Logs or equivalent SIEM detections monitor service-account key use.
+- There is a migration or decommission plan for the key.
+
+If any evidence is missing, keep CIS 1.4/1.7 as Fail or Not Evaluable instead of treating the key as benign.
+
 ### CIS 1.5 -- Ensure that Service Account Has No Admin Privileges
 
 **Grep patterns:**
@@ -128,6 +141,15 @@ Do not report this as broad impersonation when repository, branch/tag or environ
 ### CIS 1.7 -- Ensure User-Managed/External Keys for Service Accounts Are Rotated Every 90 Days or Fewer
 
 Check for key rotation mechanisms or expiration policies on service account keys.
+
+**Emergency gcloud containment:**
+
+```bash
+gcloud iam service-accounts keys list --iam-account SERVICE_ACCOUNT_EMAIL
+gcloud iam service-accounts keys delete KEY_ID --iam-account SERVICE_ACCOUNT_EMAIL
+```
+
+Use deletion only after confirming dependent workloads can switch to a replacement key or short-lived credential path.
 
 ### CIS 1.8 -- Ensure that Separation of Duties is Enforced While Assigning Service Account Related Roles to Users
 
@@ -585,11 +607,29 @@ resource "google_compute_instance" {
 }
 ```
 
+For Level 2 or high-sensitivity workloads, also verify workload data classification and exception evidence. VMs that process signing keys, regulated customer data, medical identifiers, or production secrets in memory should either enable Confidential VM or document hardware-family incompatibility and risk acceptance.
+
+**Grep patterns:**
+
+```
+confidential_instance_config
+enable_confidential_compute
+n2d-
+c2d-
+c3-
+```
+
+**Emergency gcloud verification:**
+
+```bash
+gcloud compute instances describe INSTANCE --zone ZONE --format='value(confidentialInstanceConfig.enableConfidentialCompute)'
+```
+
 ---
 
 ## Section 5 -- Storage
 
-Evaluate Cloud Storage configurations against CIS GCP v2.0.0 Section 5 recommendations.
+Evaluate Cloud Storage and Artifact Registry configurations against CIS GCP v2.0.0 Section 5 recommendations and current GCP supply-chain expectations.
 
 ### CIS 5.1 -- Ensure that Cloud Storage Bucket Is Not Anonymously or Publicly Accessible
 
@@ -623,6 +663,105 @@ resource "google_organization_policy" {
 resource "google_storage_bucket" {
   uniform_bucket_level_access = true  # Must be true
 }
+```
+
+### CIS 5.x -- Ensure Artifact Registry Repositories Have Vulnerability Scanning and Trusted Upstreams
+
+Artifact Registry is the successor to Container Registry and should be reviewed for image/package supply-chain controls.
+
+**Checks:**
+
+- Artifact Analysis / container scanning is enabled where image repositories are used.
+- Remote repositories restrict upstreams to trusted domains and approved ecosystems.
+- Repository IAM avoids `allUsers`, broad writers, and inherited deploy privileges.
+- Critical vulnerability findings block deployment or require documented approval.
+
+**Terraform patterns:**
+
+```hcl
+resource "google_project_service" "artifact_analysis" {
+  service = "containeranalysis.googleapis.com"
+}
+
+resource "google_artifact_registry_repository" "remote" {
+  mode = "REMOTE_REPOSITORY"
+  remote_repository_config {
+    docker_repository {
+      public_repository = "DOCKER_HUB"
+    }
+  }
+}
+
+# BAD: public or overly broad repository access
+resource "google_artifact_registry_repository_iam_member" "public_reader" {
+  role   = "roles/artifactregistry.reader"
+  member = "allUsers"
+}
+```
+
+**Grep patterns:**
+
+```
+google_artifact_registry_repository
+REMOTE_REPOSITORY
+remote_repository_config
+containeranalysis.googleapis.com
+artifactregistry.reader
+artifactregistry.writer
+allUsers
+allAuthenticatedUsers
+```
+
+**Emergency gcloud verification:**
+
+```bash
+gcloud services list --enabled --filter='containeranalysis.googleapis.com'
+gcloud artifacts repositories describe REPOSITORY --location LOCATION
+gcloud artifacts repositories get-iam-policy REPOSITORY --location LOCATION
+```
+
+---
+
+## Cross-Cutting -- Organization Policy Inheritance Drift
+
+For controls enforced through Organization Policy, compare organization, folder, and project policy state. A project-level override that weakens a stricter parent policy should be treated as drift.
+
+**Terraform patterns:**
+
+```hcl
+resource "google_organization_policy" "disable_sa_keys" {
+  constraint = "iam.disableServiceAccountKeyCreation"
+  boolean_policy {
+    enforced = true
+  }
+}
+
+# BAD: weaker project-level override against parent intent
+resource "google_project_organization_policy" "allow_sa_keys" {
+  constraint = "iam.disableServiceAccountKeyCreation"
+  boolean_policy {
+    enforced = false
+  }
+}
+```
+
+**Constraints to compare:**
+
+```
+iam.disableServiceAccountKeyCreation
+storage.publicAccessPrevention
+compute.skipDefaultNetworkCreation
+compute.disableSerialPortAccess
+compute.vmExternalIpAccess
+constraints/gcp.resourceLocations
+```
+
+**Emergency gcloud verification:**
+
+```bash
+gcloud org-policies describe CONSTRAINT --organization ORG_ID
+gcloud org-policies describe CONSTRAINT --folder FOLDER_ID
+gcloud org-policies describe CONSTRAINT --project PROJECT_ID
 ```
 
 ---

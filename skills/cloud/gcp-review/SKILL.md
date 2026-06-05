@@ -14,7 +14,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.1.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -77,6 +77,8 @@ Use Glob to locate all GCP-related infrastructure definitions.
 **/org-policies/**/*.json
 **/org-policies/**/*.yaml
 **/iam/**/*.json
+**/artifact-registry/**/*.tf
+**/compute/**/*.tf
 ```
 
 Record all discovered files. If no GCP configurations are found, report that finding and halt.
@@ -113,7 +115,43 @@ For each target service account, produce an effective impersonation graph:
 
 Classify broad or inherited `Token Creator`, `Service Account User`, `Workload Identity User`, `SignBlob`, or `SignJwt` grants as high risk when they can reach privileged service accounts without narrow conditions. Do not over-report tightly conditioned workload identity federation where the evidence binds issuer, subject, repository, branch/tag or environment, audience, and target service account, and where the service account's downstream permissions are appropriate for that workload.
 
+Do not automatically classify every user-managed service-account key as Critical when a validated hybrid-cloud exception exists. An exception must include all of the following evidence: Workload Identity Federation or service account impersonation is not supported for the legacy external workload, the key is scoped away from project-level Owner/Editor/Admin roles, the key has a rotation period of 90 days or less, the key is stored in an approved secret manager, Cloud Audit Logs are reviewed for key use, and there is a decommission plan. Without that evidence, keep the CIS 1.4/1.7 finding.
+
 If group membership, parent-resource IAM, deny policies, or principal access boundary evidence is unavailable, mark the impersonation path as `Not Evaluable` instead of assuming it is safe.
+
+---
+
+### Step 2B: Check Organization Policy Inheritance Drift
+
+Org-policy presence is not enough. Verify whether project or folder policies weaken an organization-level constraint, especially when the root policy is not enforced strongly enough to prevent override.
+
+Collect:
+
+| Constraint | Org Policy | Folder Policy | Project Policy | Override Direction | Status |
+|---|---|---|---|---|---|
+| `constraints/iam.disableServiceAccountKeyCreation` | enforced/not enforced | inherited/overridden | inherited/overridden | stricter/weaker | Pass/Fail/Not Evaluable |
+
+Flag project-level `google_project_organization_policy` or folder-level policies that contradict stricter organization-level settings, including service-account key creation, public access prevention, default network creation, serial-port access, public IP controls, and allowed image or repository policies.
+
+---
+
+### Step 2C: Check Artifact Registry Supply-Chain Controls
+
+Artifact Registry is the successor to Container Registry and should be reviewed alongside Storage controls. Verify:
+
+- Artifact Registry API is enabled only where needed.
+- Container vulnerability scanning / Artifact Analysis is enabled for image repositories.
+- Remote repositories restrict upstreams to trusted domains and approved package ecosystems.
+- IAM on repositories avoids broad writers, public readers, and inherited deploy privileges.
+- Build/deploy pipelines fail or require approval for critical vulnerabilities where policy requires it.
+
+---
+
+### Step 2D: Check Confidential VM Evidence for Sensitive Workloads
+
+For Level 2 or high-sensitivity workloads that process secrets, regulated data, signing material, or confidential customer data in memory, verify Confidential VM or an explicit risk-accepted exception.
+
+Evidence should include VM machine family compatibility, `enable_confidential_compute = true`, Shielded VM settings, CMEK disk encryption, workload data classification, and exception approval for workloads that cannot use AMD SEV or Intel TDX.
 
 ---
 
@@ -184,7 +222,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
 - **Effective Access Evidence:** <impersonation path, inherited scope, condition, group membership, downstream service account privileges>
-- **Remediation:** <specific fix with code example>
+- **Terraform Remediation:** <specific IaC fix with code example>
+- **Emergency gcloud Remediation:** <one-liner for immediate containment where safe>
 
 ### Prioritized Remediation Plan
 
@@ -211,7 +250,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 2 | Logging and Monitoring | Cloud Audit Logs (admin/data read/write), log sinks, bucket lock retention, metric filters and alerts (8 categories), DNS logging, Cloud Asset Inventory |
 | 3 | Networking | Default network removal, legacy networks, DNSSEC, firewall rules (SSH/RDP from internet), VPC flow logs, SSL policies, IAP-only access |
 | 4 | Virtual Machines | Default service accounts, access scopes, project SSH key blocking, OS Login, serial port, IP forwarding, CMEK disks, Shielded VM, public IPs, Confidential Computing |
-| 5 | Storage | Public bucket access, uniform bucket-level access |
+| 5 | Storage | Public bucket access, uniform bucket-level access, Artifact Registry scanning and remote repository trust |
 | 6 | Cloud SQL | MySQL/PostgreSQL/SQL Server database flags, SSL enforcement, authorized networks, public IP, automated backups |
 | 7 | BigQuery | Public dataset access, CMEK encryption for tables and datasets |
 
@@ -231,6 +270,10 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
 7. **Flat IAM reviews miss impersonation chains.** A project-level `Token Creator` or `Service Account User` grant can be more dangerous than a direct role assignment because it lets the principal inherit a privileged service account's permissions. Resolve inherited bindings, Google Group membership, workload identity attributes, IAM Conditions, deny policies, and the target service account's own roles before classifying the path.
+8. **Treating hybrid service-account keys as always identical.** User-managed keys are high risk by default, but a short-lived, tightly scoped, audited key for a legacy on-prem workload is different from an unrotated project-admin key. Require documented exception evidence before downgrading.
+9. **Checking org policies only at the project.** A project policy can weaken an inherited organization or folder control. Compare org, folder, and project policy values and classify weaker overrides as drift.
+10. **Skipping Artifact Registry because Storage was reviewed.** Image repositories, remote upstreams, and vulnerability scanning are separate supply-chain controls from GCS buckets.
+11. **Treating Confidential VM as optional for every workload.** For Level 2 or sensitive in-memory processing, require Confidential VM evidence or a documented incompatibility and risk acceptance.
 
 ---
 
@@ -258,6 +301,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud IAM Conditions: https://cloud.google.com/iam/docs/conditions-overview
 - Google Cloud Policy Analyzer: https://cloud.google.com/policy-intelligence/docs/analyze-iam-policies
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
+- Google Cloud Organization Policy Service: https://cloud.google.com/resource-manager/docs/organization-policy/overview
+- Google Cloud Artifact Registry vulnerability scanning: https://cloud.google.com/artifact-analysis/docs/scan-os-automatically
+- Google Cloud Confidential VM: https://cloud.google.com/confidential-computing/confidential-vm/docs
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
@@ -266,5 +312,6 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.1** -- Added validated hybrid service-account key exceptions, organization-policy drift checks, Artifact Registry scanning and remote repository gates, Confidential VM evidence, and emergency gcloud remediation fields.
 - **1.1.0** -- Added effective service account impersonation graph evidence, workload identity federation false-positive handling, inherited IAM scope review, and impersonation fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
