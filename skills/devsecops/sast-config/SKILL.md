@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -285,6 +285,10 @@ rules:
   suppressions. For example, `ast.literal_eval()` should not be flagged by a
   rule whose intent is unsafe `eval()` execution, and parameterized
   `cursor.execute(sql, params)` should not be flagged as raw SQL injection.
+- A fixture pack exists with at least one vulnerable source-to-sink flow and one
+  benign safe-wrapper flow for each custom injection rule family being tuned.
+  Record the fixture paths and expected true-positive or true-negative outcome
+  in the assessment so reviewers can reproduce precision claims.
 
 **Finding classification:** No taint-mode coverage for a Top 10 injection
 weakness in a language with active custom Semgrep rules is **High**. Taint rules
@@ -633,6 +637,13 @@ generated-code exclusions without path ownership and sampling are **Medium**.
 | Monorepo language matrix | Yes/No | <workspace/tool mapping> |
 | Generated code policy | Yes/No | <exclusion and sampling evidence> |
 
+### Fixture Evidence
+
+| Fixture | Expected Result | Rule/Query Exercised | Evidence |
+|---------|-----------------|----------------------|----------|
+| `tests/vulnerable/<case>` | True positive | <rule/query id> | <scan output or reproduction note> |
+| `tests/benign/<case>` | True negative | <rule/query id> | <scan output or reproduction note> |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -730,5 +741,7 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.1.1** -- Adds concrete vulnerable/benign fixture evidence guidance and a
+  reproducible SAST fixture pack for command-injection and SQLi precision checks.
 - **1.1.0** -- Adds Semgrep taint-mode, CodeQL custom dataflow, safe-wrapper false-positive, monorepo incremental scan, and generated-code handling guidance.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
