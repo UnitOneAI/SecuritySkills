@@ -43,6 +43,23 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 
 ---
 
+## JWT / OAuth Token Validation Evidence
+
+When an API accepts bearer JWTs, OAuth 2.0 access tokens, OIDC tokens, or opaque reference tokens, separate "token present" from "token accepted with correct semantics." API2:2023 Broken Authentication findings should be based on runtime validation evidence, not only the existence of an `Authorization` header.
+
+| Evidence area | Required review evidence | Failing examples |
+|---|---|---|
+| Issuer trust | Expected `iss` values are allowlisted per environment or tenant; discovery/JWKS metadata is pinned to trusted issuers | Any issuer accepted; JWKS URL derived from untrusted token claims |
+| Audience binding | Each API/resource server checks the expected `aud` or equivalent resource indicator | Token minted for another API, portal, or tenant is accepted |
+| Algorithm and key source | Allowed algorithms are explicit; `none` is rejected; symmetric/asymmetric key confusion is prevented; unknown `kid` fails closed | Library accepts token `alg`; RSA public key reused as HMAC secret; fallback key used on unknown `kid` |
+| Lifetime and revocation | `exp`, `nbf`, clock skew, refresh rotation, revocation, and disabled-subject handling are tested | Expired or revoked tokens continue to work |
+| Scope and claims | Privileged endpoints map to required scopes, roles, tenant claims, assurance level, and subject/object relationship | Endpoint checks only that `sub` exists or trusts an unscoped `role` claim |
+| Opaque tokens | API calls introspection or gateway policy proves active status, audience/resource, scope, expiry, and revocation state | Opaque string is accepted without introspection evidence |
+
+Use negative tests where possible: wrong issuer, wrong audience, expired token, `alg: none`, unexpected `kid`, missing scope, wrong tenant, revoked token, and disabled user/service principal. Mark token validation **Not Evaluable** when gateway policy, application middleware, or negative test evidence is missing.
+
+---
+
 ## Steps 2-11: OWASP API Security Top 10:2023 Evaluation (API1-API10)
 
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
@@ -207,13 +224,15 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 2. **Relying solely on API gateway controls.** API gateways can enforce rate limiting, authentication, and coarse-grained authorization, but they cannot enforce object-level authorization, property-level filtering, or business logic protections. These controls must be implemented in the application layer.
 
-3. **Treating GraphQL as inherently different from REST for security.** GraphQL shares all the same authorization, authentication, and injection risks as REST. The query language adds additional concerns (depth attacks, introspection, alias abuse) but does not eliminate any REST security requirements.
+3. **Treating JWT presence as proof of authentication quality.** A signed token can still be accepted by the wrong API if issuer, audience, algorithm, key source, lifetime, tenant, and scope semantics are not validated. Require token-validation evidence and negative tests before marking API2 controls as effective.
 
-4. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification.
+4. **Treating GraphQL as inherently different from REST for security.** GraphQL shares all the same authorization, authentication, and injection risks as REST. The query language adds additional concerns (depth attacks, introspection, alias abuse) but does not eliminate any REST security requirements.
 
-5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
+5. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification.
 
-6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+6. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
+
+7. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
 ---
 
@@ -236,6 +255,8 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP Application Security Verification Standard (ASVS) 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
+- **OWASP JSON Web Token Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
+- **RFC 8725 -- JSON Web Token Best Current Practices:** https://www.ietf.org/rfc/rfc8725.html
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
