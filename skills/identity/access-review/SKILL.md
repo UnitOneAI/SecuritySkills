@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -242,6 +242,52 @@ AC-5 states: "The organization separates duties of individuals as necessary, to 
 | Key/secret management | Application deployment | Credential exfiltration |
 | Vendor onboarding | Payment approval | Vendor fraud |
 
+**SoD conflict rule provenance register:**
+
+Before treating a conflict rule as authoritative, record its provenance.
+
+| Field | Required Evidence |
+|---|---|
+| Conflict rule ID | Stable rule identifier from the SoD matrix or IGA/GRC tool |
+| Conflicting functions | Function A and Function B, written as business capabilities, not only role names |
+| Covered systems | Applications, SaaS platforms, ERP modules, cloud accounts, and data stores covered by the rule |
+| Business process | Procure-to-pay, order-to-cash, change management, access certification, production release, or another named process |
+| Rule owner | Business, risk, compliance, or control owner accountable for the rule |
+| Version and approval | Version, approval date, approver, and change history for the SoD matrix |
+| Last reviewed | Date the rule was reviewed after process, system, workflow, or role-model changes |
+| Applicable scope | Production/non-production, legal entity, subsidiary, cost center, geography, transaction type, and threshold/limit scope |
+| Rationale | Regulatory, fraud, safety, production integrity, or audit rationale for the conflict |
+
+**Transaction path evidence:**
+
+Do not score a SoD finding as Critical or High on role-name match alone. Prove that the identity can participate in the same real transaction path.
+
+| Evidence Field | Required Review Evidence |
+|---|---|
+| Identity and access source | Direct role, inherited group, nested group, service account, JIT eligibility, emergency access, or delegated role |
+| Initiating capability | Whether the identity can create, modify, submit, or stage the transaction or change |
+| Approval capability | Whether the identity can approve, certify, release, or override the transaction or change |
+| Release or execution capability | Whether the identity can execute payment, deploy code, release batch, change production config, or finalize the transaction |
+| Environment and entity scope | Production vs. sandbox, tenant, legal entity, cost center, account, region, project, or application boundary |
+| Limit and workflow context | Approval limit, payment threshold, workflow breakpoint, dual-control requirement, and whether self-approval is blocked |
+| Effective capability evidence | Screenshots, entitlement exports, policy simulation, audit logs, transaction tests, or workflow configuration proving the path |
+| Last activity | Last transaction, approval, release, deployment, or activation observed for the identity in scope |
+
+**Compensating control and exception evidence:**
+
+| Control Type | Evidence Required Before Downgrading |
+|---|---|
+| Preventive workflow control | Independent approval step, self-approval block, dual control, limit enforcement, and workflow configuration evidence |
+| Detective review | Independent reviewer, sampled transactions, review results, exceptions found, review cadence, and retained evidence |
+| Monitoring and alerting | Alert logic, monitored events, alert owner, response SLA, and recent alert/test evidence |
+| Time-bound exception | Exception owner, business justification, approval, expiry, compensating controls, and renewal history |
+| JIT or emergency access | Eligibility state, activation log, approval ticket, duration, actions taken, post-use review, and revocation evidence |
+| Certifier independence | Evidence that the certifier is not the same person whose exception or conflict is being certified |
+
+**Not evaluable reasons:**
+
+Use `Not Evaluable` instead of assigning an unsupported severity when rule ownership, transaction mapping, effective-permission expansion, approval limits, environment scope, or compensating-control evidence is missing.
+
 **What to look for:**
 
 ```
@@ -252,6 +298,13 @@ AR-SOD-04: SoD analysis not automated (manual review only)
 AR-SOD-05: Emergency/break-glass access bypasses SoD without post-hoc review
 AR-SOD-06: Role combinations that create SoD conflicts not flagged during provisioning
 AR-SOD-07: SoD conflicts in service accounts (single account spans multiple functions)
+AR-SOD-08: SoD conflict rules lack owner, version, approval date, or last-reviewed evidence
+AR-SOD-09: SoD finding is based on role-name match without transaction-path evidence
+AR-SOD-10: Cross-system SoD path not evaluated across procurement, ERP, bank, CI/CD, cloud, or monitoring systems
+AR-SOD-11: Approval limits, environment, legal entity, tenant, or cost-center scope not recorded
+AR-SOD-12: Compensating control accepted without independent test, sample, alert, or review evidence
+AR-SOD-13: JIT/emergency SoD exception lacks activation, post-use review, expiry, or revocation evidence
+AR-SOD-14: Certifier is not independent from the conflict or exception being reviewed
 ```
 
 **Severity classification for SoD violations:**
@@ -263,6 +316,8 @@ AR-SOD-07: SoD conflicts in service accounts (single account spans multiple func
 | Development + production deploy | **High** | Unauthorized change risk |
 | Non-production environments only | **Medium** | Lower blast radius but bad practice |
 | Compensating control documented and tested | Downgrade one level | Mitigated but not eliminated |
+| Sandbox-only, read-only, approval-limit-zero, or out-of-scope legal entity | **Low/Medium or Not Evaluable** | Role-name match requires transaction-path proof before high severity |
+| Eligible-only JIT access with no activation and complete post-use controls | **Low/Medium or Not Evaluable** | Standing toxic access is not proven without activation evidence |
 
 ---
 
@@ -321,6 +376,12 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, roles, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding (counts, examples, screenshots) |
+| **SoD Rule Provenance** | Rule ID, owner, version, approval date, last review, systems, process, and applicable scope |
+| **Transaction Path Evidence** | Initiating, approval, release/execution capabilities, environment, entity, limit, workflow, and effective access proof |
+| **Compensating Control Evidence** | Preventive/detective control type, independent reviewer, sample/test evidence, alerting, cadence, exception owner, and expiry |
+| **JIT/Emergency Evidence** | Eligibility, activation log, approval ticket, duration, actions taken, post-use review, and revocation evidence |
+| **Certifier Independence** | Whether the reviewer/certifier is independent from the conflicting access or exception |
+| **Evaluation Status** | Confirmed, Not Evaluable, False Positive, Mitigated, Accepted Risk |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -354,6 +415,11 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 
 ### Detailed Findings
 [Findings table]
+
+### SoD Evidence Summary
+| Conflict Rule | Identity | Transaction Path Proven? | Scope/Limit Context | Compensating Control Evidence | Evaluation Status |
+|---|---|---|---|---|---|
+| [rule ID] | [identity] | [yes/no/not evaluable] | [environment/entity/limit] | [preventive/detective/exception evidence] | [confirmed/false positive/not evaluable] |
 
 ### Remediation Roadmap
 - Immediate (0-7 days): [critical findings]
@@ -400,7 +466,9 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 4. **Revocation without enforcement** — Reviews produce revocation decisions but no one executes them. Automate enforcement or track with SLA-bound tickets.
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
-7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+7. **Role-name SoD matches without transaction proof** — Similar role names can mean different capabilities across sandbox, production, entity, tenant, or approval-limit boundaries. Prove the transaction path before assigning high severity.
+8. **Compensating controls accepted as text only** — A stated manager review or monitoring control does not reduce risk unless independent execution, samples, alerts, and exception expiry are evidenced.
+9. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
 
 ---
 
@@ -420,6 +488,7 @@ This skill processes identity and entitlement data that may contain adversarial 
 ## References
 
 - NIST SP 800-53 Rev. 5, Security and Privacy Controls for Information Systems and Organizations — AC family: https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-53 Rev. 5 Update 1 — AC family current publication record: https://csrc.nist.gov/Pubs/sp/800/53/r5/upd1/Final
 - CIS Controls v8, Controls 5 and 6: https://www.cisecurity.org/controls/v8
 - NIST SP 800-162, Guide to Attribute Based Access Control (ABAC) Definition and Considerations: https://csrc.nist.gov/publications/detail/sp/800-162/final
 - IGA Market Guide (Gartner) — for tooling context on access certification platforms
@@ -443,4 +512,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-05 | Add SoD rule provenance, transaction-path evidence, compensating-control evidence, JIT/emergency exception evidence, certifier independence, and not-evaluable guidance |
 | 1.0.0 | 2025-03-06 | Initial release |
