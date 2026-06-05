@@ -153,13 +153,13 @@ skills:
 
   - id: azure-review
     name: "Azure Security Posture Review"
-    tags: [cloud, azure, cis-benchmark]
+    tags: [cloud, azure, cis-benchmark, container-apps, workload-identity]
     role: [cloud-security-engineer, security-engineer]
     phase: [assess, operate]
     activity: [audit, review]
     frameworks: [CIS-Azure-v2.1.0]
     difficulty: intermediate
-    time_estimate: "60-90min"
+    time_estimate: "75-120min"
     file: skills/cloud/azure-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 

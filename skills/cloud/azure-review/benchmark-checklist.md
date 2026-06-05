@@ -704,3 +704,186 @@ resource "azurerm_linux_web_app" {
   }
 }
 ```
+
+---
+
+## Supplemental -- Azure Container Apps and Workload Identity Federation
+
+These evidence gates are CIS-adjacent Azure workload checks. They do not replace the CIS v2.1.0 section score, but they prevent App Service, Key Vault, and Entra ID checks from missing Container Apps-specific secret, ingress, and federated identity risk.
+
+### AZ-ACA-01 -- Ensure production Container Apps secrets are not direct plaintext values
+
+Flag direct secret values in Terraform, Bicep, ARM, CLI exports, or checked-in configuration for production workloads:
+
+```hcl
+resource "azurerm_container_app" "webhook" {
+  secret {
+    name  = "stripe-webhook-secret"
+    value = "whsec_plaintext_value" # Finding: direct production secret value
+  }
+}
+```
+
+```json
+{
+  "type": "Microsoft.App/containerApps",
+  "properties": {
+    "configuration": {
+      "secrets": [
+        { "name": "payment-api-key", "value": "plain-secret" }
+      ]
+    }
+  }
+}
+```
+
+Benign calibration: local examples or non-production demos may include placeholder values, but production assessments should record environment, data classification, owner, and a migration plan to Key Vault references or managed identity.
+
+### AZ-ACA-02 -- Verify Key Vault-backed Container Apps secrets have runtime identity and scoped vault access
+
+A Key Vault reference is acceptable only when the Container App identity used for retrieval is explicit and has narrow Key Vault access:
+
+```hcl
+resource "azurerm_user_assigned_identity" "aca_runtime" {
+  name                = "checkout-runtime"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+}
+
+resource "azurerm_role_assignment" "runtime_can_read_secrets" {
+  scope                = azurerm_key_vault.app.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.aca_runtime.principal_id
+}
+
+resource "azurerm_container_app" "checkout_api" {
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.aca_runtime.id]
+  }
+
+  secret {
+    name                = "payment-api-key"
+    key_vault_secret_id = "${azurerm_key_vault.app.vault_uri}secrets/payment-api-key/0a1b2c3d4e5f"
+    identity            = azurerm_user_assigned_identity.aca_runtime.id
+  }
+}
+```
+
+Record these fields for each Key Vault-backed secret:
+
+| Field | Evidence |
+|---|---|
+| Secret reference type | direct value, Key Vault versioned URI, Key Vault latest-version URI |
+| Runtime identity | system-assigned, user-assigned, missing, or not evaluable |
+| Vault access scope | vault, resource group, subscription, management group, or unknown |
+| Vault permission | `Key Vault Secrets User`, access policy `get/list`, broader contributor/owner, or unknown |
+| Secret version | pinned version, latest version, or not evaluable |
+| Vault controls | purge protection, RBAC authorization, private endpoint/logging where available |
+
+Flag findings when the identity is missing, the vault access is broader than needed, the URI is not a Key Vault reference for production secrets, or the secret version/rotation evidence is not documented.
+
+### AZ-ACA-03 -- Verify env, volume, and scale-rule secret references resolve to controlled secrets
+
+Environment variables and scale rules can safely reference Container Apps secrets, but the referenced secret must exist and be backed by the appropriate source:
+
+```hcl
+template {
+  container {
+    env {
+      name        = "PAYMENT_API_KEY"
+      secret_name = "payment-api-key" # Benign when payment-api-key is Key Vault-backed
+    }
+  }
+
+  scale_rule {
+    name             = "queue"
+    custom_rule_type = "azure-queue"
+    authentication {
+      secret_name       = "queue-connection"
+      trigger_parameter = "connection"
+    }
+  }
+}
+```
+
+Do not flag an environment variable solely because its name contains `KEY`, `TOKEN`, or `SECRET`. Flag it when `secret_name`, `secretRef`, volume secret, or scale-rule secret references a missing secret, a direct production value, or a secret whose Key Vault identity/access evidence is missing.
+
+### AZ-ACA-04 -- Review external Container Apps ingress and insecure transport separately from VM/NSG exposure
+
+Container Apps can expose HTTP endpoints without a VM public IP or obvious NSG rule. Review `ingress` and Container Apps Environment evidence:
+
+```hcl
+resource "azurerm_container_app" "admin_api" {
+  ingress {
+    external_enabled           = true
+    target_port                = 8080
+    allow_insecure_connections = true # Finding unless explicitly justified and protected
+  }
+}
+```
+
+For each external endpoint, collect:
+
+| Field | Evidence |
+|---|---|
+| Ingress exposure | external, internal, private endpoint, or not evaluable |
+| Transport | HTTPS-only, `allow_insecure_connections`, TLS termination evidence |
+| Authentication | Entra auth, app gateway/front door auth, API gateway, mTLS/client certificate, or application auth evidence |
+| Authorization | role/tenant checks, backend authorization policy, API gateway policy, or not evaluable |
+| Workload context | public API, admin API, webhook, internal service, health endpoint |
+| Data classification | public, internal, confidential, regulated, unknown |
+
+`external_enabled = true` is not automatically a finding for a public API. Assign severity based on authentication, authorization, transport security, private endpoint/internal environment design, allowed origins, and workload/data classification.
+
+### AZ-WIF-01 -- Verify federated identity credential issuer, audience, and subject precision
+
+Workload identity federation is preferred over long-lived client secrets, but wildcarded trust can over-authorize CI/CD:
+
+```hcl
+resource "azuread_application_federated_identity_credential" "github" {
+  application_id = azuread_application.deploy.id
+  display_name   = "github-main"
+  issuer         = "https://token.actions.githubusercontent.com"
+  audiences      = ["api://AzureADTokenExchange"]
+  subject        = "repo:example-org/example-repo:*" # Finding: wildcard subject
+}
+```
+
+Record issuer-specific constraints:
+
+| Provider | Evidence to require |
+|---|---|
+| GitHub Actions | org/repo, branch/tag/environment, workflow or reusable workflow boundary where applicable, audience |
+| GitLab | project path, ref type, ref, environment, audience |
+| Terraform Cloud | organization, workspace, run phase, audience |
+| Custom OIDC | issuer URL, signing/key trust, subject format, audience, claim mapping |
+
+Flag findings for wildcard subjects such as `repo:org/repo:*`, unbounded branch/tag patterns, wrong audience, issuer mismatch, missing environment constraints for production deploys, or missing provider documentation.
+
+### AZ-WIF-02 -- Verify Azure RBAC scope reached by the federated principal
+
+Federated identity safety depends on both token claims and Azure permissions. For each federated service principal, map role assignments:
+
+```hcl
+resource "azurerm_role_assignment" "deploy" {
+  scope                = azurerm_subscription.primary.id
+  role_definition_name = "Owner" # Finding for a narrow app deploy workflow
+  principal_id         = azuread_service_principal.deploy.object_id
+}
+```
+
+Prefer resource group, app, or environment-specific roles over subscription-wide `Owner`, `Contributor`, `User Access Administrator`, or broad Key Vault permissions. Record scope, role name, principal ID, environment, owner, and business purpose.
+
+### AZ-WIF-03 -- Check for leftover long-lived credentials after federation
+
+If workload identity federation is implemented, verify that long-lived deployment credentials are removed or justified:
+
+```hcl
+resource "azuread_application_password" "deploy_secret" {
+  application_id = azuread_application.deploy.id
+  display_name   = "legacy-ci-secret" # Finding if still active without exception evidence
+}
+```
+
+Not Evaluable reasons include missing Entra application export, missing service principal credentials export, missing Azure RBAC assignments, missing CI/CD OIDC configuration, or provider-specific subject/audience evidence unavailable.

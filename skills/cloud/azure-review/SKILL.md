@@ -4,16 +4,17 @@ description: >
   Performs an Azure security posture review against the CIS Microsoft Azure
   Foundations Benchmark v2.1.0. Auto-invoked when reviewing Azure infrastructure,
   Entra ID configurations, NSG rules, Defender for Cloud settings, or Key Vault
-  access policies. Walks through all nine benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
-tags: [cloud, azure, cis-benchmark]
+  access policies. Walks through all nine benchmark sections, evaluates
+  supplemental Azure Container Apps and workload identity federation evidence,
+  and produces a prioritized findings report with remediation guidance mapped to
+  specific CIS control IDs or Azure workload evidence gates.
+tags: [cloud, azure, cis-benchmark, container-apps, workload-identity]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
-time_estimate: "60-90min"
-version: "1.0.0"
+time_estimate: "75-120min"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -27,6 +28,8 @@ argument-hint: "[target-file-or-directory]"
 
 This skill performs a structured security assessment of Azure environments against the **CIS Microsoft Azure Foundations Benchmark v2.1.0**. The benchmark is organized into nine sections covering identity management, security center, storage, database services, logging and monitoring, networking, virtual machines, Key Vault, and App Service. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Bicep, ARM templates), Azure CLI output, or configuration files available in the repository.
 
+The skill also records supplemental Azure workload evidence for Azure Container Apps and Microsoft Entra workload identity federation. These checks are not a replacement for the CIS section score; they prevent reviewers from missing public Container Apps ingress, direct Container Apps secret values, unmanaged Key Vault secret references, or broad OIDC federation that can deploy to Azure without a long-lived client secret.
+
 The CIS Azure Foundations Benchmark v2.1.0 provides prescriptive guidance across nine domains. This skill evaluates each applicable control and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
 ---
@@ -39,6 +42,8 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Assessing an existing Azure environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
 - Evaluating Entra ID configurations, NSG rules, Defender for Cloud, Storage account security, or Key Vault access policies
+- Reviewing Azure Container Apps secrets, ingress exposure, managed identity, Key Vault references, or scale-rule secrets
+- Reviewing Microsoft Entra workload identity federation for CI/CD systems such as GitHub Actions, GitLab, Terraform Cloud, or custom OIDC issuers
 - Onboarding a new Azure subscription into a security program
 
 ---
@@ -54,6 +59,8 @@ The CIS Microsoft Azure Foundations Benchmark v2.1.0 is a consensus-driven secur
 - Entra ID (Azure AD) configuration files or policy documents
 - NSG and firewall rule definitions
 - Key Vault access policies and RBAC assignments
+- Azure Container Apps Terraform/Bicep/ARM definitions and Container Apps Environment configuration
+- Entra application/service principal federated identity credential definitions and Azure RBAC assignments
 
 ---
 
@@ -88,6 +95,45 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 10A: Supplemental Azure Workload Evidence Gates
+
+Evaluate Azure Container Apps and workload identity federation configurations that are not fully represented by the CIS v2.1.0 App Service checklist.
+
+**Azure Container Apps evidence to collect:**
+
+- Workload name, resource type, environment, revision mode, and data classification.
+- Ingress mode: external vs. internal, HTTPS-only behavior, insecure-connection setting, client certificate mode, private endpoint or internal Container Apps Environment evidence, and upstream authentication/authorization evidence.
+- Secret source: direct Container Apps secret value, Key Vault reference, environment `secretRef`/Terraform `secret_name`, volume secret, scale-rule secret reference, or missing secret definition.
+- Runtime identity: system-assigned or user-assigned managed identity used for Key Vault secret retrieval, with the exact Key Vault scope and role assignment.
+- Key Vault reference details: version pinned vs. latest, secret URI, vault RBAC mode, private endpoint/logging evidence, and whether production secrets are directly embedded in IaC.
+
+**Workload identity federation evidence to collect:**
+
+- Federated credential issuer, audience, subject, and provider type.
+- CI/CD identity constraints: repository, organization, branch, tag, pull request, workflow, environment, project, or workspace.
+- Azure application/service principal and reachable Azure RBAC assignments, including scope and role definition.
+- Evidence that long-lived client secrets or certificates have been removed or justified.
+- Confidence level: strong, partial, docs-only, or not evaluable with the missing artifact named.
+
+**Supplemental findings to look for:**
+
+```
+AZ-ACA-01: Production Container Apps secret uses a direct plaintext value in Terraform, Bicep, ARM, or CLI output
+AZ-ACA-02: Container Apps Key Vault secret reference has no runtime identity or missing Key Vault Secrets User-equivalent scope
+AZ-ACA-03: Container Apps secret reference is unversioned without rotation, rollback, or change-control evidence
+AZ-ACA-04: Container Apps env, volume, or scale-rule secret reference points to a missing or direct-value secret definition
+AZ-ACA-05: External Container Apps ingress lacks authentication, authorization, private endpoint/internal environment, or data-classification evidence
+AZ-ACA-06: Container Apps ingress allows insecure connections or lacks HTTPS-only enforcement evidence
+AZ-WIF-01: Federated identity credential issuer, audience, or subject is wildcarded beyond the intended repository, branch, tag, environment, or workspace
+AZ-WIF-02: Federated CI/CD principal has Azure RBAC broader than the deployment target or business purpose
+AZ-WIF-03: Workload identity federation exists but long-lived client secrets/certificates for the same deployment principal remain active
+```
+
+**False-positive guards:**
+
+- Do not report a plaintext secret finding solely because an environment variable name contains `KEY`, `TOKEN`, or `SECRET` when the value is supplied through a Container Apps `secretRef`/Terraform `secret_name` backed by Key Vault and a scoped managed identity.
+- Do not fail a public Container Apps endpoint solely for `external_enabled = true`; calibrate severity by authentication, authorization, HTTPS-only behavior, private endpoint/internal environment design, allowed origins, and workload/data classification.
+- Treat unpinned Key Vault secret versions as an evidence item, not an automatic high-severity failure, when rotation and rollback controls are documented.
 
 ---
 
@@ -102,8 +148,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Immediate risk of data breach or unauthorized access | NSGs open to 0.0.0.0/0 on RDP/SSH, SQL databases publicly accessible, Defender for Cloud disabled |
-| **High** | Significant security gap that materially weakens posture | Missing MFA enforcement, storage accounts with public access, Key Vault without purge protection |
-| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2 |
+| **High** | Significant security gap that materially weakens posture | Missing MFA enforcement, storage accounts with public access, Key Vault without purge protection, public Container Apps admin API without auth evidence |
+| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2, broad workload identity federation subject |
 | **Low** | Hardening recommendation or defense-in-depth measure | HTTP/2 not enabled, FTP not fully disabled, missing CMK on non-sensitive storage |
 | **Informational** | Best practice observation, no direct security impact | Naming conventions, tag policies, documentation gaps |
 
@@ -119,6 +165,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Framework: CIS Microsoft Azure Foundations Benchmark v2.1.0
 - Files reviewed: <list of IaC files>
+- Supplemental workload gates reviewed: <Azure Container Apps / workload identity federation / none>
 
 ### Executive Summary
 - Total CIS recommendations evaluated: <N>
@@ -141,6 +188,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 7 | Virtual Machines | X | Y | Z | nn% |
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
+| Supplemental | Container Apps and Workload Identity | X | Y | Z | nn% |
 
 ### Detailed Findings
 
@@ -148,10 +196,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Pass / Fail / Not Evaluable
 - **Severity:** Critical / High / Medium / Low
 - **CIS Profile:** Level 1 / Level 2
+- **Evidence Gate:** CIS X.Y.Z / AZ-ACA-NN / AZ-WIF-NN
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Azure Workload Context:** workload type, ingress exposure, secret reference type, runtime identity, Key Vault scope, federated issuer/audience/subject, Azure RBAC scope, and confidence when applicable
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -184,6 +234,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 7 | Virtual Machines | Azure Bastion, managed disks, disk encryption with CMK, approved extensions, endpoint protection |
 | 8 | Key Vault | Key/secret expiration, soft delete, purge protection, RBAC authorization, private endpoints |
 | 9 | App Service | Authentication, HTTPS redirect, TLS version, client certificates, Entra ID registration, HTTP/2, FTP disabled |
+| Supplemental | Container Apps and Workload Identity | Container Apps secrets, ingress, managed identity, Key Vault references, Entra workload identity federation, Azure RBAC scope |
 
 ### CIS Profile Levels
 
@@ -200,6 +251,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Container Apps secrets are not App Service settings.** Check `azurerm_container_app.secret`, ARM/Bicep `configuration.secrets`, env `secretRef`, volume secrets, and scale-rule secret references separately from App Service app settings.
+8. **Key Vault references still need identity proof.** A Key Vault URI is not enough; record the managed identity used by the Container App and the exact Key Vault RBAC/access-policy scope.
+9. **Federation removes one secret but can widen blast radius.** OIDC workload identity is safer than a stored client secret only when issuer, audience, subject, environment/branch constraints, and Azure RBAC scope are tight.
 
 ---
 
@@ -225,10 +279,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
+- Azure Container Apps secrets: https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets
+- Azure Container Apps managed identities: https://learn.microsoft.com/en-us/azure/container-apps/managed-identity
+- Microsoft Entra workload identity federation: https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
+- Terraform AzureRM Container App resource: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/container_app
+- Terraform AzureAD federated identity credential resource: https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/application_federated_identity_credential
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added Azure Container Apps secret/ingress and workload identity federation evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
