@@ -115,6 +115,8 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 
 - Authentication endpoints without brute-force protection (rate limiting, account lockout, CAPTCHA).
 - JWT validation that is missing or incomplete -- no signature verification, no expiration check, acceptance of the `none` algorithm.
+- JWT/OAuth validation that verifies a signature but does not bind the token to the expected issuer (`iss`), audience (`aud`), tenant, scope, or endpoint.
+- JWKS/key retrieval that trusts token-controlled metadata, accepts unexpected `kid` values, or fails open during key rotation.
 - API keys transmitted in URL query strings (logged in server access logs, browser history, proxies).
 - Missing or weak token rotation -- refresh tokens that never expire or are not rotated on use.
 - Password reset or account recovery flows that leak tokens or allow enumeration.
@@ -126,6 +128,23 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 # VULNERABLE: JWT signature not verified
 import jwt
 token_data = jwt.decode(token, options={"verify_signature": False})
+```
+
+```javascript
+// VULNERABLE: Signature is valid, but audience and issuer are not checked
+const claims = jwt.verify(token, publicKey, { algorithms: ['RS256'] });
+if (claims.sub) {
+  return getPaymentsForSubject(claims.sub);
+}
+// Missing: iss allowlist, aud === 'payments-api', exp/nbf, scope, tenant
+```
+
+```yaml
+# VULNERABLE: JWKS source is derived from untrusted token claims
+token_validation:
+  issuer_mode: accept_any_configured_tenant
+  jwks_uri: "{token.iss}/.well-known/jwks.json"
+  unknown_kid_behavior: fetch_and_retry
 ```
 
 ```javascript
@@ -153,6 +172,10 @@ paths:
 
 - Enforce rate limiting on all authentication endpoints (e.g., 5 attempts per minute per IP/account).
 - Validate JWT signatures using a strong algorithm (RS256, ES256). Reject `none` and `HS256` if RSA is expected (algorithm confusion attack).
+- Allowlist expected issuers and pin discovery/JWKS metadata to trusted identity providers; never derive key sources from untrusted token claims.
+- Validate audience/resource binding for each API and tenant. A token minted for a web portal, another API, or another tenant must fail.
+- Map privileged endpoints to required scopes, roles, assurance level, tenant constraints, and subject/object relationships.
+- For opaque reference tokens, require authorization-server introspection evidence for active status, audience/resource, scope, expiry, and revocation.
 - Transmit API keys and tokens in HTTP headers (`Authorization` header), never in URL query strings.
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
@@ -163,6 +186,10 @@ paths:
 - [ ] All authentication endpoints have brute-force protections (rate limiting, lockout).
 - [ ] JWTs are validated for signature, expiration (`exp`), issuer (`iss`), and audience (`aud`).
 - [ ] The `none` algorithm and algorithm confusion attacks are prevented by explicit algorithm allowlisting.
+- [ ] JWKS/key sources are allowlisted, unknown `kid` values fail closed, and key rotation behavior is tested.
+- [ ] Endpoint-to-scope/claim mapping proves each privileged operation requires the right scope, role, tenant, and subject/object relationship.
+- [ ] Negative tests cover wrong issuer, wrong audience, expired token, missing scope, wrong tenant, revoked token, `alg:none`, and unexpected `kid`.
+- [ ] Opaque tokens are introspected or validated by a documented gateway policy before the request reaches the API.
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
