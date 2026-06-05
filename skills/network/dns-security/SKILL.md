@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -111,6 +111,41 @@ For each authoritative zone, verify:
 - **DS record in parent:** A DS record matching the KSK is published in the parent zone.
 - **NSEC vs. NSEC3:** NSEC3 is preferred to prevent zone enumeration (NIST SP 800-81 Rev 2 Section 4.4).
 
+#### 2.1.1 Authenticated Denial-of-Existence Evidence
+
+DNSSEC denial-of-existence records prove that a queried name does not exist, but
+the mechanism and parameters change the review outcome. Do not treat "uses
+NSEC3" as a pass by itself.
+
+For each signed authoritative zone, record:
+
+- **Denial mechanism:** NSEC, NSEC3, or unsigned/no authenticated denial.
+- **NSEC exposure:** NSEC exposes ordered next-name records that can support zone
+  walking. This is acceptable for zones where record names are public by design,
+  but should be documented for sensitive naming schemes.
+- **NSEC3 parameters:** Parse `NSEC3PARAM` as hash algorithm, flags, iterations,
+  and salt. RFC 9276 guidance is SHA-1 with `iterations=0` and an empty salt
+  (`-`) for most zones; non-zero iterations or persistent salts add operational
+  cost without meaningful modern protection.
+- **Opt-Out flag:** Flag `NSEC3PARAM` flags value `1` as opt-out. Opt-out is only
+  appropriate for large, delegation-heavy zones where unsigned delegations are
+  intentionally excluded from the proof chain. For ordinary enterprise zones,
+  require a documented reason and compensating monitoring.
+- **Validation evidence:** Capture a signed negative response sample, the
+  returned NSEC/NSEC3 record, DS-chain status, and the resolver used for
+  validation.
+
+```
+Denial-of-Existence Assessment:
+- Zone:                 [example.com]
+- Mechanism:            [NSEC | NSEC3 | Missing]
+- NSEC3PARAM:           [hash=1 flags=0 iterations=0 salt=-]
+- Opt-Out Enabled:      [Yes | No | Not Applicable]
+- RFC 9276 Aligned:     [Yes | No -- explain deviation]
+- Negative Proof Test:  [Pass | Fail | Not Tested]
+- Enumeration Exposure: [Accepted | Needs Review | High Risk]
+```
+
 **Patterns to check in zone files:**
 
 ```
@@ -126,7 +161,7 @@ auto-dnssec maintain
 inline-signing yes
 ```
 
-**Finding classification:** Unsigned authoritative zones for public-facing domains are **High**. Weak signing algorithms (RSA < 2048-bit, SHA-1) are **High**. Missing DS record in parent (broken chain of trust) is **Critical**.
+**Finding classification:** Unsigned authoritative zones for public-facing domains are **High**. Weak signing algorithms (RSA < 2048-bit, SHA-1) are **High**. Missing DS record in parent (broken chain of trust) is **Critical**. NSEC3 opt-out without a documented large-delegation use case is **Medium**. NSEC3 non-zero iterations or persistent salts that deviate from RFC 9276 without operational justification are **Low** to **Medium** depending on resolver cost and rollover risk.
 
 ---
 
@@ -300,8 +335,8 @@ abcdef0123456789.dnscat.example.com TXT
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
 | **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
-| **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; NSEC3 opt-out used in ordinary enterprise zones without documented delegation rationale. |
+| **Low** | Missing documentation of DNS architecture; resolver software not at latest version; NSEC3 parameters deviate from RFC 9276 without clear operational rationale; cosmetic configuration issues. |
 
 ---
 
@@ -318,9 +353,15 @@ abcdef0123456789.dnscat.example.com TXT
 
 ### DNSSEC Status
 
-| Zone | Signed | Algorithm | Key Sizes | DS in Parent | NSEC Version | Status |
-|------|--------|-----------|-----------|--------------|-------------|--------|
-| example.com | Yes/No | 13/8/15 | KSK:2048/ZSK:1024 | Yes/No | NSEC3 | Pass/Fail |
+| Zone | Signed | Algorithm | Key Sizes | DS in Parent | Denial Mechanism | NSEC3PARAM | Status |
+|------|--------|-----------|-----------|--------------|------------------|------------|--------|
+| example.com | Yes/No | 13/8/15 | KSK:2048/ZSK:1024 | Yes/No | NSEC3 | 1 0 0 - | Pass/Fail |
+
+### DNSSEC Denial-of-Existence Evidence
+
+| Zone | Mechanism | Opt-Out | RFC 9276 Aligned | Negative Proof Test | Enumeration Exposure |
+|------|-----------|---------|------------------|---------------------|----------------------|
+| example.com | NSEC3 | No | Yes | Pass | Accepted |
 
 ### Resolver Security
 
@@ -384,6 +425,12 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Treating NSEC3 as DNS record confidentiality.** NSEC3 makes zone walking
+more expensive, not impossible, and RFC 9276 recommends simple parameters for
+most deployments. Validate the actual `NSEC3PARAM` values and document whether
+NSEC exposure is acceptable instead of granting an automatic pass for any NSEC3
+record.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -403,6 +450,8 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
+- RFC 5155 -- DNSSEC Hashed Authenticated Denial of Existence: https://datatracker.ietf.org/doc/html/rfc5155
+- RFC 9276 -- Guidance for NSEC3 Parameter Settings: https://datatracker.ietf.org/doc/html/rfc9276
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
@@ -413,4 +462,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.1.0** -- Added DNSSEC denial-of-existence evidence gates for NSEC/NSEC3, including RFC 9276 parameter checks, opt-out review, report fields, and zone-file fixtures.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.

@@ -1,0 +1,11 @@
+$ORIGIN example.org.
+@ 3600 IN SOA ns1.example.org. dns-admin.example.org. 2026060501 3600 900 1209600 3600
+@ 3600 IN NS ns1.example.org.
+@ 3600 IN DNSKEY 257 3 13 AwEAAexampleKSK
+@ 3600 IN DNSKEY 256 3 13 AwEAAexampleZSK
+@ 3600 IN NSEC3PARAM 1 0 0 -
+www 3600 IN A 198.51.100.10
+
+; Benign review fixture:
+; - flags=0 avoids opt-out.
+; - iterations=0 and empty salt align with RFC 9276 guidance for most zones.

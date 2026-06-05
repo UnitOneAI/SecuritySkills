@@ -1,0 +1,12 @@
+$ORIGIN example.com.
+@ 3600 IN SOA ns1.example.com. dns-admin.example.com. 2026060501 3600 900 1209600 3600
+@ 3600 IN NS ns1.example.com.
+@ 3600 IN DNSKEY 257 3 13 AwEAAexampleKSK
+@ 3600 IN DNSKEY 256 3 13 AwEAAexampleZSK
+@ 3600 IN NSEC3PARAM 1 1 150 A1B2C3D4
+www 3600 IN A 192.0.2.10
+
+; Vulnerable review fixture:
+; - flags=1 enables NSEC3 opt-out without a documented delegation-heavy zone use case.
+; - iterations=150 and persistent salt deviate from RFC 9276 guidance for simple
+;   zero-iteration, empty-salt NSEC3 parameters.
