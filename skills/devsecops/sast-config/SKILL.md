@@ -230,6 +230,67 @@ rules:
 - [ ] `languages` is explicitly specified.
 - [ ] `pattern-not` or `pattern-not-inside` handles known safe patterns to reduce false positives.
 
+#### 3.3 Semgrep Taint Mode and Safe Wrapper Review
+
+For injection, deserialization, path traversal, SSRF, command execution, and
+template injection classes, prefer Semgrep `mode: taint` over single dangerous
+function matches. Single-sink rules are useful as guardrails, but they often
+miss real flows and over-report safe wrappers.
+
+```yaml
+rules:
+  - id: custom.python.sql-injection-taint
+    mode: taint
+    pattern-sources:
+      - pattern: request.$FIELD
+      - pattern: flask.request.$FIELD
+      - pattern: django.http.HttpRequest.$FIELD
+    pattern-propagators:
+      - pattern: $OUT = str.format($FMT, ..., $IN, ...)
+        from: $IN
+        to: $OUT
+      - pattern: $OUT = $A + $B
+        from: $A
+        to: $OUT
+    pattern-sinks:
+      - pattern: $DB.execute($QUERY, ...)
+      - pattern: $CURSOR.execute($QUERY, ...)
+    pattern-sanitizers:
+      - pattern: $DB.execute($SQL, ($PARAMS, ...))
+      - pattern: $CURSOR.execute($SQL, [$PARAMS, ...])
+    message: >
+      User-controlled input reaches a SQL execution sink without
+      parameterization. Use parameterized queries or an ORM query builder.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements in SQL Command"
+      owasp:
+        - "A03:2021 - Injection"
+      confidence: HIGH
+      impact: HIGH
+```
+
+**What to verify:**
+
+- Injection-class rules use `mode: taint` when source-to-sink flow matters.
+- Sources include framework-specific entry points (`request.args`, GraphQL
+  resolver arguments, message queue payloads, CLI arguments, webhook bodies).
+- Sinks are precise enough to avoid matching safe APIs that already bind
+  parameters.
+- Sanitizers and propagators are documented and tested against true-positive
+  and true-negative samples.
+- Safe wrappers are modeled as exclusions or sanitizers, not broad global
+  suppressions. For example, `ast.literal_eval()` should not be flagged by a
+  rule whose intent is unsafe `eval()` execution, and parameterized
+  `cursor.execute(sql, params)` should not be flagged as raw SQL injection.
+
+**Finding classification:** No taint-mode coverage for a Top 10 injection
+weakness in a language with active custom Semgrep rules is **High**. Taint rules
+without tested safe-wrapper exclusions are **Medium** because they can train
+developers to suppress useful rules.
+
 ---
 
 ### Step 4: CodeQL Query Pattern Review
@@ -306,6 +367,74 @@ select sink.getNode(), source, sink, "SQL injection from $@.", source.getNode(),
 - [ ] `@tags` include CWE and OWASP references.
 - [ ] Taint tracking uses appropriate source and sink definitions.
 - [ ] Query is tested against known-vulnerable and known-safe code samples.
+
+#### 4.3 CodeQL Dataflow Customization Review
+
+Default CodeQL packs are a strong baseline, but mature programs add local
+source, sink, sanitizer, and framework models for application-specific dataflow.
+Review whether custom query packs capture the organization's real entry points
+and security boundaries.
+
+```ql
+/**
+ * @name Python request data reaches database execution
+ * @kind path-problem
+ * @problem.severity error
+ * @security-severity 9.1
+ * @precision high
+ * @id custom/python-request-sql-flow
+ * @tags security
+ *       external/cwe/cwe-089
+ *       external/owasp/a03-2021
+ */
+
+import python
+import semmle.python.dataflow.new.TaintTracking
+import semmle.python.security.dataflow.RemoteFlowSources
+
+class SqlFlowConfig extends TaintTracking::Configuration {
+  SqlFlowConfig() { this = "SqlFlowConfig" }
+
+  override predicate isSource(DataFlow::Node source) {
+    source instanceof RemoteFlowSource
+  }
+
+  override predicate isSink(DataFlow::Node sink) {
+    exists(Call c |
+      c.getFunc().(Attribute).getName() = "execute" and
+      sink.asExpr() = c.getArg(0)
+    )
+  }
+
+  override predicate isSanitizer(DataFlow::Node node) {
+    exists(Call c |
+      c.getFunc().(Attribute).getName() = "literal_eval" and
+      node.asExpr() = c
+    )
+  }
+}
+
+from SqlFlowConfig config, DataFlow::PathNode source, DataFlow::PathNode sink
+where config.hasFlowPath(source, sink)
+select sink.getNode(), source, sink,
+  "User-controlled data reaches SQL execution from $@.", source.getNode(), "this source"
+```
+
+**What to verify:**
+
+- Custom query packs declare `qlpack.yml`, dependencies, and stable query IDs.
+- Dataflow queries use `path-problem` and emit path explanations, not only sink
+  locations.
+- Local models cover framework entry points, internal wrapper functions,
+  sanitizers, and service-specific sinks that default packs may miss.
+- Safe wrappers such as `ast.literal_eval`, parameterized SQL helpers, typed
+  serializers, and vetted URL allowlist validators are modeled explicitly.
+- Generated query results include true-positive and true-negative test fixtures
+  so precision can be measured before enforcing in CI.
+
+**Finding classification:** Custom CodeQL without dataflow for an injection or
+auth boundary class that depends on source-to-sink reasoning is **High**. Missing
+local source/sink/sanitizer models for a heavily wrapped codebase is **Medium**.
 
 ---
 
@@ -433,6 +562,33 @@ jobs:
 
 **Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**.
 
+#### 6.2 Monorepo, Incremental Scan, and Generated Code Review
+
+Large repositories need different evidence than single-service projects. Review
+whether scan scope is explicit enough to avoid both missed packages and noisy
+generated-code findings.
+
+**What to verify:**
+
+- Monorepo language discovery maps each package or workspace to its SAST tool:
+  for example, `apps/api` to Semgrep Python/JavaScript rules, `services/java`
+  to CodeQL Java, and infrastructure packages to IaC rules.
+- PR scans are diff-aware for speed, but scheduled scans run the full repository
+  so cross-file taint flows and shared wrapper changes are still analyzed.
+- Incremental scan configuration documents the base commit, changed-file
+  strategy, and fallback to full scan when dependency manifests, shared
+  libraries, custom rule packs, or sanitizer wrappers change.
+- Generated code is excluded only through explicit, reviewed paths such as
+  `generated/**`, `*.pb.go`, or OpenAPI clients, and those exclusions do not hide
+  handwritten adapters, resolvers, controllers, or authorization logic.
+- Suppressed generated-code findings are sampled periodically to catch template
+  vulnerabilities that repeat across generated files.
+
+**Finding classification:** Diff-only SAST with no scheduled full scan is
+**Medium**. Monorepo packages missing from the SAST language matrix are **High**
+when they contain internet-facing code or secrets-handling logic. Broad
+generated-code exclusions without path ownership and sampling are **Medium**.
+
 ---
 
 ## Findings Classification
@@ -474,6 +630,8 @@ jobs:
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+| Monorepo language matrix | Yes/No | <workspace/tool mapping> |
+| Generated code policy | Yes/No | <exclusion and sampling evidence> |
 
 ### Findings
 
@@ -526,7 +684,7 @@ jobs:
 
 ## Common Pitfalls
 
-1. **Running SAST only on changed files in PRs.** Incremental scanning misses vulnerabilities introduced by the interaction of new code with existing code. Run full-repo scans on schedule (weekly minimum) to catch cross-file taint flows that PR-scoped scans miss.
+1. **Running SAST only on changed files in PRs.** Incremental scanning misses vulnerabilities introduced by the interaction of new code with existing code. Run full-repo scans on schedule (weekly minimum) to catch cross-file taint flows that PR-scoped scans miss. Trigger a full scan whenever custom rules, dependency manifests, shared sanitizers, or wrapper libraries change.
 
 2. **Tuning rules by disabling instead of fixing.** When a rule produces false positives, the instinct is to disable it. Instead, add `pattern-not` clauses (Semgrep) or exclusion predicates (CodeQL) to handle the safe patterns while keeping detection for unsafe ones. Disabling a rule eliminates all coverage for that weakness class.
 
@@ -535,6 +693,12 @@ jobs:
 4. **Not testing custom rules against both vulnerable and safe code.** A custom rule that fires on vulnerable patterns but also fires on safe patterns is worse than no rule (it trains developers to suppress). Maintain a test corpus with expected true positives and expected true negatives for every custom rule.
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
+
+6. **Treating dangerous-function matches as complete detection.** A rule that
+   flags `eval`, `execute`, or `open` without dataflow can miss user-controlled
+   flows through wrappers and can flag safe helpers such as `ast.literal_eval()`.
+   Pair sink checks with taint mode or CodeQL dataflow and include explicit
+   safe-wrapper tests.
 
 ---
 
@@ -555,8 +719,10 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
+- Semgrep Taint Mode: https://semgrep.dev/docs/writing-rules/data-flow/taint-mode/
 - Semgrep Registry: https://semgrep.dev/r
 - CodeQL Documentation: https://codeql.github.com/docs/
+- CodeQL Data Flow Analysis: https://codeql.github.com/docs/writing-codeql-queries/about-data-flow-analysis/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
@@ -564,4 +730,5 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.1.0** -- Adds Semgrep taint-mode, CodeQL custom dataflow, safe-wrapper false-positive, monorepo incremental scan, and generated-code handling guidance.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
