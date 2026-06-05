@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -47,7 +47,7 @@ Before starting, collect or confirm:
 - [ ] **Scanner platform(s):** Which scanner(s) are in use? (Qualys VMDR, Tenable Nessus/IO/SC, Rapid7 InsightVM/Nexpose, OpenVAS/Greenbone, Snyk, Trivy, Grype, Nuclei)
 - [ ] **Current scan policies:** Existing scan policy names, configurations, and plugin/check selections
 - [ ] **Scan scope:** Target IP ranges, hostnames, applications, containers, or cloud accounts
-- [ ] **Authentication status:** Are scans currently authenticated (credentialed) or unauthenticated?
+- [ ] **Scanner modality and authentication status:** Is each scan host credentialed, external attacker-view, container image/SCA, CSPM/cloud API, DAST/API, IaC, agent-based, or mixed?
 - [ ] **False positive examples:** Specific findings suspected or confirmed as false positives, with evidence
 - [ ] **Scan frequency:** Current scan schedule and any performance constraints
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
@@ -138,23 +138,42 @@ Configure or optimize scan policies to balance detection coverage, accuracy, and
 | **Time-based exclusions** | Systems that cannot be scanned during business hours | Scan scheduling adjustment (see Step 6) |
 | **Credential exclusions** | Systems where credentialed scanning is not permitted by policy | Documented reason; accept reduced detection accuracy |
 
-### Step 3: Authenticated vs. Unauthenticated Scanning
+### Step 3: Scanner Modality and Credential Confidence
 
-Evaluate and configure credential-based (authenticated) scanning for improved accuracy.
+Evaluate each scanner according to its modality, credential type, assessment objective, and credential/API permission success evidence. Do not apply a single authenticated/unauthenticated quality benchmark across host scanning, external exposure scans, container image scanners, SCA, CSPM, DAST/API, IaC, or agent-based tooling.
 
 **Framework mapping:** CIS Controls v8 (Control 7: Continuous Vulnerability Management)
 
-#### Comparison Matrix
+#### Scanner Modality Matrix
 
-| Attribute | Unauthenticated (Remote) | Authenticated (Credentialed) |
-|---|---|---|
-| **Detection accuracy** | Low-Medium (60-70% of vulnerabilities) | High (90-95% of vulnerabilities) |
-| **False positive rate** | Higher (relies on banners, remote probes) | Lower (validates installed versions directly) |
-| **Detection scope** | Network-exposed services and configurations only | Installed packages, local configurations, file permissions, registry entries |
-| **Credential management** | None required | Requires credential vault integration (CyberArk, HashiCorp Vault, scanner-native vault) |
-| **Performance impact** | Lower (fewer checks) | Higher (more thorough checks per host) |
-| **Risk** | Low (non-invasive) | Medium (credential exposure, elevated access) |
-| **Compliance** | Insufficient for most compliance mandates (PCI, HIPAA, DISA STIG) | Required for PCI internal scanning, DISA STIG compliance |
+| Modality | Credential/Access Model | Confidence Evidence | Valid Use | Common False Confidence |
+|---|---|---|---|---|
+| **Host credentialed** | OS credentials, SSH, WinRM, domain/local admin, sudo, scanner agent | Authentication success rate by platform, asset group, scan cycle, and local check family | Installed packages, patch level, local configuration, registry/file checks | Credentials configured but failed on material scope |
+| **External attacker-view** | No credentials by design | Scope definition, source scanner, target list, public DNS/IP evidence, unauthenticated proof | Internet-facing exposure, perimeter ports/services, ASV-style validation | Treating lack of credentials as a quality defect |
+| **Container image** | Registry/artifact access, image tag or digest, SBOM access | Image digest, registry auth success, scanned architecture/OS, SBOM generation source | Image package and dependency vulnerability detection | Scanning a tag that drifted from deployed digest |
+| **SCA/source dependency** | Repository/package-manager access | Manifest/lockfile coverage, private package access, ecosystem coverage | Application dependency vulnerabilities | Missing private registries or generated dependency manifests |
+| **CSPM/cloud API** | Read-only cloud API role, org/project/account scope | API permission success, account/project coverage, denied API list | Cloud posture and control-plane misconfiguration | Cloud API role too narrow while report claims full account coverage |
+| **DAST/API** | Session auth, API token, browser auth, OpenAPI import, or unauthenticated public mode | Auth success, protected endpoint samples, crawl/import scope, token refresh evidence | Web/API runtime vulnerability testing | Public error pages scanned while authenticated paths were missed |
+| **IaC** | Repository access | File/module coverage, parser success, policy pack version | Desired-state configuration review | Generated or remote modules excluded without evidence |
+| **Agent-based** | Local agent enrollment and check-in | Agent health, last check-in, policy version, stale/missing agents by group | Local visibility at scale | Healthy policy assumed despite stale or absent agents |
+
+#### Credential and Access Success Evidence
+
+Capture success rate and permission evidence instead of relying on configured credentials alone:
+
+| Evidence Field | What to Record |
+|---|---|
+| `scanner_modality` | Host credentialed, external attacker-view, container image, SCA, CSPM/cloud API, DAST/API, IaC, agent-based, or mixed |
+| `assessment_objective` | Attacker-view exposure, installed package detection, cloud posture, dependency inventory, authenticated API coverage, compliance, or other |
+| `credential_type` | OS credential, API role, registry token, session cookie, OIDC/service principal, agent enrollment, or not applicable |
+| `credential_success_rate` | Percentage and denominator by platform, asset group, and scan cycle |
+| `permission_denied_scope` | Assets, APIs, packages, endpoints, or plugins skipped due to failed auth or insufficient permissions |
+| `evidence_timestamp` | Scan cycle date/time for the credential/access proof |
+| `confidence_impact` | Strong, acceptable, partial, low, or Not Evaluable |
+
+**Finding pattern:** A scan configured as authenticated but failing authentication on a material asset group is a coverage gap, not a fully authenticated scan.
+
+**Valid exception:** Unauthenticated external scans are valid when the stated objective is attacker-view perimeter exposure. Do not downgrade confidence for missing host credentials in that modality; instead verify scope, source, target list, and public-exposure evidence.
 
 #### Credential Configuration Best Practices
 
@@ -175,6 +194,10 @@ Authentication Configuration:
 - Cloud/API Auth:      [API key with read-only role | N/A]
 - Credential Rotation: [Every N days]
 - Last Verification:   [YYYY-MM-DD, success rate: [N]%]
+- Modality:            [Host credentialed | External attacker-view | Container image | SCA | CSPM/cloud API | DAST/API | IaC | Agent-based | Mixed]
+- Objective:           [Attacker-view exposure | Installed package detection | Cloud posture | Dependency inventory | Authenticated API coverage | Compliance | Other]
+- Auth Failures:       [N assets/endpoints/packages skipped, by group]
+- Confidence Impact:   [Strong | Acceptable | Partial | Low | Not Evaluable]
 ```
 
 ### Step 4: Severity Override Criteria
@@ -290,8 +313,8 @@ Classify the overall scanner tuning state into one of the following:
 | Classification | Definition | Criteria |
 |---|---|---|
 | **Poorly Tuned** | Scanner produces unreliable results | False positive rate > 30%, unauthenticated only, no severity overrides documented, no cross-scanner correlation |
-| **Basic** | Scanner operational but significant tuning gaps | False positive rate 15-30%, partial credential coverage, some ad-hoc overrides without documentation |
-| **Tuned** | Scanner produces reliable, actionable results | False positive rate < 15%, full credentialed scanning, documented overrides, regular policy review |
+| **Basic** | Scanner operational but significant tuning gaps | False positive rate 15-30%, partial credential/API success evidence, some ad-hoc overrides without documentation |
+| **Tuned** | Scanner produces reliable, actionable results | False positive rate < 15%, modality-appropriate credential/API evidence, documented overrides, regular policy review |
 | **Optimized** | Scanner program is mature and well-integrated | False positive rate < 5%, multi-scanner correlation, automated result ingestion, severity overrides with CVSS 4.0 justification, scan scheduling aligned with change management |
 
 ---
@@ -303,7 +326,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.0
+**Skill:** scanner-tuning v1.1.0
 **Frameworks:** CVSS 4.0, CWE
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
 
@@ -317,6 +340,8 @@ Highlight the most impactful tuning recommendations.]
 | Setting | Current State | Recommended State | Priority |
 |---|---|---|---|
 | Authentication | [Unauthenticated / Partial / Full] | [Full credentialed] | [High/Medium/Low] |
+| Scanner Modality | [Host credentialed / External attacker-view / Container image / SCA / CSPM / DAST/API / IaC / Agent-based / Mixed] | [Modality-appropriate access model] | [Priority] |
+| Credential/API Success Evidence | [Success rate by platform/asset group/API scope] | [Measured and reported every scan cycle] | [Priority] |
 | Plugin Selection | [All / Custom / Compliance-mixed] | [Separated vuln and compliance policies] | [Priority] |
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
@@ -330,6 +355,12 @@ Highlight the most impactful tuning recommendations.]
 
 **Estimated False Positive Rate:** [N%]
 **Top FP Contributors:** [List top 3-5 plugins generating the most false positives]
+
+### Modality and Credential Confidence
+
+| Scanner/Policy | Modality | Objective | Credential/API Type | Success Rate | Permission Denied Scope | Confidence Impact |
+|---|---|---|---|---|---|---|
+| [scanner/policy] | [modality] | [objective] | [credential type/N/A] | [N% with denominator] | [assets/APIs/endpoints skipped] | [Strong/Acceptable/Partial/Low/Not Evaluable] |
 
 ### Severity Overrides
 
@@ -391,13 +422,15 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 1. **Suppressing findings instead of investigating root cause.** When scanner results contain noise, the temptation is to suppress plugins globally. This creates blind spots. Instead, identify the root cause of the false positive (e.g., unauthenticated scan misreading a banner) and fix the detection method (enable authentication) rather than hiding the symptom (disabling the plugin).
 
-2. **Running unauthenticated scans and trusting the severity ratings.** Unauthenticated scans miss 30-40% of vulnerabilities and generate higher false positive rates because they rely on banner grabbing and remote probes rather than verifying installed package versions. Severity ratings from unauthenticated scans are inherently less reliable. Always pursue credentialed scanning for production environments.
+2. **Applying host-scan authentication assumptions to every scanner.** Host credentialed scans are usually stronger for installed package and local configuration checks, but unauthenticated external scans, container image scans, SCA, CSPM, DAST/API, IaC, and agent-based scans have different access models. Judge each scan by its stated objective, modality, and access-success evidence.
 
-3. **Mixing vulnerability and compliance scan policies.** Running CIS Benchmark or DISA STIG compliance checks in the same policy as vulnerability scanning inflates finding counts, confuses triage teams, and blurs the line between configuration hardening and vulnerability remediation. Maintain separate scan policies for vulnerability assessment and compliance auditing.
+3. **Treating configured credentials as successful credentials.** A policy can contain credentials while authentication fails on a material subset of Windows, Linux, network, database, cloud, or API targets. Record success rates by platform and asset group before claiming authenticated coverage.
 
-4. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
+4. **Mixing vulnerability and compliance scan policies.** Running CIS Benchmark or DISA STIG compliance checks in the same policy as vulnerability scanning inflates finding counts, confuses triage teams, and blurs the line between configuration hardening and vulnerability remediation. Maintain separate scan policies for vulnerability assessment and compliance auditing.
 
-5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
+5. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
+
+6. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
 ---
 
@@ -426,6 +459,18 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - Rapid7 InsightVM Documentation: https://docs.rapid7.com/insightvm/
 - Greenbone/OpenVAS: https://greenbone.github.io/docs/
 - Trivy: https://aquasecurity.github.io/trivy/
+- Trivy container image scanning: https://www.trivy.dev/docs/v0.69/guide/target/container_image/
 - Grype: https://github.com/anchore/grype
 - Nuclei: https://docs.projectdiscovery.io/tools/nuclei/
+- Qualys host authentication verification: https://docs.qualys.com/en/vm/10.24.2.0/authentication/authentication_lp.htm
+- Snyk container image scanning: https://docs.snyk.io/snyk-cli/commands/container
 - NVD (NIST): https://nvd.nist.gov/
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.1.0 | 2026-06-05 | Added scanner modality matrix, credential/API success evidence, attacker-view scan guidance, and removed fixed universal accuracy percentages |
+| 1.0.0 | 2025-03-06 | Initial release |
