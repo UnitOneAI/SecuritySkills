@@ -1,0 +1,48 @@
+{
+  "scenario": "high-risk Google Workspace tenant posture",
+  "admin": {
+    "superAdmins": 8,
+    "admin2StepVerification": "notEnforced",
+    "contextAwareAccess": "notConfigured",
+    "breakGlassMonitoring": "missing",
+    "riskyLoginAlerts": "unknown"
+  },
+  "appAccess": {
+    "defaultPolicy": "allowAllApps",
+    "marketplaceInstallPolicy": "open",
+    "domainWideDelegationReview": null,
+    "highRiskApp": {
+      "trusted": true,
+      "verified": false,
+      "owner": null,
+      "scopes": [
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/admin.directory.user"
+      ]
+    }
+  },
+  "gmail": {
+    "automaticForwarding": "allowed",
+    "externalReplyWarning": "disabled",
+    "suspiciousFilters": [
+      "forwardExternalAndDelete"
+    ],
+    "delegationReview": "missing"
+  },
+  "drive": {
+    "externalSharing": "anyone",
+    "visitorSharing": "enabled",
+    "sharedDriveExternalMembers": "notReviewed",
+    "publicLinksReviewed": false
+  },
+  "groups": {
+    "externalPosting": "allowed",
+    "externalMembership": "allowed"
+  },
+  "audit": {
+    "investigationTool": "unknown",
+    "alertRoutingOwner": null,
+    "evidenceFreshnessDays": null
+  }
+}

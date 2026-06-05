@@ -1,0 +1,59 @@
+{
+  "scenario": "controlled Google Workspace tenant posture with documented exceptions",
+  "admin": {
+    "superAdmins": 3,
+    "admin2StepVerification": "enforced",
+    "securityKeysForAdmins": "required",
+    "contextAwareAccess": "enabledForAdmins",
+    "breakGlass": {
+      "accounts": 2,
+      "monitoring": "enabled",
+      "testCadence": "quarterly",
+      "postUseReview": true
+    }
+  },
+  "appAccess": {
+    "defaultPolicy": "blockUntrustedApps",
+    "marketplaceInstallPolicy": "adminApprovalRequired",
+    "domainWideDelegationReview": "quarterly",
+    "approvedSecurityTool": {
+      "trusted": true,
+      "verified": true,
+      "owner": "security-operations",
+      "lastReviewed": "2026-05-20",
+      "scopes": [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/admin.directory.user.readonly"
+      ],
+      "businessJustification": "mail threat investigation"
+    }
+  },
+  "gmail": {
+    "automaticForwarding": "restricted",
+    "approvedRoutingExceptions": [
+      {
+        "recipient": "ticketing-system",
+        "owner": "support-operations",
+        "reviewCadence": "quarterly"
+      }
+    ],
+    "externalReplyWarning": "enabled",
+    "suspiciousMailboxRuleAlerts": "enabled"
+  },
+  "drive": {
+    "externalSharing": "approvedDomains",
+    "visitorSharing": "disabledForSensitiveOUs",
+    "sharedDriveExternalMembers": "reviewedQuarterly",
+    "publicLinkExpiryDays": 30
+  },
+  "groups": {
+    "externalPosting": "restricted",
+    "externalMembership": "ownerApproved",
+    "groupSharingExceptions": "documented"
+  },
+  "audit": {
+    "investigationTool": "available",
+    "alertRoutingOwner": "security-operations",
+    "evidenceFreshnessDays": 7
+  }
+}
