@@ -1,0 +1,28 @@
+case_id: secrets-managed-canary-benign-001
+fixture_intent: "Expected to classify a fully evidenced canary token as a monitored control artifact, not a production secret leak."
+expected_result: allow_with_documented_evidence
+secret_scan_finding:
+  file: infra/canary/aws-canary.tfvars
+  detected_type: aws_shaped_access_key
+  value_status: live
+  value_recorded_in_report: false
+canary_evidence:
+  owner: security-detection
+  deployment_purpose: repository_scraping_detection
+  backing_account_classification: canary_account
+  production_privileges: false
+  alert_destination: soc_webhook
+  last_drill: "2026-05-20"
+  allowlist_scope:
+    detector: gitleaks
+    path: infra/canary/aws-canary.tfvars
+    fingerprint: canary-key-alias-001
+    expires: "2026-09-30"
+live_validation_safety:
+  method_class: read_only_identity_check
+  redacts_secret_values: true
+  redacts_account_identifiers: true
+  rate_limited: true
+expected_review:
+  classification: informational_control_artifact
+  retest_trigger: "Owner, alert route, privilege, allowlist, validation method, or expiry changes."

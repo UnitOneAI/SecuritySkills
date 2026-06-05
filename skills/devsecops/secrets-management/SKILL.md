@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.3"
+version: "1.0.4"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -215,6 +215,21 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 7. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
+#### 2.2.1 Canary and Honeytoken Classification
+
+Valid-looking canary tokens, honeytokens, and decoy credentials may be live by design, but they are not automatically safe. Classify them as monitored control artifacts only when the review has explicit evidence for owner, deployment purpose, account/project identity, production privilege absence, alert destination, last drill or trigger proof, expiry, and revalidation cadence.
+
+**What to verify:**
+
+- Canary ownership is traceable to a security or detection owner, not an unreviewed scanner allowlist.
+- The backing account, project, workspace, or tenant is labelled as a canary or detection account and has no production data or destructive privileges.
+- Alert routing, alert test date, escalation path, and expected response owner are documented.
+- The allowlist is scoped to an exact detector, file/path, fingerprint, and token alias, with expiry and periodic review.
+- Public exposure of a canary token is still reviewed for unwanted signal loss, attacker reconnaissance value, or broken alert routing.
+- The report never prints the token value; record token type, alias, location, and evidence state only.
+
+**Finding classification:** Unknown ownership, missing alert routing, stale canary validation, or unclear backing privileges is **Medium**. A canary-like token with production privileges or no provable canary account boundary is **High** or **Critical** depending on exposure. A fully evidenced, monitored, privilege-less canary is **Informational**.
+
 #### 2.3 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
@@ -238,6 +253,20 @@ Verify that at least one secret detection tool is configured and integrated:
 
 **Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
 Unaudited or stale `detect-secrets` baselines that suppress current files are **Medium**; baselines that suppress provider-verifiable live secrets are **High** or **Critical** depending on exposure.
+
+#### 2.3.1 Live Validation Safety
+
+Live validation can reduce false positives, but it can also create side effects, disclose provider identifiers, trigger incident alerts without context, or mishandle canary credentials. Review validation controls before trusting "active" or "inactive" scanner labels.
+
+**What to verify:**
+
+- Validators use read-only identity or metadata checks and do not create, modify, delete, send, deploy, or rotate resources.
+- Validation calls are rate-limited, audited, and separated from automatic remediation actions.
+- Logs redact secret values and minimize account, tenant, workspace, and organization identifiers.
+- Canary or honeytoken accounts are classified before validation so expected alerts are not mistaken for compromise.
+- Validation evidence records provider, token type, validation method class, timestamp, result, and side-effect control without reproducing the credential.
+
+**Finding classification:** Live validation that can mutate resources, trigger external messages, or print account identifiers is **High**. Missing validation safety evidence is **Medium** when live validation is used to suppress or downgrade findings.
 
 ---
 
@@ -383,6 +412,19 @@ Secrets can leak after vault retrieval if applications log raw request bodies, r
 
 For agentic systems (AI agents, automation bots, CI/CD agents), evaluate credential handling patterns.
 
+#### 5.0 Agent Credential Exposure Model
+
+Record how credentials are exposed to the agent runtime before scoring the design:
+
+| Exposure Model | Description | Review Result |
+|----------------|-------------|---------------|
+| Raw provider secret | Real upstream API key, token, certificate, or private key is visible to the agent process or prompt/tool output. | High risk for agents that process untrusted content. |
+| Short-lived real secret | Real upstream credential is visible to the agent but expires quickly. | Better than long-lived secrets, but still exfiltratable during the valid window. |
+| Broker token / placeholder | Agent sees an opaque handle; a trusted broker injects the real upstream credential only at the network or tool boundary. | Preferred when broker policy is tightly scoped and audited. |
+| Capability handle | Agent receives a narrow operation-specific tool handle instead of a credential. | Preferred for high-risk tools and untrusted prompt sources. |
+
+Agents that read issue comments, webpages, repository files, emails, documents, or tool output should not receive raw provider credentials when a brokered token or capability handle can satisfy the workflow.
+
 #### 5.1 Short-Lived Tokens
 
 - Agents should use short-lived tokens (OAuth2 client credentials with short TTL, Vault dynamic secrets, STS temporary credentials).
@@ -428,6 +470,21 @@ spec:
 ```
 
 **Finding classification:** Agents using long-lived static credentials is **High**. No JIT credential mechanism for automated systems is **Medium**. Token TTL exceeding 10x task duration is **Medium**.
+
+#### 5.3 Credential Broker and Tool Gateway Evidence
+
+Brokered credentials are only safer when the broker enforces where and how the real secret is used. A proxy that injects an upstream token into any host, path, or method can still turn prompt injection, SSRF, or tool-output manipulation into credential misuse.
+
+**What to verify:**
+
+- The agent-visible value is an opaque handle or capability token, not the real upstream provider credential.
+- The broker enforces allowed host, path, method, request class, tenant, and operation scope before injecting a real credential.
+- Egress defaults to deny, with explicit allowlists for upstream APIs and deny rules for metadata services, private networks, and untrusted redirect targets.
+- Broker outage fallback does not inject raw provider secrets into the agent environment.
+- Broker audit logs capture agent identity, tool, upstream service, request class, decision, credential alias, and result without logging secret values.
+- Per-request authorization is enforced at the broker/tool boundary, not only when the agent starts.
+
+**Finding classification:** Raw provider secrets visible to agents that process untrusted content are **High**. A credential broker with wildcard host/path/method injection, default-allow egress, or raw-secret fallback is **High**. Missing broker audit evidence is **Medium**.
 
 ---
 
@@ -476,6 +533,16 @@ spec:
 | Application logs | Yes/No | token/password/authorization/private_key | <period> | <gaps> |
 | CI logs | Yes/No | env vars / command args / test output | <period> | <gaps> |
 | Traces and metrics | Yes/No | span attributes / labels / IDs | <period> | <gaps> |
+
+### Agent Credential and Validation Controls
+
+| Agent / Tool | Exposure Model | Broker Binding | Egress Policy | Audit Evidence | Fallback Risk |
+|--------------|----------------|----------------|---------------|----------------|---------------|
+| repo-maintenance-agent | broker token | github.com/repos/:owner/:repo only | default deny | alias-only request log | no raw-secret fallback |
+
+| Token Class | Owner | Backing Privilege | Alert Route | Last Drill | Validation Safety |
+|-------------|-------|-------------------|-------------|------------|-------------------|
+| Canary AWS-shaped key | sec-detection | no production privileges | SOC webhook | 2026-05-20 | read-only metadata check |
 
 ### Findings
 
@@ -551,6 +618,12 @@ spec:
 
 10. **Using a secret manager as an unclassified PII vault.** Storing regulated identifiers in a secret manager does not automatically satisfy data-protection requirements. Confirm field-level encryption, retention, access logging, masking, and metadata hygiene.
 
+11. **Treating short-lived agent secrets as non-exfiltratable.** A ten-minute provider token can still be abused if prompt injection can make the agent print, forward, or misuse it. Prefer brokered handles or capability-scoped tools when the agent processes untrusted content.
+
+12. **Adding a credential broker without binding policy.** A broker that injects credentials for any host, path, method, or redirect is just a slower raw-secret leak. Require default-deny egress and request-scope enforcement.
+
+13. **Blindly suppressing canary tokens or trusting live validation.** Canary tokens need owner, alert, privilege, and drill evidence. Live validators need side-effect and redaction controls before their result can downgrade a finding.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -576,11 +649,14 @@ This skill processes configuration files and code that may contain secret values
 - detect-secrets: https://github.com/Yelp/detect-secrets
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
+- OWASP Top 10 for LLM Applications 2025: https://genai.owasp.org/owasp-top-10-for-llm-applications-2025/
+- Kingfisher: https://github.com/mongodb/kingfisher
 
 ---
 
 ## Changelog
 
+- **1.0.4** -- Add canary/honeytoken classification, live-validation safety checks, agent credential exposure models, brokered credential and capability-handle gates, and broker audit/egress evidence.
 - **1.0.3** -- Add HSM/KMS protection-level gates, regulated-data overlap checks, post-incident secondary-access invalidation, and secret masking controls for logs/observability.
 - **1.0.2** -- Add public-by-design key classification, modern provider prefixes, Kubernetes/base64 decode-and-rescan guidance, non-secret high-entropy filters, and detect-secrets baseline audit checks.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).

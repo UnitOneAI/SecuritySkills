@@ -1,0 +1,30 @@
+case_id: secrets-broker-wildcard-vulnerable-001
+fixture_intent: "Expected to flag a credential broker that injects real credentials without request-scope binding."
+expected_result: flag
+credential_broker:
+  mode: outbound_proxy
+  agent_visible_value: opaque_session_handle
+  upstream_secret_location: server_side_secret_alias
+  injection_rules:
+    - host: "*"
+      path: "*"
+      method: "*"
+      header: Authorization
+  network_policy:
+    default: allow
+    deny_metadata_services: false
+    deny_private_networks: false
+  audit_log:
+    records_agent_identity: true
+    records_tool_name: false
+    records_credential_alias: false
+    logs_secret_values: false
+  outage_fallback: inject_raw_provider_secret
+expected_review:
+  finding: "Wildcard broker injection and raw-secret fallback make brokered credentials unsafe."
+  required_evidence:
+    - host_path_method_allowlist
+    - default_deny_egress
+    - upstream_ip_deny_rules
+    - alias_only_audit_logs
+    - no_raw_secret_fallback

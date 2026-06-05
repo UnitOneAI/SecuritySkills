@@ -1,0 +1,22 @@
+case_id: secrets-live-validation-vulnerable-001
+fixture_intent: "Expected to flag live secret validation that can mutate resources or leak provider identifiers."
+expected_result: flag
+scanner_config:
+  live_validation: true
+  validators:
+    - provider: github
+      method_class: repository_write_probe
+      read_only: false
+      redacts_secret_values: true
+      redacts_account_identifiers: false
+      rate_limited: false
+    - provider: messaging_service
+      method_class: send_test_message
+      read_only: false
+      redacts_secret_values: true
+      redacts_account_identifiers: true
+canary_handling:
+  classifies_canary_accounts_before_validation: false
+  expected_alert_route_recorded: false
+expected_review:
+  finding: "Live validation must be side-effect-limited, redacted, rate-limited, and canary-aware before scanner results can downgrade findings."
