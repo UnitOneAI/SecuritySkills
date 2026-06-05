@@ -16,7 +16,7 @@ Legal/compliance review: completed.
 Legal privilege owner: external breach counsel owns privileged demand-decision records.
 Sanctions / local legal screening: cleared by legal for governance documentation; no payment authorized by this playbook.
 Default posture: restore-first / no-payment unless executive and legal decision record changes.
-FBI IC3 / local law enforcement: submitted, reference recorded.
+FBI IC3 / local FBI field office / local law enforcement: submitted, reference recorded.
 CISA / national CERT: submitted, reference recorded.
 Cyber insurer / breach counsel: notified, claim ID recorded.
 Third-party authority: DFIR authorized for containment and forensics only; no actor contact or payment facilitation authority.

@@ -477,7 +477,7 @@ and recommended immediate actions. Lead with the most critical fact.]
 ### Ransomware Reporting and Third-Party Authority
 | Party / Route | Status | Reference | Approver | Facts Shared |
 |---|---|---|---|---|
-| FBI IC3 / local law enforcement | [Not started / Planned / Submitted / Not applicable] | [Report ID] | [Owner] | [Summary] |
+| FBI IC3 / local FBI field office / local law enforcement | [Not started / Planned / Submitted / Not applicable] | [Report ID] | [Owner] | [Summary] |
 | CISA / national CERT | [Not started / Planned / Submitted / Not applicable] | [Report ID] | [Owner] | [Summary] |
 | Secret Service / local equivalent | [Not started / Planned / Submitted / Not applicable] | [Report ID] | [Owner] | [Summary] |
 | Sector ISAC | [Not started / Planned / Submitted / Not applicable] | [Case ID] | [Owner] | [Summary] |
@@ -576,6 +576,7 @@ This skill processes incident data that may include attacker-controlled content 
 14. **OFAC Updated Advisory on Potential Sanctions Risks for Facilitating Ransomware Payments** -- https://ofac.treasury.gov/system/files/126/ofac_ransomware_advisory.pdf
 15. **CISA StopRansomware Guide** -- https://www.cisa.gov/stopransomware/ransomware-guide
 16. **CISA Report Ransomware** -- https://www.cisa.gov/stopransomware/report-ransomware
+17. **FBI Ransomware Resource** -- https://www.fbi.gov/how-we-can-help-you/scams-and-safety/common-frauds-and-scams/ransomware
 
 ---
 

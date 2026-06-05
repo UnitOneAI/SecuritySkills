@@ -15,7 +15,7 @@ Legal/compliance review: not started.
 Legal privilege owner: missing.
 Sanctions / local legal screening: missing.
 Insurer position: missing.
-FBI IC3 / local law enforcement report: planned but no reference.
+FBI IC3 / local FBI field office / local law enforcement report: planned but no reference.
 CISA / national CERT report: missing.
 Third-party authority: negotiation vendor mentioned, but authority-to-act is not documented.
 Default posture: missing.
