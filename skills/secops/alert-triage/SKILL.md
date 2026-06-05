@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -54,9 +54,12 @@ Before beginning triage, gather or confirm:
 - [ ] **Alert data:** The raw event(s) that triggered the alert -- including all available fields (source IP, destination IP, username, hostname, process name, command line, file hash, URL).
 - [ ] **ATT&CK mapping:** If the alert rule maps to a MITRE ATT&CK technique, note the technique ID.
 - [ ] **Asset context:** What is the affected asset? (Server, workstation, cloud instance, network device.) What is its business criticality? (Revenue-generating, customer-facing, development, test.)
+- [ ] **Data classification:** Does the alert touch PII, PHI, PCI, HR, confidential, customer, regulated, or crown-jewel data? If unknown, record the owner needed to classify it.
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
+- [ ] **Evidence preservation status:** Raw event export, SIEM query/time range, cloud/DLP/EDR exports, screenshots, approval evidence, retention deadlines, and case attachment location.
+- [ ] **Escalation handoff status:** Named recipient or queue, acknowledgment timestamp, current owner, next decision deadline, and unresolved evidence gaps.
 
 If some context is unavailable, proceed with available information and note gaps as assumptions.
 
@@ -79,6 +82,19 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
+
+**Evidence preservation checklist:**
+
+| Evidence Type | Preserve Before Closure? | Required Metadata |
+|---------------|--------------------------|-------------------|
+| Raw alert payload | Yes | Export ID or ticket attachment, hash if available, original timestamp, source system |
+| SIEM query and time range | Yes | Query text or saved-search ID, start/end time, analyst, workspace/index |
+| DLP/cloud audit export | Required for data-access or exfiltration candidates | Export ID, hash if available, retention window, data source |
+| EDR/network context | Required when host or network activity affects disposition | Case artifact ID, time range, host/user scope |
+| Approval or asset-owner evidence | Required for BTP closure on sensitive assets | Ticket/comment/approval ID, approver, scope, expiration |
+| Screenshots or console views | Optional supporting evidence | Case attachment ID, capture time, redaction status |
+
+If evidence cannot be preserved, record the retention risk and the owner responsible for re-collecting or approving closure.
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
 
@@ -138,6 +154,14 @@ Assign a priority level based on the combination of asset criticality, threat se
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
 | Business context | During M&A, audit, or incident response | Normal operations |
 
+**Disposition guardrails for sensitive alerts:**
+
+- Do not close regulated-data, crown-jewel, or unknown-classification alerts as BTP/FP until evidence-preservation status and approval evidence are recorded.
+- Treat unknown data classification as **Not Evaluable** for notification impact until an asset/data owner confirms the data class.
+- A regulated-data alert can be a notification candidate without being a confirmed breach. Preserve the clock-start evidence and hand off to privacy/legal for reportability determination.
+- If privacy/legal handoff is required but unacknowledged, keep the alert open or pending handoff; do not mark it fully closed.
+- Document missing impact evidence separately from disposition confidence so the report does not overstate breach confirmation or understate notification risk.
+
 ### Phase 4: Escalate
 
 Determine whether the alert requires escalation and to whom.
@@ -153,6 +177,24 @@ Determine whether the alert requires escalation and to whom.
 | Analyst is uncertain about disposition after 20 minutes of investigation | Tier 2 analyst or team lead for guidance |
 | Alert matches a known active threat campaign | Threat intelligence team + IR team |
 | Multiple correlated alerts suggest a coordinated attack | IR team lead for incident declaration |
+
+#### Regulated Data / Notification Candidate Gate
+
+When an alert may involve regulated or contractual notification duties, the SOC analyst does not need to decide reportability. The triage report must preserve the candidate, clock-start evidence, and named decision owner.
+
+| Field | Required Value |
+|-------|----------------|
+| Data classification | PII, PHI, PCI, HR, confidential, customer data, crown-jewel, unknown |
+| First detected at | Earliest alert/event timestamp that may start an internal review clock |
+| Potential notification regime | HIPAA, GDPR, state breach law, PCI, customer contract, internal policy, unknown |
+| Privacy/legal handoff required | Yes, no, or unknown |
+| Handoff owner | Named role, queue, or team responsible for reportability decision |
+| Handoff timestamp | Time the case was sent to privacy/legal/compliance |
+| Reportability decision owner | Person or role accountable for breach/notification determination |
+| Decision deadline or next update | Timestamp or unknown |
+| Missing impact evidence | DLP export, file names, sharing events, data owner confirmation, exfiltration proof, or other gaps |
+
+Use "notification candidate" language until the appropriate decision owner confirms reportability. Do not state that a breach occurred solely from a suspicious alert.
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2.6 "Incident Notification" and Section 3.2.7 "Escalation." NIST recommends predefined escalation procedures with clear criteria and contact information.
 
@@ -172,6 +214,11 @@ Escalation Notice:
 - Escalated To:       [Name/role of escalation recipient]
 - Escalated By:       [Analyst name]
 - Escalated At:       [Timestamp]
+- Acknowledged By:    [Recipient name/queue or PENDING]
+- Acknowledged At:    [Timestamp or PENDING]
+- Current Owner:      [Team/person owning next action]
+- Next Decision Deadline: [Timestamp]
+- Unresolved Evidence Gaps: [List]
 ```
 
 ---
@@ -194,7 +241,7 @@ Produce the triage decision as a structured report:
 ```markdown
 ## Alert Triage Report
 **Date:** [YYYY-MM-DD HH:MM UTC]
-**Skill:** alert-triage v1.0.0
+**Skill:** alert-triage v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 **Analyst:** [Name or AI-assisted]
 
@@ -222,11 +269,47 @@ Produce the triage decision as a structured report:
 | **Priority** | **[P1 Critical / P2 High / P3 Medium / P4 Low]** |
 | **Confidence** | [High / Medium / Low] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
+| **Data Classification** | [PII / PHI / PCI / HR / Confidential / Crown-jewel / Unknown / N/A] |
+| **Notification Candidate** | [Yes / No / Unknown / Not evaluable] |
+| **Evidence Preservation Status** | [Complete / Partial / Missing / Not required] |
 
 ### Evidence Summary
 1. [Key finding 1 -- what was observed]
 2. [Key finding 2 -- corroborating or contradicting evidence]
 3. [Key finding 3 -- threat intel or historical context]
+
+### Evidence Preservation
+| Evidence Type | Preserved? | Location / Case ID | Hash or Export ID | Retention Risk |
+|---------------|------------|--------------------|-------------------|----------------|
+| Raw alert payload | [Yes/No/N/A] | [ticket URL/attachment ID] | [sha256/export ID/N/A] | [Low/Medium/High] |
+| SIEM query and time range | [Yes/No/N/A] | [query ID/case note] | [N/A] | [Low/Medium/High] |
+| DLP/cloud audit export | [Yes/No/N/A] | [export ID/case artifact] | [sha256/export ID/N/A] | [Low/Medium/High] |
+| EDR/network context | [Yes/No/N/A] | [case artifact] | [sha256/export ID/N/A] | [Low/Medium/High] |
+| Approval/asset-owner evidence | [Yes/No/N/A] | [ticket/comment] | [N/A] | [Low/Medium/High] |
+
+### Regulated Data / Notification Candidate
+| Field | Value |
+|-------|-------|
+| Data classification | [PII / PHI / PCI / HR / Confidential / Crown-jewel / Unknown / N/A] |
+| First detected at | [timestamp] |
+| Potential notification regime | [HIPAA / GDPR / state breach law / PCI / contract / internal policy / unknown / N/A] |
+| Privacy/legal handoff required | [Yes / No / Unknown] |
+| Handoff owner | [name/role/queue] |
+| Handoff timestamp | [timestamp / pending / N/A] |
+| Reportability decision owner | [name/role/queue] |
+| Decision deadline or next update | [timestamp / unknown / N/A] |
+| Missing impact evidence | [list or none] |
+
+### Escalation Handoff
+| Field | Value |
+|-------|-------|
+| Escalated To | [name/role/queue/N/A] |
+| Escalated At | [timestamp/N/A] |
+| Acknowledged By | [name/role/queue/PENDING/N/A] |
+| Acknowledged At | [timestamp/PENDING/N/A] |
+| Current Owner | [team/person] |
+| Next Decision Deadline | [timestamp/N/A] |
+| Unresolved Evidence Gaps | [list or none] |
 
 ### Correlation Results
 - **Temporal:** [Related events within +/- 30 min window]
@@ -318,6 +401,14 @@ Investigating an alert in isolation without checking for activity before and aft
 ### Pitfall 5: Delaying Escalation While Seeking Perfect Information
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
+
+### Pitfall 6: Treating Notification Candidates as Confirmed Breaches
+
+An alert involving regulated data may require privacy/legal review even when exfiltration is not yet proven. Preserve the earliest detection timestamp, data classification, missing impact evidence, and decision owner, but use notification-candidate language until the reportability owner makes the determination.
+
+### Pitfall 7: Closing Sensitive Alerts Without Preserving Evidence
+
+BTP and FP closures for regulated-data, crown-jewel, or unknown-classification assets still need an auditable record. Preserve raw events, query scope, DLP/cloud exports, owner approvals, and retention-risk notes before closure so the decision can be reconstructed later.
 
 ---
 
