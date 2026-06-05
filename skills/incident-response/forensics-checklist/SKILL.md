@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,15 +57,43 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Current system state** -- Powered on (running), powered off, suspended (VM), or unknown.
 - [ ] **Legal hold status** -- Has legal counsel issued a preservation directive? Are there litigation or regulatory holds in effect?
 - [ ] **Authorization** -- Written authorization from system owner or legal authority to perform forensic acquisition.
+- [ ] **Approved evidence scope** -- Systems, accounts, time windows, data classes, and custodians explicitly approved for collection.
+- [ ] **Minimization constraints** -- Evidence targets that must be excluded, narrowed, redacted, or reviewed separately.
+- [ ] **Sensitive or privileged data handling** -- Expected PII/PHI/PCI, attorney-client material, HR records, works-council data, or regulated customer data that needs segregation.
 - [ ] **Evidence storage** -- Write-protected storage media available (forensic drives, NAS, S3 bucket with object lock).
 - [ ] **Forensic tools available** -- Memory capture (WinPmem, LiME, DumpIt), disk imaging (dc3dd, FTK Imager, ewfacquire), network capture (tcpdump, Wireshark).
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Retention and disposition** -- Required retention period, storage jurisdiction, and final disposition owner for collected evidence.
 
 ---
 
 ## 3. Process
+
+### Step 0: Confirm Evidence Scope, Minimization, and Privileged Data Handling
+
+Before acquiring evidence, confirm that the plan is both forensically useful and proportionate to the authorized investigation scope. Chain of custody proves provenance; it does not prove that every collected record was legally or operationally appropriate to collect.
+
+**Scope and minimization gate:**
+
+| Field | Required Evidence |
+|---|---|
+| Approved scope | Incident ID, approving authority, target systems/accounts, custodians, time range, and permitted evidence classes |
+| Exclusions | Mailboxes, folders, tenants, regions, users, data classes, or systems outside the authorized scope |
+| Sensitive data classes | Expected PII, PHI, PCI, HR, customer, trade-secret, or regulated records |
+| Privileged material | Attorney-client, legal-work-product, union/works-council, or executive-sensitive material that needs sealed review |
+| Collection minimization | Query filters, time windows, scoped exports, selective snapshots, or targeted acquisition rationale |
+| Segregation approach | Separate storage path, access group, review owner, redaction process, and approval for release to investigators |
+| Retention and disposition | Retention period, storage jurisdiction, deletion/return trigger, and disposition owner |
+
+**Decision rules:**
+
+- Prefer targeted exports over full-tenant, full-mailbox, or all-region collection when targeted evidence answers the investigative question.
+- If broad acquisition is unavoidable, document why narrower collection would lose material evidence and require explicit approval.
+- Segregate privileged or highly regulated material before broad analyst review; use counsel, privacy, or HR screening when required.
+- Do not copy unrelated tenant, customer, employee, or regional data into the main case folder unless it is in scope and approved.
+- Preserve enough metadata to prove provenance even when content is redacted or sealed from the working investigation set.
 
 ### Step 1: Establish Chain of Custody
 
@@ -283,10 +311,11 @@ Preserve logs before rotation policies destroy them. Export and hash logs from e
 
 **Log export procedure:**
 ```
-1. Export raw logs to write-protected storage
-2. Compute SHA-256 hash of each exported log file
-3. Document: source, time range, export method, hash value
-4. Store alongside disk and memory evidence in the case folder
+1. Confirm the approved source, subject/resource filter, and time window.
+2. Export the narrowest raw log set that preserves investigative value.
+3. Compute SHA-256 hash of each exported log file.
+4. Document: source, filters, time range, export method, hash value, and excluded scope.
+5. Store alongside disk and memory evidence in the case folder or segregated privileged-data store.
 ```
 
 ### Step 6: Cloud Forensics
@@ -338,6 +367,8 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- Use account, project, tenant, resource, principal, and time-range filters before exporting broad cloud or SaaS audit logs
+- Document any full-tenant or all-region export as an approved exception with minimization and privileged-data handling
 
 ---
 
@@ -367,6 +398,16 @@ Produce the evidence collection report with these exact sections:
 ### Collection Summary
 [3-5 sentences. State what evidence was collected, from which systems,
 the order of collection, and any evidence that could not be obtained.]
+
+### Scope and Minimization
+| Field | Value |
+|---|---|
+| Approved scope | [systems/accounts/custodians/time range/data classes] |
+| Approving authority | [name/role/ticket/legal hold] |
+| Excluded scope | [systems/users/data classes intentionally excluded] |
+| Sensitive data expected | [PII/PHI/PCI/HR/customer/legal/none] |
+| Privileged-data path | [none/sealed review/counsel review/segregated store] |
+| Retention and disposition | [retention period, storage region, disposition owner] |
 
 ### Evidence Inventory
 | Evidence ID | Type | Source System | Collection Time (UTC) | SHA-256 Hash | Examiner | Storage Location |
@@ -398,9 +439,9 @@ the order of collection, and any evidence that could not be obtained.]
 [List any evidence that could not be collected and the reason]
 
 ### Cloud Evidence (if applicable)
-| Cloud Provider | Resource | Evidence Type | Collected | Notes |
-|---|---|---|---|---|
-| [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+| Cloud Provider | Resource | Evidence Type | Filters / Time Window | Collected | Notes |
+|---|---|---|---|---|---|
+| [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [principal/resource/time range] | [Yes/No] | [Notes] |
 ```
 
 ---
@@ -460,6 +501,10 @@ Applying traditional forensic methods to cloud environments without adaptation l
 ### Pitfall 5: Overwriting Evidence with Collection Activity
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
+
+### Pitfall 6: Over-Collecting Privileged or Regulated Data
+
+Full-disk, full-mailbox, full-tenant, or all-region exports can preserve evidence but also sweep unrelated legal, HR, customer, patient, payment, or cross-border data into the case file. Hashing and chain of custody do not cure overbroad collection. Confirm the approved scope before acquisition, use filters when they preserve evidence value, segregate privileged material, and document retention and disposition for sensitive evidence.
 
 ---
 
