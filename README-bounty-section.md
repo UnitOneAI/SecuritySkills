@@ -1,6 +1,6 @@
 # SecuritySkills
 
-> An open library of security detection and remediation skills. Each skill defines **what to detect**, **how to verify it**, and **how to fix it** — executable security knowledge for the age of AI-generated code.
+> An open library of security detection and remediation skills. Each skill defines **what to detect**, **how to verify it**, and **how to fix it** - executable security knowledge for the age of AI-generated code.
 
 Built by [UnitOne](https://unitone.ai) and the security community.
 
@@ -8,7 +8,7 @@ Built by [UnitOne](https://unitone.ai) and the security community.
 
 ## Earn Bounties
 
-We pay security practitioners to review, improve, and author skills. Your expertise makes this library better — and we compensate you for it.
+We pay security practitioners to review, improve, and author skills. Your expertise makes this library better - and we compensate you for it.
 
 | Contribution | Bounty | Time |
 |-------------|--------|------|
@@ -32,32 +32,61 @@ Paid within 48 hours of merge. See [CONTRIBUTING.md](CONTRIBUTING.md) for the fu
 A security skill is a structured unit of security knowledge:
 
 ```
-Detection  →  "This code pattern is vulnerable to SQL injection"
-Verification →  "Here's how to confirm it's a true positive, not a false alarm"
-Remediation →  "Here's the verified fix that resolves it without breaking anything"
+Detection    -> "This code pattern is vulnerable to SQL injection"
+Verification -> "Here's how to confirm it's a true positive, not a false alarm"
+Remediation  -> "Here's the verified fix that resolves it without breaking anything"
 ```
 
-Traditional SAST tools stop at detection. Skills go further — they verify and fix, reducing mean time to remediate from **84 days** to **minutes**.
+Traditional SAST tools stop at detection. Skills go further - they verify and fix, reducing mean time to remediate from **84 days** to **minutes**.
 
 ## Repository Structure
 
+Skills are organized by security domain, then by skill name:
+
 ```
 skills/
-  injection/          # SQL injection, command injection, LDAP injection, etc.
-  xss/                # Cross-site scripting variants
-  auth/               # Authentication and authorization flaws
-  crypto/             # Cryptographic misuse
-  secrets/            # Hardcoded credentials, API keys, tokens
-  config/             # Security misconfigurations
-  dependency/         # Vulnerable dependency detection
-  ...
+  ai-security/
+    prompt-injection/
+      SKILL.md
+      tests/
+  appsec/
+    api-security/
+      SKILL.md
+      tests/
+  cloud/
+    aws-review/
+      SKILL.md
+  compliance/
+    soc2-gap/
+      SKILL.md
+  identity/
+    access-review/
+      SKILL.md
+  secops/
+    alert-triage/
+      SKILL.md
+  vuln-management/
+    sbom-analysis/
+      SKILL.md
 ```
 
-Each skill contains:
-- `skill.yaml` — Detection patterns, remediation logic, metadata
-- `README.md` — Human-readable explanation and examples
-- `tests/vulnerable/` — Code that should trigger the skill
-- `tests/benign/` — Code that should NOT trigger (false positive checks)
+Current top-level skill categories include:
+
+- `ai-security`
+- `appsec`
+- `cloud`
+- `compliance`
+- `devsecops`
+- `identity`
+- `incident-response`
+- `network`
+- `secops`
+- `vuln-management`
+
+Each skill lives in `skills/<category>/<skill-name>/` and is centered on:
+
+- `SKILL.md` - metadata, triggers, detection guidance, verification steps, remediation guidance, output format, and references.
+- `tests/` - optional vulnerable, benign, or edge-case fixtures when the skill needs examples or regression coverage.
 
 ## Who We're Looking For
 
@@ -69,14 +98,14 @@ No prior open-source contribution experience required. Start with a review ($25)
 
 ## Community
 
-- **Discord:** [discord.gg/DKTZzfU9B](https://discord.gg/DKTZzfU9B) — bounty coordination, discussions, support
+- **Discord:** [discord.gg/DKTZzfU9B](https://discord.gg/DKTZzfU9B) - bounty coordination, discussions, support
 - **GitHub Discussions:** For longer-form technical conversations
 - **Issues:** For bug reports, skill requests, and reviews
 
 ## License
 
-[License details here]
+SecuritySkills is released under the [MIT License](LICENSE).
 
 ## About UnitOne
 
-[UnitOne](https://unitone.ai) is building a Security State Layer for agentic development — deterministic security remediation that reduces MTTR from 84 days to under 10 minutes. Founded by engineers from Microsoft, Oracle, Meta, and Lyft.
+[UnitOne](https://unitone.ai) is building a Security State Layer for agentic development - deterministic security remediation that reduces MTTR from 84 days to under 10 minutes. Founded by engineers from Microsoft, Oracle, Meta, and Lyft.
