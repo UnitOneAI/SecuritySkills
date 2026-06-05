@@ -739,6 +739,70 @@ if (!app.Environment.IsDevelopment())
 }
 ```
 
+#### Forwarded Headers Behind Trusted Proxies
+
+ASP.NET Core APIs behind reverse proxies, ingress controllers, load balancers,
+IIS, Azure App Service, or ASP.NET Core Module often need `X-Forwarded-*`
+headers to recover the original client IP, scheme, and host. Treat forwarded
+headers as a security boundary when downstream controls use request scheme,
+host, path base, or remote IP for authentication, authorization, rate limiting,
+audit attribution, tenant routing, absolute URL generation, or OAuth/password
+reset callbacks.
+
+```csharp
+// VULNERABLE: accepts forwarded headers from any client.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.All;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+app.UseForwardedHeaders();
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+Clearing `KnownNetworks` and `KnownProxies` removes the proxy trust boundary.
+An attacker who can reach the app directly may spoof `X-Forwarded-For`,
+`X-Forwarded-Proto`, or `X-Forwarded-Host`, causing incorrect rate-limit
+partitions, insecure scheme decisions, poisoned generated links, misleading
+audit logs, or host-dependent authorization mistakes.
+
+```csharp
+// SECURE: trust only the owned proxy path and constrain forwarded hosts.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
+    options.KnownProxies.Add(IPAddress.Parse("10.0.0.10"));
+    options.AllowedHosts.Add("api.example.com");
+});
+
+app.UseForwardedHeaders();
+app.UseRouting();
+app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+For Kubernetes, service mesh, or elastic load-balancer deployments, CIDR-based
+`KnownNetworks` can be acceptable when the reviewer records who owns the ingress
+range, how direct-to-app access is blocked, and how stale ranges are updated.
+For managed hosting where integration enables forwarded headers implicitly,
+capture the effective hosting path, target .NET runtime version, and platform
+documentation instead of requiring duplicate manual middleware.
+
+Flag `X-Forwarded-Host` or forwarded scheme usage as higher risk when it feeds
+password-reset links, OAuth/OIDC redirect URIs, OpenAPI server URLs, tenant
+selection, CORS decisions, or callback validation and there is no `AllowedHosts`
+or equivalent host-filtering evidence. ASP.NET Core 8.0.17 and 9.0.6 changed
+unknown-proxy behavior, so record runtime version before assuming older broad
+forwarding semantics or accepting compatibility switches that restore broad
+trust.
+
 #### Security Misconfiguration Review Checklist -- .NET
 
 - [ ] Swagger/OpenAPI is disabled or authentication-gated in non-development environments.
@@ -748,6 +812,10 @@ if (!app.Environment.IsDevelopment())
 - [ ] `UseExceptionHandler` is configured in production to prevent stack trace leakage.
 - [ ] Kestrel server limits are set for request body size, header count, and timeouts.
 - [ ] All controller actions have `[ProducesResponseType]` attributes.
+- [ ] `UseForwardedHeaders()` runs before auth, rate limiting, tenant selection, generated-link, or audit middleware that depends on scheme, host, path base, or client IP.
+- [ ] Forwarded headers are accepted only from documented `KnownProxies` / `KnownNetworks`, managed-hosting integration, or an equivalent owned ingress boundary; `KnownNetworks.Clear()` and `KnownProxies.Clear()` are treated as high risk unless direct app access is impossible.
+- [ ] `X-Forwarded-Host` processing is paired with `AllowedHosts`, Host Filtering Middleware, or upstream host allowlisting, especially for redirects, callbacks, tenant routing, and generated absolute URLs.
+- [ ] Review output records the target .NET runtime version and any compatibility switch affecting unknown-proxy forwarded-header behavior.
 
 ---
 
@@ -1199,6 +1267,13 @@ new\s+Uri\(.*request\.
 app\.UseSwagger\(\)(?![\s\S]*?IsDevelopment)
 # Overly permissive CORS
 AllowAnyOrigin\(\)
+# Forwarded headers need trust-boundary and middleware-order review
+UseForwardedHeaders\(\)
+ForwardedHeaders\.All
+KnownNetworks\.Clear\(\)
+KnownProxies\.Clear\(\)
+ForwardedHeaders\.XForwardedHost
+AllowedHosts\.Clear\(\)
 # Disabled certificate validation
 => true\s*\}.*ServerCertificateCustomValidation
 # Detailed errors in production
@@ -1239,6 +1314,8 @@ MapPost\(.*password.*\)(?![\s\S]*?RequireRateLimiting)
 - [CWE-942: Permissive Cross-domain Policy with Untrusted Domains](https://cwe.mitre.org/data/definitions/942.html)
 - [CWE-295: Improper Certificate Validation](https://cwe.mitre.org/data/definitions/295.html)
 - [Microsoft ASP.NET Core Security Documentation](https://learn.microsoft.com/en-us/aspnet/core/security/)
+- [Microsoft ASP.NET Core Proxy and Load Balancer Configuration](https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/proxy-load-balancer)
+- [Microsoft ASP.NET Core Forwarded Headers Unknown Proxy Behavior](https://learn.microsoft.com/en-us/aspnet/core/breaking-changes/8/forwarded-headers-unknown-proxies)
 - [Microsoft Rate Limiting Middleware](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)
 - [HotChocolate GraphQL Security](https://chillicream.com/docs/hotchocolate/security)
 - [ASP.NET Core gRPC Authentication](https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz)
