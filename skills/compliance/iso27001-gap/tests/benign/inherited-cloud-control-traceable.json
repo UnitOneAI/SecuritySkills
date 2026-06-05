@@ -1,0 +1,67 @@
+{
+  "organization": "Traceable Cloud SaaS",
+  "assessment_context": {
+    "standard": "ISO/IEC 27001:2022",
+    "scope_reference": "ISMS-SCOPE-2026",
+    "transition_from_2013": false
+  },
+  "soa_controls": [
+    {
+      "control_id": "A.5.23",
+      "title": "Information security for use of cloud services",
+      "applicable": true,
+      "implementation_model": "shared",
+      "risk_treatment_id": "RT-2026-Cloud-04",
+      "owner": "Cloud Security Manager",
+      "evidence_artifact": "AWS shared-responsibility matrix, supplier ISO 27001 certificate, cloud security standard, CSPM control report CSPM-2026-05",
+      "evidence_date": "2026-05-15",
+      "review_cadence": "quarterly",
+      "shared_control_matrix": "SCM-2026-Cloud",
+      "customer_obligation": "review CSPM exceptions, approve cloud services, and validate landing-zone guardrails",
+      "iso27002_attributes": [
+        "Preventive",
+        "Confidentiality",
+        "Integrity",
+        "Availability",
+        "Protect",
+        "Supplier Relationships Security",
+        "Governance and Ecosystem"
+      ],
+      "maturity_score": 4,
+      "residual_gap": "next quarterly review due 2026-08-15"
+    },
+    {
+      "control_id": "A.7.1",
+      "title": "Physical security perimeters",
+      "applicable": false,
+      "justification": "No in-scope company-managed data center or server room; production hosting is fully covered by contracted cloud provider physical security controls",
+      "scope_reference": "ISMS-SCOPE-2026 section 3.2",
+      "provider_assurance": "Supplier ISO 27001 certificate and SOC 2 Type II report map physical security controls to provider responsibilities",
+      "risk_treatment_id": "RT-2026-Cloud-Physical-01",
+      "owner": "Vendor Risk Manager",
+      "evidence_date": "2026-04-30"
+    },
+    {
+      "control_id": "A.8.16",
+      "title": "Monitoring activities",
+      "applicable": true,
+      "implementation_model": "direct",
+      "risk_treatment_id": "RT-2026-Monitoring-02",
+      "owner": "Security Operations",
+      "evidence_artifact": "SIEM rule inventory, alert triage runbook, monthly coverage review ticket SOC-2026-05",
+      "evidence_date": "2026-05-31",
+      "iso27002_attributes": [
+        "Detective",
+        "Confidentiality",
+        "Integrity",
+        "Availability",
+        "Detect",
+        "Information Security Event Management",
+        "Defence"
+      ],
+      "maturity_score": 4,
+      "residual_gap": "none"
+    }
+  ],
+  "expected_result": "Do not report these as implementation gaps; retain evidence freshness and next-review follow-up."
+}

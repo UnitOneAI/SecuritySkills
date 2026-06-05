@@ -1,0 +1,54 @@
+{
+  "organization": "Cloud-only Example SaaS",
+  "assessment_context": {
+    "standard": "ISO/IEC 27001:2022",
+    "scope_reference": "ISMS-SCOPE-2026",
+    "transition_from_2013": true
+  },
+  "soa_controls": [
+    {
+      "control_id": "A.5.23",
+      "title": "Information security for use of cloud services",
+      "applicable": true,
+      "implementation_model": "inherited",
+      "risk_treatment_id": "",
+      "owner": "",
+      "evidence_artifact": "cloud provider says security is handled",
+      "evidence_date": "",
+      "shared_control_matrix": "",
+      "iso27002_attributes": [],
+      "maturity_score": 4,
+      "residual_gap": ""
+    },
+    {
+      "control_id": "A.8.16",
+      "title": "Monitoring activities",
+      "applicable": true,
+      "implementation_model": "shared",
+      "risk_treatment_id": "legacy-2013-LOG-12",
+      "owner": "Security Operations",
+      "evidence_artifact": "old SIEM screenshot",
+      "evidence_date": "2024-02-15",
+      "shared_control_matrix": "",
+      "iso27002_attributes": [
+        "Detective"
+      ],
+      "maturity_score": 4,
+      "residual_gap": ""
+    },
+    {
+      "control_id": "A.7.1",
+      "title": "Physical security perimeters",
+      "applicable": false,
+      "justification": "No office servers",
+      "scope_reference": "",
+      "provider_assurance": "",
+      "maturity_score": 5
+    }
+  ],
+  "expected_findings": [
+    "A.5.23 inherited control lacks risk/treatment link, owner, dated assurance evidence, shared-control matrix, and ISO 27002 attributes",
+    "A.8.16 legacy 2013 evidence is stale and not mapped to the 2022 control objective",
+    "A.7.1 exclusion lacks scope reference and supplier responsibility evidence"
+  ]
+}
