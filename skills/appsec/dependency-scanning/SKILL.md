@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -174,10 +174,32 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 4. **Recency check**: Packages created very recently that shadow established package names warrant extra scrutiny.
 5. **Install script inspection**: In npm, review `preinstall`/`postinstall` scripts. Malicious typosquat packages frequently use install hooks to exfiltrate environment variables or credentials.
 
+### Go Private Module Evidence
+
+For Go projects, review module proxy and checksum database settings when `go.mod` contains private module prefixes or the build uses an internal module proxy. SBOM output and `go.sum` contents do not prove whether private module paths were disclosed during resolution.
+
+| Evidence | Risk Indicator | Acceptable Evidence |
+|---|---|---|
+| `go env GOPROXY` | Public proxy appears before private proxy, or private proxy can fall back to public sources for private modules | Private proxy order is documented and private prefixes are excluded from public fallback |
+| `go env GOPRIVATE` | Empty or missing while `go.mod` references private module prefixes | Glob patterns cover internal domains, organizations, or repositories |
+| `go env GONOPROXY` | Private modules are not excluded from proxy lookup when no private proxy serves them | Scoped patterns force private modules to resolve directly or through approved infrastructure |
+| `go env GONOSUMDB` / `GOSUMDB` | Private modules may be checked against `sum.golang.org`, or `GOSUMDB=off` disables verification globally | Scoped `GONOSUMDB` or `GOPRIVATE` excludes private modules while preserving public-module verification |
+| CI build environment | Developer laptop is configured but CI is not | CI `go env` or pipeline variables show the same private-module controls |
+
+#### Go False-Positive Guards
+
+Do not flag every Go project that uses the public module proxy. A project may be acceptable when:
+
+- `go.mod` contains only public module paths.
+- Private module prefixes are covered by `GOPRIVATE`, or by equivalent scoped `GONOPROXY` and `GONOSUMDB` settings.
+- A central private proxy serves all modules and `GOPROXY` is pinned to that proxy with documented checksum handling.
+- Public checksum verification remains enabled for public modules while private modules are excluded with scoped patterns.
+
 ### Mitigation
 
 - Use scoped packages where possible (`@org/package`).
 - Configure `.npmrc` or pip index settings to point to a private registry with an allow-list for public packages.
+- For Go, configure `GOPRIVATE` or scoped `GONOPROXY` / `GONOSUMDB` patterns for private module prefixes so internal module paths are not sent to public proxies or the public checksum database.
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
@@ -212,6 +234,13 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Go private module disclosure risk (private module paths can reach public proxy or checksum database)
+
+### Private Registry / Proxy Evidence
+
+| Ecosystem | Private/Internal Dependencies Present? | Registry / Proxy Evidence Reviewed | Public Fallback Risk | Result |
+|---|---|---|---|---|
+| npm / pip / Go / Rust / Maven / Gradle | [yes/no] | [config files, environment variables, effective settings] | [none/scoped/global/unknown] | [pass/fail/follow-up] |
 
 ### Recommendations
 
@@ -226,8 +255,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Private registry/proxy review**: For projects with private dependencies, review registry and proxy configuration. For Go, collect `GOPROXY`, `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB`, `GOSUMDB`, and CI environment evidence before determining whether private module paths can reach public infrastructure.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +281,6 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Go Modules Reference](https://go.dev/ref/mod)
+- [Go - Managing dependencies](https://go.dev/doc/modules/managing-dependencies)
+
