@@ -3,16 +3,16 @@ name: dependency-scanning
 description: >
   Analyzes project dependencies for known vulnerabilities, license risks, and
   supply chain integrity. Auto-invoked when package manifests (package.json,
-  requirements.txt, go.mod, pom.xml, Cargo.toml) are shared or when discussing
+  requirements.txt, pyproject.toml, go.mod, pom.xml, Cargo.toml) are shared or when discussing
   dependency security. Produces an SBOM assessment with CVE findings triaged
-  by EPSS and CISA KEV, license compliance check, and supply chain risk rating.
+  by CVSS, EPSS, CISA KEV, VEX/reachability, license compliance check, and supply chain risk rating.
 tags: [appsec, supply-chain, sbom, dependencies]
 role: [appsec-engineer, security-engineer]
 phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -32,7 +32,7 @@ Identify known vulnerabilities, license compliance violations, and supply chain 
 
 This skill activates when any of the following are present:
 
-- A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
+- A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `pyproject.toml`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `*.csproj`, `packages.config`, `paket.lock`, `Cargo.toml`, `Cargo.lock`, `Gemfile`, `Gemfile.lock`, `composer.json`, `composer.lock`, `pubspec.lock`, `mix.lock`.
 - The user asks about dependency security, vulnerability scanning, SBOM generation, or supply chain risk.
 - A CI/CD pipeline configuration references dependency audit steps.
 
@@ -71,6 +71,32 @@ SBOM generation should be integrated at the build level to satisfy SLSA Build Tr
 
 Ensure provenance attestations (in-toto format) accompany the SBOM to establish a verifiable link between source, build, and artifact.
 
+## Manifest and Dependency Source Coverage
+
+Do not report "no dependencies found" until the review has checked each ecosystem that may be present in the repository. Missing manifests and unsupported dependency specifiers create blind spots in CVE, license, and install-script analysis.
+
+### Manifest Discovery Checklist
+
+| Ecosystem | Manifest / Lockfile Evidence | Notes |
+|---|---|---|
+| Node.js | `package.json`, `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml` | Check workspace/package-manager fields and lockfile freshness. |
+| Python | `pyproject.toml`, `requirements*.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock` | Parse PEP 621/PEP 508 dependencies and optional dependency groups. |
+| Go | `go.mod`, `go.sum` | Distinguish build/runtime modules from test/tool-only modules before prioritizing. |
+| Java/JVM | `pom.xml`, `build.gradle`, `gradle.lockfile` | Include dependency-management and plugin dependency scopes. |
+| .NET/NuGet | `*.csproj`, `packages.config`, `packages.lock.json`, `paket.dependencies`, `paket.lock` | Capture package source, target framework, and license evidence source. |
+| Ruby | `Gemfile`, `Gemfile.lock`, `*.gemspec` | Compare resolved and declared groups. |
+| PHP | `composer.json`, `composer.lock` | Include abandoned-package metadata and plugin execution risk. |
+| Rust | `Cargo.toml`, `Cargo.lock` | Separate normal, build, and dev dependencies. |
+| Dart/Flutter | `pubspec.yaml`, `pubspec.lock` | Capture hosted, git, and path dependencies. |
+| Elixir | `mix.exs`, `mix.lock` | Include Hex, git, path, and umbrella app dependencies. |
+
+### Non-Registry and Install-Script Evidence
+
+- Flag git, URL, tarball, path, local file, or direct archive dependencies as supply-chain review items even when CVE scanners cannot map them to registry package/version coordinates.
+- Record the resolved commit SHA, digest, host, owner, repository, tag/branch mutability, and whether the artifact is fetched over authenticated TLS.
+- Extract `preinstall`, `install`, `postinstall`, build hooks, package manager plugins, and transitive install scripts from the resolved tree, not only the root manifest.
+- Check manifest/lockfile drift: the lockfile must match the manifest that would be installed in CI or production. A stale lockfile invalidates vulnerability and license findings.
+
 ## Transitive Dependency Risk
 
 ### Why Transitive Dependencies Matter
@@ -88,6 +114,7 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 
 - Always commit lockfiles (`package-lock.json`, `poetry.lock`, `go.sum`, `Cargo.lock`) to version control.
 - Use `npm audit --omit=dev`, `pip-audit`, `govulncheck`, or `cargo audit` to scan the full resolved dependency tree.
+- Reconcile each manifest with its lockfile before trusting scan output. If drift exists, report the analyzed dependency graph as stale or indeterminate.
 - Pin critical transitive dependencies using overrides/resolutions (`npm overrides`, `pip` constraints files, `go.mod replace`).
 - Evaluate dependency tree depth before adopting new packages: `npm ls --all`, `pipdeptree`, `go mod graph`.
 
@@ -95,56 +122,64 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 
 ### Triage Framework
 
-Not all CVEs carry equal operational risk. Use a three-signal triage model to prioritize remediation:
+Not all CVEs carry equal operational risk. Use a four-signal triage model to prioritize remediation:
 
 | Signal | Source | What It Measures | Action Threshold |
 |---|---|---|---|
 | **CVSS** | NVD / vendor advisory | Technical severity of the flaw | Critical (9.0-10.0) and High (7.0-8.9) warrant immediate review |
-| **EPSS** | [FIRST EPSS](https://www.first.org/epss/) | Probability of exploitation in the next 30 days | Score > 0.1 (10%) indicates elevated real-world risk |
+| **EPSS** | [FIRST EPSS](https://www.first.org/epss/) | Probability and percentile of exploitation in the next 30 days | Use probability and percentile together; do not rely on a single hard cutoff |
 | **CISA KEV** | [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Confirmed active exploitation in the wild | Any match requires remediation within the CISA-mandated timeline |
+| **Reachability / VEX** | CycloneDX VEX, CSAF, `govulncheck`, Snyk reachability, runtime evidence | Whether the vulnerable code path is reachable, exploitable, fixed, or not affected | Downgrade only with explicit non-affected or non-reachable evidence |
 
 ### Triage Decision Matrix
 
-| CVSS | EPSS | KEV Listed | Priority | Action |
-|---|---|---|---|---|
-| Critical/High | > 0.1 | Yes | P0 - Immediate | Patch or mitigate within 24-48 hours |
-| Critical/High | > 0.1 | No | P1 - Urgent | Patch within current sprint |
-| Critical/High | <= 0.1 | No | P2 - Scheduled | Patch in next release cycle |
-| Medium | > 0.1 | Yes | P1 - Urgent | Patch within current sprint |
-| Medium | <= 0.1 | No | P3 - Backlog | Track and remediate opportunistically |
-| Low | Any | No | P4 - Monitor | Document and revisit quarterly |
+| CVSS | EPSS Probability / Percentile | KEV Listed | Reachability / VEX | Priority | Action |
+|---|---|---|---|---|---|
+| Critical/High | Elevated probability or high percentile | Yes | Reachable or unknown | P0 - Immediate | Patch or mitigate within 24-48 hours |
+| Critical/High | Elevated probability or high percentile | No | Reachable or unknown | P1 - Urgent | Patch within current sprint; do not downgrade solely because KEV is absent |
+| Critical/High | Low probability and low percentile | No | Not affected / not reachable with evidence | P3 - Backlog | Document VEX evidence and retest on version or usage changes |
+| Medium | Elevated probability or high percentile | Yes or credible active exploitation | Reachable or unknown | P1 - Urgent | Patch within current sprint |
+| Medium | Low probability and low percentile | No | Not affected / not reachable with evidence | P4 - Monitor | Track and revisit quarterly |
+| Low | Any | No | Not affected / not reachable with evidence | P4 - Monitor | Document and revisit quarterly |
 
 ### Enrichment Process
 
 1. Extract CVE identifiers from scanner output (e.g., `npm audit --json`, `pip-audit --format json`, `trivy fs --format json`).
-2. Query EPSS scores via `https://api.first.org/data/v1/epss?cve=CVE-XXXX-XXXXX`.
+2. Query EPSS probability and percentile via `https://api.first.org/data/v1/epss?cve=CVE-XXXX-XXXXX`.
 3. Cross-reference against the CISA KEV catalog (available as JSON/CSV at `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`).
-4. Apply the decision matrix above to assign priority.
-5. Document each finding with CVE ID, affected package and version, CVSS score, EPSS score, KEV status, and recommended fix version.
+4. Check reachability/VEX evidence before downgrading Critical/High findings: affected component, vulnerable function, call path, build target, dependency group, runtime exposure, and VEX status.
+5. Apply the decision matrix above to assign priority.
+6. Document each finding with CVE ID, affected package and version, CVSS score, EPSS probability, EPSS percentile, KEV status, VEX/reachability status, and recommended fix version.
 
 ## License Compliance
 
+License risk must be based on parsed SPDX expressions, exceptions, and the component's distribution/runtime context. Do not classify licenses by substring alone.
+
 ### Risk Categories
 
-| Risk Level | Licenses | Concern |
+| Risk Level | Licenses / Expressions | Concern |
 |---|---|---|
-| **High - Copyleft** | GPL-2.0, GPL-3.0, AGPL-3.0 | Requires derivative works to be distributed under the same license. AGPL-3.0 extends this to network use (SaaS). May force open-sourcing proprietary code. |
-| **Medium - Weak Copyleft** | LGPL-2.1, LGPL-3.0, MPL-2.0, EPL-2.0 | Copyleft applies to modifications of the licensed component itself but not to the larger work, provided linking requirements are met. |
-| **Low - Permissive** | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC | Minimal restrictions. Typically require attribution only. Apache-2.0 includes an explicit patent grant. |
+| **High - Copyleft** | GPL-2.0-only, GPL-3.0-only, AGPL-3.0-only when the selected branch applies to a distributed or network-exposed component | Requires derivative works to be distributed under the same license. AGPL-3.0 extends this to network use (SaaS). May force source disclosure when usage context triggers obligations. |
+| **Medium - Weak Copyleft** | LGPL-2.1-only, LGPL-3.0-only, MPL-2.0, EPL-2.0 when selected by the SPDX expression | Copyleft applies to modifications of the licensed component itself but not always to the larger work, provided linking, notice, and file-level obligations are met. |
+| **Low - Permissive** | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, or an SPDX `OR` expression with a valid permissive branch selected | Minimal restrictions. Typically require attribution only. Apache-2.0 includes an explicit patent grant. |
+| **Exception-Modified** | `WITH` expressions such as `GPL-2.0-only WITH Classpath-exception-2.0` | Evaluate the exception before assigning copyleft risk; do not flag by the base license string alone. |
 | **Unknown / No License** | NOASSERTION, unlicensed | No license means default copyright applies -- legally, the code cannot be used. Treat as high risk. |
 
 ### Compliance Checks
 
-1. **AGPL-3.0 in server-side code**: If any dependency (direct or transitive) uses AGPL-3.0 and the application is network-accessible, the entire application source may need to be disclosed. Flag immediately.
-2. **GPL in statically linked binaries**: Languages like Go and Rust produce statically linked binaries. A GPL dependency compiled into such a binary triggers copyleft obligations for the entire binary.
-3. **License conflicts**: Combining Apache-2.0 (with patent clause) and GPL-2.0-only code creates an incompatibility. GPL-2.0-only does not permit the additional patent restriction imposed by Apache-2.0.
-4. **Dual-licensed commercial packages**: Some packages offer open-source licenses for non-commercial use and require a commercial license otherwise (e.g., certain database drivers, UI component libraries). Verify that the usage context matches the chosen license.
-5. **No-license dependencies**: Packages without a declared license default to full copyright protection. They cannot be legally redistributed. Replace or obtain explicit permission.
+1. **SPDX expression parsing**: Parse `OR`, `AND`, parentheses, and `WITH` exceptions before assigning risk. Record the selected license branch and evidence source.
+2. **Distributed-vs-dev scope**: Determine whether the component is distributed, linked, bundled, shipped in a container/image, or used only for dev/test/build tooling. Do not apply runtime/distribution obligations uniformly to dev-only packages unless they are shipped or network-exposed.
+3. **AGPL-3.0 in server-side code**: If a distributed or network-exposed dependency uses AGPL-3.0 and no exception or alternate license branch applies, require legal/source-disclosure review.
+4. **GPL in statically linked binaries**: Languages like Go and Rust produce statically linked binaries. A GPL dependency compiled into such a binary may trigger copyleft obligations for the entire binary.
+5. **License conflicts**: Combining Apache-2.0 (with patent clause) and GPL-2.0-only code creates an incompatibility unless an alternate compatible SPDX branch applies.
+6. **Dual-licensed commercial packages**: Some packages offer open-source licenses for non-commercial use and require a commercial license otherwise (e.g., certain database drivers, UI component libraries). Verify that the usage context matches the chosen license.
+7. **No-license dependencies**: Packages without a declared license default to full copyright protection. They cannot be legally redistributed. Replace or obtain explicit permission.
 
 ### Tooling
 
 - `licensed` (GitHub): Caches and verifies dependency licenses in CI.
-- `license-checker` (npm): `npx license-checker --production --failOn 'GPL-2.0;GPL-3.0;AGPL-3.0'`
+- `licensee`, `licensed`, or SPDX-aware tooling: parse SPDX expressions and record selected branches before enforcement.
+- `license-checker` (npm): use for inventory, but avoid raw substring gates such as `--failOn 'GPL-2.0;GPL-3.0;AGPL-3.0'` without SPDX-expression and usage-scope review.
 - `pip-licenses`: `pip-licenses --with-system --format=json`
 - `go-licenses` (Google): `go-licenses check ./...`
 - `cargo-license`: `cargo license --json`
@@ -160,7 +195,7 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 | Pattern | Legitimate | Typosquat Example |
 |---|---|---|
 | Character swap | `requests` | `reqeusts`, `requets` |
-| Hyphen/underscore confusion | `python-dateutil` | `python_dateutil` (may or may not be malicious; verify publisher) |
+| Registry normalization mismatch | `python-dateutil` | `python_dateutil` on PyPI is the same normalized name under PEP 503; verify canonical registry identity before flagging |
 | Scope/namespace omission | `@angular/core` | `angular-core` (unscoped) |
 | Prefix/suffix addition | `lodash` | `lodash-utils`, `lodash-js` |
 | Combosquatting | `colors` | `colors2`, `node-colors` |
@@ -170,9 +205,10 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 
 1. **Manifest review**: For each declared dependency, verify the package name against the canonical registry listing (npmjs.com, pypi.org, crates.io, pkg.go.dev).
 2. **Publisher verification**: Check that the package publisher/maintainer matches known trusted entities. Look for verified publisher badges where available.
-3. **Download count anomalies**: A package with a similar name to a popular one but very low download counts is suspicious.
-4. **Recency check**: Packages created very recently that shadow established package names warrant extra scrutiny.
-5. **Install script inspection**: In npm, review `preinstall`/`postinstall` scripts. Malicious typosquat packages frequently use install hooks to exfiltrate environment variables or credentials.
+3. **Registry normalization**: Normalize ecosystem-specific names before flagging. For PyPI, PEP 503 treats runs of `-`, `_`, and `.` as equivalent and lowercase.
+4. **Download count anomalies**: A package with a similar name to a popular one but very low download counts is suspicious.
+5. **Recency check**: Packages created very recently that shadow established package names warrant extra scrutiny.
+6. **Install script inspection**: In npm, review `preinstall`/`install`/`postinstall` scripts from the resolved tree. Malicious typosquat packages frequently use install hooks to exfiltrate environment variables or credentials.
 
 ### Mitigation
 
@@ -190,20 +226,33 @@ When performing a dependency scan, produce findings in the following structure:
 
 **Project**: [name]
 **Manifest**: [file path]
+**Lockfile Status**: [in sync / missing / stale / not applicable]
 **Date**: [scan date]
 **Total Dependencies**: [direct] direct, [transitive] transitive
 
+### Manifest Coverage
+
+| Ecosystem | Files Reviewed | Lockfile Status | Coverage Gaps |
+|---|---|---|---|
+| ... | ... | ... | ... |
+
 ### Vulnerability Findings
 
-| # | CVE | Package | Version | Fixed In | CVSS | EPSS | KEV | Priority |
-|---|-----|---------|---------|----------|------|------|-----|----------|
-| 1 | ... | ...     | ...     | ...      | ...  | ...  | ... | ...      |
+| # | CVE | Package | Version | Fixed In | CVSS | EPSS Probability | EPSS Percentile | KEV | Reachability / VEX | Priority |
+|---|-----|---------|---------|----------|------|------------------|-----------------|-----|--------------------|----------|
+| 1 | ... | ...     | ...     | ...      | ...  | ...              | ...             | ... | ...                | ...      |
 
 ### License Findings
 
-| # | Package | Version | License | Risk Level | Action Required |
-|---|---------|---------|---------|------------|-----------------|
-| 1 | ...     | ...     | ...     | ...        | ...             |
+| # | Package | Version | SPDX Expression | Selected Branch / Exception | Usage Scope | Risk Level | Action Required |
+|---|---------|---------|-----------------|-----------------------------|-------------|------------|-----------------|
+| 1 | ...     | ...     | ...             | ...                         | ...         | ...        | ...             |
+
+### Non-Registry Dependencies and Install Scripts
+
+| Package | Specifier | Resolved Ref / Digest | Source Host | Install Scripts | Risk |
+|---|---|---|---|---|---|
+| ... | git/url/tarball/path | ... | ... | ... | ... |
 
 ### Supply Chain Risk Indicators
 
@@ -220,14 +269,16 @@ When performing a dependency scan, produce findings in the following structure:
 
 ## Procedure
 
-1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
+1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project, including `pyproject.toml`, NuGet files, `composer.json`, `Gemfile`, `pubspec.lock`, `mix.lock`, and ecosystem-specific workspace files.
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
-3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
-4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
-6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions, then verify manifest/lockfile drift before trusting results.
+4. **Identify non-registry dependencies**: Flag git, URL, tarball, local path, direct archive, mutable branch, or unauthenticated host dependencies and record resolved refs/digests.
+5. **Extract install scripts and package hooks**: Review root and transitive `preinstall`, `install`, `postinstall`, build hooks, and package-manager plugins without executing them.
+6. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the CVSS+EPSS probability/percentile+KEV+VEX/reachability triage model.
+7. **License audit**: Extract license declarations from lockfiles or registry metadata. Parse SPDX expressions and exceptions, then scope findings by distributed/runtime/dev-only usage.
+8. **Typosquatting check**: Review dependency names for patterns described in the detection section after applying ecosystem registry normalization.
+9. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+10. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -246,8 +297,18 @@ This skill processes user-supplied content including package manifests, lockfile
 - [SLSA v1.0 Specification](https://slsa.dev/spec/v1.0/)
 - [CycloneDX Specification](https://cyclonedx.org/specification/overview/)
 - [SPDX Specification v2.3](https://spdx.github.io/spdx-spec/v2.3/)
+- [SPDX License Expressions](https://spdx.github.io/spdx-spec/v2.3/SPDX-license-expressions/)
+- [CycloneDX VEX Capability](https://cyclonedx.org/capabilities/vex/)
 - [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
 - [FIRST EPSS Model](https://www.first.org/epss/)
+- [PEP 503 - Simple Repository API](https://peps.python.org/pep-0503/)
+- [OSV-Scanner](https://google.github.io/osv-scanner/)
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+
+---
+
+## Changelog
+
+- **1.0.1** - Added manifest coverage gates, non-registry dependency and install-script evidence, SPDX-expression license parsing, distributed-vs-dev license scoping, VEX/reachability triage, EPSS percentile handling, KEV downgrade guardrails, lockfile drift checks, and PyPI name-normalization false-positive handling.
