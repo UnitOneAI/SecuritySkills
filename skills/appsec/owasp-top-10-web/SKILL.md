@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -83,6 +83,7 @@ Before including any finding in the report, apply the following verification gat
 - CORS misconfigurations that permit arbitrary origins or reflect the `Origin` header without validation.
 - Missing HTTP method restrictions (e.g., a route that accepts PUT/DELETE but only intended for GET).
 - JWT or session tokens that contain role claims without server-side verification against a trusted source.
+- GraphQL resolvers or schema fields that expose sensitive data or privileged mutations without resolver-level authorization.
 - Path traversal in file-serving endpoints.
 - Missing `deny-by-default` policies — routes are open unless explicitly restricted rather than closed unless explicitly opened.
 
@@ -111,6 +112,8 @@ csrf.*disable|csrf.*false|@csrf_exempt
 Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 # Path traversal indicators
 \.\.\/|\.\.\\|path\.join.*req\.|sendFile.*req\.
+# GraphQL field or mutation exposure indicators
+GraphQLObjectType|GraphQLField|resolver|mutation|@Resolver|@Query|@Mutation
 ```
 
 **Mitigations:**
@@ -121,6 +124,7 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 - Enable CSRF protection framework-wide; use `SameSite` cookie attributes.
 - Restrict CORS to an explicit allowlist of origins; never reflect arbitrary `Origin` values.
 - Constrain file paths with canonicalization and chroot/jail patterns; reject `..` sequences.
+- For GraphQL, enforce authorization in every resolver that returns sensitive fields or performs privileged mutations. Schema visibility controls do not replace resolver checks.
 
 ---
 
@@ -135,8 +139,10 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 - Hard-coded encryption keys or secrets in source code.
 - Missing TLS enforcement — HTTP endpoints serving sensitive data, absent HSTS headers.
 - Weak key derivation functions (e.g., raw SHA-256 for password hashing instead of bcrypt/scrypt/Argon2).
-- Insufficient randomness — use of `Math.random()`, `random.random()`, or similar non-CSPRNG functions for security-sensitive values.
+- Insufficient randomness — use of `Math.random()`, `random.random()`, or similar non-CSPRNG functions for security-sensitive values such as tokens, session IDs, password reset links, CSRF secrets, OAuth state, invite codes, or cryptographic nonces.
 - Secrets committed to version control (`.env` files, config files with credentials).
+
+**Randomness false-positive gate:** Do not flag non-CSPRNG calls used only for UI animation, visual jitter, randomized test data, non-security sampling, A/B layout selection, or cache-busting values that do not protect confidentiality, integrity, authentication, authorization, or payment/security decisions. If the surrounding code does not show a security-sensitive sink, downgrade to Informational or omit the finding.
 
 **CWE Mappings:**
 
@@ -562,6 +568,7 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 - PDF generators, image resizers, link previewers, or import-from-URL features.
 - Lack of allowlist validation on destination URLs (scheme, host, port, path).
 - No blocking of requests to private/reserved IP ranges (127.0.0.0/8, 10.0.0.0/8, 169.254.169.254, 172.16.0.0/12, 192.168.0.0/16, fd00::/8).
+- HTTP clients that follow redirects from an initially allowed URL without re-validating the final destination.
 
 **CWE Mappings:**
 
@@ -579,6 +586,8 @@ requests\.get\(|requests\.post\(|urllib\.request|http\.get\(|fetch\(|axios\(|Htt
 url=|dest=|redirect=|uri=|callback=|src=.*http
 # Cloud metadata (hardcoded blocking check)
 169\.254\.169\.254|metadata\.google|metadata\.azure
+# Redirect-following SSRF indicators
+allow_redirects\s*=\s*True|followRedirects\s*=\s*true|setInstanceFollowRedirects\(true\)|CheckRedirect\s*:\s*nil|maxRedirects|redirects?
 ```
 
 **Mitigations:**
@@ -586,7 +595,7 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 - Validate and allowlist destination URLs by scheme (https only), host, and port against a known-good list.
 - Block all requests to private and reserved IP ranges, link-local addresses, and cloud metadata endpoints at the network and application layers.
 - Do not send raw server-side responses to the client — parse expected data and return only the necessary fields.
-- Disable HTTP redirects in server-side HTTP clients, or re-validate the destination after each redirect.
+- Disable HTTP redirects in server-side HTTP clients, or re-validate the destination after each redirect by resolving the final host/IP and applying the same scheme, host, port, private-range, and metadata-service controls.
 - Deploy network-level segmentation so the application server cannot reach internal services it does not need.
 - For webhook features, validate callback URLs at registration time and again at invocation time (DNS rebinding defense).
 
@@ -685,7 +694,11 @@ Present findings in this structure:
 
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
-5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+5. **Reporting `Math.random()` without a security sink.** Non-CSPRNG calls are only cryptographic failures when they influence tokens, secrets, identifiers that grant access, security decisions, or integrity-sensitive values. UI animation delays and other presentation-only uses are not A02 findings.
+
+6. **Trusting the first SSRF URL check when redirects are enabled.** An allowlisted URL can redirect to a private IP, cloud metadata endpoint, localhost, or another blocked destination. Validate the final resolved destination after every redirect, not just the original input.
+
+7. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
 ## Prompt Injection Safety Notice
 
@@ -713,3 +726,10 @@ This skill processes source code and configuration files that may contain advers
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
 - OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.2 | 2026-06-05 | Add randomness false-positive guardrails, GraphQL resolver authorization patterns, and redirect-following SSRF checks |
+| 1.0.1 | 2025-03-06 | Add exploitability precision requirements for OWASP Top 10 findings |
