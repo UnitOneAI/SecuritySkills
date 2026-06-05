@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -136,6 +136,7 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 - Missing TLS enforcement — HTTP endpoints serving sensitive data, absent HSTS headers.
 - Weak key derivation functions (e.g., raw SHA-256 for password hashing instead of bcrypt/scrypt/Argon2).
 - Insufficient randomness — use of `Math.random()`, `random.random()`, or similar non-CSPRNG functions for security-sensitive values.
+- Non-security randomness false positives — UI animation delays, visual effects, A/B bucket display order, sampling for telemetry, or test fixture values must not be reported as cryptographic failures unless the same value becomes an authentication, authorization, payment, or integrity decision.
 - Secrets committed to version control (`.env` files, config files with credentials).
 
 **CWE Mappings:**
@@ -166,6 +167,30 @@ password\s*=\s*["']|secret\s*=\s*["']|api_key\s*=\s*["']|private_key\s*=\s*["']
 Math\.random|random\.random|rand\(\)
 # Missing TLS
 http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
+```
+
+**Randomness Evidence Gate:**
+
+Only report `Math.random()`, `random.random()`, `rand()`, or equivalent non-CSPRNG use as A02 when the generated value protects a security property. Confirm and record all of the following:
+
+| Evidence Field | Required Proof |
+|----------------|----------------|
+| Randomness sink | The value is used as a session ID, CSRF token, password-reset token, invite code, OTP/MFA code, API key, nonce, IV, salt, cryptographic key, authorization state, payment/lottery decision, or other security-sensitive secret. |
+| Reachability | The value can be generated in production code reachable by users or privileged workflows, not only in tests, demos, animations, analytics sampling, or non-security UI behavior. |
+| Predictability impact | Explain how predicting or biasing the value could let an attacker authenticate, bypass authorization, tamper with integrity, or win a protected decision. |
+| Safe replacement | Name the CSPRNG replacement (`crypto.getRandomValues()`, Node `crypto.randomBytes()`, Python `secrets`, Java `SecureRandom`, Ruby `SecureRandom`, etc.) appropriate to the stack. |
+
+Examples:
+
+```javascript
+// VULNERABLE: reset token protects account recovery and is guessable.
+const resetToken = Math.random().toString(36).slice(2);
+```
+
+```javascript
+// BENIGN: animation delay has no security decision or secret value.
+const animationDelay = Math.random() * 1000;
+setTimeout(() => animateElement(), animationDelay);
 ```
 
 **Mitigations:**
@@ -561,6 +586,8 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 - Webhook registration features where the callback URL is user-controlled.
 - PDF generators, image resizers, link previewers, or import-from-URL features.
 - Lack of allowlist validation on destination URLs (scheme, host, port, path).
+- Redirect-following SSRF — the first URL is allowlisted, but the backend HTTP client follows `Location` to a private, link-local, loopback, internal DNS, or cloud metadata destination without re-validating each hop.
+- DNS rebinding or post-resolution drift — host allowlists are checked before resolution, but the resolved IP or redirected destination is not checked immediately before connection.
 - No blocking of requests to private/reserved IP ranges (127.0.0.0/8, 10.0.0.0/8, 169.254.169.254, 172.16.0.0/12, 192.168.0.0/16, fd00::/8).
 
 **CWE Mappings:**
@@ -577,8 +604,34 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 requests\.get\(|requests\.post\(|urllib\.request|http\.get\(|fetch\(|axios\(|HttpClient|WebClient|curl_exec
 # URL parameters
 url=|dest=|redirect=|uri=|callback=|src=.*http
+# Redirect-following clients and flags
+allow_redirects\s*=\s*True|followRedirects\s*:\s*true|AllowAutoRedirect\s*=\s*true|setInstanceFollowRedirects\(true\)|curl\s+.*-L|redirect\s*:\s*["']follow
 # Cloud metadata (hardcoded blocking check)
 169\.254\.169\.254|metadata\.google|metadata\.azure
+```
+
+**SSRF Redirect Evidence Gate:**
+
+When a backend fetches a user-controlled URL, treat redirect behavior as part of the reachable sink. Before reporting or dismissing an SSRF candidate, record:
+
+| Evidence Field | Required Proof |
+|----------------|----------------|
+| Input source | The route, webhook, import, preview, PDF, image, or link-unfurl feature that accepts the user-controlled URL or hostname. |
+| Initial validation | The scheme/host/port/path allowlist or denylist applied before the first request. |
+| Redirect behavior | Whether the HTTP client follows redirects by default or through options such as `allow_redirects=True`, `redirect: "follow"`, `AllowAutoRedirect`, `followRedirects`, `setInstanceFollowRedirects(true)`, or `curl -L`. |
+| Per-hop validation | Whether every `Location` target is canonicalized, resolved, checked against private/reserved/link-local/cloud metadata ranges, and re-checked against the allowlist before the next request. |
+| Final destination impact | The sensitive internal service, metadata endpoint, admin panel, or cross-zone network path reachable after a redirect. |
+
+Examples:
+
+```python
+# VULNERABLE: the initial URL may pass validation, then redirect to metadata.
+response = requests.get(user_url, allow_redirects=True, timeout=5)
+```
+
+```python
+# BENIGN: redirects are disabled until each Location target is validated.
+response = requests.get(user_url, allow_redirects=False, timeout=5)
 ```
 
 **Mitigations:**
@@ -586,7 +639,7 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 - Validate and allowlist destination URLs by scheme (https only), host, and port against a known-good list.
 - Block all requests to private and reserved IP ranges, link-local addresses, and cloud metadata endpoints at the network and application layers.
 - Do not send raw server-side responses to the client — parse expected data and return only the necessary fields.
-- Disable HTTP redirects in server-side HTTP clients, or re-validate the destination after each redirect.
+- Disable HTTP redirects in server-side HTTP clients, or canonicalize and re-validate the destination after each redirect before following it.
 - Deploy network-level segmentation so the application server cannot reach internal services it does not need.
 - For webhook features, validate callback URLs at registration time and again at invocation time (DNS rebinding defense).
 
@@ -601,6 +654,8 @@ Before finalizing findings, apply this verification checklist to each candidate 
 - [ ] **User input reaches the sink** — for injection findings, you traced that user-controlled input flows into the vulnerable function without adequate sanitization.
 - [ ] **No compensating control** — you checked for middleware, wrappers, or framework-level protections that neutralize the vulnerability.
 - [ ] **Not a test or example** — the code is production code, not a test fixture, documentation example, or intentionally vulnerable training sample.
+- [ ] **Benign context ruled out** — matches in UI animation, analytics sampling, generated fixtures, static demos, or framework-protected wrappers are not reported unless the value reaches a security-sensitive sink or bypasses the framework control.
+- [ ] **Post-normalization behavior checked** — URL, path, redirect, DNS, encoding, and framework normalization behavior is considered before deciding whether a candidate is exploitable or a false positive.
 
 **Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
 
@@ -687,6 +742,10 @@ Present findings in this structure:
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
+6. **Treating every non-CSPRNG call as A02.** `Math.random()` in a UI animation, telemetry sampler, visual effect, or test fixture is not a cryptographic failure by itself. Report it only when the value controls a secret, token, authorization state, integrity decision, or other protected outcome.
+
+7. **Validating only the first SSRF URL.** SSRF defenses fail when the first URL is allowlisted but redirects, DNS rebinding, or URL canonicalization moves the request to a private, link-local, loopback, or cloud metadata destination. Verify the final connection target, not only the submitted string.
+
 ## Prompt Injection Safety Notice
 
 This skill processes source code and configuration files that may contain adversarial content. The following safeguards apply:
@@ -709,6 +768,11 @@ This skill processes source code and configuration files that may contain advers
 - OWASP Top 10:2021 — A08 Software and Data Integrity Failures — https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
 - OWASP Top 10:2021 — A09 Security Logging and Monitoring Failures — https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/
 - OWASP Top 10:2021 — A10 Server-Side Request Forgery — https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
+- OWASP Cheat Sheet Series — Server Side Request Forgery Prevention — https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- MDN Web Docs — Math.random() — https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
+- MDN Web Docs — Crypto.getRandomValues() — https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues
+- MITRE CWE-330 — Use of Insufficiently Random Values — https://cwe.mitre.org/data/definitions/330.html
+- MITRE CWE-918 — Server-Side Request Forgery (SSRF) — https://cwe.mitre.org/data/definitions/918.html
 - MITRE CWE List — https://cwe.mitre.org/
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
