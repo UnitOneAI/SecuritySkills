@@ -5,14 +5,15 @@ description: >
   supply chain integrity. Auto-invoked when package manifests (package.json,
   requirements.txt, go.mod, pom.xml, Cargo.toml) are shared or when discussing
   dependency security. Produces an SBOM assessment with CVE findings triaged
-  by EPSS and CISA KEV, license compliance check, and supply chain risk rating.
+  by EPSS and CISA KEV, license compliance check, private registry source
+  integrity review, and supply chain risk rating.
 tags: [appsec, supply-chain, sbom, dependencies]
 role: [appsec-engineer, security-engineer]
 phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -26,13 +27,14 @@ argument-hint: "[target-file-or-directory]"
 
 If a target is provided via arguments, focus the review on: $ARGUMENTS
 
-Identify known vulnerabilities, license compliance violations, and supply chain risks across all project dependencies -- including transitive (indirect) dependencies. This skill produces a structured assessment aligned with SLSA v1.0 build integrity levels and outputs findings compatible with CycloneDX and SPDX SBOM formats.
+Identify known vulnerabilities, license compliance violations, and supply chain risks across all project dependencies -- including transitive (indirect) dependencies. This skill produces a structured assessment aligned with SLSA v1.0 build integrity levels and outputs findings compatible with CycloneDX and SPDX SBOM formats. It also verifies package registry boundaries and lockfile source integrity to catch dependency confusion risks before public packages can shadow private names.
 
 ## Trigger Conditions
 
 This skill activates when any of the following are present:
 
 - A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
+- A package manager configuration is shared or referenced: `.npmrc`, `.yarnrc`, `.pypirc`, `pip.conf`, `pip.ini`, `pyproject.toml`, `poetry.toml`, `uv.lock`, or CI install commands.
 - The user asks about dependency security, vulnerability scanning, SBOM generation, or supply chain risk.
 - A CI/CD pipeline configuration references dependency audit steps.
 
@@ -181,6 +183,92 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Private Registry and Lockfile Source-Integrity Review
+
+Dependency confusion is not only a name-similarity problem. A build can request the correct internal package name but still resolve it from the wrong registry when package manager configuration mixes public and private indexes without a strict boundary.
+
+### Configuration Files to Inspect
+
+Search for registry and install-source configuration in:
+
+```
+.npmrc
+.yarnrc
+.yarnrc.yml
+pnpm-lock.yaml
+package-lock.json
+requirements*.txt
+pip.conf
+pip.ini
+pyproject.toml
+poetry.toml
+uv.lock
+.pypirc
+.github/workflows/*.yml
+.gitlab-ci.yml
+Jenkinsfile
+```
+
+### Python / pip Evidence Gates
+
+Flag Python projects when:
+
+- `--extra-index-url` is used for private packages. pip documents this as unsafe for dependency confusion because an attacker can publish the same package name to a public index.
+- `index-url` points to PyPI while private package names are installed from an additional index.
+- CI commands install private packages without `--require-hashes`, a locked resolver file, or a single trusted proxy registry.
+- Internal package names are unclaimed on public indexes and are not protected by a private-registry allow-list.
+
+Prefer these safer patterns:
+
+```
+# Prefer one trusted proxy that applies routing and allow-list policy.
+python -m pip install --index-url https://packages.example.com/simple -r requirements.txt
+
+# For offline or curated wheelhouses, disable index fallback.
+python -m pip install --no-index --find-links ./wheelhouse -r requirements.txt
+```
+
+### npm / pnpm / Yarn Evidence Gates
+
+Flag JavaScript projects when:
+
+- Private packages are unscoped or use scopes without explicit registry mapping in `.npmrc`.
+- `.npmrc` sets a global private registry while lockfiles still resolve some internal packages from `registry.npmjs.org`.
+- `package-lock.json` entries for private packages have unexpected `resolved` hosts or missing `integrity` fields.
+- CI uses `npm install` instead of `npm ci` for locked application builds, allowing lockfile drift during installation.
+- Auth tokens are configured for a registry host that does not match the scope registry boundary.
+
+Evidence examples:
+
+```
+# GOOD: private scope maps to the private registry.
+@company:registry=https://npm.pkg.example.com/
+
+# REVIEW: lockfile source should match the expected registry boundary.
+"node_modules/@company/internal-sdk": {
+  "version": "1.2.3",
+  "resolved": "https://npm.pkg.example.com/@company/internal-sdk/-/internal-sdk-1.2.3.tgz",
+  "integrity": "sha512-..."
+}
+```
+
+### Finding Classification
+
+| Severity | Condition |
+|---|---|
+| **High** | Private package installs can fall back to a public registry; pip `--extra-index-url` is used for private packages; internal npm packages are unscoped and unresolved source host is public. |
+| **Medium** | Lockfile `resolved` hosts are inconsistent with the expected registry boundary; `integrity` metadata is missing where the package manager supports it; CI uses mutable install commands that can rewrite lockfiles. |
+| **Low** | Registry ownership, scope policy, or public-name reservation is undocumented but effective technical controls are present. |
+
+### Remediation
+
+1. Route all package installs through a single trusted proxy registry with explicit public-package allow-lists.
+2. Replace `--extra-index-url` for private Python packages with a single `--index-url` proxy or curated `--no-index --find-links` wheelhouse.
+3. Require scoped npm private packages and commit `.npmrc` scope registry mappings when appropriate.
+4. Review lockfile `resolved` and `integrity` fields in CI for unexpected registry hosts.
+5. Use `npm ci` for CI installs and fail builds when manifests and lockfiles diverge.
+6. Document internal package-name reservation or public namespace ownership.
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -212,6 +300,9 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Private package registry fallback risk
+- [ ] Lockfile resolved host drift
+- [ ] Missing lockfile integrity metadata
 
 ### Recommendations
 
@@ -223,11 +314,12 @@ When performing a dependency scan, produce findings in the following structure:
 1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
-4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
-6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+4. **Registry boundary review**: Inspect package manager configs and CI install commands for private/public registry mixing, `--extra-index-url`, missing scoped registry mappings, and lockfile source host drift.
+5. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
+6. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
+7. **Typosquatting check**: Review dependency names for patterns described in the detection section.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +343,14 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [pip install documentation -- `--extra-index-url` dependency confusion warning](https://pip.pypa.io/en/stable/cli/pip_install/)
+- [npm package-lock.json documentation -- `resolved` and `integrity`](https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/)
+- [npm scopes documentation -- associating a scope with a registry](https://docs.npmjs.com/cli/v7/using-npm/scope)
+- [npm ci documentation -- lockfile-consistent CI installs](https://docs.npmjs.com/cli/commands/npm-ci/)
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added private registry source-integrity review, pip `--extra-index-url` dependency-confusion gates, npm scope registry mapping checks, lockfile `resolved`/`integrity` evidence, CI install guidance, and output indicators.
+- **1.0.0** -- Initial dependency scanning guidance for SBOM generation, vulnerability triage, license review, typosquatting, and supply-chain risk.
