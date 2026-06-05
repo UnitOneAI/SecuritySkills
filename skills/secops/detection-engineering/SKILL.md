@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Before beginning, gather or confirm:
 - [ ] **SIEM platform(s):** Target SIEM for rule deployment (Microsoft Sentinel, Splunk, Elastic, Chronicle, QRadar) -- determines Sigma backend conversion target.
 - [ ] **Environment context:** Operating systems, domain structure, cloud providers, key applications in the environment.
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
+- [ ] **Lifecycle evidence:** Current rule status, validation date and method, backend conversion target, field-mapping proof, telemetry scope, false-positive budget, owner, review cadence, and demotion criteria.
 - [ ] **Detection priority:** Is this for a known active threat, proactive coverage expansion, or compliance requirement?
 - [ ] **Organizational naming conventions:** Rule ID format, severity taxonomy, and tagging standards used by the detection engineering team.
 
@@ -395,7 +396,7 @@ Produce detection engineering deliverables in this structure:
 ```markdown
 ## Detection Engineering Report: [ATT&CK Technique ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** detection-engineering v1.0.0
+**Skill:** detection-engineering v1.0.2
 **Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
 
 ### ATT&CK Technique Summary
@@ -432,6 +433,12 @@ Produce detection engineering deliverables in this structure:
 | False-Positive Budget | [Expected or observed benign volume and tuning owner] |
 | Owner / Review Cadence | [Rule owner and next review date] |
 | Demotion Criteria | [Conditions that downgrade status or heatmap score] |
+
+### ATT&CK Coverage Segment Matrix
+| Segment | Technique | Coverage Level | Evidence Gate | Exclusions |
+|---------|-----------|----------------|---------------|------------|
+| [Windows servers] | [T1059.001] | [Tested] | [Synthetic validation + field mapping] | [Workstations not covered] |
+| [Workstations] | [T1059.001] | [Theoretical] | [Rule exists, telemetry scope missing] | [EDR rollout incomplete] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
