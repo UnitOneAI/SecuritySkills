@@ -1,6 +1,10 @@
 # Docker and Kubernetes CIS Benchmark Details
 
-This file contains the detailed CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 checklist items for the Container & Kubernetes Security Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+This file contains the detailed CIS Docker Benchmark v1.6.0, current CIS Kubernetes Benchmark v2.x, legacy CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 checklist items for the Container & Kubernetes Security Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+
+> Benchmark version: CIS Kubernetes Benchmark v2.x by default (v2.0.1 current on the CIS page; v2.0.0 compatible when explicitly requested). Use CIS Kubernetes v1.9.0 only when `Legacy Mode: yes` is explicitly recorded.
+>
+> Evidence source requirement: every Kubernetes finding must record whether it came from manifest review, kube-bench, provider evidence, or Not Evaluable. Exact v2.x CIS IDs must be verified from the active CIS source; do not copy v1.9.0 IDs into current reports without source confirmation.
 
 ---
 
@@ -189,9 +193,16 @@ ENTRYPOINT ["/server"]
 
 ---
 
-## Kubernetes Security Review -- Pod Security (CIS Kubernetes v1.9.0, Section 5)
+## Kubernetes Security Review -- Pod Security (CIS Kubernetes v2.x, Section 5)
 
-Evaluate Kubernetes workload definitions against CIS Kubernetes Benchmark Section 5 (Policies) and Pod Security Standards.
+Evaluate Kubernetes workload definitions against CIS Kubernetes Benchmark Section 5 (Policies) and Pod Security Standards. For current clusters, prefer Pod Security Admission (PSA) enforcement and admission-policy evidence over legacy PodSecurityPolicy artifacts.
+
+**Evaluation methods:**
+
+- **Manifest review:** Check workload, namespace, RBAC, NetworkPolicy, Secret, and admission-policy YAML.
+- **kube-bench:** Use output generated with the active v2.x benchmark profile.
+- **Provider API:** Use EKS/AKS/GKE provider evidence where managed-cluster policy state is not visible in manifests.
+- **Not evaluable:** Mark controls this way when control plane, node, or provider evidence is unavailable.
 
 ### CIS 5.1 -- RBAC and Service Accounts
 
@@ -266,7 +277,7 @@ Evaluate workload configurations against Kubernetes Pod Security Standards. The 
 
 #### CIS 5.2.1 -- Ensure that the cluster has at least one active policy control mechanism installed
 
-Check for Pod Security Admission labels on namespaces:
+Check for Pod Security Admission labels on namespaces. Evaluate `enforce`, `audit`, and `warn` modes; `enforce` is the controlling gate, while `audit` and `warn` provide detection and migration visibility.
 
 ```yaml
 apiVersion: v1
@@ -279,6 +290,8 @@ metadata:
 ```
 
 Or check for OPA/Gatekeeper or Kyverno policies.
+
+Do not require `PodSecurityPolicy` resources for current clusters. PSP is legacy and its absence is not evidence of non-compliance for Kubernetes versions that use Pod Security Admission.
 
 #### CIS 5.2.2 -- Minimize the admission of privileged containers
 
@@ -503,9 +516,16 @@ stringData:
 
 ---
 
-## Kubernetes Security Review -- Control Plane (CIS Kubernetes v1.9.0, Sections 1-4)
+## Kubernetes Security Review -- Control Plane (CIS Kubernetes v2.x, Sections 1-4)
 
-These checks apply when control plane configuration files are available (self-managed clusters).
+These checks apply when control plane configuration files are available for self-managed clusters, or when kube-bench/provider evidence is available. For managed EKS, AKS, or GKE clusters, mark provider-managed control plane checks as Not Evaluable unless the assessment includes provider-specific evidence.
+
+**Evaluation methods:**
+
+- **Self-managed manifests/files:** Check API server, controller-manager, scheduler, etcd, and kubelet configuration directly.
+- **kube-bench:** Use output generated with the active v2.x benchmark profile and record the benchmark version.
+- **Provider evidence:** Use managed-cluster configuration exports, compliance reports, or provider documentation for managed controls.
+- **Not evaluable:** Use when the provider owns the control plane and no evidence is available.
 
 ### CIS 1.1 -- Control Plane Node Configuration Files
 

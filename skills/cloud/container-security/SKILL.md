@@ -2,18 +2,20 @@
 name: container-security
 description: >
   Performs a container and Kubernetes security review against the CIS Docker
-  Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190.
+  Benchmark v1.6.0, CIS Kubernetes Benchmark v2.x, and NIST SP 800-190.
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
-  hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
+  hardening, RBAC, Pod Security Admission, network policies, and secrets
+  management. Produces a prioritized findings report with benchmark version,
+  cluster version, distribution, and evidence-source metadata.
 tags: [cloud, containers, kubernetes, docker]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
-frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
+frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v2.0.1, CIS-Kubernetes-v2.0.0, NIST-SP-800-190]
+legacy-frameworks: [CIS-Kubernetes-v1.9.0]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "2.0.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -28,10 +30,12 @@ argument-hint: "[target-file-or-directory]"
 This skill performs a structured security review of container images and Kubernetes deployments against three industry-standard frameworks:
 
 - **CIS Docker Benchmark v1.6.0** -- 7 sections covering Docker daemon, host, images, containers, runtime, security operations, and Docker Swarm configuration.
-- **CIS Kubernetes Benchmark v1.9.0** -- 5 sections covering control plane, etcd, control plane configuration, worker nodes, and policies.
+- **CIS Kubernetes Benchmark v2.x** -- 5 sections covering control plane, etcd, control plane configuration, worker nodes, and policies. CIS currently lists Kubernetes Benchmark v2.0.1, while v2.0.0 remains compatible when explicitly requested.
 - **NIST SP 800-190** (Application Container Security Guide) -- Countermeasures for image, registry, orchestrator, container, and host OS risks.
 
 The review covers Dockerfiles, Kubernetes manifests, Helm charts, and supporting configurations. Each finding is mapped to specific CIS recommendation IDs or NIST SP 800-190 countermeasure categories.
+
+For historical audits, the skill can run in legacy mode against CIS Kubernetes Benchmark v1.9.0. Legacy mode must be explicit and must record the source date; v1.9.0 control IDs must not be reused as current v2.x IDs without source verification.
 
 ---
 
@@ -99,17 +103,46 @@ Use Glob to locate all relevant configuration files.
 **/*-ingress.yaml
 **/*-networkpolicy.yaml
 **/*-rbac.yaml
-**/*-psp.yaml
-**/*-podsecuritypolicy.yaml
+**/*-podsecurity*.yaml
+**/*-psa*.yaml
+**/*-kyverno*.yaml
+**/*-gatekeeper*.yaml
 ```
 
 Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, and supporting configs. Record all discovered files.
 
 ---
 
+### Step 1.5: Benchmark Preflight
+
+Before evaluating, record the assessment context:
+
+| Field | Value |
+|-------|-------|
+| Kubernetes version | e.g., 1.34, 1.35, or other |
+| Distribution type | Self-managed / EKS / AKS / GKE / Other |
+| CIS Kubernetes benchmark version | v2.0.1 current / v2.0.0 compatible baseline / v1.9.0 legacy |
+| Benchmark source date | YYYY-MM-DD / Not Evaluable |
+| Evidence sources available | Manifests / kube-bench / Provider API / Mixed |
+| Legacy mode | Yes / No |
+
+- **Self-managed clusters:** Sections 1-5 may be evaluable when control plane, etcd, and worker-node evidence is available.
+- **Managed clusters (EKS/AKS/GKE):** Section 5 policy/workload checks are usually manifest-evaluable. Control plane checks in Sections 1-4 are provider-managed and must be marked Not Evaluable unless kube-bench or provider evidence is provided.
+- **Legacy mode (v1.9.0):** Use only for historical compliance. Record source date and do not compare legacy percentages to current v2.x results.
+- **Current CIS IDs:** If the active v2.x benchmark source is unavailable, mark exact CIS IDs as `Not Evaluable -- benchmark source unavailable` rather than reusing v1.9.0 IDs.
+
+---
+
 ### Step 2 through Step 6: CIS Benchmark and NIST SP 800-190 Evaluation
 
-Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
+Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v2.x, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Admission, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
+
+For each Kubernetes finding, record:
+
+1. The active benchmark version (v2.0.1 current, v2.0.0 compatible baseline, or v1.9.0 legacy).
+2. The Kubernetes cluster version and distribution type.
+3. The evidence source: manifest review, kube-bench, provider evidence, or Not Evaluable.
+4. Whether the control is fully evaluable for self-managed clusters, managed clusters, or manifest-only review.
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
@@ -142,7 +175,13 @@ Produce the final report using the structure defined in the Output Format sectio
 ### Environment
 - Repository: <identifier>
 - Date: <assessment date>
-- Frameworks: CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, NIST SP 800-190
+- Kubernetes version: <version>
+- Distribution: self-managed / EKS / AKS / GKE / other
+- Frameworks: CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v2.x, NIST SP 800-190
+- CIS Kubernetes Benchmark Version: v2.0.1 current / v2.0.0 compatible baseline / v1.9.0 legacy
+- Benchmark Source Date: <YYYY-MM-DD> / Not Evaluable
+- Legacy Mode: yes / no
+- Evidence Sources: manifest review / kube-bench / provider evidence / mixed
 - Files reviewed: <N Dockerfiles, N K8s manifests, N Helm charts>
 
 ### Executive Summary
@@ -164,11 +203,23 @@ Produce the final report using the structure defined in the Output Format sectio
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
 
+### Evidence Source Summary
+
+| Evidence Source | Controls Evaluated | Not Evaluable | Notes |
+|-----------------|--------------------|---------------|-------|
+| Manifest review | N | N | Workload policy and YAML evidence |
+| kube-bench | N | N | Active benchmark version required |
+| Provider evidence | N | N | Managed-cluster control plane evidence |
+| Not Evaluable | N | N | Missing provider/control-plane evidence |
+
 ### Detailed Findings
 
 #### [CIS-DOCKER 4.X / CIS-K8S 5.X.X / NIST-190-CMX] <Finding Title>
 - **Status:** Fail
 - **Severity:** Critical / High / Medium / Low
+- **Benchmark Version:** CIS Kubernetes v2.0.1 / v2.0.0 / v1.9.0 legacy / NIST SP 800-190 / CIS Docker v1.6.0
+- **Evidence Source:** Manifest review / kube-bench / Provider evidence / Not Evaluable
+- **Cluster Scope:** Self-managed / Managed control plane / Workload manifest
 - **Pod Security Standard Impact:** Violates Restricted / Violates Baseline / Compliant
 - **File:** <path>
 - **Line(s):** <line numbers>
@@ -212,15 +263,21 @@ Produce the final report using the structure defined in the Output Format sectio
 | 4 | Container Images and Build File | Non-root USER, trusted base images, no secrets in Dockerfiles, COPY over ADD, HEALTHCHECK, content trust |
 | 5 | Container Runtime Configuration | AppArmor, SELinux, capabilities, privileged mode, host namespaces, read-only root FS, resource limits |
 
-### CIS Kubernetes Benchmark v1.9.0 -- Section Map
+### CIS Kubernetes Benchmark v2.x -- Section Map
 
-| Section | Domain | Key Checks |
-|---------|--------|------------|
-| 1 | Control Plane Components | API server flags, controller manager, scheduler configuration, file permissions |
-| 2 | etcd | TLS configuration, peer authentication, unique CA |
-| 3 | Control Plane Configuration | Authentication, authorization, admission controllers, audit logging |
-| 4 | Worker Nodes | Kubelet configuration, file permissions, TLS bootstrapping |
-| 5 | Policies | RBAC, Pod Security Standards, network policies, secrets management |
+| Section | Domain | Key Checks | Evidence Notes |
+|---------|--------|------------|----------------|
+| 1 | Control Plane Components | API server flags, controller manager, scheduler configuration, file permissions | Self-managed or kube-bench/provider evidence required |
+| 2 | etcd | TLS configuration, peer authentication, unique CA | Self-managed or provider evidence required |
+| 3 | Control Plane Configuration | Authentication, authorization, admission controllers, audit logging | Managed clusters may be Not Evaluable |
+| 4 | Worker Nodes | Kubelet configuration, file permissions, TLS bootstrapping | Node/kube-bench evidence required |
+| 5 | Policies | RBAC, Pod Security Admission, network policies, secrets management | Manifest review usually evaluable |
+
+CIS currently lists Kubernetes Benchmark v2.0.1 as the latest recent version, while v2.0.0 remains a compatible v2.x baseline when explicitly requested. Treat both as current v2.x and verify exact control IDs from the active benchmark source before reporting exact IDs. PodSecurityPolicy-era checks are legacy only; Kubernetes policy review should focus on Pod Security Admission labels, enforce/audit/warn modes, and admission-policy tooling such as Kyverno, Gatekeeper, or ValidatingAdmissionPolicy.
+
+### Legacy CIS Kubernetes Benchmark v1.9.0
+
+Use v1.9.0 only when `Legacy Mode: yes` is recorded for a historical audit. Do not compare v1.9.0 compliance percentages to current v2.x results, and do not reuse v1.9.0 control IDs for v2.x findings unless the current source confirms the mapping.
 
 ### NIST SP 800-190 -- Risk Categories and Countermeasures
 
@@ -257,6 +314,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **PodSecurityPolicy is legacy.** For current Kubernetes reviews, absence of PSP files is not a failure. Evaluate Pod Security Admission labels and enforcement modes instead.
+9. **Managed clusters hide control plane evidence.** For EKS, AKS, and GKE, mark provider-managed control plane checks Not Evaluable unless provider evidence or kube-bench output is available.
 
 ---
 
@@ -279,7 +338,7 @@ Produce the final report using the structure defined in the Output Format sectio
 ## References
 
 - CIS Docker Benchmark v1.6.0: https://www.cisecurity.org/benchmark/docker
-- CIS Kubernetes Benchmark v1.9.0: https://www.cisecurity.org/benchmark/kubernetes
+- CIS Kubernetes Benchmark: https://www.cisecurity.org/benchmark/kubernetes
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
@@ -293,4 +352,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **2.0.0** -- Updated CIS Kubernetes benchmark handling from v1.9.0 to current v2.x with v2.0.0 compatibility, benchmark preflight, evidence-source tracking, managed-cluster Not Evaluable handling, PSA-focused policy review, and explicit v1.9.0 legacy mode.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
