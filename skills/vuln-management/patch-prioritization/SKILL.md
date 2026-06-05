@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -47,7 +47,7 @@ Before starting, collect or confirm:
 - [ ] **Vulnerability inventory:** List of CVEs or vulnerability findings pending remediation, including scanner source (Qualys, Tenable, Rapid7, Snyk, Trivy)
 - [ ] **Current SLA assignments:** Existing SLA tiers and deadlines for each finding, if previously triaged
 - [ ] **Asset inventory context:** Business criticality, exposure (internet-facing, internal, air-gapped), owner, and environment (production, staging, dev) for affected systems
-- [ ] **Patch availability:** Whether vendor patches, hotfixes, or workarounds exist for each CVE
+- [ ] **Patch availability evidence:** Vendor advisory/source, affected installed version, fixed version or KB, package/image availability, workaround status, and EOL/support status for each CVE
 - [ ] **Change management constraints:** Maintenance windows, freeze periods, change advisory board (CAB) schedules
 - [ ] **Compensating controls inventory:** WAF rules, network segmentation, EDR policies, disabled features currently in place
 - [ ] **Compliance mandates:** Applicable regulatory requirements (CISA BOD 22-01, PCI DSS 4.0 Requirement 6.3.3, HIPAA, FedRAMP)
@@ -82,6 +82,10 @@ Vulnerability Inventory Entry:
 - CISA KEV:            [Yes | No]
 - SSVC Decision:       [Immediate | Out-of-Cycle | Scheduled | Defer]
 - Patch Available:     [Yes (version) | No | Workaround Only]
+- Patch Evidence:      [Vendor advisory URL, fixed version/KB/package, applicability evidence]
+- Patch Readiness:     [Ready | Blocked | Workaround Only | No Patch | EOL]
+- Rollback Readiness:  [Ready | Untested | Not Applicable | Blocked]
+- No-Patch Review Date:[YYYY-MM-DD if no patch/workaround only]
 - Current SLA:         [Tier and deadline]
 - SLA Status:          [Within SLA | At Risk | Breached]
 ```
@@ -188,6 +192,52 @@ Map prioritized patches to available maintenance windows, respecting change mana
 4. Evaluate rollback procedures and test coverage for each patch
 5. Account for change freeze periods (fiscal close, peak traffic, regulatory audits)
 
+#### Patch Availability and Rollback Readiness Gate
+
+Do not schedule a normal patch window until the action is executable and reversible. `Patch available` is not binary; a vendor fix may exist but be unavailable for the deployed distribution, container base image, appliance firmware, managed service, or application dependency tree.
+
+| Readiness Field | Required Evidence |
+|---|---|
+| Vendor source | Vendor advisory URL, release note, CVE bulletin, KB article, package changelog, or provider maintenance notice |
+| Affected installed version | Installed package, image digest, firmware version, SaaS/managed-service version, library lockfile, or runtime evidence |
+| Fixed version mapping | Fixed upstream version, OS package version, KB, hotfix, container tag/digest, appliance firmware, or provider rollout identifier |
+| Applicability evidence | Proof the fix applies to the deployed product, OS, architecture, edition, configuration, and dependency path |
+| Package/artifact availability | Package repository, container rebuild, dependency release, vendor portal, maintenance contract, or provider rollout status |
+| Dependency impact | Required prerequisite patches, breaking changes, migrations, API changes, driver/firmware dependencies, or rebuild requirements |
+| EOL/support status | Supported, extended support, EOL/no fix, paid support required, or replacement/upgrade required |
+| Workaround-only status | Workaround description, expected risk reduction, monitoring owner, expiry, and reevaluation cadence |
+| Backup/snapshot freshness | Backup, snapshot, image rollback, database backup, or configuration export timestamp and restore scope |
+| Rollback method | Snapshot restore, package downgrade, blue/green cutover, image redeploy, config rollback, feature flag, or vendor-assisted rollback |
+| Rollback test status | Tested date/environment, owner, result, known data-migration constraints, and recovery time expectation |
+| Change blockers | Freeze window, CAB dependency, maintenance window, vendor TAC window, contractual limitation, or business blackout period |
+
+#### Readiness Classification
+
+| Classification | Definition | Scheduling Action |
+|---|---|---|
+| **Ready** | Fix is applicable, artifact is available, dependencies are understood, and rollback is tested or formally accepted | Schedule according to SLA tier |
+| **Blocked** | Fix exists but cannot be deployed because artifact, dependency, maintenance, approval, or rollback evidence is missing | Track blocker owner and due date; do not mark as scheduled |
+| **Workaround Only** | No deployable fix exists, but a compensating workaround is available | Route to workaround monitoring and risk exception with reevaluation date |
+| **No Patch** | No vendor fix or workaround is available | Monitor vendor/source, maintain compensating controls, and set reevaluation cadence |
+| **EOL** | Affected product/version is unsupported or will not receive a fix | Plan upgrade/replacement; risk acceptance alone is temporary |
+
+```
+Patch Readiness Entry:
+- CVE ID(s):              [List of CVEs addressed]
+- Vendor Source:          [Advisory/KB/release URL]
+- Affected Version:       [Installed version/package/image digest]
+- Fixed Version/Artifact: [Version, KB, package, image, firmware, provider rollout]
+- Applicability Evidence: [Why this fix applies to this deployed asset]
+- Dependency Impact:      [Prereqs, migrations, rebuilds, compatibility risks]
+- EOL/Support Status:     [Supported | Extended | EOL | Paid support required]
+- Workaround Status:      [None | Workaround only | Temporary mitigation in place]
+- Backup/Snapshot:        [Timestamp, scope, restore target]
+- Rollback Method:        [Downgrade/snapshot/blue-green/config/vendor-assisted]
+- Rollback Test:          [Tested date/env/result or formally accepted gap]
+- Readiness:              [Ready | Blocked | Workaround Only | No Patch | EOL]
+- Next Review Date:       [YYYY-MM-DD for blocked/no-patch/workaround-only]
+```
+
 #### Scheduling Priority Rules
 
 | Priority | Scheduling Rule |
@@ -202,10 +252,13 @@ Patch Schedule Entry:
 - CVE ID(s):           [List of CVEs addressed]
 - Target System(s):    [Hostname(s) / application(s)]
 - Patch Version:       [Vendor patch version or KB number]
+- Patch Source:        [Vendor advisory/source URL]
+- Readiness:           [Ready | Blocked | Workaround Only | No Patch | EOL]
 - Scheduled Window:    [YYYY-MM-DD HH:MM - HH:MM TZ]
 - Change Type:         [Emergency | Expedited | Standard]
 - Change Ticket:       [Ticket ID]
 - Rollback Plan:       [Description or "snapshot/restore"]
+- Rollback Test:       [Tested date/environment or accepted gap]
 - SLA Deadline:        [YYYY-MM-DD]
 - Days Remaining:      [N days]
 ```
@@ -278,7 +331,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Patch Prioritization Report
 **Date:** [YYYY-MM-DD]
-**Skill:** patch-prioritization v1.0.0
+**Skill:** patch-prioritization v1.0.1
 **Frameworks:** SSVC 2.1, EPSS v3, CISA KEV
 **Reviewer:** AI-assisted (human review required for P0/P1 actions and risk acceptances)
 
@@ -307,11 +360,17 @@ findings requiring immediate action.]
 |---|---|---|---|---|
 | [CVE-ID] | [score] | [score] | [Surging/Rising] | [Action] |
 
+### Patch Readiness and Rollback Gate
+
+| CVE ID | Target System | Patch Source | Fixed Version/Artifact | Readiness | Rollback Status | Next Review |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [system] | [vendor advisory/KB] | [version/package/image] | [Ready/Blocked/Workaround Only/No Patch/EOL] | [Ready/Ungated/Untested/Blocked] | [date] |
+
 ### Prioritized Patch Schedule
 
-| Priority | CVE ID(s) | Target System | Patch | Scheduled Window | SLA Deadline | Status |
-|---|---|---|---|---|---|---|
-| P0 | [CVE-ID] | [system] | [version] | [date/time] | [date] | [Scheduled/Pending/Complete] |
+| Priority | CVE ID(s) | Target System | Patch | Readiness | Scheduled Window | SLA Deadline | Status |
+|---|---|---|---|---|---|---|---|
+| P0 | [CVE-ID] | [system] | [version] | [Ready/Blocked] | [date/time] | [date] | [Scheduled/Pending/Complete] |
 
 ### Compensating Controls in Effect
 [List all active compensating controls with effectiveness ratings]
@@ -373,6 +432,10 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+
+6. **Treating patch availability as binary.** A fixed upstream version does not mean the deployed OS package, container image, appliance firmware, SaaS rollout, or dependency lockfile is ready. Record applicability, artifact availability, and rollback readiness before scheduling.
+
+7. **Leaving no-patch findings in normal queues.** When no fix exists, the right workflow is workaround monitoring, vendor/source watch, risk exception, and a reevaluation date; otherwise the item becomes stale noise in the patch backlog.
 
 ---
 
