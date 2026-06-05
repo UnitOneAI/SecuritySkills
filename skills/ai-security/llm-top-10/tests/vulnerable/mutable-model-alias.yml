@@ -1,0 +1,9 @@
+llm:
+  default_model: "provider/latest"
+  backup_model: "provider/flash-latest"
+  response_format: "json_object"
+  tool_choice: "auto"
+  safety_profile: "default"
+  security_regression_tests: []
+  runtime_model_id_export: false
+  alias_approval_required: false

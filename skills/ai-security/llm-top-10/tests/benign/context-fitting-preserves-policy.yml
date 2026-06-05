@@ -1,0 +1,16 @@
+context_fitting:
+  system_policy:
+    truncatable: false
+    storage: server_side_route_policy
+  developer_policy:
+    truncatable: false
+  authorization_evidence:
+    tenant_id: required
+    source_acl_labels: required
+    denial_history: required
+    on_missing: fail_closed
+  untrusted_history:
+    summarization: allowed
+    summary_label: untrusted_conversation_summary
+  high_risk_action:
+    requires_full_authorization_evidence: true

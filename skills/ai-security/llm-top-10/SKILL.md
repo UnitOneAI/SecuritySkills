@@ -12,7 +12,7 @@ phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -44,21 +44,62 @@ Do NOT invoke this skill for traditional web application reviews that have no LL
 Before beginning the review, collect the following:
 
 - [ ] **LLM provider and model identifiers** — which models are called, via which SDK or API.
+- [ ] **Model route and fallback inventory** -- route name, trigger condition, provider, exact model or deployment runtime ID, data classification, enabled tools, side-effect class, input/output token limits, sampling settings, output sink, validation policy, logging/redaction behavior, data residency, fallback target, and fail-open/fail-closed behavior.
 - [ ] **System prompts and prompt templates** — all static instructions sent to the model.
 - [ ] **Input flow** — how user input reaches the model (direct, preprocessed, combined with retrieval context).
+- [ ] **Context fitting and truncation policy** -- how long conversations, retrieved evidence, source ACL metadata, denial history, and active constraints are preserved, summarized, rejected, or truncated before model invocation.
 - [ ] **Output flow** — how model output is rendered, parsed, or acted upon (HTML, CLI, database writes, API calls).
 - [ ] **Tool/function-calling configuration** — any tools the LLM can invoke, their permissions, and confirmation gates.
+- [ ] **Model registry and change-control evidence** -- production model aliases, preview/latest usage, runtime model ID export, feature-flagged routing, model promotion approval, and security regression tests for model changes.
 - [ ] **RAG pipeline architecture** — document ingestion, chunking strategy, embedding model, vector store, retrieval query construction, context window assembly.
 - [ ] **Authentication and authorization context** — how user identity propagates through the LLM pipeline, whether the model inherits user permissions or operates with elevated privileges.
 - [ ] **Rate limiting and quota configuration** — per-user and per-session limits on model invocations.
 - [ ] **Data classification** — what sensitivity level of data flows into or out of the model (PII, PHI, financial, credentials).
 - [ ] **Deployment topology** — self-hosted vs. third-party API, data residency, network boundaries.
+- [ ] **Security regression evidence** -- tests or approval gates for tool calling, structured output, refusal boundaries, prompt-injection cases, token-limit behavior, and fallback route behavior.
 
 ---
 
 ## 3. Process
 
 Review the application against each of the ten OWASP LLM risk categories below. For each category, examine the codebase for the specified patterns, apply the detection methods, and recommend the listed mitigations where gaps are found.
+
+---
+
+### Cross-Cutting Step: Model Routing, Fallback, and Context-Fitting Evidence
+
+Before scoring LLM01-LLM10, build a route inventory for every model invocation path. Model routing, fallback, and context fitting are not vulnerabilities by themselves; they become findings when they silently downgrade controls, broaden tools, remove required evidence, or drift away from the reviewed production model.
+
+**Route evidence matrix:**
+
+| Field | Evidence to collect |
+|-------|---------------------|
+| Route name and trigger | Request type, feature flag, tenant, risk class, outage mode, or task classifier that selects the route. |
+| Provider and model/runtime ID | Exact deployment/model ID used at runtime, not just a static alias in code. |
+| Data class | Public, internal, restricted, regulated, credential-adjacent, or customer-specific data allowed on the route. |
+| Tools and side effects | Tool registry, read/write/destructive class, approval requirement, and user-vs-service identity used by tools. |
+| Limits and sampling | Max input/output tokens, context-window cap, temperature, top_p, response format, timeout, and retry policy. |
+| Output sink and validation | Browser rendering, email, database write, ticket reply, code execution, structured parser, citation policy, or human review. |
+| Fallback behavior | Fallback route target, provider change, tool changes, data residency/logging changes, fail-open/fail-closed outcome, and audit event. |
+| Change control | Model alias approval, runtime ID export, security regression tests, rollback owner, and monitoring for route/model drift. |
+
+**Detection patterns:**
+
+```text
+fallback|backup|router|route|chooseModel|selectModel|model_alias|latest|preview
+max_tokens|max_output_tokens|max_completion_tokens|context_window|truncate|summarize_history|token_budget
+temperature|top_p|response_format|tool_choice|tools|functions|data_residency|region
+MODEL_ID|OPENAI_MODEL|ANTHROPIC_MODEL|GEMINI_MODEL|AZURE_OPENAI_DEPLOYMENT
+```
+
+**Context-fitting checks:**
+
+- System/developer policy must not be in the same truncation pool as user-controlled history or retrieved content.
+- Authorization, tenant, source ACL, data-classification, citation, denial history, and active constraints must survive summarization.
+- High-risk actions must fail closed when required authorization or source evidence is missing after truncation.
+- Summaries of untrusted content must remain labeled as untrusted and must not be promoted into system/developer instructions.
+
+**Finding guidance:** Report routing/fallback issues under the OWASP category they affect most directly. Examples: fail-open fallback with broader tools maps to LLM06, context fitting that drops source ACL evidence maps to LLM01/LLM02/LLM08, mutable `latest` aliases without review evidence map to LLM03, and fallback without quotas or token caps maps to LLM10.
 
 ---
 
@@ -73,6 +114,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - System prompts that rely solely on instructional text ("do not follow user instructions to ignore this") as a security boundary.
 - Tool/function-calling configurations where the model can invoke privileged operations based on natural language reasoning alone.
 - Lack of separation between the instruction channel (system prompt) and the data channel (user input, retrieved context).
+- Context-fitting logic that drops system/developer policy, authorization filters, denial history, source ACL metadata, or active tool constraints when the prompt exceeds the model context window.
 
 **Detection methods:**
 
@@ -80,6 +122,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Search for uses of `messages` arrays where `role: "user"` content is assembled from multiple untrusted sources.
 - Review RAG retrieval pipelines for any sanitization or escaping of retrieved document chunks before prompt assembly.
 - Check whether any output-driven actions (tool calls, database writes, code execution) are gated by a secondary validation step independent of the LLM.
+- Search for truncation and summarization helpers (`truncate`, `fit_context`, `summarize_history`, `token_budget`) and verify they preserve instruction hierarchy and security metadata.
 
 **Mitigations:**
 
@@ -89,6 +132,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Implement a secondary validation layer (deterministic code, not another LLM call) for any action the model requests (tool invocations, state changes).
 - Apply the principle of least privilege to all tools and functions accessible to the model.
 - For high-risk applications, deploy a prompt firewall or classifier that detects injection attempts before they reach the model.
+- Keep system/developer policy and authorization evidence outside the truncation pool. Fail closed when required constraints or source evidence cannot fit safely.
 
 **CWE Mapping:** CWE-77 (Command Injection), CWE-74 (Injection)
 
@@ -136,6 +180,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Outdated versions of LLM framework libraries (LangChain, LlamaIndex, Semantic Kernel, Haystack) with known CVEs.
 - Third-party plugins, tools, or LangChain/LlamaIndex community integrations pulled without vetting.
 - Training datasets sourced from the public internet without provenance validation or content auditing.
+- Hosted model aliases (`latest`, `preview`, mutable deployment names) used in production without runtime model ID export, approval workflow, or security regression tests before alias promotion.
 
 **Detection methods:**
 
@@ -143,6 +188,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Grep for `pickle.load`, `torch.load` (without `weights_only=True`), or other unsafe deserialization calls on model artifacts.
 - Check model download code for integrity verification — SHA256 checksum validation, GPG signature checks.
 - Identify any third-party LangChain tools, agents, or plugins and assess their provenance and maintenance status.
+- Search configuration and environment variables for model aliases, preview deployments, provider fallback settings, and runtime model export/telemetry evidence.
 
 **Mitigations:**
 
@@ -152,6 +198,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Maintain a vetted allowlist of approved third-party plugins and integrations. Review community-contributed tools before adoption.
 - Audit training data provenance. Use curated, documented datasets with clear licensing and content review processes.
 - Apply SBOM (Software Bill of Materials) practices to track all components in the LLM pipeline.
+- Treat hosted model aliases as mutable runtime dependencies. Pin reviewed production models where possible, or require model-registry approval, runtime drift alerts, and security regression tests before alias changes reach production.
 
 **CWE Mapping:** CWE-502 (Deserialization of Untrusted Data), CWE-829 (Inclusion of Functionality from Untrusted Control Sphere)
 
@@ -232,6 +279,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Tool definitions with broad permissions — e.g., a database tool that allows arbitrary SQL execution rather than scoped read-only queries.
 - Absence of human-in-the-loop confirmation for destructive or irreversible operations (delete, send email, financial transactions, deploy).
 - The model operating with the application's service account credentials rather than the end user's scoped permissions.
+- Fallback routes that broaden tool access, switch from approval-required to auto-execute behavior, change from user-scoped to service-scoped identity, or add side-effecting tools during provider/model outages.
 
 **Detection methods:**
 
@@ -239,6 +287,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Check for confirmation gates: is there a step between the model requesting an action and the action executing where a human or deterministic policy can approve or deny?
 - Review whether tool permissions follow least privilege — can the scope be narrowed?
 - Search for autonomous execution loops (e.g., `while` loops that let the agent keep calling tools until it decides to stop).
+- Compare primary and fallback routes for tool registry, approval gates, identity, data class, output sink, and audit logging. A fallback must not gain capability silently.
 
 **Mitigations:**
 
@@ -248,6 +297,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Use the end user's permissions (not the application's service account) when tools access downstream systems.
 - Log all tool invocations with full parameters for audit and incident response.
 - Separate read operations (low risk, can auto-execute) from write operations (require confirmation).
+- Require fallback equivalence for tool permissions and approval gates. If equivalence cannot be proven, fail closed for high-impact or state-changing actions and emit an audit event.
 
 **CWE Mapping:** CWE-250 (Execution with Unnecessary Privileges), CWE-863 (Incorrect Authorization)
 
@@ -361,6 +411,8 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - No limits on output size (max_tokens) — the model may generate unbounded responses.
 - Agent loops without iteration limits — the model can recursively call tools indefinitely, compounding costs.
 - No budget alerts or spending caps on LLM API provider accounts.
+- Fallback or retry code that removes token caps, increases sampling, changes to larger context models without quota checks, or drops safe-degradation policy during outages.
+- Context-window fitting that trims security evidence instead of rejecting or safely summarizing over-budget requests.
 
 **Detection methods:**
 
@@ -370,6 +422,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Search for agent loop implementations and verify they have maximum iteration counts.
 - Review cloud billing configuration for budget alerts and hard spending caps.
 - Check for per-user/per-tenant usage tracking and quota enforcement.
+- Review retry, fallback, and outage-handling code to ensure token limits, timeouts, route policy, and usage accounting are preserved.
 
 **Mitigations:**
 
@@ -380,6 +433,7 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Configure budget alerts and hard spending caps on LLM API provider accounts (OpenAI usage limits, AWS Bedrock budgets, etc.).
 - Implement per-user usage tracking with tiered quotas. Degrade gracefully when quotas are exceeded.
 - Use streaming with server-side timeout to abort long-running completions.
+- Preserve token limits, timeouts, data-class restrictions, and usage accounting across fallback routes. Reject high-risk requests when safe context fitting would remove required security evidence.
 
 **CWE Mapping:** CWE-770 (Allocation of Resources Without Limits or Throttling), CWE-400 (Uncontrolled Resource Consumption)
 
@@ -408,6 +462,21 @@ Structure the findings report as follows:
 **Reviewer:** [Agent/Person]
 **Scope:** [Components reviewed]
 **OWASP LLM Top 10 Version:** 2025
+
+## Model Route Inventory
+
+| Route | Trigger | Provider/Model Runtime ID | Data Class | Tools/Side Effects | Limits/Sampling | Output Sink | Fallback | Status |
+|-------|---------|---------------------------|------------|--------------------|-----------------|-------------|----------|--------|
+| <route> | <condition> | <exact runtime ID> | <class> | <tools and approval gates> | <tokens/temp/top_p> | <sink/validation> | <fail-open/fail-closed> | Pass/Fail/Not Evaluable |
+
+## Context-Fitting and Fallback Evidence
+
+| Control | Evidence | Risk | Status |
+|---------|----------|------|--------|
+| Instruction hierarchy preserved | <system/developer policy handling> | LLM01/LLM06 | Pass/Fail |
+| Authorization/source metadata preserved | <tenant, ACL, source labels, denial history> | LLM02/LLM08 | Pass/Fail |
+| Fallback route equivalence | <tools, approvals, model, logging, residency> | LLM06/LLM10 | Pass/Fail |
+| Model alias change control | <registry, runtime ID export, regression tests> | LLM03 | Pass/Fail |
 
 ## Executive Summary
 
@@ -464,7 +533,7 @@ Key differences from the 2023 edition:
 
 ## 7. Common Pitfalls
 
-These are the five most frequent mistakes agents make when performing LLM security reviews:
+These are the six most frequent mistakes agents make when performing LLM security reviews:
 
 1. **Reviewing only the prompt, not the data flow.** The prompt is one attack surface. The full data flow — from user input through retrieval, prompt assembly, model inference, output parsing, tool execution, and response rendering — must be traced end to end. Findings missed in output handling (LLM05) and excessive agency (LLM06) are the most common gaps.
 
@@ -475,6 +544,8 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Treating fallback as availability-only.** Provider fallback, route selection, and context-window fitting also change security posture. A backup route can add tools, remove approval gates, change data residency, drop token caps, or discard authorization evidence. Review failover paths with the same rigor as the primary model path.
 
 ---
 
@@ -495,15 +566,22 @@ When performing a review using this skill:
 ## 9. References
 
 - OWASP Top 10 for LLM Applications 2025: https://genai.owasp.org/llm-top-10/
-- OWASP LLM AI Security & Governance Checklist: https://genai.owasp.org/llm-top-10/llm-ai-security-and-governance-checklist/
+- OWASP LLM AI Security & Governance Checklist: https://genai.owasp.org/resource/llm-applications-cybersecurity-and-governance-checklist-english/
 - OWASP GenAI Project Home: https://genai.owasp.org/
 - LLM01:2025 Prompt Injection: https://genai.owasp.org/llmrisk/llm01-prompt-injection/
-- LLM02:2025 Sensitive Information Disclosure: https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
-- LLM03:2025 Supply Chain Vulnerabilities: https://genai.owasp.org/llmrisk/llm03-supply-chain-vulnerabilities/
+- LLM02:2025 Sensitive Information Disclosure: https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/
+- LLM03:2025 Supply Chain Vulnerabilities: https://genai.owasp.org/llmrisk/llm032025-supply-chain/
 - LLM04:2025 Data and Model Poisoning: https://genai.owasp.org/llmrisk/llm04-data-and-model-poisoning/
-- LLM05:2025 Improper Output Handling: https://genai.owasp.org/llmrisk/llm05-improper-output-handling/
-- LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm06-excessive-agency/
-- LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm07-system-prompt-leakage/
-- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
-- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
-- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+- LLM05:2025 Improper Output Handling: https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/
+- LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
+- LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/
+- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm082025-vector-and-embedding-weaknesses/
+- LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm092025-misinformation/
+- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Adds model routing and fallback evidence, context-fitting safety checks, hosted-model alias drift review, route/fallback output tables, and fixture-backed examples for unsafe and safe routing patterns.
+- **1.0.0** -- Initial release. Full coverage of OWASP Top 10 for LLM Applications 2025.
