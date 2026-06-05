@@ -6,14 +6,15 @@ description: >
   ATT&CK v16 techniques. Auto-invoked when the user discusses detection logic,
   Sigma rules, ATT&CK coverage gaps, or asks "how do I detect this technique?"
   Produces Sigma-formatted detection rules, ADS documentation, and coverage
-  heatmap methodology for systematic detection program management.
+  heatmap methodology with lifecycle promotion evidence for systematic detection
+  program management.
 tags: [secops, detection, sigma, mitre-attack]
 role: [soc-analyst, security-engineer]
 phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +57,7 @@ Before beginning, gather or confirm:
 - [ ] **SIEM platform(s):** Target SIEM for rule deployment (Microsoft Sentinel, Splunk, Elastic, Chronicle, QRadar) -- determines Sigma backend conversion target.
 - [ ] **Environment context:** Operating systems, domain structure, cloud providers, key applications in the environment.
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
+- [ ] **Lifecycle evidence:** Current rule status, validation method/date, backend conversion result, field-mapping proof, deployment scope, false-positive budget, owner, and review cadence.
 - [ ] **Detection priority:** Is this for a known active threat, proactive coverage expansion, or compliance requirement?
 - [ ] **Organizational naming conventions:** Rule ID format, severity taxonomy, and tagging standards used by the detection engineering team.
 
@@ -283,10 +285,12 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
 | **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
 
+Coverage levels must be based on lifecycle evidence, not on rule existence alone. A syntactically valid Sigma rule is at most **Theoretical** until conversion, telemetry, and validation evidence prove a higher state.
+
 **Heatmap construction process:**
 
 1. Export the current ATT&CK matrix for the relevant platform (Enterprise, Cloud, ICS) from the ATT&CK Navigator (https://mitre-attack.github.io/attack-navigator/)
-2. For each technique, assess the current detection coverage level based on deployed rules
+2. For each technique, assess the current detection coverage level based on deployed rules and lifecycle promotion evidence
 3. Assign a coverage score (0-4) corresponding to the levels above
 4. Prioritize gap closure using threat intelligence: techniques used by threat actors relevant to your industry should be addressed first
 5. Use the ATT&CK Navigator layer file format (JSON) to visualize coverage as a heatmap
@@ -301,6 +305,59 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | Attack chain position | Medium | Early-stage techniques (Initial Access, Execution) catch attacks sooner |
 | Ease of detection | Medium | Some techniques have clear observable artifacts; prioritize those first |
 | Compliance requirements | Medium | Regulatory frameworks may mandate detection of specific techniques |
+
+### Step 5.5: Lifecycle Promotion Evidence Gates
+
+Before assigning a Sigma status or ATT&CK heatmap score, require the following evidence. If evidence is missing, keep the status lower or mark the coverage claim as Not Evaluable for the affected environment segment.
+
+**Promotion evidence matrix:**
+
+| Evidence field | Required proof |
+|---|---|
+| Status rationale | Why the rule is `experimental`, `test`, `stable`, `deprecated`, or `unsupported` |
+| Validation date | Last successful true-positive and false-positive validation date |
+| Validation method | Atomic Red Team, Caldera, purple team, replayed production sample, synthetic event, or manual procedure |
+| Sample event IDs | Event IDs, record IDs, notable IDs, file hashes, or fixture names proving the rule matched expected data |
+| Backend conversion | Target SIEM/backend name, backend version, converter version, and converted query review result |
+| Field mapping evidence | Proof required fields exist in production telemetry and survive parser/backend conversion |
+| Telemetry scope | Host groups, cloud accounts, tenants, regions, platforms, sensor coverage, and exclusions |
+| Production deployment | Saved-search/rule ID, deployment target, schedule, enabled state, and alert-routing destination |
+| False-positive health | Baseline volume, FP rate or budget, known benign sources, suppression/exclusion owner, and last review |
+| Owner and cadence | Detection owner, review cadence, next review date, and escalation path for broken coverage |
+| Demotion criteria | Conditions that move `stable` to `test`, `experimental`, `deprecated`, or disabled/tuning mode |
+
+**Sigma status promotion gates:**
+
+| Target status | Minimum evidence |
+|---|---|
+| `experimental` | Rule logic has a documented hypothesis, ATT&CK mapping, expected logsource, and known assumptions; no production-readiness claim |
+| `test` | Rule has passed at least one controlled true-positive test and one known-benign or false-positive review in the target logsource |
+| `stable` | Rule has target-backend conversion evidence, production field coverage, deployment scope, FP budget, owner, review cadence, and demotion criteria |
+| `deprecated` | Replacement rule, retired logsource, or obsolete ATT&CK mapping is documented with migration notes |
+| `unsupported` | Required telemetry, backend semantics, or operational owner is absent and the rule should not be presented as coverage |
+
+**Coverage heatmap evidence gates:**
+
+| Coverage level | Evidence required |
+|---|---|
+| None | No rule, or rule cannot be evaluated because required telemetry is absent |
+| Theoretical | Sigma/query logic exists, but no target-backend conversion or true-positive validation is documented |
+| Tested | Controlled validation passed for a specific environment segment, with field-mapping and conversion evidence |
+| Operational | Rule is deployed and enabled in production for the stated telemetry scope, with alert routing and FP health reviewed |
+| Robust | Multiple complementary rules or data sources cover different procedures; coverage has caught real-world or purple-team activity and has health monitoring |
+
+**Demotion triggers:**
+
+- Required field missing, truncated, renamed, or no longer parsed after EDR/SIEM/logging changes.
+- Sigma conversion loses semantics for a backend or version used in production.
+- Sensor coverage drops below the stated telemetry scope, such as servers only while the heatmap claims all endpoints.
+- FP volume exceeds budget, suppression hides true positives, or a rule is disabled without an accepted risk record.
+- Last validation or review exceeds the documented cadence.
+- ATT&CK technique mapping changes or the rule only covers a narrower sub-technique than the heatmap claim.
+
+**Segmented coverage rule:**
+
+Do not give a technique one global score when validation differs by platform or population. Record separate coverage for servers, workstations, cloud workloads, tenants, business units, regions, and high-value asset groups when telemetry or deployment scope differs.
 
 ### Step 6: Detection-as-Code Practices
 
@@ -354,7 +411,7 @@ detections/
 | P1 | Critical | Detection gap for an actively exploited technique targeting the organization's industry. No compensating detection exists. | Create and deploy detection within 24 hours |
 | P2 | High | Detection gap for a technique with known procedure examples and available log sources. Threat intelligence indicates active use by relevant threat groups. | Create and deploy detection within 7 days |
 | P3 | Medium | Detection gap for a technique with available log sources but lower threat intelligence relevance. Coverage improvement opportunity. | Create and deploy detection within 30 days |
-| P4 | Low | Detection exists but has not been validated or tuned. Coverage is theoretical only. | Validate and tune within 90 days |
+| P4 | Low | Detection exists but has not been validated, tuned, or backed by lifecycle promotion evidence. Coverage is theoretical only. | Validate and tune within 90 days |
 
 ---
 
@@ -365,7 +422,7 @@ Produce detection engineering deliverables in this structure:
 ```markdown
 ## Detection Engineering Report: [ATT&CK Technique ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** detection-engineering v1.0.0
+**Skill:** detection-engineering v1.1.0
 **Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
 
 ### ATT&CK Technique Summary
@@ -388,6 +445,24 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+
+### Lifecycle Promotion Evidence
+| Field | Value | Evidence |
+|-------|-------|----------|
+| Sigma status | [experimental / test / stable / deprecated / unsupported] | [status rationale] |
+| Validation date/method | [date + method] | [Atomic/Caldera/purple-team/replay/manual evidence] |
+| Sample event IDs | [IDs or fixture names] | [events that proved true-positive and benign behavior] |
+| Backend conversion | [SIEM/backend + version] | [converted query and conversion review result] |
+| Field mapping evidence | [required fields] | [production samples, parser docs, or telemetry query result] |
+| Telemetry scope | [population] | [hosts, tenants, regions, exclusions, sensor coverage] |
+| False-positive budget | [threshold] | [baseline volume, FP rate, suppression owner] |
+| Owner/review cadence | [owner + cadence] | [next review date and escalation path] |
+| Demotion criteria | [criteria] | [when to lower status or heatmap score] |
+
+### ATT&CK Coverage Segment Matrix
+| Segment | Technique | Coverage Level | Evidence | Exclusions |
+|---------|-----------|----------------|----------|------------|
+| [Windows servers] | [T1059.001] | [Tested] | [field coverage + validation] | [workstations excluded] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -490,6 +565,10 @@ A detection rule that has never been tested against a known-true-positive event 
 
 Detection rules are not write-once artifacts. Log sources change, environments evolve, adversary techniques mutate, and SIEM platforms update their query syntax. Rules that are not periodically reviewed become stale, accumulate false positives, or silently stop working. Implement a review cadence (quarterly minimum) and track rule health metrics (fire count, TP/FP ratio, last triggered date).
 
+### Pitfall 4.5: Promoting Rules Without Operational Evidence
+
+Do not set Sigma `status: stable` or mark ATT&CK coverage as operational because a rule passed YAML lint or one lab test. Stable coverage requires target-backend conversion, production field availability, deployment scope, false-positive health, an owner, review cadence, and demotion criteria.
+
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
@@ -522,3 +601,4 @@ This skill processes user-supplied content that may include log samples, detecti
 10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
 11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
 12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+13. **Sigma Rules Status Field** -- https://sigmahq.io/docs/basics/rules.html
