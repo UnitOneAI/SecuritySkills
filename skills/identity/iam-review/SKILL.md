@@ -278,6 +278,104 @@ IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for pr
 
 ---
 
+### Step 5A: Federation and Provisioning Drift Review
+
+**Objective:** Verify that SSO assertions, SCIM provisioning, local SaaS authorization, and active sessions stay synchronized when identity state or group membership changes.
+
+**NIST SP 800-207 Reference:** Tenet 3 — Access to individual enterprise resources is granted on a per-session basis; Tenet 6 — Resource authentication and authorization are dynamic and strictly enforced before access is allowed
+**CIS Controls v8 Reference:** Control 5.1 — Account inventory; Control 5.3 — Disable dormant accounts; Control 6.1/6.2 — Access granting and revoking processes; Control 6.7 — Centralize access control
+
+#### Review Checklist
+
+```
+IAM-FED-01: SAML/OIDC claim mappings grant roles from mutable or untrusted attributes without allowlisted group/app-role mapping
+IAM-FED-02: SaaS application keeps local roles or groups after IdP group removal
+IAM-FED-03: SCIM deprovisioning failures are not monitored, retried, or reconciled with app-native accounts
+IAM-FED-04: IdP-disabled users retain active SaaS sessions or refresh tokens until normal expiry
+IAM-FED-05: Break-glass or local admin accounts exist in SaaS apps but are not inventoried, reviewed, and monitored
+IAM-FED-06: Guest/external identities are federated but missing sponsor, expiry, and downstream app entitlement review
+IAM-FED-07: OIDC audience, issuer, tenant, or signing-key validation is not documented for relying applications
+IAM-FED-08: SAML assertions rely on unsigned responses/assertions, weak NameID matching, or missing certificate rotation evidence
+IAM-FED-09: JIT provisioning creates local users without a matching deprovisioning or entitlement-removal path
+IAM-FED-10: App-specific API tokens survive user deactivation or group removal
+```
+
+#### Evidence Gates
+
+| Evidence Gate | Required Evidence | Fail / Not Evaluable When |
+|---|---|---|
+| Federation source of truth | IdP, tenant, issuer, app registration, relying party, SAML/OIDC configuration owner | The application accepts identities from unknown tenants, issuers, or legacy local login paths |
+| Claim-to-role mapping | Attribute source, group/app-role allowlist, default role, admin role mapping, change approver | Roles are inferred from mutable attributes such as email domain, department text, or unreviewed IdP groups |
+| Provisioning coverage | SCIM connector status, sync scope, failure queue, retry policy, reconciliation cadence | SCIM errors are not monitored or app-native accounts are excluded from reconciliation |
+| Deprovisioning propagation | IdP disable event, SCIM delete/disable event, app local status, session/token revocation | Users disabled in the IdP can keep SaaS sessions, refresh tokens, API tokens, or local groups |
+| Local account exceptions | Break-glass accounts, vendor support accounts, emergency admins, local-only owners | Local accounts are not in the identity inventory, lack owner/expiry, or bypass access review |
+| External identity lifecycle | Sponsor, tenant, invitation date, expiry, app access, last use, offboarding evidence | Guests keep access after sponsor departure, contract expiry, or group removal |
+
+#### Test Fixtures
+
+```yaml
+vulnerable_federation_package:
+  idp_status:
+    user: former-contractor@example.com
+    status: disabled
+    groups_removed:
+      - finance-admins
+  saas_application:
+    local_user_status: active
+    local_roles:
+      - billing_admin
+    active_refresh_token: true
+    personal_api_token: present
+  scim_connector:
+    last_sync: 2026-06-01T10:00:00Z
+    failure_queue:
+      - DELETE user former-contractor@example.com failed: 409 conflict
+    alerting: none
+  expected_findings:
+    - IAM-FED-02
+    - IAM-FED-03
+    - IAM-FED-04
+    - IAM-FED-10
+```
+
+```yaml
+benign_federation_package:
+  idp_status:
+    user: analyst@example.com
+    status: active
+    groups:
+      - jira-readonly
+  oidc_relying_party:
+    issuer_allowlist:
+      - https://login.example.com/tenant-a
+    audience: jira-production
+    signing_key_rotation_evidence: documented
+    role_mapping_source: app_roles
+  scim_connector:
+    sync_scope: assigned_users_and_groups
+    failure_queue_monitored: true
+    reconciliation_cadence: daily
+  saas_application:
+    local_admin_exceptions:
+      - breakglass-jira-1:
+          owner: security-operations
+          expiry: 2026-07-01
+          monitored: true
+    session_revocation_on_disable: enabled
+  expected_assessment: no IAM-FED finding when evidence matches implementation
+```
+
+**Platform-specific checks:**
+
+| Platform | Check | What to verify |
+|---|---|---|
+| **Azure / Entra ID** | Enterprise Apps > Provisioning logs; App registrations; Sign-in logs | SCIM failures, token revocation behavior, app-role assignments, guest lifecycle |
+| **Okta** | Application assignments, Profile Editor mappings, System Log, SCIM integration status | Group push drift, failed deprovisioning events, local app account mismatch |
+| **Google Workspace / Cloud Identity** | SAML app settings, Directory API, audit logs | Attribute mappings, suspended users, SAML app assignments, external identities |
+| **SaaS apps** | App-native user export, local roles, API token inventory, active sessions | Local accounts and tokens that do not match the IdP source of truth |
+
+---
+
 ### Step 6: Just-In-Time (JIT) Access Assessment
 
 **Objective:** Evaluate whether elevated permissions are time-bounded and require explicit activation.
@@ -383,6 +481,16 @@ For each finding, produce a row with:
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
+### Federation Drift Matrix
+
+For federated applications and SaaS systems, include a matrix that ties identity-provider state to downstream authorization state:
+
+| Application | IdP Source | Federation Protocol | Claim / Group Source | SCIM Status | Local Roles | Active Sessions / Tokens | Drift Finding |
+|---|---|---|---|---|---|---|---|
+| [SaaS/app name] | [IdP tenant/issuer] | [SAML/OIDC/other] | [app role/group/attribute] | [healthy/errors/not configured] | [local admin/user roles] | [revoked/active/unknown] | [IAM-FED-xx or none] |
+
+When drift exists, state whether the gap is a provisioning failure, a claim-mapping issue, a local-account exception, a session/token revocation failure, or a guest/external lifecycle issue.
+
 ### Summary Report Structure
 
 ```
@@ -413,6 +521,9 @@ For each finding, produce a row with:
 
 ### Detailed Findings
 [Findings table — see above]
+
+### Federation and Provisioning Drift
+[Matrix of federated applications, SCIM status, local roles, active sessions/tokens, and IAM-FED findings]
 
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
