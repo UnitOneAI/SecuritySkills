@@ -199,6 +199,29 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 **Mitigation:** Count aliased operations against rate limits. Limit the number of aliases per request.
 
+### Multipart Upload CSRF and File-Validation Gates
+
+GraphQL upload support changes the HTTP security model. Reviewers must distinguish JSON-only GraphQL APIs from endpoints that parse `multipart/form-data` through packages or framework integrations such as `graphql-upload`, `graphqlUploadExpress`, `GraphQLUpload`, `scalar Upload`, `processRequest`, GraphQL Yoga uploads, Mercurius uploads, or NestJS/Apollo upload middleware.
+
+Treat a GraphQL multipart upload endpoint as security-relevant when all of the following are true:
+
+1. The endpoint accepts `multipart/form-data` or exposes an `Upload` scalar/mutation in production.
+2. The browser can send credentials automatically, such as session cookies or same-site cookies, or the endpoint otherwise accepts ambient authentication.
+3. The request is missing a CSRF token, explicit preflight-forcing header such as `Apollo-Require-Preflight`, strict Origin/Site validation, or framework CSRF prevention.
+
+Do not report a CSRF issue for a GraphQL endpoint solely because it has mutations. JSON-only GraphQL APIs that require `Content-Type: application/json`, reject `multipart/form-data`, require bearer tokens in the `Authorization` header, and enable CSRF prevention should be treated as a benign pattern unless another risk is present.
+
+For upload resolvers, require evidence before marking the upload path safe:
+
+- Maximum file size and file count are enforced before the resolver streams content.
+- The resolver validates type using server-side inspection or allowlisted MIME/extension rules; it does not trust only the client-supplied `mimetype` or filename.
+- Filenames, object keys, and paths are generated or normalized server-side to prevent traversal, overwrite, or tenant-crossing writes.
+- Storage defaults deny public read/write unless the business flow explicitly requires public access.
+- Malware scanning, content moderation, or quarantine exists where uploaded content can later be downloaded or processed by other users.
+- Legacy `Upload` scalars or upload middleware are removed when the product has moved to signed upload URLs; the signing mutation still enforces ownership, content constraints, expiration, and storage ACLs.
+
+**Severity guidance:** High when cookie-authenticated multipart uploads lack CSRF/preflight/origin controls. Medium to High when file size, count, type, path, or ACL validation is missing depending on exposure. Low or Informational when an unused `Upload` scalar remains documented but production middleware rejects multipart requests.
+
 ---
 
 ## Common Pitfalls
@@ -237,5 +260,8 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **Apollo Server CSRF Prevention and Upload Guidance:** https://www.apollographql.com/docs/apollo-server/security/cors/
+- **GraphQL Multipart Request Specification:** https://github.com/jaydenseric/graphql-multipart-request-spec
+- **OWASP File Upload Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final

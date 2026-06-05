@@ -267,12 +267,21 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```javascript
+// VULNERABLE: GraphQL multipart uploads allow large files and many streams
+import { graphqlUploadExpress } from "graphql-upload";
+
+app.use(graphqlUploadExpress({ maxFileSize: 100_000_000, maxFiles: 10 }));
+app.use("/graphql", expressMiddleware(server));
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
+- For GraphQL multipart uploads: enforce file size, file count, stream timeout, and per-user upload rate limits before resolver code stores or processes the stream.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
 
@@ -282,6 +291,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] GraphQL upload middleware enforces maximum file size, file count, stream timeout, and upload rate limits before resolver processing.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 
@@ -450,9 +460,22 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+```javascript
+// VULNERABLE: Cookie-authenticated GraphQL uploads without CSRF controls
+import { graphqlUploadExpress } from "graphql-upload";
+
+app.use(cookieParser());
+app.use(session({ secret: process.env.SESSION_SECRET }));
+app.use(graphqlUploadExpress());
+app.use("/graphql", expressMiddleware(server));
+```
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
+- For cookie- or session-authenticated GraphQL endpoints, reject `multipart/form-data` unless CSRF prevention is enabled through a token, strict Origin/Site checks, or a required non-simple header such as `Apollo-Require-Preflight`.
+- Treat JSON-only GraphQL APIs differently: a GraphQL endpoint that requires `Content-Type: application/json`, rejects multipart requests, and uses `Authorization` bearer tokens should not be flagged as a multipart CSRF issue.
+- For GraphQL upload resolvers, validate MIME type and extension with allowlists, generate storage keys server-side, normalize filenames, scan or quarantine risky content, and default object storage ACLs to private.
 - Set security response headers on all API responses:
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
   - `X-Content-Type-Options: nosniff`
@@ -466,6 +489,9 @@ Document doc = builder.parse(request.getInputStream());
 ### Review Checklist
 
 - [ ] CORS is configured with an explicit origin allowlist; wildcard is not used with credentials.
+- [ ] Cookie-authenticated GraphQL multipart uploads require CSRF tokens, strict Origin/Site validation, framework CSRF prevention, or a preflight-forcing header.
+- [ ] JSON-only or bearer-token GraphQL endpoints are not misclassified as multipart CSRF issues when they reject `multipart/form-data`.
+- [ ] GraphQL upload resolvers validate file type and extension, generate safe storage keys, prevent path traversal or overwrite, and keep object storage private by default.
 - [ ] Security headers are present on all API responses.
 - [ ] Error responses in production are generic; no stack traces, SQL queries, or internal paths.
 - [ ] Only required HTTP methods are enabled per endpoint.
@@ -485,6 +511,7 @@ Document doc = builder.parse(request.getInputStream());
 - Multiple API versions running simultaneously (`/api/v1/`, `/api/v2/`, `/api/v3/`) where older versions lack security patches.
 - Debug or test endpoints present in production (`/api/debug/`, `/api/test/`, `/api/internal/`, `/graphql/playground`).
 - Undocumented endpoints that exist in code but are absent from the OpenAPI specification.
+- GraphQL `Upload` scalars, `GraphQLUpload` imports, upload mutations, or multipart middleware that remain enabled after the product migrates to signed upload URLs.
 - API endpoints exposed to the public internet that should be internal-only.
 - Deprecated endpoints that remain functional after the announced retirement date.
 - Different security configurations between environments (staging allows unauthenticated access, production does not, but staging is publicly accessible).
@@ -498,12 +525,14 @@ Document doc = builder.parse(request.getInputStream());
 4. Flag any endpoint marked as deprecated that is still reachable.
 5. Check for environment-specific routes (debug, test, internal) that should not exist in production.
 6. Verify that older API versions have equivalent security controls to current versions.
+7. For GraphQL, compare the schema, middleware, and client upload flow to identify retired `Upload` scalars, stale multipart parsers, or signed-URL migrations that left server-side upload mutations reachable.
 ```
 
 ### Remediation Guidance
 
 - Maintain a single source of truth for the API inventory. Generate OpenAPI specs from code or validate code against specs in CI/CD.
 - Retire deprecated API versions on a defined schedule. Redirect old versions to the current version or return `410 Gone`.
+- Remove unused GraphQL upload middleware and `Upload` schema entries. If signed upload URLs replace GraphQL server uploads, ensure the signing mutation enforces object ownership, content type, size, expiration, and private storage ACLs.
 - Remove debug, test, and playground endpoints from production builds using build-time flags or environment checks.
 - Segment internal APIs from external APIs at the network level (separate API gateways, VPC isolation).
 - Scan for shadow APIs by comparing routing tables against documentation on every deploy.
@@ -512,6 +541,7 @@ Document doc = builder.parse(request.getInputStream());
 
 - [ ] The API inventory is documented and matches the actual deployed endpoints.
 - [ ] Deprecated API versions are retired or have equivalent security controls.
+- [ ] GraphQL upload scalars, multipart middleware, and signed-upload mutations match the documented production upload flow.
 - [ ] No debug, test, or playground endpoints are accessible in production.
 - [ ] Internal APIs are not reachable from external networks.
 - [ ] CI/CD pipelines validate that code routes match the API specification.
