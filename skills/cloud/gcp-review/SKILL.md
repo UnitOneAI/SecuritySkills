@@ -3,17 +3,18 @@ name: gcp-review
 description: >
   Performs a GCP security posture review against the CIS Google Cloud Platform
   Foundation Benchmark v2.0.0. Auto-invoked when reviewing GCP infrastructure,
-  IAM bindings, VPC firewall rules, Cloud Audit Logs, or GCS bucket security.
+  IAM bindings, VPC firewall rules, Cloud Audit Logs, GCS bucket security,
+  Artifact Registry repositories, or organization policy inheritance.
   Walks through all seven benchmark sections, evaluates each recommendation,
   and produces a prioritized findings report with remediation guidance mapped
   to specific CIS control IDs.
 tags: [cloud, gcp, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
-frameworks: [CIS-GCP-v2.0.0]
+frameworks: [CIS-GCP-v2.0.0, Google-Cloud-Artifact-Analysis, Google-Cloud-Organization-Policy]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,8 +53,11 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - Access to GCP infrastructure-as-code files (Terraform `.tf`, Deployment Manager `.yaml`/`.jinja`)
 - gcloud CLI output or configuration exports (if reviewing a live environment)
 - IAM policy bindings and org policy definitions
+- Organization, folder, and project policy exports so inherited and overridden constraints can be compared
 - VPC and firewall rule definitions
 - Cloud Audit Logs configuration
+- Artifact Registry repository inventory, scanning settings, and enabled service/API inventory
+- Compute Engine workload sensitivity or data classification notes when assessing Confidential VM applicability
 
 ---
 
@@ -74,7 +78,11 @@ Use Glob to locate all GCP-related infrastructure definitions.
 **/org-policies/**/*.json
 **/org-policies/**/*.yaml
 **/iam/**/*.json
+**/artifact-registry/**/*.json
+**/artifact-registry/**/*.yaml
 ```
+
+Also search Terraform for `google_artifact_registry_repository`, `google_project_service`, `google_organization_policy`, `google_folder_organization_policy`, `google_project_organization_policy`, and `google_org_policy_policy` resources. Record the hierarchy level for every organization policy finding because project-level evidence alone can hide inherited or overridden constraints.
 
 Record all discovered files. If no GCP configurations are found, report that finding and halt.
 
@@ -85,6 +93,14 @@ Record all discovered files. If no GCP configurations are found, report that fin
 Evaluate all GCP configurations against CIS GCP v2.0.0 Sections 1 through 7, covering Identity and Access Management, Logging and Monitoring, Networking, Virtual Machines, Storage, Cloud SQL, and BigQuery.
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, grep patterns, and configuration examples for all seven sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
+
+During evaluation, apply these additional evidence gates before assigning severity:
+
+- **Organization policy drift gate**: compare organization, folder, and project policies for the same constraint. Treat lower-level overrides that relax a parent policy as High unless there is an approved exception, expiration, owner, and compensating control. If only project policies are available, mark inheritance impact as Not Evaluable rather than assuming the project is compliant.
+- **Artifact Registry scanning gate**: verify `containerscanning.googleapis.com` / Artifact Analysis enablement and repository-level scanning settings for Artifact Registry repositories. Standard and remote Docker repositories should not be reported as covered when scanning is disabled or when the repository inventory is missing.
+- **Remote repository source gate**: for Artifact Registry remote repositories, record upstream source, package format, cleanup/caching policy, and whether the upstream is an approved trusted source. Treat remote repositories proxying public ecosystems without approval as supply-chain exposure even when the repository itself is private.
+- **Confidential VM applicability gate**: do not blanket-fail every VM without Confidential Computing. First record whether the VM processes highly sensitive in-use data, the machine family/zone supports Confidential VM, and whether performance, live migration, GPU, or workload constraints explain non-use. For Level 2 or regulated sensitive workloads, missing Confidential VM evidence should be a finding when supported and not excepted.
+- **Hybrid service account key exception gate**: user-managed service account keys remain high risk, but do not automatically classify every key as Critical. If a key is required for a documented hybrid/on-prem workload, verify least-privilege roles, no project-level owner/editor/admin assignment, rotation within policy, storage in a managed secret store, owner, expiry, and migration plan to Workload Identity Federation or another keyless option.
 
 ---
 
@@ -148,6 +164,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Hierarchy / inheritance:** <org, folder, project, or N/A; whether parent policy was inherited or overridden>
+- **Evidence completeness:** <complete / partial / missing; note if live export, Terraform, or repository inventory is required>
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -194,6 +212,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Ignoring organization policy inheritance drift.** A project policy can override or replace inherited behavior. Always compare parent and child constraints before marking a control as Pass.
+8. **Treating Artifact Registry as out of scope.** Container Registry has been superseded for many deployments. Artifact Registry repository mode, remote upstreams, and vulnerability scanning settings are supply-chain evidence, not just storage metadata.
+9. **Blanket-failing Confidential VM without workload context.** Confidential Computing is important for sensitive in-use data, but support depends on machine type, CPU platform, zone, and workload constraints. Record applicability before scoring.
 
 ---
 
@@ -219,10 +240,15 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
+- Google Cloud Artifact Analysis scanning: https://cloud.google.com/artifact-analysis/docs/enable-automatic-scanning
+- Google Cloud Artifact Registry remote repositories: https://cloud.google.com/artifact-registry/docs/repositories/remote-repo
+- Google Cloud Organization Policy constraints: https://cloud.google.com/resource-manager/docs/organization-policy/org-policy-constraints
+- Google Cloud Confidential VM overview: https://cloud.google.com/confidential-computing/confidential-vm/docs/confidential-vm-overview
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Adds organization policy inheritance drift, Artifact Registry scanning, remote repository, Confidential VM applicability, and hybrid service account key exception gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.

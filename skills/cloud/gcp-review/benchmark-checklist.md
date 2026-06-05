@@ -41,6 +41,16 @@ resource "google_service_account_key" {
 
 Look for any `google_service_account_key` resources. GCP-managed keys (used automatically by Compute Engine, GKE, etc.) do not require explicit creation.
 
+Do not automatically mark every user-managed key as Critical when a documented hybrid workload still requires a key. For any exception, require all of the following evidence:
+
+- Business owner and system using the key
+- Reason Workload Identity Federation or another keyless option is not currently feasible
+- No project-level `roles/owner`, `roles/editor`, or broad admin role on the service account
+- Rotation period and last rotation date
+- Secret storage location, access review, and expiry or migration date
+
+If any exception evidence is missing, keep the finding High or Critical depending on role scope and exposure.
+
 ### CIS 1.5 -- Ensure that Service Account Has No Admin Privileges
 
 **Grep patterns:**
@@ -145,6 +155,47 @@ resource "google_essential_contacts_contact" {
   notification_category_subscriptions = ["SECURITY", "TECHNICAL"]
 }
 ```
+
+### Organization Policy Drift and Inheritance Evidence
+
+For every organization policy used to satisfy a CIS control, compare organization, folder, and project-level policies for the same constraint. A project-level override can relax a parent policy if inheritance is replaced or disabled.
+
+```hcl
+# Parent guardrail
+resource "google_organization_policy" "skip_default_network" {
+  org_id     = var.org_id
+  constraint = "compute.skipDefaultNetworkCreation"
+  boolean_policy {
+    enforced = true
+  }
+}
+
+# Risky: project-level override for the same constraint must have an approved exception
+resource "google_project_organization_policy" "skip_default_network_override" {
+  project    = var.project_id
+  constraint = "compute.skipDefaultNetworkCreation"
+  boolean_policy {
+    enforced = false
+  }
+}
+```
+
+Also inspect newer org policy resources:
+
+```hcl
+resource "google_org_policy_policy" "example" {
+  name   = "projects/${var.project_id}/policies/compute.skipDefaultNetworkCreation"
+  parent = "projects/${var.project_id}"
+  spec {
+    inherit_from_parent = false
+    rules {
+      enforce = "FALSE"
+    }
+  }
+}
+```
+
+Mark the control **Not Evaluable** if only child policies are available and parent org/folder policy exports are missing. Mark a lower-level relaxation as **High** unless an exception owner, expiry, business justification, and compensating control are documented.
 
 ### CIS 1.17 -- Ensure that Dataproc Cluster Is Encrypted Using Customer-Managed Encryption Key
 
@@ -532,6 +583,15 @@ resource "google_compute_instance" {
 }
 ```
 
+Before failing the control, record applicability evidence:
+
+- Whether the workload processes regulated, sensitive, or high-value in-use data
+- Whether the selected machine type, CPU platform, and zone support Confidential VM
+- Whether the workload requires unsupported live migration, GPU, machine type, or performance characteristics
+- Whether an approved exception exists with compensating controls
+
+For supported Level 2 or sensitive workloads, missing `enable_confidential_compute = true` is a finding. If supportability evidence is unavailable, mark the control Not Evaluable instead of assuming Pass.
+
 ---
 
 ## Section 5 -- Storage
@@ -571,6 +631,54 @@ resource "google_storage_bucket" {
   uniform_bucket_level_access = true  # Must be true
 }
 ```
+
+### Artifact Registry Vulnerability Scanning and Remote Repository Evidence
+
+Artifact Registry is not a Cloud Storage bucket, but it is frequently part of the same storage and supply-chain review. Evaluate it as supplemental evidence when repositories or container/package deployment paths are in scope.
+
+Check project-level scanning enablement:
+
+```hcl
+resource "google_project_service" "container_scanning" {
+  service = "containerscanning.googleapis.com"
+}
+
+resource "google_project_service" "container_analysis" {
+  service = "containeranalysis.googleapis.com"
+}
+```
+
+Check repositories and scanning state:
+
+```hcl
+resource "google_artifact_registry_repository" "images" {
+  location      = "us"
+  repository_id = "prod-images"
+  format        = "DOCKER"
+  mode          = "STANDARD_REPOSITORY"
+}
+```
+
+For Docker standard and remote repositories, require evidence that vulnerability scanning is allowed at the repository level and not disabled with `--disable-vulnerability-scanning` or equivalent export data. For Maven, npm, and Python repositories, require explicit repository scanning settings where supported instead of assuming project API enablement is enough.
+
+Check remote repository upstreams:
+
+```hcl
+resource "google_artifact_registry_repository" "remote_pypi" {
+  location      = "us"
+  repository_id = "pypi-cache"
+  format        = "PYTHON"
+  mode          = "REMOTE_REPOSITORY"
+
+  remote_repository_config {
+    python_repository {
+      public_repository = "PYPI"
+    }
+  }
+}
+```
+
+For remote repositories, record upstream type, approved-source status, package format, cleanup/caching policy, and whether vulnerability results are monitored. Treat public upstreams without approval, scanning, or ownership as a supply-chain exposure even if the repository is private.
 
 ---
 
