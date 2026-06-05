@@ -161,6 +161,8 @@ app.post("/transfer", cookieSession, async (req, res) => {
 
 `SameSite=Lax` alone is not enough for high-impact unsafe methods. Require a request-bound CSRF token or strong Origin/Referer enforcement in addition to secure cookie attributes.
 
+Use the calibration fixtures under `tests/benign/` and `tests/vulnerable/` to verify the distinction between bearer-token false positives, valid cross-site identity callbacks, high-value cookie POSTs, and refresh-cookie CSRF exposure.
+
 ---
 
 ### A02:2021 — Cryptographic Failures
