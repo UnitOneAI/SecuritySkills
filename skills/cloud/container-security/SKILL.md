@@ -98,6 +98,9 @@ Use Glob to locate all relevant configuration files.
 **/*-service.yaml
 **/*-ingress.yaml
 **/*-networkpolicy.yaml
+**/*-serviceaccount.yaml
+**/*-serviceaccount.yml
+**/*-sa.yaml
 **/*-rbac.yaml
 **/*-psp.yaml
 **/*-podsecuritypolicy.yaml
@@ -115,6 +118,82 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
+### Step 6.5: Service Account Token and Workload Identity Evidence
+
+Review ServiceAccount token exposure separately from the generic RBAC and Secrets checks. A ServiceAccount token is not automatically unsafe: controllers, operators, and workload identity integrations can require one. The reviewer must distinguish intentional, bounded tokens from accidental default automounts or broad projected tokens.
+
+**Discovery keys to search in Kubernetes manifests, Helm templates, and rendered output:**
+
+```
+kind: ServiceAccount
+serviceAccountName
+serviceAccount:
+automountServiceAccountToken
+serviceAccountToken:
+kubernetes.io/service-account
+projected:
+sources:
+audience:
+expirationSeconds:
+volumeMounts:
+mountPath:
+initContainers:
+ephemeralContainers:
+eks.amazonaws.com/role-arn
+azure.workload.identity/use
+iam.gke.io/gcp-service-account
+sts.amazonaws.com
+```
+
+**Required evidence matrix for every workload that uses, disables, or projects a ServiceAccount token:**
+
+| Field | Evidence to Record |
+|-------|--------------------|
+| Workload identity | Kind, name, namespace, and pod-template path reviewed |
+| ServiceAccount mapping | `serviceAccountName`, deprecated `serviceAccount`, or implicit `default` ServiceAccount |
+| Automount controls | `automountServiceAccountToken` on the ServiceAccount and on the Pod; record Pod override when both are set |
+| Token source | Default automount path, projected `serviceAccountToken`, legacy `kubernetes.io/service-account-token` Secret, or Not Evaluable |
+| Projected token parameters | Volume name, `path`, `audience`, `expirationSeconds`, issuer/audience assumptions, and TokenRequest support |
+| Mounted containers | Containers, init containers, sidecars, and ephemeral containers with matching `volumeMounts` and `mountPath` |
+| API need | Which container legitimately needs Kubernetes API or external identity access, with reviewer rationale |
+| RBAC blast radius | RoleBinding/ClusterRoleBinding, Role/ClusterRole name, verbs, resources, namespace scope, wildcard grants |
+| External workload identity | Provider annotation, trust-policy subject, issuer, audience, namespace, and service-account binding evidence |
+| Compensating controls | Network egress restriction, admission policy, Kyverno/Gatekeeper rule, rotation behavior, and audit logging |
+| Not Evaluable reason | Missing rendered Helm output, missing RBAC files, unavailable cloud trust policy, or incomplete cluster evidence |
+
+**Evaluation rules:**
+
+- Do not treat every ServiceAccount token mount as a finding. Controllers and workload identity flows can be acceptable when the token is short-lived, audience-bound, mounted only where needed, and paired with narrow RBAC or external trust.
+- Flag implicit default ServiceAccount use when the workload needs no Kubernetes API access, especially when neither the ServiceAccount nor the Pod disables default automount.
+- `automountServiceAccountToken: false` is not sufficient evidence by itself. A Pod can still define an explicit projected `serviceAccountToken` volume, so check projected volumes and matching `volumeMounts`.
+- Record both ServiceAccount-level and Pod-level `automountServiceAccountToken`; the Pod spec overrides the ServiceAccount value when both are present.
+- For projected tokens, require an intentional `audience`, bounded `expirationSeconds`, a documented mount path, and token refresh/reload expectations when the application reads the token directly.
+- Verify per-container mount scope. A token needed by the main controller should not also be mounted into unrelated sidecars, init containers, or ephemeral/debug containers.
+- Tie token exposure to RBAC. A short-lived token with wildcard verbs, `cluster-admin`, broad Secret access, or cluster-wide write permissions can still be High severity.
+- For cloud workload identity, require the external trust policy to bind issuer, audience, namespace, ServiceAccount name, and subject. Wildcard subjects, missing audience validation, or broad cloud roles expand blast radius beyond Kubernetes RBAC.
+- Treat legacy Secret-backed long-lived ServiceAccount tokens separately from projected TokenRequest tokens. Prefer short-lived TokenRequest-based tokens unless a documented compatibility requirement exists.
+
+**Severity guidance:**
+
+| Severity | ServiceAccount token criteria |
+|----------|-------------------------------|
+| **Critical** | Token exposure enables direct cluster compromise, such as a mounted token with `cluster-admin`, wildcard write access, or privileged external cloud role trust reachable from an application container |
+| **High** | Broad or long-lived token mounted into unnecessary containers, privileged RBAC/external trust, missing namespace or subject binding, or default automount on workloads with sensitive network/secret reach |
+| **Medium** | Missing `audience` or `expirationSeconds` evidence, unclear TokenRequest support, missing per-container mount evidence, or broad namespace RBAC without proof that each container needs API access |
+| **Low** | Default ServiceAccount or automount deviation with limited RBAC and no sensitive API need, where compensating controls limit immediate blast radius |
+| **Informational** | Intentional short-lived namespace-scoped controller token with explicit audience, expiration, per-container mount scope, narrow RBAC, and documented trust-policy evidence |
+
+**Remediation examples to recommend when evidence is weak:**
+
+- Set `automountServiceAccountToken: false` on ServiceAccounts or Pod specs that do not need Kubernetes API credentials.
+- Use a dedicated ServiceAccount per workload instead of the namespace `default` ServiceAccount.
+- Use projected `serviceAccountToken` volumes with explicit `audience`, short `expirationSeconds`, read-only mounts, and application token reload support.
+- Mount the token only into containers that need it; remove token mounts from log forwarders, service-mesh sidecars, init containers, and ephemeral containers unless justified.
+- Scope Roles/ClusterRoles to required verbs and resources, prefer namespace RoleBindings, and avoid wildcard verbs/resources.
+- Bind external workload identity trust to issuer, audience, namespace, ServiceAccount, and subject conditions; avoid wildcard trust policies and overly broad cloud roles.
+
+---
+
 ### Step 7: Compile Assessment Report
 
 
@@ -127,8 +206,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |
-| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
-| **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, secrets as env vars |
+| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, broad projected ServiceAccount token mounted into unnecessary containers, host path mounts to sensitive directories |
+| **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, missing ServiceAccount token audience/expiration evidence, secrets as env vars |
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
 | **Informational** | Observation with no direct security impact | Image size optimization, multi-stage build suggestions, label recommendations |
 
@@ -159,6 +238,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Dockerfile Security | CIS Docker 4.x | X | X | X | X | X |
 | Pod Security | CIS K8s 5.2.x | X | X | X | X | X |
 | RBAC | CIS K8s 5.1.x | X | X | X | X | X |
+| Service Account Tokens | CIS K8s 5.1.x / NIST 800-190 Orchestrator | X | X | X | X | X |
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
@@ -174,9 +254,20 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
 - **Container:** <container name>
+- **ServiceAccount:** <name, implicit default, or Not Applicable>
+- **Token audience/expiration:** <audience, expirationSeconds, legacy Secret, default automount, or Not Evaluable>
+- **Mounted containers:** <containers/init/sidecars/ephemeral containers with token volume mounts>
+- **RBAC scope:** <Role/ClusterRole, verbs/resources, namespace/cluster scope>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
 - **Remediation:** <fix with code example>
+
+### ServiceAccount Token Evidence Matrix
+
+| Workload | Namespace | ServiceAccount | Automount SA/Pod | Token Source | Audience | Expiration | Mounted Containers | RBAC Scope | External Trust | Result |
+|----------|-----------|----------------|------------------|--------------|----------|------------|--------------------|------------|----------------|--------|
+| deploy/controller | production | namespace-controller | SA=false / Pod=false | projected volume | kubernetes.default.svc | 600s | controller only | namespace Role | none | Pass |
+| deploy/api | production | default | missing / missing | default automount | Not Evaluable | Not Evaluable | api, log-forwarder | broad RoleBinding | Not Evaluable | Fail |
 
 ### Pod Security Standards Compliance Matrix
 
@@ -257,6 +348,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **`automountServiceAccountToken: false` does not prove no token is mounted.** Projected `serviceAccountToken` volumes can intentionally reintroduce credentials; review audience, expiration, mount path, and container scope.
+9. **Token mount scope is per container.** A safe controller token can become a broader exposure if the same volume is also mounted into sidecars, init containers, or ephemeral containers that do not need API access.
 
 ---
 
@@ -283,6 +376,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
+- Kubernetes Service Accounts: https://kubernetes.io/docs/concepts/security/service-accounts/
+- Kubernetes Configure Service Accounts for Pods: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+- Kubernetes Managing Service Accounts: https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/
+- Kubernetes TokenRequest API: https://kubernetes.io/zh-cn/docs/reference/kubernetes-api/authentication-resources/token-request-v1/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
@@ -293,4 +390,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added projected ServiceAccount token and workload identity evidence gates, including automount precedence, token audience/expiration checks, per-container mount scope, RBAC blast-radius mapping, external trust-policy evidence, and Not Evaluable reporting.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
