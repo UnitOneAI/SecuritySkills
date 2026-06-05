@@ -18,6 +18,7 @@ license: MIT
 allowed-tools: Read, Grep, Glob
 injection-hardened: true
 disable-model-invocation: true
+argument-hint: "[alert-incident-or-hunt-context]"
 ---
 
 # SOC Analyst Role Bundle (Tier 1-3)
