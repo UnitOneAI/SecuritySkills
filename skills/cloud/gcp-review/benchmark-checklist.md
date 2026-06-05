@@ -72,6 +72,59 @@ resource "google_project_iam_member" {
 
 These roles should be granted at the service account level, not project level.
 
+**Effective impersonation graph check:**
+
+Do not stop at direct project-level user bindings. Build a graph of principals that can mint, attach, sign as, or otherwise use service accounts.
+
+Include:
+
+- `roles/iam.serviceAccountTokenCreator`
+- `roles/iam.serviceAccountUser`
+- `roles/iam.workloadIdentityUser`
+- `iam.serviceAccounts.signBlob`
+- `iam.serviceAccounts.signJwt`
+- project, folder, and organization inherited IAM
+- Google Group or external IdP group membership
+- workload identity federation pool/provider attribute mappings
+- IAM Conditions, deny policies, and principal access boundary evidence
+
+**Bad: inherited broad Token Creator path**
+
+```hcl
+resource "google_project_iam_member" "contractor_token_creator" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "group:contractors@example.com"
+}
+
+resource "google_project_iam_member" "deploy_sa_editor" {
+  project = var.project_id
+  role    = "roles/editor"
+  member  = "serviceAccount:deploy-prod@${var.project_id}.iam.gserviceaccount.com"
+}
+```
+
+Report this as high risk if the group can mint tokens for the privileged service account and no narrow condition, deny policy, approval gate, or verified membership boundary limits the path.
+
+**Benign when evidence is complete: conditioned workload identity federation**
+
+```hcl
+resource "google_service_account_iam_binding" "ci_token_creator" {
+  service_account_id = google_service_account.deploy.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  members = [
+    "principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/ci/attribute.repository/my-org/prod-deploy"
+  ]
+
+  condition {
+    title      = "prod-deploy-main-only"
+    expression = "assertion.repository == 'my-org/prod-deploy' && assertion.ref == 'refs/heads/main' && assertion.aud == 'deploy-prod'"
+  }
+}
+```
+
+Do not report this as broad impersonation when repository, branch/tag or environment, subject/audience, issuer, target service account, and downstream service-account privileges are all evidenced and appropriate for the deployment workflow.
+
 ### CIS 1.7 -- Ensure User-Managed/External Keys for Service Accounts Are Rotated Every 90 Days or Fewer
 
 Check for key rotation mechanisms or expiration policies on service account keys.
