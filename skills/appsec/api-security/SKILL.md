@@ -1,17 +1,17 @@
 ---
 name: api-security
 description: >
-  Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
+  Reviews REST, GraphQL, WebSocket, and Server-Sent Events APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
   GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
   SSRF. Produces findings mapped to API1-API10 with remediation guidance.
-tags: [appsec, api, rest, graphql]
+tags: [appsec, api, rest, graphql, websocket, sse]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -21,7 +21,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST, GraphQL, WebSocket, and Server-Sent Events APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, streaming transports, and API gateway configurations.
 
 ---
 
@@ -31,13 +31,14 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
-1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
+1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, WebSocket, Server-Sent Events (SSE), or hybrid. Each style has distinct attack patterns.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions. For WebSocket/SSE, list handshake paths, stream names, message types, subscription topics, command channels, and reconnect paths.
 3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
-6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+6. **Classify streaming exposure** -- For browser-exposed WebSocket/SSE endpoints, record whether credentials are cookies, bearer tokens, query tokens, `Sec-WebSocket-Protocol`, or anonymous access; record Origin policy, cache/logging controls, and whether streams are read-only or command-capable.
+7. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer, including max connections, max message size, reconnect throttles, subscription limits, and per-tenant stream quotas.
+8. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -62,7 +63,7 @@ Each finding produced by this review must include the following fields:
 | **OWASP API Risk** | API1:2023 through API10:2023 identifier |
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
-| **API Style** | REST, GraphQL, gRPC, or General |
+| **API Style** | REST, GraphQL, gRPC, WebSocket, SSE, Hybrid, or General |
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
@@ -89,7 +90,7 @@ The final review output must be structured as follows:
 ## API Security Review Report
 
 **Scope:** [API name, version, endpoints reviewed]
-**API Style:** [REST / GraphQL / gRPC / Hybrid]
+**API Style:** [REST / GraphQL / gRPC / WebSocket / SSE / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
 **Reviewer:** AI Agent -- api-security skill v1.0.0
@@ -118,7 +119,7 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|General]
+- **API Style:** [REST|GraphQL|gRPC|WebSocket|SSE|Hybrid|General]
 - **Location:** [file:line or spec path]
 - **Description:** [explanation]
 - **Evidence:**
@@ -201,6 +202,37 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 ---
 
+## WebSocket and Server-Sent Events Considerations
+
+WebSocket and SSE endpoints are API surfaces even when they are absent from an OpenAPI document. Treat them as long-lived API sessions and map findings to the OWASP API Top 10 based on the authorization, authentication, resource-consumption, configuration, inventory, and data-flow evidence they expose.
+
+### Streaming Session Boundary Evidence
+
+For every WebSocket, GraphQL subscription, or SSE endpoint, collect:
+
+- **Transport path and client class** -- browser-exposed, mobile, server-to-server, or internal-only.
+- **Credential type** -- anonymous, cookie/session, bearer token, query token, `Sec-WebSocket-Protocol`, mTLS, or signed URL.
+- **Data sensitivity and direction** -- public read-only stream, tenant/account events, privileged admin stream, bidirectional command channel, or mixed.
+- **Origin and browser controls** -- explicit `Origin` allowlist for browser-exposed cookie-authenticated WebSockets; documented handling for non-browser clients that omit `Origin`.
+- **Authorization cadence** -- connection-time, per-message, per-subscription, per-topic, and reconnect authorization checks.
+- **Session lifetime behavior** -- token expiration, rotation, revocation, role-change disconnect, account disablement, and tenant membership updates.
+- **SSE cache/log controls** -- `Cache-Control: no-store` for sensitive streams, query-token redaction, referrer control, replay window, and log retention.
+- **Resource controls** -- max connections, message size, subscription count, heartbeat/idle timeout, reconnect backoff, per-user and per-tenant quotas.
+
+### False-Positive Guards
+
+Do not automatically mark every WebSocket or SSE endpoint as high risk. Public read-only market/status streams with no credentials, no tenant data, explicit resource limits, and documented abuse controls may be informational or no finding. Escalate when the endpoint is browser-exposed and credentialed, command-capable, tenant/account scoped, or missing evidence for per-message/per-subscription authorization.
+
+### Finding Triggers
+
+- Cookie-authenticated WebSocket accepts browser connections without validating `Origin` (API2/API8).
+- Long-lived stream checks authorization only at connection time while message/subscription payloads select tenant, channel, object, or action (API1/API5).
+- SSE uses query-string tokens without short expiry, cache prevention, redaction, or replay controls (API2/API8).
+- GraphQL subscriptions inherit resolver authorization but omit transport-level session, origin, reconnect, or token-expiry evidence (API1/API2/API4/API8).
+- Streaming endpoints are present in code or gateway routes but missing from the API inventory or threat model (API9).
+
+---
+
 ## Common Pitfalls
 
 1. **Confusing authentication with authorization.** An API that verifies the user's identity (authentication) but does not verify the user's permission to access the specific resource or function (authorization) is vulnerable to both BOLA (API1) and BFLA (API5). These are distinct checks that must both be present.
@@ -214,6 +246,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Treating streaming APIs as outside the API boundary.** WebSocket, GraphQL subscription, and SSE endpoints can carry authenticated account data and privileged commands. They need the same object/function authorization review as request/response APIs, plus streaming-specific checks for Origin, reconnect, revocation, and resource limits.
 
 ---
 
@@ -237,5 +271,6 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **OWASP WebSocket Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
