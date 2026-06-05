@@ -4,16 +4,17 @@ description: >
   Performs a GCP security posture review against the CIS Google Cloud Platform
   Foundation Benchmark v2.0.0. Auto-invoked when reviewing GCP infrastructure,
   IAM bindings, VPC firewall rules, Cloud Audit Logs, or GCS bucket security.
-  Walks through all seven benchmark sections, evaluates each recommendation,
-  and produces a prioritized findings report with remediation guidance mapped
-  to specific CIS control IDs.
-tags: [cloud, gcp, cis-benchmark]
+  Walks through all seven benchmark sections, adds VPC Service Controls
+  data-boundary evidence where in scope, evaluates each recommendation, and
+  produces a prioritized findings report with remediation guidance mapped to
+  specific CIS control IDs or GCP data-perimeter evidence gaps.
+tags: [cloud, gcp, cis-benchmark, vpc-service-controls]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
-frameworks: [CIS-GCP-v2.0.0]
+frameworks: [CIS-GCP-v2.0.0, GCP-VPC-Service-Controls]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -25,7 +26,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security assessment of Google Cloud Platform environments against the **CIS Google Cloud Platform Foundation Benchmark v2.0.0**. The benchmark is organized into seven sections covering identity and access management, logging and monitoring, networking, virtual machines, storage, Cloud SQL, and BigQuery. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Deployment Manager), gcloud CLI output, or configuration files available in the repository.
+This skill performs a structured security assessment of Google Cloud Platform environments against the **CIS Google Cloud Platform Foundation Benchmark v2.0.0**. The benchmark is organized into seven sections covering identity and access management, logging and monitoring, networking, virtual machines, storage, Cloud SQL, and BigQuery. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Deployment Manager), gcloud CLI output, or configuration files available in the repository. When sensitive BigQuery, Cloud Storage, or service-to-service data boundaries rely on VPC Service Controls, this skill also records enforced versus dry-run perimeter evidence as a GCP data-perimeter supplement rather than treating it as a CIS control.
 
 The CIS GCP Foundation Benchmark v2.0.0 provides prescriptive guidance for hardening GCP projects and organizations. This skill evaluates each applicable control and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
@@ -54,6 +55,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - IAM policy bindings and org policy definitions
 - VPC and firewall rule definitions
 - Cloud Audit Logs configuration
+- Access Context Manager / VPC Service Controls perimeter exports when data-perimeter claims are in scope (`gcloud access-context-manager perimeters describe`, Terraform rendered plan, or Config Connector output)
 
 ---
 
@@ -88,6 +90,52 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Step 8A: VPC Service Controls Data-Perimeter Supplement
+
+When the environment claims that BigQuery, Cloud Storage, or other Google APIs are protected by VPC Service Controls, record perimeter evidence separately from the CIS score. VPC-SC can be a critical data-exfiltration boundary, but dry-run configuration is advisory and bridge perimeters are broad by design.
+
+**What to inspect:**
+
+- Access Context Manager service perimeters from Terraform, Config Connector, YAML exports, or `gcloud access-context-manager perimeters describe`.
+- `status` blocks for enforced resources, restricted services, ingress policies, egress policies, access levels, and bridge membership.
+- `spec` blocks and `use_explicit_dry_run_spec` for dry-run-only proposed changes.
+- `PERIMETER_TYPE_BRIDGE` resources that connect projects bidirectionally.
+- Shared VPC host and service project membership, especially where service projects hold workloads that access protected data projects.
+- Private/restricted VIP routing assumptions and any workload paths that bypass restricted services.
+
+**Patterns to search:**
+
+```
+Grep: "google_access_context_manager_service_perimeter|servicePerimeters|PERIMETER_TYPE" in **/*.{tf,yaml,yml,json}
+Grep: "use_explicit_dry_run_spec|dry.run|dryRun|status|spec" in **/*.{tf,yaml,yml,json}
+Grep: "restricted_services|restrictedServices|ingress_policies|egress_policies|access_levels|accessLevels" in **/*.{tf,yaml,yml,json}
+Grep: "PERIMETER_TYPE_BRIDGE|perimeter_type.*BRIDGE|shared_vpc|host_project|service_project" in **/*.{tf,yaml,yml,json}
+```
+
+**Required evidence:**
+
+| Evidence Field | What to Record |
+|----------------|----------------|
+| Perimeter identity | Access policy, perimeter name, title, type, and source file/export |
+| Enforced state | `status` resources, restricted services, ingress/egress rules, and access levels |
+| Dry-run state | `spec` resources/services/rules and whether `use_explicit_dry_run_spec` is enabled |
+| Bridge scope | Projects connected, data domains, justification, and compensating IAM/logging controls |
+| Shared VPC coverage | Host project, service projects, protected data projects, and access path evidence |
+| Effective decision | Enforced / dry-run only / bridge accepted / needs promotion / Not Evaluable |
+
+**Finding classification:**
+
+| Condition | Severity |
+|-----------|----------|
+| Sensitive data project relies only on dry-run perimeter state | High |
+| `PERIMETER_TYPE_BRIDGE` connects unrelated data domains without justification or compensating controls | High |
+| Broad egress/ingress allows all projects, all identities, or unrestricted services from a protected perimeter | High |
+| Shared VPC service project is outside the intended perimeter while workloads access protected data | High |
+| Dry-run and enforced scopes differ, but promotion/rollback decision is missing | Medium |
+| Only Terraform module inputs are available without rendered `status`/`spec` or `gcloud` export | Not Evaluable |
+
+---
+
 ### Step 9: Compile Assessment Report
 
 
@@ -100,8 +148,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Immediate risk of data breach or unauthorized access | Public GCS buckets, firewall rules allowing 0.0.0.0/0 on SSH/RDP, Cloud SQL with public IP and no SSL, user-managed SA keys with admin roles |
-| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs |
-| **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, Shielded VM not enabled, uniform bucket access not set |
+| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs, sensitive data projects relying only on VPC-SC dry-run state, unjustified bridge perimeters |
+| **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, Shielded VM not enabled, uniform bucket access not set, VPC-SC promotion evidence missing |
 | **Low** | Hardening recommendation or defense-in-depth measure | OS Login not enabled, serial port access not explicitly disabled, BigQuery tables without CMEK |
 | **Informational** | Best practice observation, no direct security impact | Default network still exists (non-production), naming conventions, documentation gaps |
 
@@ -137,6 +185,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 5 | Storage | X | Y | Z | nn% |
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
+
+### VPC Service Controls Data-Perimeter Evidence
+
+| Perimeter | Type | Enforced Resources/Services | Dry-Run Resources/Services | Bridge Scope | Shared VPC Coverage | Decision |
+|-----------|------|-----------------------------|----------------------------|--------------|---------------------|----------|
+| <name> | Regular / Bridge | <status summary> | <spec summary> | <projects/domains> | <host/service projects> | Enforced / dry-run only / Not Evaluable |
 
 ### Detailed Findings
 
@@ -194,6 +248,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Treating VPC-SC dry-run as enforcement.** A `spec` or dry-run perimeter helps assess impact, but only `status` is enforced. Record both states and do not count dry-run services or projects as protected.
+8. **Scoring bridge perimeters like narrow ingress/egress policies.** `PERIMETER_TYPE_BRIDGE` is broad and bidirectional. Require business justification, project/data-domain inventory, compensating IAM, and review of whether targeted ingress/egress rules would be safer.
+9. **Assuming Terraform module inputs show effective perimeter state.** Module variables can hide generated `status`, `spec`, ingress, egress, or bridge resources. Mark VPC-SC claims Not Evaluable unless rendered config, state, plan, Config Connector output, or `gcloud` export is available.
 
 ---
 
@@ -218,6 +275,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
+- Google Cloud VPC Service Controls Overview: https://cloud.google.com/vpc-service-controls/docs/overview
+- Google Cloud VPC Service Controls Dry Run Mode: https://cloud.google.com/vpc-service-controls/docs/dry-run-mode
+- Google Cloud VPC Service Controls Ingress and Egress Rules: https://cloud.google.com/vpc-service-controls/docs/ingress-egress-rules
+- Google Cloud VPC Service Controls Perimeter Bridges: https://cloud.google.com/vpc-service-controls/docs/share-across-perimeters
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
@@ -225,4 +286,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Add VPC Service Controls data-perimeter evidence for enforced vs dry-run state, bridge perimeters, Shared VPC coverage, and Not Evaluable handling.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
