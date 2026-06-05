@@ -210,6 +210,80 @@ Patch Schedule Entry:
 - Days Remaining:      [N days]
 ```
 
+### Step 5A: Deployment Verification and Rollback Readiness
+
+Scheduling a patch is not the same as proving remediation. For each P0/P1 and business-critical P2 patch, require deployment evidence that shows how the change will be rolled out, verified, and reversed if it causes regression.
+
+#### Verification Gates
+
+| Gate | Required Evidence | Fail / Not Evaluable When |
+|---|---|---|
+| Pre-deployment baseline | Current vulnerable version, affected asset list, service health, backup/snapshot status, owner approval | Asset list is incomplete or backup/restore status is unknown before the patch window |
+| Ring or canary plan | Pilot group, rollout rings, blast-radius limit, stop/go criteria, promotion timing | Patch is planned as all-at-once for business-critical assets without documented justification |
+| Post-deployment validation | Version proof, package inventory, scanner rescan, service smoke tests, exploit-path closure evidence | Change ticket is marked complete without evidence that the vulnerable version is gone or the exploit path is closed |
+| Rollback trigger | Explicit failure thresholds, owner decision path, rollback command/procedure, data compatibility notes | Rollback plan says "restore from backup" but restore has not been tested or data migration cannot be reversed |
+| Residual exposure tracking | Assets skipped, failed, quarantined, or deferred with compensating controls and revised SLA | Partial deployment is reported as complete without listing remaining exposed assets |
+| Post-implementation review | P0/P1 review within 48 hours covering outage, failed assets, SLA result, and follow-up actions | Emergency changes are closed without review or lessons-learned evidence |
+
+#### Test Fixtures
+
+```yaml
+vulnerable_patch_execution_record:
+  cve: CVE-2026-12345
+  sla_tier: P1
+  affected_assets:
+    total: 42
+    patched_reported: 42
+  deployment:
+    strategy: all_at_once
+    canary: none
+    backup_status: unknown
+    rollback_plan: "restore from latest backup"
+  validation:
+    version_inventory: missing
+    rescan: not_run
+    smoke_tests: passed_on_one_host
+  residual_exposure:
+    skipped_assets: not_tracked
+  expected_findings:
+    - missing canary or staged rollout justification
+    - rollback readiness not evidenced
+    - remediation not verified across all affected assets
+```
+
+```yaml
+benign_patch_execution_record:
+  cve: CVE-2026-98765
+  sla_tier: P1
+  affected_assets:
+    total: 42
+    patched: 40
+    deferred:
+      - host-17:
+          reason: vendor hotfix regression
+          compensating_control: WAF virtual patch rule
+          revised_deadline: 2026-06-12
+      - host-23:
+          reason: pending maintenance window
+          compensating_control: network isolation
+          revised_deadline: 2026-06-10
+  deployment:
+    strategy: canary_then_rings
+    canary_scope: 3 low-traffic hosts
+    promotion_criteria:
+      - service health within baseline
+      - scanner confirms fixed package
+      - no error-rate increase for 30 minutes
+  validation:
+    version_inventory: complete
+    rescan: passed
+    smoke_tests: passed
+  rollback:
+    tested_restore: true
+    trigger: error_rate_above_2_percent_or_failed_health_check
+  expected_assessment: complete for 40 patched assets with explicit residual exposure for deferred assets
+```
+
 ### Step 6: Risk Acceptance and Exception Management
 
 For vulnerabilities that cannot be remediated within the SLA, document a formal risk acceptance or exception.
@@ -312,6 +386,14 @@ findings requiring immediate action.]
 | Priority | CVE ID(s) | Target System | Patch | Scheduled Window | SLA Deadline | Status |
 |---|---|---|---|---|---|---|
 | P0 | [CVE-ID] | [system] | [version] | [date/time] | [date] | [Scheduled/Pending/Complete] |
+
+### Patch Deployment Verification
+
+| CVE ID | Target Scope | Rollout Strategy | Validation Evidence | Residual Exposure | Rollback Readiness | Final Status |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [N affected / N patched] | [canary/rings/all-at-once with justification] | [version proof, scanner rescan, smoke tests] | [skipped/deferred assets and controls] | [tested rollback, trigger, owner] | [Verified/Partially Verified/Not Verified] |
+
+Treat "patch scheduled" and "patch installed on one host" as incomplete until the verification evidence covers the affected scope or the residual exposure is explicitly tracked.
 
 ### Compensating Controls in Effect
 [List all active compensating controls with effectiveness ratings]
