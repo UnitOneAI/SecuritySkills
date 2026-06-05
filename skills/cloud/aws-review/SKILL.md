@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -198,7 +198,7 @@ Produce the final report using the structure defined in the Output Format sectio
 2. **Missing account-level vs. bucket-level S3 public access blocks.** CIS 2.1.4 requires both. An account-level block can override permissive bucket settings, but the bucket-level block should also be set.
 3. **Confusing CloudTrail multi-region with organization trail.** CIS 3.1 requires multi-region, not necessarily an organization trail. Both are valid, but the control checks `is_multi_region_trail`.
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
-5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
+5. **Overlooking effective EC2 metadata options.** CIS 5.6 applies across direct instances, launch templates, launch configurations, Auto Scaling metadata options, account-level defaults, AMI defaults, and running-instance evidence. Checking only direct `aws_instance` definitions misses inherited settings, auto-scaled instances, disabled metadata endpoints, IPv6 metadata endpoints, and hop-limit exceptions for container workloads.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
 
 ---
@@ -232,3 +232,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
+
