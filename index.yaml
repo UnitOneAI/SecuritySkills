@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -136,6 +136,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: microsoft-365-security
+    name: "Microsoft 365 Security Review"
+    tags: [identity, microsoft-365, saas, collaboration, email-security]
+    role: [security-engineer, cloud-security-engineer, vciso]
+    phase: [assess, operate]
+    activity: [review, audit]
+    frameworks: [CIS-Microsoft-365, Microsoft-Secure-Score, Microsoft-Defender, Microsoft-Purview]
+    difficulty: intermediate
+    time_estimate: "60-120min"
+    file: skills/identity/microsoft-365-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------
@@ -389,7 +401,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md

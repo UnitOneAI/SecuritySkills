@@ -1,0 +1,42 @@
+{
+  "scenario": "high-risk Microsoft 365 tenant posture",
+  "entraId": {
+    "tenantUserConsent": "allowAllUsers",
+    "adminConsentWorkflow": "disabled",
+    "conditionalAccessAdminMfa": "reportOnly",
+    "phishingResistantMfaForAdmins": "notConfigured",
+    "globalAdministrators": 9,
+    "pimForPrivilegedRoles": "notUsed",
+    "legacyAuthentication": "allowed"
+  },
+  "oauthApp": {
+    "publisherVerified": false,
+    "owner": null,
+    "lastReviewed": null,
+    "permissions": [
+      "Mail.ReadWrite",
+      "Files.Read.All",
+      "offline_access",
+      "Directory.ReadWrite.All"
+    ]
+  },
+  "exchangeOnline": {
+    "externalForwarding": "allowed",
+    "mailboxForwardingAlerts": "missing",
+    "suspiciousInboxRules": [
+      "forwardToExternalAndDelete"
+    ],
+    "mailboxAuditRetentionDays": null
+  },
+  "collaboration": {
+    "sharePointDefaultLinkType": "anyone",
+    "externalSharing": "anyone",
+    "teamsGuestAccess": "enabledWithoutReview",
+    "unmanagedDeviceDownload": "allowed"
+  },
+  "purview": {
+    "auditSearch": "unknown",
+    "dlpCoverage": "notConfigured",
+    "alertRoutingOwner": null
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "scenario": "controlled Microsoft 365 tenant posture with documented exceptions",
+  "entraId": {
+    "tenantUserConsent": "verifiedLowRiskOnly",
+    "adminConsentWorkflow": "enabled",
+    "conditionalAccessAdminMfa": "enforced",
+    "phishingResistantMfaForAdmins": "required",
+    "globalAdministrators": 3,
+    "pimForPrivilegedRoles": "enabled",
+    "legacyAuthentication": "blocked",
+    "breakGlass": {
+      "accounts": 2,
+      "excludedFromConditionalAccess": true,
+      "compensatingControls": [
+        "longRandomPasswordsInSealedVault",
+        "signInAlerts",
+        "quarterlyAccessTest",
+        "postUseRotation"
+      ]
+    }
+  },
+  "oauthApp": {
+    "publisherVerified": true,
+    "owner": "security-operations",
+    "lastReviewed": "2026-05-15",
+    "permissions": [
+      "Mail.Read",
+      "SecurityEvents.Read.All"
+    ],
+    "businessJustification": "mail threat investigation"
+  },
+  "exchangeOnline": {
+    "externalForwarding": "restricted",
+    "approvedForwardingExceptions": [
+      {
+        "recipient": "ticketing-system",
+        "owner": "support-operations",
+        "reviewCadence": "quarterly"
+      }
+    ],
+    "mailboxForwardingAlerts": "enabled",
+    "mailboxAuditRetentionDays": 180
+  },
+  "collaboration": {
+    "sharePointDefaultLinkType": "specificPeople",
+    "externalSharing": "approvedDomains",
+    "teamsGuestAccess": "approvedGroupsOnly",
+    "unmanagedDeviceDownload": "blockedForSensitiveSites",
+    "sharingLinkExpiryDays": 30
+  },
+  "purview": {
+    "auditSearch": "available",
+    "dlpCoverage": "configuredForRegulatedData",
+    "alertRoutingOwner": "security-operations"
+  }
+}
