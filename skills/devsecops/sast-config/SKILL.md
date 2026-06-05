@@ -41,7 +41,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-SAST tools are only as effective as their configuration. Default rule sets produce high false positive rates that erode developer trust, while overly aggressive tuning creates dangerous blind spots. OWASP ASVS 4.0.3 provides 286 verification requirements across 14 chapters -- a subset of these are automatable via SAST. The CWE Top 25 (2024 edition) identifies the most prevalent and impactful weakness types. Effective SAST tuning maps rules to these frameworks, tunes severity to organizational risk context, and integrates into CI with clear pass/fail criteria that developers can act on.
+SAST tools are only as effective as their configuration. Default rule sets produce high false positive rates that erode developer trust, while overly aggressive tuning creates dangerous blind spots. OWASP ASVS 4.0.3 provides 286 verification requirements across 14 chapters -- a subset of these are automatable via SAST. The CWE Top 25 (2024 edition) identifies the most prevalent and impactful weakness types. Effective SAST tuning maps rules to these frameworks, documents the confidence of each automated check, verifies that scans actually analyze the intended code, tunes severity to organizational risk context, and integrates into CI with clear pass/fail criteria that developers can act on.
 
 ---
 
@@ -99,25 +99,39 @@ Map the active SAST rule set against CWE Top 25 (2024) to identify coverage gaps
 
 #### 2.1 CWE Top 25 Coverage Matrix
 
-| Rank | CWE ID | Weakness | SAST Detectable | Semgrep Registry | CodeQL Coverage |
-|------|--------|----------|-----------------|-----------------|-----------------|
-| 1 | CWE-787 | Out-of-bounds Write | Partial (C/C++) | Limited | `cpp/overflow-buffer` |
-| 2 | CWE-79 | Cross-site Scripting (XSS) | Yes | `javascript.browser.security.*.xss` | `js/xss`, `js/reflected-xss` |
-| 3 | CWE-89 | SQL Injection | Yes | `python.django.security.injection.sql.*`, `java.lang.security.audit.sqli.*` | `java/sql-injection`, `python/sql-injection` |
-| 4 | CWE-416 | Use After Free | Partial (C/C++) | Limited | `cpp/use-after-free` |
-| 5 | CWE-78 | OS Command Injection | Yes | `python.lang.security.audit.dangerous-subprocess-use.*` | `python/command-injection`, `java/command-injection` |
-| 6 | CWE-20 | Improper Input Validation | Partial | Pattern-dependent | Pattern-dependent |
-| 7 | CWE-125 | Out-of-bounds Read | Partial (C/C++) | Limited | `cpp/out-of-bounds-read` |
-| 8 | CWE-22 | Path Traversal | Yes | `python.lang.security.audit.path-traversal.*` | `python/path-injection`, `java/path-injection` |
-| 9 | CWE-352 | CSRF | Partial | Framework-specific | `java/csrf`, `python/csrf` |
-| 10 | CWE-434 | Unrestricted Upload | Partial | Framework-specific | Pattern-dependent |
+| Rank | CWE ID | Weakness | SAST Detectable | SAST Confidence | Semgrep Registry | CodeQL Coverage |
+|------|--------|----------|-----------------|-----------------|-----------------|-----------------|
+| 1 | CWE-787 | Out-of-bounds Write | Partial (C/C++) | Medium for C/C++; Low for managed languages | Limited | `cpp/overflow-buffer` |
+| 2 | CWE-79 | Cross-site Scripting (XSS) | Yes | High when framework sinks are covered | `javascript.browser.security.*.xss` | `js/xss`, `js/reflected-xss` |
+| 3 | CWE-89 | SQL Injection | Yes | High for modeled source/sink frameworks | `python.django.security.injection.sql.*`, `java.lang.security.audit.sqli.*` | `java/sql-injection`, `python/sql-injection` |
+| 4 | CWE-416 | Use After Free | Partial (C/C++) | Medium for C/C++; Low otherwise | Limited | `cpp/use-after-free` |
+| 5 | CWE-78 | OS Command Injection | Yes | High for direct process execution sinks | `python.lang.security.audit.dangerous-subprocess-use.*` | `python/command-injection`, `java/command-injection` |
+| 6 | CWE-20 | Improper Input Validation | Partial | Medium; business-rule validation remains manual | Pattern-dependent | Pattern-dependent |
+| 7 | CWE-125 | Out-of-bounds Read | Partial (C/C++) | Medium for C/C++; Low for managed languages | Limited | `cpp/out-of-bounds-read` |
+| 8 | CWE-22 | Path Traversal | Yes | High for modeled file APIs | `python.lang.security.audit.path-traversal.*` | `python/path-injection`, `java/path-injection` |
+| 9 | CWE-352 | CSRF | Partial | Low to Medium; framework and runtime controls required | Framework-specific | `java/csrf`, `python/csrf` |
+| 10 | CWE-434 | Unrestricted Upload | Partial | Medium; requires runtime storage and content checks | Framework-specific | Pattern-dependent |
 
 For each CWE, verify:
 - At least one active rule covers the weakness for each language in the codebase.
 - Rule is enabled (not suppressed in configuration).
 - Rule severity matches the CWE's risk (Top 10 CWEs should not be INFO level).
+- Rule confidence matches the technology stack and the tool's actual source/sink models.
+- Weaknesses with Low SAST confidence have an explicit manual or dynamic validation path instead of being reported as automated coverage gaps.
 
-**Finding classification:** CWE Top 10 weakness with zero SAST coverage for a language in use is **High**. CWE 11-25 with no coverage is **Medium**.
+**Finding classification:** CWE Top 10 weakness with zero SAST coverage for a language in use is **High** only when the weakness has High or Medium SAST confidence for that stack. Low-confidence SAST-only gaps are **Medium** visibility findings unless there is evidence of an exploitable pattern or no compensating manual/dynamic control. CWE 11-25 with no coverage is **Medium**.
+
+#### 2.2 Coverage Confidence and Gap Triage
+
+Before reporting a "zero SAST coverage" gap, classify whether SAST is the right detection mechanism:
+
+| Confidence | Examples | How to triage |
+|------------|----------|---------------|
+| High | XSS in modeled web frameworks, SQL injection, path traversal, command injection | Missing active rules can be a High finding for active languages. |
+| Medium | Upload validation, input validation, memory safety in C/C++, custom auth rules | Combine rule coverage with safe/vulnerable examples and reviewer judgment. |
+| Low | CSRF without framework context, authorization business rules, UAF/OOB in managed languages | Do not create a High SAST gap by matrix alone; require manual review, DAST, framework config, or runtime tests. |
+
+Document the confidence decision in the report so teams understand whether a gap is a SAST configuration defect, a manual-review need, or a runtime-control requirement.
 
 ---
 
@@ -260,6 +274,8 @@ query-filters:
 - Custom query directory exists for org-specific patterns.
 - `paths-ignore` does not exclude production source code.
 - `query-filters` exclusions have documented justification.
+- For compiled languages, the workflow uses an appropriate build mode (`manual`, `autobuild`, or `none` where supported) and records whether the build populated a database for every configured language.
+- PR scans and scheduled scans use different suites when needed: keep PR checks fast and high-confidence, then run broader `security-and-quality` coverage on schedule.
 
 #### 4.2 CodeQL Custom Query Structure
 
@@ -307,6 +323,20 @@ select sink.getNode(), source, sink, "SQL injection from $@.", source.getNode(),
 - [ ] Taint tracking uses appropriate source and sink definitions.
 - [ ] Query is tested against known-vulnerable and known-safe code samples.
 
+#### 4.3 CodeQL Build and Database Completeness
+
+For compiled languages, a passing CodeQL job is not enough evidence. The review must verify that CodeQL built and analyzed the intended code:
+
+| Check | Evidence to collect | Finding if absent |
+|-------|---------------------|-------------------|
+| Build mode selected per language | CodeQL workflow `build-mode`, `autobuild`, or manual build steps | Medium if undocumented; High if compiled-language coverage is claimed. |
+| Build completed successfully | Action logs, build step exit status, or build artifact evidence | High when the database can be empty or partial. |
+| Database is populated | CodeQL log summary showing extracted files or analyzed source count by language | High for missing compiled-language extraction. |
+| Matrix language coverage | Each configured language has a successful init/build/analyze path | Medium to High depending on missing language risk. |
+| Scheduled full analysis | Cron/full-scan job covers paths and languages excluded from fast PR scans | Medium when only PR/diff analysis exists. |
+
+If the repository uses `autobuild`, treat it as a hypothesis, not proof. Require confirmation that the build matched the real project build graph for Java, Kotlin, C/C++, C#, Swift, or other compiled ecosystems.
+
 ---
 
 ### Step 5: Severity Tuning and False Positive Management
@@ -315,11 +345,13 @@ select sink.getNode(), source, sink, "SQL injection from $@.", source.getNode(),
 
 Map tool-native severity levels to a consistent organizational severity:
 
-| ASVS Level | Risk Context | Semgrep Severity | CodeQL Severity | CI Action |
-|------------|-------------|------------------|-----------------|-----------|
-| L1 (Opportunistic) | Internet-facing, unauthenticated | ERROR | error, @security-severity >= 7.0 | Block merge |
-| L2 (Standard) | Authenticated, business-critical | ERROR or WARNING | error or warning, >= 4.0 | Block or warn |
-| L3 (Advanced) | High-value targets, regulated data | WARNING or INFO | All severities | Warn, review required |
+| ASVS Level | Risk Context | Required Confidence | Semgrep Severity | CodeQL Severity | CI Action |
+|------------|-------------|---------------------|------------------|-----------------|-----------|
+| L1 (Opportunistic) | Internet-facing, unauthenticated | High confidence or confirmed exploitability | ERROR | error, @security-severity >= 7.0, high precision | Block merge |
+| L2 (Standard) | Authenticated, business-critical | Medium or High confidence | ERROR or WARNING | error or warning, >= 4.0 | Block or warn |
+| L3 (Advanced) | High-value targets, regulated data | Any confidence, with review context | WARNING or INFO | All severities | Warn, review required |
+
+Do not map all Semgrep `ERROR` findings directly to blocking severity. Combine tool severity with rule confidence, precision, exploitability, reachability, affected asset exposure, and suppression history. Low-confidence rules can still be useful as review prompts, but should not hard-block CI without a tuned rule, known-vulnerable/safe test corpus, or human review gate.
 
 #### 5.2 False Positive Management Workflow
 
@@ -359,12 +391,14 @@ value = request.args.get("id")  # nosemgrep: python.django.security.injection.sq
 
 **What to verify:**
 
-- Every suppression has a documented justification (not just `nosemgrep`).
+- Every suppression has a documented justification and rule ID (not just bare `nosemgrep`).
+- Unscoped `# nosemgrep` usage is treated as a coverage hole because it can suppress unrelated rules on the same line.
+- Baseline or diff-aware scan modes have a tracked backlog for pre-existing findings; hidden debt is not considered remediated.
 - Suppressions are reviewed periodically (quarterly).
-- False positive rate is tracked as a metric (target: < 20% FP rate).
+- False positive rate is tracked as a triage trend, not a hard target that encourages disabling valid noisy rules.
 - True positive findings have a defined SLA (Critical: 7 days, High: 30 days, Medium: 90 days).
 
-**Finding classification:** No false positive management process is **Medium**. Suppressions without justification is **High**. No SLA for true positive remediation is **Medium**.
+**Finding classification:** No false positive management process is **Medium**. Suppressions without justification or unscoped suppressions in security-sensitive code are **High**. Baseline mode without full-scan backlog tracking is **Medium**. No SLA for true positive remediation is **Medium**.
 
 ---
 
@@ -430,8 +464,10 @@ jobs:
 - SAST container/action is pinned to a specific version (not `latest`).
 - Results are uploaded to a central dashboard (Semgrep App, GitHub Security tab, SonarQube).
 - Scan time is under 10 minutes for PR checks (developer experience matters).
+- CodeQL compiled-language jobs prove build/database completeness before a zero-alert result is trusted.
+- Baseline or diff-aware scans publish a full-scan backlog so pre-existing findings remain visible.
 
-**Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**.
+**Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**. CodeQL compiled-language scans without build/database completeness evidence are **High** when coverage is claimed.
 
 ---
 
@@ -440,8 +476,8 @@ jobs:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No SAST tooling deployed; CWE Top 5 weaknesses with zero rule coverage for languages in active use. |
-| **High** | SAST not a required CI check; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
-| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
+| **High** | SAST not a required CI check; High/Medium-confidence CWE Top 10 coverage gap; CodeQL compiled-language scan lacks build/database completeness evidence; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
+| **Medium** | CWE 11-25 coverage gap; Low-confidence CWE Top 10 gap that needs manual/runtime validation; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; baseline mode without tracked full-scan backlog; FP rate trending upward without triage owner. |
 | **Low** | Rule naming convention inconsistencies; missing metadata on custom rules; suboptimal scan performance; cosmetic configuration issues. |
 
 ---
@@ -460,11 +496,11 @@ jobs:
 
 ### CWE Top 25 Coverage
 
-| CWE ID | Weakness | Language(s) | Rule(s) Active | Severity | Gap |
-|--------|----------|-------------|----------------|----------|-----|
-| CWE-79 | XSS | JS, Python | 3 rules | ERROR | None |
-| CWE-89 | SQLi | Python | 2 rules | ERROR | None |
-| CWE-78 | Cmd Injection | Python | 0 rules | N/A | GAP |
+| CWE ID | Weakness | Language(s) | SAST Confidence | Rule(s) Active | Severity | Gap / Manual Validation |
+|--------|----------|-------------|-----------------|----------------|----------|-------------------------|
+| CWE-79 | XSS | JS, Python | High | 3 rules | ERROR | None |
+| CWE-89 | SQLi | Python | High | 2 rules | ERROR | None |
+| CWE-352 | CSRF | Java | Low/Medium | 0 rules | N/A | Manual framework/config review required |
 
 ### CI Integration Status
 
@@ -473,7 +509,17 @@ jobs:
 | Runs on PR | Yes/No | <workflow file> |
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
+| CodeQL build/database completeness | Yes/No/N/A | <logs, extracted file count, build mode> |
+| Baseline backlog tracked | Yes/No/N/A | <issue tracker/dashboard link> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+
+### Suppression and Baseline Debt
+
+| Item | Count | Evidence | Risk |
+|------|-------|----------|------|
+| Scoped suppressions with rule ID | <count> | <paths/tickets> | <Low/Medium/High> |
+| Unscoped `nosemgrep` suppressions | <count> | <paths> | <High if security-sensitive> |
+| Baseline-hidden findings | <count> | <dashboard/backlog> | <Medium/High> |
 
 ### Findings
 
@@ -530,11 +576,17 @@ jobs:
 
 2. **Tuning rules by disabling instead of fixing.** When a rule produces false positives, the instinct is to disable it. Instead, add `pattern-not` clauses (Semgrep) or exclusion predicates (CodeQL) to handle the safe patterns while keeping detection for unsafe ones. Disabling a rule eliminates all coverage for that weakness class.
 
-3. **Mapping all SAST findings to the same severity.** Treating every finding as "medium" destroys signal. Map Semgrep ERROR to Critical/High (blocks CI), WARNING to Medium (warn but allow merge with review), and INFO to Low (developer awareness). Without differentiation, developers ignore all findings.
+3. **Mapping all SAST findings to the same severity.** Treating every finding as "medium" destroys signal, but mapping every Semgrep `ERROR` to a blocking finding creates the opposite problem. Combine native severity with rule confidence, precision, reachability, affected asset exposure, and exploitability before deciding whether CI should block.
 
 4. **Not testing custom rules against both vulnerable and safe code.** A custom rule that fires on vulnerable patterns but also fires on safe patterns is worse than no rule (it trains developers to suppress). Maintain a test corpus with expected true positives and expected true negatives for every custom rule.
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
+
+6. **Trusting zero CodeQL alerts without build-completeness evidence.** For compiled languages, a successful workflow can still analyze a partial or empty database if build extraction failed. Verify build mode, extracted source counts, and per-language database population before treating zero alerts as clean coverage.
+
+7. **Letting baseline mode hide permanent debt.** Diff-aware and baseline scans are useful for PR speed, but they can suppress pre-existing vulnerabilities indefinitely. Require a scheduled full scan and a visible backlog with owners, SLA, and closure status.
+
+8. **Using unscoped suppressions.** Bare `# nosemgrep` can hide multiple rules on the same line. Require the specific rule ID plus a reason, ticket, and review date.
 
 ---
 
@@ -558,6 +610,7 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - Semgrep Registry: https://semgrep.dev/r
 - CodeQL Documentation: https://codeql.github.com/docs/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
+- CodeQL workflow configuration: https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/configuring-the-codeql-workflow
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
 ---
