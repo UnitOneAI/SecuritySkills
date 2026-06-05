@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -182,6 +182,24 @@ fields:
 | `level` | Yes | `informational`, `low`, `medium`, `high`, `critical` |
 | `fields` | Recommended | Fields to include in alert output for analyst context |
 
+**Sigma status promotion evidence:**
+
+Do not promote a rule to `stable`, or score it as operational coverage, from rule existence alone. Require evidence that the rule works in the intended environment and that its health can be maintained.
+
+| Status | Minimum evidence before using the status |
+|--------|------------------------------------------|
+| `experimental` | Rule intent, ATT&CK mapping, required log sources, known assumptions, and missing validation evidence are documented. |
+| `test` | Synthetic or replayed true-positive test, true-negative or filter test, target backend conversion test, and initial field-mapping review are documented. |
+| `stable` | Production telemetry scope, field availability, backend conversion target and version, validation date, validation method, sanitized sample event IDs or replay IDs, false-positive budget or observed FP rate, rule owner, review cadence, and demotion criteria are documented. |
+
+Promotion checks:
+
+1. **Backend conversion evidence:** Record the SIEM target and converter version used to validate the rule (for example, `sigma-cli` version, pySigma backend, Splunk app, Sentinel API version).
+2. **Field-mapping evidence:** Confirm every field used by the rule exists in the deployed log source and is not dropped, renamed, or truncated by parsers.
+3. **Telemetry-scope evidence:** State which host groups, cloud accounts, business units, or environment segments collect the required data.
+4. **False-positive health:** Record expected benign triggers, measured or budgeted false-positive volume, tuning owner, and review date.
+5. **Demotion criteria:** Define when `stable` must be downgraded to `test` or `experimental` after parser changes, agent upgrades, log-source loss, stale validation, or FP budget breach.
+
 **Sigma detection logic operators:**
 
 | Operator | Usage | Example |
@@ -283,14 +301,26 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
 | **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
 
+**Evidence gates for coverage scoring:**
+
+Coverage heatmaps must consume lifecycle evidence fields, not just rule inventory.
+
+| Coverage level | Required evidence |
+|----------------|-------------------|
+| Theoretical | Rule exists and is ATT&CK-mapped, but backend conversion, target telemetry, or validation evidence is missing. |
+| Tested | Rule has successful synthetic or replay validation, true-negative or filter validation, backend conversion evidence, and field-mapping evidence for at least one target backend. |
+| Operational | Rule is deployed to a named production scope with current field availability, owner, review cadence, validation date, and false-positive health evidence. |
+| Robust | Operational evidence exists across relevant environment segments or complementary rules, with recent true-positive or high-fidelity replay evidence and documented demotion criteria. |
+
 **Heatmap construction process:**
 
 1. Export the current ATT&CK matrix for the relevant platform (Enterprise, Cloud, ICS) from the ATT&CK Navigator (https://mitre-attack.github.io/attack-navigator/)
-2. For each technique, assess the current detection coverage level based on deployed rules
-3. Assign a coverage score (0-4) corresponding to the levels above
-4. Prioritize gap closure using threat intelligence: techniques used by threat actors relevant to your industry should be addressed first
-5. Use the ATT&CK Navigator layer file format (JSON) to visualize coverage as a heatmap
-6. Review and update the heatmap quarterly or after major detection engineering sprints
+2. For each technique, assess the current detection coverage level based on deployed rules and lifecycle evidence
+3. Assign a coverage score (0-4) corresponding to the levels above, capped by the weakest missing evidence gate
+4. Split coverage by environment segment when telemetry or deployment scope differs (for example, servers, workstations, VDI, cloud endpoints)
+5. Prioritize gap closure using threat intelligence: techniques used by threat actors relevant to your industry should be addressed first
+6. Use the ATT&CK Navigator layer file format (JSON) to visualize coverage as a heatmap
+7. Review and update the heatmap quarterly, after parser or agent upgrades, and after major detection engineering sprints
 
 **Gap prioritization factors:**
 
@@ -389,11 +419,27 @@ Produce detection engineering deliverables in this structure:
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
 
+### Lifecycle Promotion Evidence
+| Field | Evidence |
+|-------|----------|
+| Rule Status Rationale | [Why experimental/test/stable is justified] |
+| Validation Date | [YYYY-MM-DD] |
+| Validation Method | [Synthetic test / replay / production TP / purple-team exercise] |
+| Sample Event IDs | [Sanitized event IDs, replay IDs, or case IDs] |
+| Backend Conversion | [Target backend and converter version] |
+| Field Mapping Evidence | [Parser/log-source evidence for every rule field] |
+| Telemetry Scope | [Hosts/accounts/segments covered and excluded] |
+| False-Positive Budget | [Expected or observed benign volume and tuning owner] |
+| Owner / Review Cadence | [Rule owner and next review date] |
+| Demotion Criteria | [Conditions that downgrade status or heatmap score] |
+
 ### Deployment Notes
 - **Target SIEM:** [Platform]
 - **Converted Query:** [KQL/SPL/EQL equivalent if requested]
 - **Estimated False Positive Rate:** [Low / Medium / High]
 - **Tuning Recommendations:** [Specific filter additions]
+- **Lifecycle Status:** [Experimental / Test / Stable, with evidence table above]
+- **Coverage Heatmap Score:** [0-4, capped by missing lifecycle evidence]
 ```
 
 ---
@@ -484,11 +530,11 @@ Deploying a detection rule without enumerating and testing against known false p
 
 ### Pitfall 3: Creating Detections Without Validation Testing
 
-A detection rule that has never been tested against a known-true-positive event provides only theoretical coverage. Use Atomic Red Team (https://github.com/redcanaryco/atomic-red-team), Caldera, or manual technique execution in a test environment to confirm the rule fires on the expected activity. Move rules from "experimental" to "stable" status only after successful validation.
+A detection rule that has never been tested against a known-true-positive event provides only theoretical coverage. Use Atomic Red Team (https://github.com/redcanaryco/atomic-red-team), Caldera, sanitized event replay, or manual technique execution in a test environment to confirm the rule fires on the expected activity. Move rules from `experimental` to `test` only after synthetic or replay validation, and to `stable` only after backend conversion, field mapping, telemetry scope, false-positive health, owner, review cadence, and demotion criteria are documented.
 
 ### Pitfall 4: Ignoring Detection Rule Lifecycle Management
 
-Detection rules are not write-once artifacts. Log sources change, environments evolve, adversary techniques mutate, and SIEM platforms update their query syntax. Rules that are not periodically reviewed become stale, accumulate false positives, or silently stop working. Implement a review cadence (quarterly minimum) and track rule health metrics (fire count, TP/FP ratio, last triggered date).
+Detection rules are not write-once artifacts. Log sources change, environments evolve, adversary techniques mutate, and SIEM platforms update their query syntax. Rules that are not periodically reviewed become stale, accumulate false positives, or silently stop working. Implement a review cadence (quarterly minimum), track rule health metrics (fire count, TP/FP ratio, last triggered date), and demote rules whose parser mappings, telemetry scope, validation date, or FP budget are no longer trustworthy.
 
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
