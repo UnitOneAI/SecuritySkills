@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-611 (XML External Entity)
 
 ### 2.1 Controls to Verify
 
@@ -60,6 +60,7 @@ Before examining any code, establish the review boundary.
 | V5.3.7 | The application protects against LDAP injection |
 | V5.3.8 | The application protects against OS command injection |
 | V5.5.1 | Serialized objects use integrity checks or encryption to prevent hostile object creation |
+| V5.5.1 | XML parsers, schema processors, XSLT processors, and resolvers disable unsafe external resource access |
 
 ### 2.2 Vulnerable Patterns by Language
 
@@ -102,6 +103,30 @@ FileInputStream fis = new FileInputStream(f);
 ```
 Remediation: Canonicalize the resolved path and verify it remains within the expected base directory.
 
+**Multi-language -- XML External Entity (CWE-611)**
+
+Before reporting or clearing an XML finding, identify both the XML input source and the effective parser or external resolver configuration. XML parsing is not automatically vulnerable, but untrusted XML is risky when DTDs, external entities, external schemas, XInclude, XSLT document loading, or custom resolver APIs can reach local files or internal network targets.
+
+Review these language families for parser configuration evidence:
+
+| Language/runtime | Risky patterns to inspect | Safe evidence or false-positive guardrail |
+|---|---|---|
+| Java | `DocumentBuilderFactory`, `SAXParserFactory`, `XMLInputFactory`, `SchemaFactory`, `TransformerFactory`, `XPathFactory`, custom `EntityResolver` or `LSResourceResolver` | `disallow-doctype-decl`, disabled external general/parameter entities, blocked external DTD/schema/stylesheet access, secure processing, resolver allowlist, and size/entity limits |
+| Python | `lxml.etree`, `xml.sax`, `xml.dom.minidom`, `xmlrpc`, partner-upload XML imports | `defusedxml`, `resolve_entities=False`, `load_dtd=False`, `no_network=True`, explicit size limits, and no alternate unsafe parser path |
+| .NET | `XmlDocument`, `XmlReader`, `XmlSerializer`, `XslCompiledTransform`, `DataSet.ReadXml`, `XmlResolver` | `XmlResolver = null`, `DtdProcessing = Prohibit`, constrained `XmlReaderSettings`, and no user-controlled external schema or XSLT source |
+| PHP/Ruby/Node | `DOMDocument`, `SimpleXML`, Nokogiri, REXML, `libxmljs`, `xmldom`, SOAP/SAML/XML webhook handlers | No entity substitution, no network-enabled resolver, DOCTYPE rejection where appropriate, schema/XSLT source allowlists, and hardened library defaults verified in code or config |
+
+Record these fields for every CWE-611 finding or false-positive decision:
+
+- `xml_input_source`: request body, upload, SOAP/SAML, webhook, partner feed, support bundle, import job, or internal-only.
+- `parser_stack`: parser, schema validator, XSLT transformer, XPath/XInclude layer, and resolver library.
+- `dtd_entity_state`: DTD disabled, external general entities disabled, external parameter entities disabled, entity expansion limit, or unclear.
+- `external_resolution_state`: file/network resolver disabled, schema/XSLT/document loading blocked, allowlisted, or unclear.
+- `trust_and_size_controls`: source trust, tenant/partner boundary, file size, expansion depth, timeout, and legacy exception rationale.
+- `safe_parser_rationale`: evidence for `defusedxml`, hardened framework defaults, explicitly disabled resolver features, or JSON-only endpoint scope.
+
+Do not report a JSON-only API for missing XML protections unless XML is accepted through alternate content types, uploads, SOAP/SAML, webhooks, import jobs, or partner/support-bundle paths.
+
 ### 2.3 Review Checklist
 
 - [ ] Every point where user input enters the system is identified.
@@ -110,6 +135,8 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+- [ ] XML review includes parser, schema, XSLT, XInclude, and resolver evidence before reporting CWE-611.
+- [ ] Safe XML parsers or hardened settings are documented as false positives rather than reported only because XML is parsed.
 
 ---
 
@@ -502,7 +529,7 @@ The final review output must be structured as follows:
 | V13 | API and Web Service | API-specific controls |
 | V14 | Configuration | Secure build and deployment |
 
-### CWE Top 25 (2024) Coverage
+### CWE Top 25 (2024) and Additional Coverage
 
 | CWE ID | Name | Review Step |
 |---|---|---|
@@ -512,6 +539,7 @@ The final review output must be structured as follows:
 | CWE-416 | Use After Free | Step 2 (memory-safe language check) |
 | CWE-78 | OS Command Injection | Step 2 |
 | CWE-20 | Improper Input Validation | Step 2 |
+| CWE-611 | XML External Entity (XXE) | Step 2 |
 | CWE-125 | Out-of-bounds Read | Step 2 (memory-safe language check) |
 | CWE-22 | Path Traversal | Step 2 |
 | CWE-352 | Cross-Site Request Forgery | Step 4 |
@@ -562,4 +590,12 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **CWE-611 XML External Entity:** https://cwe.mitre.org/data/definitions/611.html
+- **OWASP XXE Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+
+---
+
+## Version History
+
+- **1.0.1** -- Added multi-language CWE-611 XML parser, schema, XSLT, and resolver evidence gates with false-positive guardrails for safe parsers.
