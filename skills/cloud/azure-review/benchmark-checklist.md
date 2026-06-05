@@ -95,6 +95,77 @@ resource "azuread_directory_role_assignment" { ... }
 
 #### CIS 1.3.3 -- Ensure that 'Restrict access to Microsoft Entra admin center' is set to 'Yes'
 
+### Identity Supplement -- Managed Identity and PIM Effective Access
+
+Use this supplement when reviewing privileged role posture, managed identities,
+Key Vault administration, or workload identity access paths.
+
+#### Managed Identity Effective-Access Evidence
+
+Build an inventory of user-assigned and system-assigned managed identities and
+the Azure RBAC assignments that affect them. Include direct and inherited
+assignments from management groups, subscriptions, resource groups, and
+resource-level scopes.
+
+```hcl
+# Lower-risk example: read-only assignment at subscription scope
+resource "azurerm_role_assignment" "app_reader" {
+  scope                = data.azurerm_subscription.current.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_user_assigned_identity.app.principal_id
+}
+```
+
+Do not report the previous example as a critical finding unless additional
+evidence shows privileged scope, data-plane access, broad attachability, or
+missing change monitoring.
+
+```hcl
+# High-risk example: workload identity can administer production vault secrets
+resource "azurerm_role_assignment" "mi_kv_admin" {
+  scope                = azurerm_key_vault.prod.id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = azurerm_user_assigned_identity.app.principal_id
+}
+```
+
+For high-impact assignments, require these evidence fields:
+
+| Evidence | What to record | Fail when |
+|----------|----------------|-----------|
+| Principal type | user-assigned MI, system-assigned MI, service principal, group, user | Principal cannot be mapped to an owned workload or operator |
+| Role definition | built-in/custom role, permissions, data actions | Role includes owner, access admin, Key Vault admin, or wildcard permissions without justification |
+| Scope | management group, subscription, resource group, resource, data-plane resource | Assignment is broader than required or inherited from an unreviewed parent |
+| Attachment path | compute resources that can use the identity | User-assigned identity can be attached to new compute without approval |
+| Federated credentials | workload identity federation subject/audience/issuer | Broad subject patterns or missing environment/branch constraints allow unintended use |
+| Monitoring | alerts for assignment changes and identity attachment changes | No activity log, alert, or periodic review evidence exists |
+
+#### PIM Eligibility and Activation Evidence
+
+For privileged Entra and Azure RBAC roles, eligibility alone is not sufficient.
+Capture activation policy and activation logs.
+
+| Evidence | Pass condition | Fail condition |
+|----------|----------------|----------------|
+| MFA on activation | MFA is required when activating privileged roles | Eligible users can activate without MFA |
+| Approval | High-impact roles require approval or break-glass process | Self-activation is allowed for Owner, User Access Administrator, Global Administrator, or Privileged Role Administrator without compensating controls |
+| Duration | Activation maximum duration is short and role-specific | Long or unlimited activations are allowed |
+| Justification/ticket | Activation requires a reason or ticket number | No business justification is captured |
+| Audit | Activation, assignment, extension, and renewal logs are retained and reviewed | No activation logs or alerts are available |
+| Alerts | Alerts exist for permanent assignment, activation outside approved hours, and privileged assignment changes | Privileged access changes are not monitored |
+
+#### Key Vault Identity Mode Evidence
+
+Key Vault authorization can be RBAC-based or access-policy-based. Review the
+right evidence path:
+
+- **RBAC mode:** inspect Azure role assignments, inherited scopes, data actions,
+  PIM eligibility, and principal attachment paths.
+- **Access-policy mode:** inspect explicit key, secret, certificate, and storage
+  permissions in `access_policy` blocks and verify principal ownership.
+- **Mixed migrations:** flag drift where RBAC mode is enabled but stale access
+  policies remain in IaC or documentation as if they were still authoritative.
+
 ---
 
 ## Section 2 -- Microsoft Defender for Cloud
@@ -616,6 +687,43 @@ resource "azurerm_key_vault" {
   enable_rbac_authorization = true  # Preferred over access policies
 }
 ```
+
+When `enable_rbac_authorization = true`, review effective Azure RBAC access to
+the vault:
+
+```hcl
+# Review as high impact unless scope and operational controls are justified.
+resource "azurerm_role_assignment" "kv_admin" {
+  scope                = azurerm_key_vault.prod.id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = azurerm_user_assigned_identity.app.principal_id
+}
+```
+
+Required RBAC-mode evidence:
+
+- role definition and whether it includes key/secret/certificate data actions;
+- scope and inherited parent assignments;
+- whether the principal is a managed identity, service principal, group, or user;
+- whether PIM eligibility/activation controls apply to privileged human roles;
+- whether user-assigned managed identities can be attached to additional compute;
+- alerts or activity-log rules for role assignment and managed identity changes.
+
+When `enable_rbac_authorization = false`, inspect access policies instead:
+
+```hcl
+resource "azurerm_key_vault_access_policy" "app" {
+  key_vault_id       = azurerm_key_vault.prod.id
+  tenant_id          = data.azurerm_client_config.current.tenant_id
+  object_id          = azuread_service_principal.app.object_id
+  secret_permissions = ["Get", "List"]
+}
+```
+
+Do not mix the two evidence models. RBAC-mode findings should focus on role
+assignments and effective scope; access-policy-mode findings should focus on
+explicit key/secret/certificate permissions, principal ownership, and whether
+permissions exceed the workload's need.
 
 ### CIS 8.7 -- Ensure that Private Endpoints are used for Azure Key Vault
 

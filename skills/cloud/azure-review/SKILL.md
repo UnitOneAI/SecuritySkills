@@ -6,7 +6,8 @@ description: >
   Entra ID configurations, NSG rules, Defender for Cloud settings, or Key Vault
   access policies. Walks through all nine benchmark sections, evaluates each
   recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
+  guidance mapped to specific CIS control IDs, including effective managed
+  identity access and Privileged Identity Management evidence.
 tags: [cloud, azure, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
@@ -54,6 +55,9 @@ The CIS Microsoft Azure Foundations Benchmark v2.1.0 is a consensus-driven secur
 - Entra ID (Azure AD) configuration files or policy documents
 - NSG and firewall rule definitions
 - Key Vault access policies and RBAC assignments
+- Managed identity inventory, role assignments, PIM eligibility/activation
+  exports, Conditional Access policy evidence, and privileged role audit logs
+  when identity posture is in scope
 
 ---
 
@@ -74,6 +78,10 @@ Use Glob to locate all Azure-related infrastructure definitions.
 **/terraform/**/*.tf
 **/policies/**/*.json
 **/blueprints/**/*.json
+**/role-assignments/**/*.json
+**/rbac/**/*.json
+**/pim/**/*.json
+**/entra/**/*.json
 ```
 
 Record all discovered files. If no Azure configurations are found, report that finding and halt.
@@ -83,6 +91,22 @@ Record all discovered files. If no Azure configurations are found, report that f
 ### Step 2 through Step 10: CIS Benchmark Evaluation (Sections 1-9)
 
 Evaluate all Azure configurations against CIS Azure v2.1.0 Sections 1 through 9, covering Identity and Access Management, Microsoft Defender for Cloud, Storage Accounts, Database Services, Logging and Monitoring, Networking, Virtual Machines, Key Vault, and App Service.
+
+Before scoring Identity and Key Vault controls, build an effective-access
+inventory for high-impact principals:
+
+- user-assigned and system-assigned managed identities;
+- service principals and app registrations with federated credentials;
+- users or groups eligible for privileged Entra or Azure RBAC roles;
+- inherited role assignments from management groups, subscriptions, resource
+  groups, and data-plane resources such as Key Vault.
+
+For each high-impact assignment, record principal type, role definition, scope,
+inheritance source, data-plane versus management-plane effect, PIM eligibility,
+activation controls, and monitoring evidence. Treat a benign low-privilege
+managed identity, such as `Reader` at subscription scope, differently from
+`Owner`, `User Access Administrator`, `Key Vault Administrator`, or custom roles
+with `Microsoft.Authorization/*` or secret/key management permissions.
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, Bicep examples, and configuration checks for all nine sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
 
@@ -119,6 +143,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Framework: CIS Microsoft Azure Foundations Benchmark v2.1.0
 - Files reviewed: <list of IaC files>
+- Effective identity sources reviewed: <role assignment export, PIM export, Entra ID policy export, activity logs>
 
 ### Executive Summary
 - Total CIS recommendations evaluated: <N>
@@ -148,11 +173,19 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Pass / Fail / Not Evaluable
 - **Severity:** Critical / High / Medium / Low
 - **CIS Profile:** Level 1 / Level 2
+- **Identity scope:** Management plane / Data plane / PIM eligibility / Not identity-related
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
+
+### Effective Identity and PIM Evidence
+
+| Principal | Type | Role | Scope | Plane | Assignment Source | PIM Status | Required Evidence |
+|-----------|------|------|-------|-------|-------------------|------------|-------------------|
+| app-prod-mi | User-assigned managed identity | Key Vault Administrator | key vault | Data | Terraform role assignment | Not Evaluable | scope justification, activation/approval if eligible, assignment-change alerts |
+| breakglass-admins | Group | Privileged Role Administrator | tenant | Management | Entra PIM export | Eligible | MFA on activation, approval, duration, justification, audit logs |
 
 ### Prioritized Remediation Plan
 
@@ -200,6 +233,10 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Static RBAC assignments are not effective access.** A subscription-local IaC export can miss inherited assignments from management groups, group membership, PIM eligibility, and workload identity federation. Record what evidence was available before marking privileged identity posture as pass.
+8. **Managed identity role risk depends on role, scope, and attachability.** Do not flag every managed identity assignment as equally risky. Reader at narrow scope is different from Owner, User Access Administrator, or Key Vault Administrator on a production vault, and user-assigned identities can be attached to additional compute after review.
+9. **PIM eligibility is not proof of safe access.** For privileged roles, require activation settings, MFA-on-activation, approval, maximum duration, justification, alerts, and activation audit logs before treating eligibility as controlled.
+10. **Key Vault RBAC and access-policy mode use different evidence paths.** In RBAC mode, inspect Azure role assignments and inherited scopes. In access-policy mode, inspect explicit key/secret/certificate permissions and identity attachment paths.
 
 ---
 
@@ -222,9 +259,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Microsoft Azure Foundations Benchmark v2.1.0: https://www.cisecurity.org/benchmark/azure
 - Microsoft Defender for Cloud Documentation: https://learn.microsoft.com/en-us/azure/defender-for-cloud/
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
+- Microsoft Entra Privileged Identity Management: https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
+- Azure Key Vault RBAC guide: https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
+- Azure managed identities overview: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
 ---
