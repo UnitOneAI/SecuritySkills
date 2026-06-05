@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -174,6 +174,9 @@ IAM-PRIV-05: Custom roles with excessive scope beyond job function
 IAM-PRIV-06: Direct policy attachment instead of role/group-based assignment (CIS 6.8)
 IAM-PRIV-07: Cross-account access without external ID or condition keys
 IAM-PRIV-08: Resource-based policies granting public or overly broad access
+IAM-PRIV-09: Cloud privilege escalation path exists through role passing, role assumption, or workload creation
+IAM-PRIV-10: External or guest identity can reach privileged resources beyond documented collaboration scope
+IAM-PRIV-11: Temporary credentials are long-lived or chained in a way that defeats session-based least privilege
 ```
 
 **Platform-specific checks:**
@@ -188,12 +191,79 @@ IAM-PRIV-08: Resource-based policies granting public or overly broad access
 | **GCP** | IAM Recommender, Policy Analyzer | Excess permissions, recommended removals |
 | **GCP** | Organization-level IAM bindings | Primitive roles (Owner, Editor) at org/folder level |
 
+#### Cloud Privilege Escalation Paths
+
+Do not stop at wildcard detection. For cloud IAM, evaluate whether a permission set can become privileged through another service or identity boundary.
+
+**AWS escalation combinations to check:**
+
+```
+IAM-PRIV-AWS-01: iam:PassRole combined with ec2:RunInstances, lambda:CreateFunction, ecs:RunTask, glue:CreateJob, or cloudformation:CreateStack
+IAM-PRIV-AWS-02: sts:AssumeRole into another account without ExternalId, aws:PrincipalOrgID, source identity, or MFA/session conditions
+IAM-PRIV-AWS-03: iam:CreatePolicyVersion, iam:AttachRolePolicy, iam:PutRolePolicy, or iam:UpdateAssumeRolePolicy on privileged roles
+IAM-PRIV-AWS-04: iam:CreateAccessKey, iam:UpdateLoginProfile, or iam:PassRole available to identities without break-glass approval
+IAM-PRIV-AWS-05: Broad service-linked roles treated as exploitable without proving an attacker-controlled service path
+```
+
+**Azure / Entra ID escalation combinations to check:**
+
+```
+IAM-PRIV-AZ-01: Guest users assigned directory roles, privileged Azure RBAC roles, or app roles beyond collaboration scope
+IAM-PRIV-AZ-02: App registrations where owners can add credentials or federated credentials to privileged service principals
+IAM-PRIV-AZ-03: Managed identities with Contributor, Owner, User Access Administrator, or Key Vault data-plane access outside their workload
+IAM-PRIV-AZ-04: Eligible PIM roles that can be activated without MFA, approval, justification, or tight duration limits
+IAM-PRIV-AZ-05: Cross-tenant access settings that permit broad guest invitation, consent, or resource access without review
+```
+
+**GCP escalation combinations to check:**
+
+```
+IAM-PRIV-GCP-01: iam.serviceAccounts.actAs combined with compute.instances.create, run.services.create, functions.deploy, or dataflow.jobs.create
+IAM-PRIV-GCP-02: serviceAccountTokenCreator granted to users or groups that can mint tokens for privileged service accounts
+IAM-PRIV-GCP-03: Primitive Owner/Editor roles at project, folder, or organization scope
+IAM-PRIV-GCP-04: Workload Identity Federation providers that trust broad external subjects without attribute conditions
+```
+
+**False-positive guard:** Do not classify a broad action pattern as exploitable until the report proves the missing boundary. Wildcard actions may be acceptable when they are restricted by specific resources, organization conditions, permission boundaries, SCPs, PIM activation controls, or documented service-linked role constraints. Record the compensating control and downgrade to Low or Informational when escalation is not reachable.
+
+**Assessment examples:**
+
+```json
+// High/Critical: workload creation can attach a privileged role.
+{
+  "Action": ["iam:PassRole", "ec2:RunInstances"],
+  "Resource": "*"
+}
+```
+
+```json
+// Usually not Critical by itself: broad actions are bounded to the organization.
+{
+  "Action": "s3:*",
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": {
+      "aws:PrincipalOrgID": "o-example"
+    }
+  }
+}
+```
+
+```text
+High: external guest user is eligible for User Access Administrator with no PIM approval.
+Low/Informational: external guest can only access a scoped SharePoint site and is covered by access reviews.
+```
+
 **Severity Classification:**
 
 | Finding | Severity | Rationale |
 |---|---|---|
 | Wildcard admin (`*:*`) on production | **Critical** | Full environment compromise potential |
+| PassRole / ActAs plus workload creation against a privileged role or service account | **Critical** | Attacker can start compute under higher privileges |
+| External guest with privileged directory or RBAC reach | **High** | External identity can cross tenant/resource boundaries |
 | Standing admin without JIT | **High** | Persistent lateral movement target |
+| Cross-account or cross-tenant role assumption without external ID, MFA, or source constraints | **High** | Trust boundary can be abused for privilege escalation |
+| Long-lived temporary credentials or chained sessions beyond policy duration | **Medium** | Weakens session-based least privilege and incident containment |
 | Unused permissions > 90 days | **Medium** | Attack surface reduction opportunity |
 | Direct policy attachment | **Low** | Governance improvement, not direct risk |
 
@@ -380,6 +450,8 @@ For each finding, produce a row with:
 | **Framework Ref** | NIST SP 800-63B section, NIST SP 800-207 tenet, or CIS Control ID |
 | **Affected Scope** | Accounts, roles, policies, or platforms impacted |
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
+| **Escalation Path** | Concrete action chain or trust path when privilege escalation is claimed |
+| **Compensating Controls** | Conditions, boundaries, SCPs, PIM controls, or service-linked constraints that reduce exploitability |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -508,4 +580,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-05 | Add cloud IAM privilege escalation checks and false-positive guardrails |
 | 1.0.0 | 2025-03-06 | Initial release |
