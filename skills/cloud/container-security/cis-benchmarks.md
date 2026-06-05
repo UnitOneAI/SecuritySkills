@@ -379,6 +379,53 @@ securityContext:
     add: ["NET_BIND_SERVICE"]  # Only if needed for ports < 1024
 ```
 
+#### Effective Runtime Profile Evidence -- seccomp, AppArmor, and capabilities
+
+For each workload, evaluate the effective runtime profile across `containers`, `initContainers`, and `ephemeralContainers`. A pod-level setting can apply to containers, but container-level overrides can weaken it, so record both scopes.
+
+| Control | Manifest Evidence | Effective-State Evidence | Failure / Not Evaluable Condition |
+|---------|-------------------|--------------------------|-----------------------------------|
+| **seccomp** | `spec.securityContext.seccompProfile` and each `*.securityContext.seccompProfile` | kubelet `seccompDefault`, admission policy mutation, or runtime profile evidence when manifest fields are unset | Missing manifest field with no node/runtime evidence is **Not Evaluable** for effective state; `Unconfined` is **High** |
+| **AppArmor** | `securityContext.appArmorProfile` or `container.apparmor.security.beta.kubernetes.io/<container>` annotations | Node/runtime profile name and enforcement status where available | `Unconfined` or missing profile evidence for Restricted workloads is **High/Not Evaluable** depending on policy context |
+| **Capabilities** | `capabilities.drop` and `capabilities.add` on every container type | Admission/policy evidence if controls are injected or denied | Missing `drop: ["ALL"]` for Restricted workloads is **High**; adding anything beyond `NET_BIND_SERVICE` needs explicit justification |
+| **Privilege escalation** | `allowPrivilegeEscalation: false` per Linux container | Policy-engine denial/mutation evidence where manifests omit it | Missing or true is **High** for application workloads |
+| **Read-only root filesystem** | `readOnlyRootFilesystem: true` per container plus writable volume exceptions | Runtime mount evidence where available | Missing evidence is **Medium**; writable root with no exception rationale is **Medium/High** |
+
+**Container coverage checklist:**
+
+- [ ] `containers[]` evaluated.
+- [ ] `initContainers[]` evaluated or marked not present.
+- [ ] `ephemeralContainers[]` evaluated or cluster policy for debug/ephemeral containers recorded.
+- [ ] Pod-level defaults and container-level overrides compared.
+- [ ] Declared manifest state separated from effective kubelet/admission/runtime state.
+- [ ] Writable `emptyDir` or other approved mounts documented when `readOnlyRootFilesystem: true` is recommended.
+
+```yaml
+# GOOD: Restricted-oriented runtime profile evidence in the manifest
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: migrate
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  containers:
+    - name: app
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["NET_BIND_SERVICE"]
+        seccompProfile:
+          type: RuntimeDefault
+  ephemeralContainers: []
+```
+
 #### CIS 5.2.11 -- Minimize the admission of Windows HostProcess containers
 
 Check for `windowsOptions.hostProcess: true`.
@@ -611,10 +658,11 @@ Evaluate container runtime configurations against NIST SP 800-190 countermeasure
 | Countermeasure | What to Check |
 |---------------|---------------|
 | **CM-11:** Run as non-root | `runAsNonRoot: true`, `runAsUser: >0` |
-| **CM-12:** Use read-only root filesystem | `readOnlyRootFilesystem: true` |
-| **CM-13:** Drop all capabilities | `capabilities.drop: ["ALL"]` |
+| **CM-12:** Use read-only root filesystem | `readOnlyRootFilesystem: true` plus writable volume exceptions for required paths |
+| **CM-13:** Drop all capabilities | `capabilities.drop: ["ALL"]` on regular, init, and ephemeral containers |
 | **CM-14:** Set resource limits | CPU and memory limits set on all containers |
-| **CM-15:** Use seccomp profiles | `seccompProfile.type: RuntimeDefault` or custom |
+| **CM-15:** Use seccomp profiles | `seccompProfile.type: RuntimeDefault` or custom, with kubelet `seccompDefault` evidence if omitted |
+| **CM-16:** Enforce AppArmor/LSM profiles | AppArmor profile declared/effective and not `Unconfined` where supported |
 
 **Resource limits check:**
 
@@ -677,6 +725,14 @@ spec:
         requests:
           memory: "128Mi"
           cpu: "250m"
+  initContainers:
+    - name: init
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+  ephemeralContainers: []
 ```
 
 **Fields that must NOT be present for Restricted compliance:**
@@ -690,3 +746,17 @@ spec:
 - Capabilities beyond the allowed set (only `NET_BIND_SERVICE` is permitted)
 - `procMount` other than `Default`
 - `appArmorProfile` of `unconfined`
+
+**Effective evidence fields to capture:**
+
+| Field | Values |
+|-------|--------|
+| Container type | regular / init / ephemeral |
+| Seccomp declared | RuntimeDefault / Localhost / Unconfined / missing |
+| Seccomp effective | RuntimeDefault / Localhost / Unconfined / unknown |
+| AppArmor declared | RuntimeDefault / Localhost / Unconfined / missing / unsupported |
+| AppArmor effective | enforced profile / Unconfined / unknown / unsupported |
+| Capabilities | drop ALL / partial drop / dangerous add / unknown |
+| Privilege escalation | false / true / missing / not applicable |
+| Root filesystem | read-only / read-write / read-only with writable mounts |
+| Evidence status | Pass / Fail / Not Evaluable |

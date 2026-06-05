@@ -5,15 +5,16 @@ description: >
   Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190.
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
-  hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
-tags: [cloud, containers, kubernetes, docker]
+  hardening, RBAC, Pod Security Standards, network policies, seccomp/AppArmor,
+  Linux capabilities, and secrets management. Produces a prioritized findings
+  report with remediation guidance.
+tags: [cloud, containers, kubernetes, docker, seccomp, apparmor, capabilities]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -62,6 +63,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
 - Container registry configurations (if available)
+- Kubelet or node runtime evidence when manifest fields omit `seccompProfile` or AppArmor settings
 
 ---
 
@@ -112,6 +114,24 @@ Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kusto
 Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
+
+---
+
+### Runtime Profile Evidence Gates
+
+For each Kubernetes workload, record the declared manifest settings and, when available, the effective runtime state for every regular, init, and ephemeral container. Do not mark a workload Restricted-compliant only because namespace policy exists; prove how each container receives the expected seccomp, AppArmor, and Linux capability controls.
+
+| Evidence Gate | Required Evidence |
+|---------------|-------------------|
+| **Container coverage** | Evaluate `containers`, `initContainers`, and `ephemeralContainers`; record missing sections as not applicable, not skipped |
+| **Seccomp** | Pod-level and per-container `securityContext.seccompProfile`; if unset, verify kubelet `seccompDefault` or classify effective state as unknown/not evaluable |
+| **AppArmor** | `securityContext.appArmorProfile` where supported, legacy `container.apparmor.security.beta.kubernetes.io/*` annotations, or runtime/profile evidence; flag `Unconfined` |
+| **Capabilities** | `capabilities.drop: ["ALL"]` for Restricted workloads; only `NET_BIND_SERVICE` may be added back with justification |
+| **Privilege escalation** | `allowPrivilegeEscalation: false` for every Linux container; record exceptions for Windows containers separately |
+| **Writable root filesystem** | `readOnlyRootFilesystem: true`, plus explicit writable `emptyDir` or other approved mounts for paths that need writes |
+| **Declared vs effective state** | Distinguish manifest-declared controls from admission, policy-engine, kubelet, or runtime defaults |
+
+If the manifest omits a runtime profile and no kubelet/policy/runtime evidence is available, report **Not Evaluable** for effective runtime state rather than assuming `RuntimeDefault`.
 
 ---
 
@@ -185,6 +205,13 @@ Produce the final report using the structure defined in the Output Format sectio
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
 
+### Effective Runtime Profile Matrix
+
+| Workload | Container Type | Container | Seccomp Declared | Seccomp Effective | AppArmor Declared | AppArmor Effective | Capabilities | PrivEsc | RootFS | Evidence Status |
+|----------|----------------|-----------|------------------|-------------------|-------------------|--------------------|--------------|----------|--------|-----------------|
+| deploy/app | regular | app | RuntimeDefault | RuntimeDefault | RuntimeDefault | RuntimeDefault | drop ALL | false | read-only + emptyDir /tmp | Pass |
+| deploy/app | init | migrate | missing | Unknown | missing | Unknown | missing | missing | read-write | Not Evaluable |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** <finding> -- <action>
@@ -245,6 +272,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | allowPrivilegeEscalation | -- | Must be false |
 | runAsNonRoot | -- | Must be true |
 | seccompProfile | -- | RuntimeDefault or Localhost |
+| AppArmor | Baseline restrictions apply where supported | RuntimeDefault or Localhost; must not be Unconfined |
 
 ---
 
@@ -257,6 +285,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Unset seccomp is not always the same as RuntimeDefault.** Kubelet `seccompDefault` can make an omitted manifest field effectively `RuntimeDefault`, but the manifest alone does not prove that state. Record node/runtime evidence before passing the control.
+9. **Ephemeral containers can bypass a neat workload table.** Debug containers have their own security context and may be added after deployment. Include them in runtime-profile evidence when present or when cluster policy allows them.
 
 ---
 
@@ -283,8 +313,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
+- Kubernetes seccomp tutorial: https://kubernetes.io/docs/tutorials/security/seccomp/
+- Kubernetes seccomp reference: https://kubernetes.io/docs/reference/node/seccomp/
+- Kubernetes security context: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+- Kubernetes AppArmor tutorial: https://kubernetes.io/docs/tutorials/security/apparmor/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Docker seccomp security profiles: https://docs.docker.com/engine/security/seccomp/
+- Docker runtime privilege and Linux capabilities: https://docs.docker.com/engine/containers/run/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
@@ -293,4 +329,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added effective runtime profile evidence gates for seccomp, AppArmor, Linux capabilities, privilege escalation, read-only root filesystems, and declared-vs-effective state across regular, init, and ephemeral containers.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
