@@ -280,6 +280,8 @@ metadata:
 
 Or check for OPA/Gatekeeper or Kyverno policies.
 
+For every Pod Security Standards check below, inspect `spec.containers`, `spec.initContainers`, and `spec.ephemeralContainers` when present. If the workload can accept runtime debug containers via `kubectl debug` or the `pods/ephemeralcontainers` subresource, verify RBAC, admission, and audit evidence for that subresource as part of the review.
+
 #### CIS 5.2.2 -- Minimize the admission of privileged containers
 
 **Critical check:**

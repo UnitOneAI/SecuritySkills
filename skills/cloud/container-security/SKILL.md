@@ -31,7 +31,7 @@ This skill performs a structured security review of container images and Kuberne
 - **CIS Kubernetes Benchmark v1.9.0** -- 5 sections covering control plane, etcd, control plane configuration, worker nodes, and policies.
 - **NIST SP 800-190** (Application Container Security Guide) -- Countermeasures for image, registry, orchestrator, container, and host OS risks.
 
-The review covers Dockerfiles, Kubernetes manifests, Helm charts, and supporting configurations. Each finding is mapped to specific CIS recommendation IDs or NIST SP 800-190 countermeasure categories.
+The review covers Dockerfiles, Kubernetes manifests, Helm charts, and supporting configurations. Each finding is mapped to specific CIS recommendation IDs or NIST SP 800-190 countermeasure categories. For Kubernetes workload reviews, record regular, init, and ephemeral container coverage separately, and capture RBAC/admission/audit evidence when runtime debug containers are possible.
 
 ---
 
@@ -151,6 +151,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Failed: <N>
 - Critical/High findings requiring immediate attention: <N>
 - Pod Security Standard compliance: Privileged / Baseline / Restricted
+- Container coverage: Regular / Init / Ephemeral (recorded separately)
 
 ### Findings by Domain
 
@@ -170,6 +171,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Fail
 - **Severity:** Critical / High / Medium / Low
 - **Pod Security Standard Impact:** Violates Restricted / Violates Baseline / Compliant
+- **Container Coverage:** Regular / Init / Ephemeral
+- **Runtime Debug Container Evidence:** RBAC / Admission / Audit / Not Evaluable
 - **File:** <path>
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
@@ -194,7 +197,8 @@ Produce the final report using the structure defined in the Output Format sectio
 ### Summary
 - Dockerfiles reviewed: <N>
 - Kubernetes workloads reviewed: <N>
-- Overall Pod Security Standard level: <Privileged / Baseline / Restricted>
+- Pod Security Standard compliance: Privileged / Baseline / Restricted
+- Container coverage: Regular / Init / Ephemeral (recorded separately)
 - Critical findings: <N>
 - High findings: <N>
 - Medium findings: <N>
@@ -250,7 +254,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Common Pitfalls
 
-1. **Init containers and sidecar containers are often missed.** Pod Security Standards apply to ALL containers in a pod, including init containers and ephemeral containers. Check every container spec.
+1. **Init containers and sidecar containers are often missed.** Pod Security Standards apply to ALL containers in a pod, including init containers and ephemeral containers. Check every container spec, and record regular/init/ephemeral coverage separately. If runtime debug containers are allowed, verify RBAC, admission, and audit evidence for the `pods/ephemeralcontainers` subresource.
 2. **Helm template values may override security settings.** A Helm chart template may set `runAsNonRoot: true`, but `values.yaml` or environment-specific values files may override it to `false`. Always check both the templates and all values files.
 3. **Default namespace is not just a naming issue.** The `default` namespace typically has no NetworkPolicy and no Pod Security Admission labels. Workloads in `default` often bypass all policy controls.
 4. **Base64 encoding is not encryption.** Kubernetes Secrets store data as base64, which is trivially decodable. Secrets committed to version control in manifests are effectively plaintext.
