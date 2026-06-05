@@ -1,0 +1,56 @@
+{
+  "repository": "example/checkout-service",
+  "sast_tools": [
+    "CodeQL",
+    "Semgrep"
+  ],
+  "language_inventory": {
+    "java": [
+      "services/checkout/src/main/java"
+    ],
+    "javascript": [
+      "web/src"
+    ]
+  },
+  "codeql_workflow": {
+    "status": "success",
+    "languages": [
+      "java",
+      "javascript"
+    ],
+    "build_mode": "manual",
+    "build_command": "./gradlew clean generateOpenApiSources testClasses && npm ci --prefix web",
+    "generated_source_step": "generateOpenApiSources runs before codeql-action/analyze",
+    "databases": [
+      {
+        "language": "java",
+        "source_files": 1248,
+        "warnings": []
+      },
+      {
+        "language": "javascript",
+        "source_files": 412,
+        "warnings": []
+      }
+    ],
+    "query_packs": [
+      "security-extended",
+      "security-and-quality"
+    ]
+  },
+  "semgrep_workflow": {
+    "status": "success",
+    "scan_mode": "pull-request",
+    "analyzed_files": 1660,
+    "excluded_paths": [
+      "test/**",
+      "node_modules/**"
+    ],
+    "scheduled_full_scan": {
+      "frequency": "weekly",
+      "last_successful_run": "2026-06-01T06:00:00Z",
+      "dashboard": "Semgrep App"
+    }
+  },
+  "expected_result": "Coverage confidence is high; do not report an extraction/build-mode gap."
+}

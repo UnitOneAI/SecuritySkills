@@ -1,0 +1,61 @@
+{
+  "repository": "example/payments-monorepo",
+  "sast_tools": [
+    "CodeQL",
+    "Semgrep"
+  ],
+  "language_inventory": {
+    "java": [
+      "services/api/src/main/java",
+      "services/billing/src/main/java"
+    ],
+    "javascript": [
+      "web/src"
+    ],
+    "go": [
+      "workers/refund"
+    ]
+  },
+  "codeql_workflow": {
+    "status": "success",
+    "languages": [
+      "java",
+      "javascript"
+    ],
+    "build_mode": "autobuild",
+    "autobuild_log": "No supported build system detected for Java. Database created with zero source files.",
+    "databases": [
+      {
+        "language": "java",
+        "source_files": 0,
+        "warnings": [
+          "No source code was seen during the build"
+        ]
+      },
+      {
+        "language": "javascript",
+        "source_files": 318,
+        "warnings": []
+      }
+    ],
+    "missing_languages": [
+      "go"
+    ]
+  },
+  "semgrep_workflow": {
+    "status": "success",
+    "scan_mode": "changed-files",
+    "analyzed_files": 24,
+    "excluded_paths": [
+      "services/**/src/generated/**",
+      "workers/**"
+    ],
+    "scheduled_full_scan": null
+  },
+  "expected_findings": [
+    "CodeQL Java database is empty despite a successful workflow",
+    "Go production root is in repository inventory but missing from CodeQL/Semgrep coverage",
+    "Semgrep PR scan is changed-files only with no scheduled full scan evidence",
+    "Generated and worker production paths are excluded without documented risk acceptance"
+  ]
+}
