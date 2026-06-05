@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-1321 (Prototype Pollution), CWE-915 (Dynamic Object Attribute Modification)
 
 ### 2.1 Controls to Verify
 
@@ -81,6 +81,49 @@ app.get('/search', (req, res) => {
 ```
 Remediation: Use a templating engine with auto-escaping enabled, or explicitly escape with a library such as `he` or `DOMPurify`.
 
+**JavaScript/TypeScript -- Prototype Pollution and Mass Assignment (CWE-1321, CWE-915)**
+```javascript
+// VULNERABLE: recursively merges attacker-controlled keys
+function merge(target, source) {
+  for (const key in source) {
+    if (source[key] && typeof source[key] === "object") {
+      target[key] = target[key] || {};
+      merge(target[key], source[key]);
+    } else {
+      target[key] = source[key];
+    }
+  }
+  return target;
+}
+
+app.post('/api/preferences', express.json(), (req, res) => {
+  merge(req.user.preferences, req.body);
+  res.json({ ok: true });
+});
+```
+Remediation: Reject `__proto__`, `constructor`, and `prototype` keys on every nested object-write path; avoid `for...in` over untrusted objects unless guarded with `Object.hasOwn`; prefer schema validation and DTO projection before merge/update sinks.
+
+```typescript
+// VULNERABLE: direct request body assignment to model fields
+app.patch('/api/users/:id', requireAuth, async (req, res) => {
+  const user = await User.findByPk(req.params.id);
+  Object.assign(user, req.body);
+  await user.save();
+  res.json(user);
+});
+```
+Remediation: Project request bodies through an allowlisted DTO/schema before model updates. Accept `z.object({...}).strict()`, JSON Schema with `additionalProperties: false`, Joi `allowUnknown(false)`, or equivalent only when it is on the same path as the update sink and excludes privileged fields such as `role`, `isAdmin`, `tenantId`, `ownerId`, and `accountBalance`.
+
+**Object-write evidence to capture:**
+
+| Evidence Field | What to Record |
+|---|---|
+| `object_write_source` | `req.body`, query parser, JSON parser, webhook payload, message payload, or other untrusted key source |
+| `merge_or_assignment_sink` | `Object.assign`, object spread into model/config, recursive merge helper, `lodash.merge`, `$.extend`, `for...in` assignment, ORM `update(req.body)` |
+| `dangerous_key_handling` | Whether `__proto__`, `constructor`, and `prototype` are rejected at every nested level |
+| `privileged_fields_blocked` | Whether role, admin, tenant, owner, balance, authorization, or state fields are allowlisted/blocked |
+| `schema_or_dto_evidence` | Strict schema, DTO projection, `additionalProperties: false`, Zod `.strict()`, Joi `allowUnknown(false)`, or equivalent on the same data path |
+
 **Go -- OS Command Injection (CWE-78)**
 ```go
 // VULNERABLE: user input passed directly to shell execution
@@ -110,6 +153,9 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+- [ ] JavaScript/TypeScript object writes from untrusted sources are traced to merge/update sinks.
+- [ ] Recursive merge helpers, `Object.assign`, object spread, and ORM updates reject `__proto__`, `constructor`, `prototype`, and privileged model fields.
+- [ ] Safe DTO/schema evidence is on the same data path as the object-write sink and rejects unknown properties.
 
 ---
 
@@ -420,6 +466,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Object-Write Evidence** | For CWE-1321/CWE-915: source, sink, dangerous-key handling, privileged-field allowlist, and schema/DTO evidence |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -445,7 +492,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.1.0
 
 ### Summary
 - Critical: [count]
@@ -462,6 +509,7 @@ The final review output must be structured as follows:
 - **ASVS Control:** V[x.y.z]
 - **Location:** [file:line]
 - **Description:** [explanation]
+- **Object-Write Evidence:** [if applicable: source, sink, dangerous-key handling, privileged fields blocked, schema/DTO evidence]
 - **Evidence:**
   ```[language]
   [code snippet]
@@ -512,6 +560,8 @@ The final review output must be structured as follows:
 | CWE-416 | Use After Free | Step 2 (memory-safe language check) |
 | CWE-78 | OS Command Injection | Step 2 |
 | CWE-20 | Improper Input Validation | Step 2 |
+| CWE-1321 | Prototype Pollution | Step 2 |
+| CWE-915 | Improperly Controlled Modification of Dynamically-Determined Object Attributes | Step 2 |
 | CWE-125 | Out-of-bounds Read | Step 2 (memory-safe language check) |
 | CWE-22 | Path Traversal | Step 2 |
 | CWE-352 | Cross-Site Request Forgery | Step 4 |
@@ -541,6 +591,10 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Flagging every object copy as prototype pollution.** `Object.assign`, spread, and DTO updates are not automatically vulnerable. Require source-to-sink evidence showing attacker-controlled property names reach a recursive merge, dynamic assignment, model update, or privileged field without strict schema/DTO allowlisting.
+
+7. **Trusting type annotations as runtime validation.** TypeScript interfaces do not remove unknown keys at runtime. Accept TypeScript types as supporting context only when paired with runtime validation, DTO projection, or framework binding that rejects unknown and privileged properties.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -562,4 +616,17 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **CWE-1321 Prototype Pollution:** https://cwe.mitre.org/data/definitions/1321.html
+- **CWE-915 Dynamic Object Attribute Modification:** https://cwe.mitre.org/data/definitions/915.html
+- **OWASP Prototype Pollution Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html
+- **OWASP API3:2023 Broken Object Property Level Authorization:** https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.1.0 | 2026-06-05 | Added JavaScript/TypeScript prototype pollution, mass-assignment, object-write evidence, false-positive guidance, and CWE-1321/CWE-915 coverage |
+| 1.0.0 | 2025-03-06 | Initial release |
