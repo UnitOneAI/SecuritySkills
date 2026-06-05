@@ -149,10 +149,50 @@ paths:
           in: query  # Should be in header
 ```
 
+```javascript
+// VULNERABLE: algorithm/key confusion and attacker-controlled kid handling
+const header = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString());
+const key = await lookupKey(header.kid);
+const claims = jwt.verify(token, key); // No explicit algorithm allowlist or issuer/audience binding
+```
+
+```python
+# VULNERABLE: mixes symmetric and asymmetric algorithms for one issuer
+claims = jwt.decode(
+    token,
+    verification_key,
+    algorithms=["HS256", "RS256"],
+    options={"verify_aud": False},
+)
+```
+
+### JWT Algorithm and Key-Confusion Review
+
+Token headers are attacker-controlled metadata. Do not let `alg`, `kid`, `jku`, `x5u`, or embedded `jwk` values decide verification behavior without server-side policy.
+
+| Evidence Item | Required Review |
+|---|---|
+| Algorithm allowlist | Accepted algorithms are fixed per issuer/client and do not include `none` or unexpected symmetric/asymmetric mixes. |
+| Key type binding | HS* uses symmetric secrets; RS*/ES* uses public keys. The same key material is not accepted across both families. |
+| `kid` lookup | `kid` is matched against an issuer-scoped allowlist or trusted JWKS cache, not a file path, URL, SQL fragment, or unbounded cache key. |
+| Remote key headers | `jku`, `x5u`, and embedded `jwk` are ignored or restricted to issuer-pinned trusted origins. |
+| Required claims | `exp`, `nbf`, `iat`, `iss`, `aud`, and subject/client claims are validated for every protected API. |
+| Failure mode | Unknown `kid`, JWKS fetch failure, wrong issuer/audience, expired token, and unsupported algorithm fail closed. |
+
+**Negative cases to require in tests or configuration evidence:**
+
+- `alg: none` token is rejected.
+- HS256 token signed with an RSA public key as HMAC secret is rejected when RS256 is expected.
+- RS256 token is rejected for an issuer configured for HS256 only.
+- Unknown or path-like `kid` is rejected.
+- Token with attacker-controlled `jku`/`x5u` is rejected unless the origin is explicitly pinned.
+- Wrong `iss`, wrong `aud`, expired `exp`, and future `nbf` are rejected.
+
 ### Remediation Guidance
 
 - Enforce rate limiting on all authentication endpoints (e.g., 5 attempts per minute per IP/account).
-- Validate JWT signatures using a strong algorithm (RS256, ES256). Reject `none` and `HS256` if RSA is expected (algorithm confusion attack).
+- Validate JWT signatures using an explicit server-side algorithm allowlist (for example RS256 or ES256 for an issuer). Reject `none` and reject `HS256` when an asymmetric algorithm is expected.
+- Bind JWT key lookup to issuer and key type. Do not fetch arbitrary `jku`/`x5u` URLs or use untrusted `kid` values as paths, URLs, or query fragments.
 - Transmit API keys and tokens in HTTP headers (`Authorization` header), never in URL query strings.
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
@@ -163,6 +203,8 @@ paths:
 - [ ] All authentication endpoints have brute-force protections (rate limiting, lockout).
 - [ ] JWTs are validated for signature, expiration (`exp`), issuer (`iss`), and audience (`aud`).
 - [ ] The `none` algorithm and algorithm confusion attacks are prevented by explicit algorithm allowlisting.
+- [ ] JWT key lookup is issuer-scoped; `kid`, `jku`, `x5u`, and embedded `jwk` cannot select attacker-controlled verification keys.
+- [ ] Negative tests or equivalent evidence cover `none`, HS/RS confusion, unknown `kid`, wrong issuer/audience, expired token, and not-yet-valid token cases.
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
@@ -262,17 +304,55 @@ query {
 }
 ```
 
+```graphql
+# VULNERABLE: alias-based batching bypasses per-request login throttles
+mutation {
+  a1: login(email: "victim@example.com", password: "guess1") { token }
+  a2: login(email: "victim@example.com", password: "guess2") { token }
+  a3: login(email: "victim@example.com", password: "guess3") { token }
+}
+```
+
+```json
+[
+  { "query": "query Export($ids:[ID!]!){ invoices(ids:$ids){ id total pdfUrl } }", "variables": { "ids": ["1","2"] } },
+  { "query": "query Export($ids:[ID!]!){ invoices(ids:$ids){ id total pdfUrl } }", "variables": { "ids": ["3","4"] } }
+]
+```
+
 ```javascript
 // VULNERABLE: No request body size limit
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
+
+### GraphQL Batch and Alias Abuse Review
+
+GraphQL rate limits must count operations and resolver work, not just HTTP requests to `/graphql`.
+
+| Evidence Item | Required Review |
+|---|---|
+| Batched request support | Determine whether the server accepts an array of GraphQL operations in one HTTP request. |
+| Operation limit | Enforce a maximum operation count per request and per principal. |
+| Alias limit | Enforce a maximum alias count, especially on auth, search, export, checkout, and mutation fields. |
+| Cost model | Weight fields by resolver cost, list size, nesting, and downstream calls. Include variables that multiply work. |
+| Auth attempt accounting | Count each aliased or batched login/password-reset/MFA operation against lockout and velocity limits. |
+| Business-flow quotas | Count each aliased or batched checkout, reservation, invite, coupon, export, or report action against per-user quotas. |
+| Persisted operations | For production-sensitive flows, require operation-name allowlists or persisted query hashes where practical. |
+
+**High-risk finding examples:**
+
+- A single request with 100 aliases can execute 100 login attempts while rate limiting sees one HTTP request.
+- A batched request can run multiple expensive exports/searches while gateway quotas see one `/graphql` call.
+- Complexity scoring ignores aliases, list arguments, or nested resolver fan-out.
+- Production accepts arbitrary anonymous GraphQL operations for sensitive business flows instead of persisted operations or allowlisted operation names.
 
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
-- For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
+- For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), alias limits, operation-count limits, and batch query limits.
+- Count each batched operation and aliased resolver against rate limits, auth attempt counters, and business-flow quotas.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
 
@@ -281,7 +361,9 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations.
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
-- [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] GraphQL queries have depth limits, complexity limits, alias limits, operation-count limits, and batch restrictions.
+- [ ] GraphQL auth and business-flow rate limits count each alias and each batched operation, not only the outer HTTP request.
+- [ ] Sensitive production GraphQL flows use persisted query hashes or operation-name allowlists where practical.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 

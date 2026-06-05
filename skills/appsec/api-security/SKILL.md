@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -33,7 +33,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 
 1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
 2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
-3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
+3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public. For JWTs, record issuer, audience, accepted algorithms, key source, key type, `kid` lookup behavior, and required claims.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
@@ -154,6 +154,23 @@ The final review output must be structured as follows:
 
 GraphQL APIs share all ten OWASP API risks with REST but introduce additional attack surface due to their query language flexibility.
 
+### GraphQL Operation Batching and Alias Accounting
+
+GraphQL protections must be evaluated per operation, per alias, and per resolved field, not only per HTTP request. A single POST to `/graphql` can contain many operations or many aliases of the same expensive resolver.
+
+When reviewing GraphQL resource controls, record:
+
+| Evidence Item | What To Verify |
+|---|---|
+| Batch transport | Whether the server accepts a JSON array of GraphQL operations in one request |
+| Operation count | Maximum operations per HTTP request and per authenticated principal |
+| Alias count | Maximum aliases per operation, especially for login, search, export, checkout, or expensive resolver fields |
+| Resolver cost | Weighted cost per field, list multiplier, nested fan-out, and downstream API/database calls |
+| Rate-limit accounting | Whether aliased and batched operations count individually against rate limits, auth attempt limits, and business-flow quotas |
+| Persisted operation policy | Whether production allows only approved operation names or persisted query hashes for sensitive flows |
+
+Mark the control as insufficient if rate limiting, lockout, or quota logic only counts the outer HTTP request while aliased or batched operations execute independently.
+
 ### Introspection Exposure
 
 ```graphql
@@ -180,6 +197,8 @@ Deeply nested or highly complex queries can exhaust server resources (API4:2023)
 - **Maximum query depth** (e.g., 5-10 levels depending on schema complexity).
 - **Query complexity scoring** -- assign cost weights to fields and reject queries exceeding a threshold.
 - **Batch query limits** -- restrict the number of queries in a single request (query batching/aliasing).
+- **Alias and operation accounting** -- count each aliased resolver and each batched operation against rate limits, auth attempt counters, and cost budgets.
+- **Persisted operation allowlists** -- require operation names or persisted query hashes for sensitive production GraphQL flows when practical.
 
 ### Field-Level Authorization
 
@@ -199,6 +218,22 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 **Mitigation:** Count aliased operations against rate limits. Limit the number of aliases per request.
 
+### JWT Algorithm and Key-Confusion Evidence
+
+JWT authentication reviews must prove that the verifier does not trust attacker-controlled header metadata. Record the accepted algorithms, key source, key type, issuer/audience binding, and `kid` lookup behavior.
+
+High-risk findings include:
+
+- accepting `alg: none`
+- allowing both symmetric (`HS*`) and asymmetric (`RS*`, `ES*`) algorithms for the same issuer without key-type separation
+- verifying an RSA public key as an HMAC secret in HS/RS confusion cases
+- fetching `jku`, `x5u`, or embedded `jwk` values from token headers without an issuer-pinned allowlist
+- using `kid` to select local files, URLs, SQL rows, or cache entries without strict allowlisting and issuer binding
+- skipping `exp`, `nbf`, `iat`, `iss`, or `aud` validation
+- falling back to a default secret or accepting tokens when JWKS retrieval fails
+
+Require negative tests or configuration evidence showing rejected `none`, HS/RS confusion, unknown `kid`, wrong issuer, wrong audience, expired token, and not-yet-valid token cases.
+
 ---
 
 ## Common Pitfalls
@@ -214,6 +249,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Counting only the outer GraphQL HTTP request.** A single GraphQL request can contain dozens of operations or aliases. Rate limits, auth attempt counters, and cost budgets must count the work actually executed.
+
+8. **Trusting JWT headers to choose verification behavior.** Token headers are attacker-controlled metadata. Algorithm allowlists, key type, `kid`, `jku`, `x5u`, and issuer/audience binding must be enforced by server-side configuration.
 
 ---
 
