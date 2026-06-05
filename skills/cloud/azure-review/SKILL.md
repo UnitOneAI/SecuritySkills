@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -198,7 +198,7 @@ Produce the final report using the structure defined in the Output Format sectio
 2. **Missing Defender for Cloud plan coverage.** Each resource type (Servers, SQL, Storage, etc.) requires its own Defender plan enablement. A single `azurerm_security_center_subscription_pricing` resource only covers one type.
 3. **Overlooking `allow_nested_items_to_be_public` on storage accounts.** CIS 3.7 checks the account-level setting, not individual container access levels. The account setting must be `false` to prevent any container from being public.
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
-5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
+5. **Key Vault private endpoint is not private-only access by itself.** CIS 8.5 and 8.7 require recoverability and private access evidence, but a private endpoint does not prove public network access is disabled, firewall exceptions are scoped, or private DNS is linked. Record soft-delete retention, purge protection, public network access, trusted-service exceptions, private endpoint approval, and `privatelink.vaultcore.azure.net` DNS linkage.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
@@ -232,3 +232,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
+
