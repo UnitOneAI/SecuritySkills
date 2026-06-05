@@ -431,6 +431,127 @@ spec:
 
 **Critical check:** A default-deny NetworkPolicy should exist in every namespace.
 
+### Service Mesh mTLS and Workload Identity Evidence (NIST 800-190 CM-8)
+
+Service mesh controls can complement NetworkPolicy by enforcing workload identity, mTLS, and application-layer authorization. Do not treat a mesh installation as evidence by itself. Verify effective policy coverage for each sensitive namespace and workload.
+
+#### Mesh Participation
+
+Check that workloads expected to be protected by the mesh are actually enrolled:
+
+```yaml
+# GOOD: namespace-level sidecar injection enabled
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments
+  labels:
+    istio-injection: enabled
+```
+
+```yaml
+# RISK: workload disables mesh participation
+metadata:
+  labels:
+    sidecar.istio.io/inject: "false"
+```
+
+Evidence to collect:
+
+- Namespace and workload mesh enrollment labels or ambient enrollment labels.
+- Sidecar or mesh dataplane presence for Deployments, StatefulSets, DaemonSets, Jobs, and CronJobs.
+- Exceptions for jobs, init containers, hostNetwork pods, or workloads that intentionally bypass mesh traffic.
+
+#### mTLS Mode
+
+```yaml
+# RISK: allows plaintext fallback during migration
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: production
+spec:
+  mtls:
+    mode: PERMISSIVE
+```
+
+```yaml
+# GOOD: denies non-mTLS traffic for the namespace
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: production
+spec:
+  mtls:
+    mode: STRICT
+```
+
+Flag PERMISSIVE or DISABLE modes on sensitive workloads unless there is a time-bound migration exception, owner, deadline, and telemetry showing remaining plaintext sources.
+
+#### Authorization Policy Selector Coverage
+
+```yaml
+# RISK: selector does not match the workload labels
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-web
+spec:
+  selector:
+    matchLabels:
+      app: web
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+```
+
+Verify that every AuthorizationPolicy selector matches the intended pod template labels. If a policy has no selector, confirm whether namespace-wide behavior is intended and does not over-allow unrelated workloads.
+
+#### Workload Principal Specificity
+
+```yaml
+# RISK: high-risk service uses a shared/default identity
+spec:
+  serviceAccountName: default
+```
+
+```yaml
+# GOOD: authorization scoped to a specific caller principal
+rules:
+  - from:
+      - source:
+          principals:
+            - cluster.local/ns/orders/sa/orders-api
+```
+
+Reviewers should confirm:
+
+- Sensitive workloads use dedicated service accounts, not `default`.
+- Allowed principals are specific namespaces/service accounts or SPIFFE IDs, not broad namespace or wildcard identities.
+- Shared service accounts are justified and mapped to all workloads using them.
+- Wrong-principal and plaintext-client negative tests fail closed.
+
+#### Review Checklist
+
+- [ ] Every sensitive workload has documented mesh participation or a documented non-mesh compensating control.
+- [ ] mTLS is STRICT or equivalent for sensitive east-west traffic; PERMISSIVE/DISABLE modes have time-bound exceptions.
+- [ ] AuthorizationPolicy selectors match actual workload labels and are evaluated in the correct namespace.
+- [ ] Allowed principals are workload-specific and backed by dedicated service accounts or SPIFFE identities.
+- [ ] Default service accounts are not used for high-risk mesh-authorized workloads.
+- [ ] Negative tests cover plaintext clients, wrong namespace/service account principals, missing sidecar/ambient enrollment, and unmatched selectors.
+- [ ] Mark as Not Evaluable when mesh configs are referenced but effective enrollment, policy selection, or traffic test evidence is missing.
+
 ### CIS 5.4 -- Secrets Management
 
 #### CIS 5.4.1 -- Prefer using Secrets as files over Secrets as environment variables
