@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -343,6 +343,47 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ---
 
+### Step 7: Coverage Denominator and Exception Evidence
+
+**Objective:** Prevent inflated maturity scores caused by unclear population scope, excluded assets, samples that are treated as full coverage, or informal exceptions.
+
+Before scoring any pillar as Initial, Advanced, or Optimal, define the denominator used for coverage claims. A statement such as "MFA is deployed," "EDR covers endpoints," or "ZTNA protects applications" is not enough unless the reviewed population and exceptions are explicit.
+
+#### Coverage Denominator Requirements
+
+| Evidence Item | Required Detail |
+|---|---|
+| Population source | CMDB, IdP inventory, endpoint inventory, application catalog, data catalog, cloud asset inventory, or network flow inventory used as the denominator |
+| Population size | Total in-scope users, identities, devices, workloads, applications, data stores, segments, or flows |
+| Covered count | Number with the assessed zero trust control technically enforced |
+| Excluded count | Number excluded from assessment or control enforcement |
+| Unknown count | Number missing inventory confidence, ownership, telemetry, or policy status |
+| Coverage formula | `covered / (covered + excluded + unknown + uncovered)` with each bucket named |
+| Sampling basis | Full population, risk-based sample, statistically valid sample, or ad hoc sample |
+| Evidence date | Timestamp or reporting period for each inventory and control source |
+
+#### Exception Evidence Requirements
+
+For every exclusion or exception, collect:
+
+- Asset, identity, application, workload, data store, network segment, or flow identifier.
+- Pillar and control affected, such as phishing-resistant MFA, device compliance, microsegmentation, ZTNA, DLP, or data classification.
+- Owner, business justification, risk acceptance reference, approval date, expiry date, and next review date.
+- Compensating controls, such as enclave gateway, monitoring, PAM, read-only access, restricted source IPs, or manual review.
+- Residual risk rating and whether the exception blocks a pillar from reaching Advanced or Optimal maturity.
+
+#### Scoring Guardrails
+
+| Condition | Scoring Impact |
+|---|---|
+| Denominator missing or inventory source unavailable | Mark the pillar Not Evaluable instead of assigning a maturity stage |
+| Unknown population is material | Cap the pillar at Initial until inventory confidence improves |
+| Exceptions are expired, ownerless, or missing approval evidence | Treat as a governance finding and score the affected control as not covered |
+| Exceptions are valid, narrow, unexpired, and covered by compensating controls | Report separately; do not count as covered unless the control objective is technically met |
+| Sample is ad hoc or not representative | Label coverage as sample-only and avoid enterprise-wide maturity claims |
+
+---
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
@@ -351,6 +392,7 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 | **High** | Major pillar at Traditional maturity with exploitation potential | No microsegmentation; VPN as sole remote access; no DLP |
 | **Medium** | Pillar at Initial maturity or cross-cutting capability gap | Partial ZTNA deployment; SIEM without cross-pillar correlation |
 | **Low** | Pillar at Advanced seeking Optimal or process improvement | Missing automation; governance documentation gaps |
+| **Not Evaluable** | Denominator, inventory source, sample basis, or exception evidence is insufficient to support a maturity score | No authoritative asset inventory; coverage percentage excludes unknown devices; exceptions lack owner or expiry |
 
 ---
 
@@ -358,13 +400,13 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ### Maturity Scorecard
 
-| Pillar | Current Maturity | Target Maturity (12 months) | Key Gaps |
-|---|---|---|---|
-| Identity | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Devices | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Networks | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Applications & Workloads | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Data | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
+| Pillar | Current Maturity | Target Maturity (12 months) | Denominator | Coverage | Exceptions | Unknowns | Key Gaps |
+|---|---|---|---|---|---|---|---|
+| Identity | [Traditional/Initial/Advanced/Optimal/Not Evaluable] | [Target] | [users/service identities] | [covered/total] | [count/status] | [count] | [Top 2-3 gaps] |
+| Devices | [Traditional/Initial/Advanced/Optimal/Not Evaluable] | [Target] | [managed/unmanaged devices] | [covered/total] | [count/status] | [count] | [Top 2-3 gaps] |
+| Networks | [Traditional/Initial/Advanced/Optimal/Not Evaluable] | [Target] | [segments/flows] | [covered/total] | [count/status] | [count] | [Top 2-3 gaps] |
+| Applications & Workloads | [Traditional/Initial/Advanced/Optimal/Not Evaluable] | [Target] | [apps/workloads/APIs] | [covered/total] | [count/status] | [count] | [Top 2-3 gaps] |
+| Data | [Traditional/Initial/Advanced/Optimal/Not Evaluable] | [Target] | [data stores/datasets] | [covered/total] | [count/status] | [count] | [Top 2-3 gaps] |
 
 ### Summary Report Structure
 
@@ -385,6 +427,18 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ### CISA ZTMM v2 Maturity Scorecard
 [Pillar-by-pillar table — see above]
+
+### Coverage Denominator Register
+
+| Pillar | Control | Denominator Source | In Scope | Covered | Uncovered | Excluded | Unknown | Sampling Basis | Evidence Date | Confidence |
+|---|---|---|---:|---:|---:|---:|---:|---|---|---|
+| Identity / Devices / Networks / Apps / Data | <control> | <inventory source> | <N> | <N> | <N> | <N> | <N> | full / risk-based / statistical / ad hoc | <date> | high / medium / low |
+
+### Exception Register
+
+| Pillar | Asset or Population | Control | Owner | Approval Reference | Expiry | Compensating Control | Residual Risk | Maturity Impact |
+|---|---|---|---|---|---|---|---|---|
+| <pillar> | <identity/device/app/data/segment> | <control> | <owner> | <ticket/risk acceptance> | <date> | <evidence> | critical/high/medium/low | blocks / caps / does not affect |
 
 ### Cross-Cutting Capabilities
 - Visibility & Analytics: [maturity]
@@ -442,6 +496,9 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Hiding denominator gaps behind percentages** — "95% covered" is meaningless unless the total population, excluded population, unknown population, and evidence date are visible.
+9. **Counting exceptions as covered controls** — a business-approved exception may be valid governance, but it does not prove the zero trust control objective is technically enforced.
+10. **Using ad hoc samples for enterprise claims** — a sample can support a pilot finding, but it cannot justify enterprise-wide Advanced or Optimal maturity unless the sampling basis is documented.
 
 ---
 
@@ -487,4 +544,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-05 | Added coverage denominator, unknown population, sampling basis, and exception evidence gates for maturity scoring. |
 | 1.0.0 | 2025-03-06 | Initial release |
