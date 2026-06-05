@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-611 (XML External Entity Reference)
 
 ### 2.1 Controls to Verify
 
@@ -102,6 +102,33 @@ FileInputStream fis = new FileInputStream(f);
 ```
 Remediation: Canonicalize the resolved path and verify it remains within the expected base directory.
 
+**Java -- XML External Entity Processing (CWE-611)**
+```java
+// VULNERABLE: parser accepts attacker-controlled DTDs and external entities
+DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+DocumentBuilder builder = factory.newDocumentBuilder();
+Document doc = builder.parse(request.getInputStream());
+```
+Remediation: Disable DTDs, external entities, external schemas, and XInclude before parsing untrusted XML.
+
+```java
+DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+factory.setXIncludeAware(false);
+factory.setExpandEntityReferences(false);
+```
+
+**Python -- Safe XML Parsing (CWE-611 False-Positive Guard)**
+```python
+# SAFE: defusedxml blocks external entities and XML bombs by design
+from defusedxml.ElementTree import fromstring
+
+doc = fromstring(request.data)
+```
+Review note: Do not report XML parsing as XXE solely because XML is present. Confirm the parser, DTD/entity handling, resolver behaviour, and whether a hardened library such as `defusedxml` is used.
+
 ### 2.3 Review Checklist
 
 - [ ] Every point where user input enters the system is identified.
@@ -109,7 +136,24 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] HTML output is encoded contextually (HTML body, attribute, JavaScript, URL).
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
+- [ ] XML parsers handling untrusted input disable DTDs, external general entities, external parameter entities, XInclude, and external schema or XSLT resolution.
+- [ ] XML entry points include uploads, SOAP/SAML assertions, API payloads, webhooks, support bundles, import tools, and background jobs.
+- [ ] XXE findings record the input source, parser configuration, DTD/entity path, resolver or schema/XSLT behaviour, and the safe-parser rationale when no finding is raised.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+
+### 2.4 XXE Search Patterns
+
+Use targeted searches to find XML parsers and then inspect configuration before reporting. These patterns identify review candidates, not automatic findings.
+
+| Language | Search patterns |
+|---|---|
+| Java | `DocumentBuilderFactory`, `SAXParserFactory`, `XMLInputFactory`, `TransformerFactory`, `SchemaFactory`, `Unmarshaller`, `SAXReader` |
+| Python | `xml.etree`, `lxml.etree`, `minidom`, `pulldom`, `sax`, `defusedxml` |
+| .NET | `XmlDocument`, `XmlReader`, `XDocument`, `XslCompiledTransform`, `XmlResolver` |
+| PHP | `simplexml_load_string`, `DOMDocument`, `libxml_disable_entity_loader`, `LIBXML_NOENT` |
+| Node.js | `xml2js`, `fast-xml-parser`, `libxmljs`, `xmldom`, `saml`, `soap` |
+
+When a parser is found, verify the actual data path from untrusted input to parser call. Treat secure wrappers, default-deny resolvers, and hardened parser libraries as evidence against a finding unless the code overrides those protections.
 
 ---
 
@@ -527,6 +571,12 @@ The final review output must be structured as follows:
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
+### Additional CWE Coverage
+
+| CWE ID | Name | Review Step |
+|---|---|---|
+| CWE-611 | Improper Restriction of XML External Entity Reference | Step 2 |
+
 ---
 
 ## Common Pitfalls
@@ -540,6 +590,8 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Flagging XML usage without proving XXE exposure.** XML parsing is not automatically vulnerable. Confirm that attacker-controlled XML reaches a parser with DTDs, external entities, external schemas, XInclude, or XSLT external access enabled before reporting CWE-611.
 
 ---
 
@@ -560,6 +612,9 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
+- **CWE-611 XML External Entity Reference:** https://cwe.mitre.org/data/definitions/611.html
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP XML External Entity Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+- **OWASP WSTG Testing for XML Injection:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/07-Testing_for_XML_Injection
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
