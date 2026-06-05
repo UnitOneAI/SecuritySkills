@@ -1,0 +1,9 @@
+FROM alpine:3.19 AS fetcher
+
+RUN wget -O /tmp/tool https://example.com/releases/tool-linux-amd64 \
+  && chmod +x /tmp/tool
+
+FROM gcr.io/distroless/base-debian12
+
+COPY --from=fetcher /tmp/tool /usr/local/bin/tool
+ENTRYPOINT ["/usr/local/bin/tool"]

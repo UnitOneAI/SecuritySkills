@@ -1,0 +1,5 @@
+FROM gcr.io/distroless/static-debian12@sha256:8a111111111111111111111111111111111111111111111111111111111111111
+
+COPY --from=builder /app/service /service
+USER nonroot
+ENTRYPOINT ["/service"]
