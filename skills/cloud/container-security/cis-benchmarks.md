@@ -264,6 +264,21 @@ Evaluate workload configurations against Kubernetes Pod Security Standards. The 
 | **Baseline** | Minimally restrictive. Prevents known privilege escalations. | Standard workloads |
 | **Restricted** | Heavily restricted. Follows current hardening best practices. | Security-sensitive and untrusted workloads |
 
+**Container coverage requirement:** Apply every Pod Security Standard check to
+all container arrays in the pod spec:
+
+- `spec.containers`
+- `spec.initContainers`
+- `spec.ephemeralContainers`
+
+Kubernetes Pod Security Standards list ephemeral containers alongside regular
+and init containers for controls such as privileged mode, capabilities,
+AppArmor, seccomp, non-root execution, and `allowPrivilegeEscalation`. Do not
+mark a workload Restricted-compliant unless the review evidence proves that all
+present container arrays were checked. If the workload has no static
+`ephemeralContainers`, review runtime controls for the
+`pods/ephemeralcontainers` subresource before treating debug workflows as safe.
+
 #### CIS 5.2.1 -- Ensure that the cluster has at least one active policy control mechanism installed
 
 Check for Pod Security Admission labels on namespaces:
@@ -293,7 +308,36 @@ spec:
         privileged: true  # CRITICAL FAIL
 ```
 
+Also inspect `initContainers` and `ephemeralContainers`:
+
+```yaml
+# BAD: Privileged ephemeral debug container bypasses the hardened app container
+spec:
+  containers:
+    - name: app
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+  ephemeralContainers:
+    - name: debug
+      image: busybox:1.36
+      targetContainerName: app
+      securityContext:
+        privileged: true
+        runAsUser: 0
+        allowPrivilegeEscalation: true
+        capabilities:
+          add: ["SYS_ADMIN"]
+```
+
 **Grep pattern:** `privileged: true`
+
+**Required result:** A privileged ephemeral debug container is a Critical
+finding even when every regular container is Restricted-compliant.
 
 #### CIS 5.2.3 -- Minimize the admission of containers wishing to share the host process ID namespace
 
@@ -605,6 +649,7 @@ Evaluate container runtime configurations against NIST SP 800-190 countermeasure
 | **CM-8:** Implement network segmentation | NetworkPolicy in every namespace |
 | **CM-9:** Use Pod Security Standards | PSA labels on namespaces or equivalent policy engine |
 | **CM-10:** Enable audit logging | Audit policy configured on API server |
+| **CM-10a:** Govern runtime debug containers | RBAC, admission, audit, and image policy cover `pods/ephemeralcontainers` |
 
 ### NIST 800-190: Container Countermeasures
 
@@ -615,6 +660,7 @@ Evaluate container runtime configurations against NIST SP 800-190 countermeasure
 | **CM-13:** Drop all capabilities | `capabilities.drop: ["ALL"]` |
 | **CM-14:** Set resource limits | CPU and memory limits set on all containers |
 | **CM-15:** Use seccomp profiles | `seccompProfile.type: RuntimeDefault` or custom |
+| **CM-16:** Apply controls to debug containers | Same non-root, read-only root filesystem, capabilities, and seccomp controls on `ephemeralContainers` |
 
 **Resource limits check:**
 
@@ -677,7 +723,44 @@ spec:
         requests:
           memory: "128Mi"
           cpu: "250m"
+  initContainers:
+    - name: migrate
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+  ephemeralContainers:
+    - name: debug
+      image: registry.example.com/debug-tools@sha256:...
+      targetContainerName: app
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
 ```
+
+**Runtime debug-container evidence checklist:**
+
+| Evidence | What to verify |
+|----------|----------------|
+| RBAC | Only approved break-glass groups can `create` or `update` `pods/ephemeralcontainers` in production namespaces |
+| Admission | Kyverno/Gatekeeper/PSA policies apply to the `pods/ephemeralcontainers` subresource, not only pod create/update |
+| Audit | Audit policy records user, namespace, target pod, debug image, and requested security context for ephemeral-container changes |
+| Image policy | Debug images are pinned by digest, scanned, and pulled from trusted registries |
+| Scope | Production namespaces either disallow debug containers or require explicit incident/break-glass approval |
+
+If these runtime controls are unavailable, report the debug-container path as
+**Not Evaluable** instead of silently passing the workload.
 
 **Fields that must NOT be present for Restricted compliance:**
 

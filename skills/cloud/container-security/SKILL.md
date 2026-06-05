@@ -61,6 +61,9 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
+- Evidence for runtime debug-container controls when available: RBAC for
+  `pods/ephemeralcontainers`, admission policy coverage for that subresource,
+  audit events for debug-container creation, and approved debug image policy
 - Container registry configurations (if available)
 
 ---
@@ -105,11 +108,41 @@ Use Glob to locate all relevant configuration files.
 
 Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, and supporting configs. Record all discovered files.
 
+Also record the workload container arrays that were actually evaluated:
+
+- `spec.containers`
+- `spec.initContainers`
+- `spec.ephemeralContainers`
+
+If no `ephemeralContainers` are present in static manifests, do not assume the
+debug-container path is safe. Mark it as **Not Evaluable** unless cluster
+evidence proves that `pods/ephemeralcontainers` creation is restricted,
+admitted through the same policy controls as normal pod creation, audited, and
+limited to approved debug images.
+
 ---
 
 ### Step 2 through Step 6: CIS Benchmark and NIST SP 800-190 Evaluation
 
 Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
+
+When applying Pod Security Standards, run every relevant control across regular,
+init, and ephemeral containers. A workload is not Restricted-compliant if the
+application container is hardened but a debug or ephemeral container can be
+added with `privileged: true`, UID 0, added capabilities, host namespace access,
+unconfined seccomp/AppArmor, writable root filesystem, or an unapproved mutable
+debug image.
+
+For clusters that rely on runtime `kubectl debug` workflows, require a separate
+debug-container evidence gate:
+
+| Evidence | Pass condition | Fail condition |
+|----------|----------------|----------------|
+| RBAC | Only approved break-glass groups can `create`/`update` `pods/ephemeralcontainers` | Developers or broad service accounts can add ephemeral containers in production |
+| Admission | Policy engine covers the `pods/ephemeralcontainers` subresource and all container arrays | Policies check only pod create/update and ignore the subresource |
+| Audit | Audit logs capture who added debug containers, target pod, image, and security context | No audit trail for debug-container creation |
+| Image policy | Debug images are pinned, approved, scanned, and pulled from trusted registries | Arbitrary public debug images can be used |
+| Runtime controls | Debug containers satisfy the same non-root, capabilities, seccomp, and filesystem controls as app containers | Debug containers can bypass normal Restricted controls |
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
@@ -180,10 +213,10 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ### Pod Security Standards Compliance Matrix
 
-| Workload | Namespace | PSS Level | Violations |
-|----------|-----------|-----------|------------|
-| deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
-| deploy/worker | production | Privileged | privileged: true |
+| Workload | Namespace | PSS Level | Containers Checked | Ephemeral Debug Evidence | Violations |
+|----------|-----------|-----------|--------------------|--------------------------|------------|
+| deploy/app | production | Baseline (not Restricted) | regular / init / not evaluable | Not evaluable | runAsRoot, no seccomp |
+| deploy/worker | production | Privileged | regular / init / ephemeral | Fail | privileged: true in ephemeral debug container |
 
 ### Prioritized Remediation Plan
 
