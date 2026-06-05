@@ -1,0 +1,34 @@
+incident_id: IR-2026-1176-vulnerable
+scenario: High-confidence account takeover playbook enforces broad identity containment without rollback evidence.
+containment_action:
+  type: soar_playbook
+  mode: enforced
+  trigger: high_confidence_account_takeover
+  approval_record: missing
+  run_id: sentinel-playbook-99124
+  actions:
+    - disable_user: user@example.com
+    - revoke_sessions: user@example.com
+    - remove_from_all_groups: user@example.com
+    - block_mailbox_access: user@example.com
+scope_evidence:
+  affected_identity_confirmed: true
+  group_membership_snapshot: missing
+  mailbox_rules_snapshot: missing
+  active_session_inventory: missing
+rollback:
+  owner: missing
+  restore_groups_from_snapshot: false
+  emergency_restore_path: missing
+legal_hold:
+  regulated_customer_data_in_scope: true
+  legal_review: not_requested
+  mailbox_preservation: missing
+validation_telemetry:
+  idp_audit_logs: present
+  mailbox_audit_logs: disrupted_by_block
+  soar_action_logs: present
+expected_finding:
+  id: CONTAIN-SOAR-ROLLBACK-01
+  severity: High
+  reason: Enforced identity containment removed access and mailbox state without approval, pre-action snapshots, rollback owner, or legal-hold confirmation.

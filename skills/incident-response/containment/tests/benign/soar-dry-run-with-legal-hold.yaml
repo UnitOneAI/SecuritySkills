@@ -1,0 +1,34 @@
+incident_id: IR-2026-1176-benign
+scenario: Account containment playbook remains in dry-run until approval, rollback, legal-hold, and telemetry evidence are ready.
+containment_action:
+  type: soar_playbook
+  mode: dry_run
+  trigger: confirmed_account_takeover
+  approval_record: IC-APPROVAL-2026-1176
+  run_id: sentinel-playbook-dryrun-4421
+  proposed_actions:
+    - disable_user: user@example.com
+    - revoke_sessions: user@example.com
+    - remove_from_all_groups: user@example.com
+scope_evidence:
+  affected_identity_confirmed: true
+  group_membership_snapshot: idp-export-2026-06-05T21-35Z
+  mailbox_rules_snapshot: exo-rules-export-2026-06-05T21-36Z
+  active_session_inventory: entra-sessions-2026-06-05T21-36Z
+rollback:
+  owner: identity-operations-lead
+  restore_groups_from_snapshot: true
+  emergency_restore_path: break_glass_identity_ops_runbook
+legal_hold:
+  regulated_customer_data_in_scope: true
+  legal_review: approved_preserve_before_enforce
+  mailbox_preservation: purview_hold_case_1176
+  endpoint_preservation: forensic_image_before_cleanup
+validation_telemetry:
+  idp_audit_logs: flowing
+  mailbox_audit_logs: flowing
+  edr_logs: flowing
+  soar_action_logs: flowing
+expected_result:
+  classification: benign
+  reason: Dry-run or approval-gated automation has scoped evidence, preservation controls, rollback ownership, and telemetry continuity before enforcement.

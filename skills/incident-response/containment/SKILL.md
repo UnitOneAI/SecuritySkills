@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,9 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Business criticality of affected systems** -- Revenue impact, customer impact, SLA obligations, regulatory implications of downtime.
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
+- [ ] **SOAR automation mode** -- Which playbooks are proposed or active, are they dry-run or enforcing, what approval threshold applies, and where are action logs retained?
+- [ ] **Rollback evidence** -- For identity, endpoint, cloud, DNS, and mailbox actions, are pre-action snapshots, restore owners, rollback criteria, and emergency restore paths documented?
+- [ ] **Legal hold or regulated preservation status** -- Are mailbox, endpoint, cloud, or SaaS artifacts subject to legal hold, regulated retention, or privacy minimization before cleanup or destructive changes?
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
 
 ---
@@ -74,6 +77,8 @@ NIST SP 800-61 Rev 2 (Section 3.3.1) identifies the following criteria for conta
 | **Resource requirements** | Does the containment strategy require resources not currently available? | Choose strategies executable with available tools and personnel |
 | **Duration** | How long will containment need to remain in place? | Long-duration containment must be sustainable without degrading business operations |
 | **Effectiveness** | Will this containment action actually prevent further attacker activity? | Partial containment that the attacker can bypass wastes time and tips off the adversary |
+| **Automation reversibility** | Can SOAR-driven actions be approved, scoped, logged, and rolled back if they hit the wrong identity, host, group, or policy? | High-impact automation without rollback evidence must be staged, approval-gated, or disabled unless immediate destructive threat speed justifies enforcement |
+| **Legal / regulated preservation** | Will cleanup, isolation, wipe, mailbox change, or session destruction conflict with legal hold, regulated evidence retention, or forensic acquisition? | Preserve and document required evidence before destructive actions unless the threat requires immediate isolation |
 
 **Containment decision matrix:**
 
@@ -121,6 +126,30 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Service account reset** | Reset service account passwords and regenerate keys | Lateral movement via service accounts | Downstream services may break |
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
+
+**SOAR automation, rollback, and legal-hold gates:**
+
+Before recommending automated containment playbooks, classify each action by execution mode, approval state, reversibility, and preservation impact. Do not treat a dry-run, approval-gated, rollback-ready playbook as equivalent to immediate destructive enforcement.
+
+| Gate | Evidence Required | Flag When Missing |
+|------|-------------------|-------------------|
+| **Execution mode and trigger confidence** | Dry-run vs enforce mode, trigger source, confidence threshold, suppression/override path, and incident commander approval | High-impact actions auto-fire from noisy alerts or unreviewed correlation without approval |
+| **Scope and target binding** | User, device, group, mailbox, cloud resource, DNS zone, or security group binding tied to incident evidence | Playbook expands from one affected target to all groups, all sessions, all endpoints, or broad cloud policy without scope proof |
+| **Pre-action snapshot** | Group memberships, role assignments, mailbox rules, sharing links, security group rules, DNS records, EDR isolation state, and token/session inventory before action | Automation removes access, changes policy, or deletes rules without restore data |
+| **Rollback owner and criteria** | Named rollback owner, emergency restore method, rollback time objective, and conditions for partial or full reversal | Production access can be disabled with no accountable restore path |
+| **Legal hold and preservation** | Legal-hold status, regulated-data scope, mailbox/endpoint/cloud evidence preservation, and forensic acquisition dependencies | Cleanup, wipe, mailbox modification, or session destruction can erase required evidence |
+| **Validation telemetry continuity** | Post-action telemetry from the affected path, including EDR, IdP, DNS, firewall, cloud audit, mailbox audit, and SOAR action logs | Host isolation, DNS sinkholing, cloud quarantine, or identity disablement cuts off the logs needed to prove containment |
+| **Shared/service account safeguards** | Service-owner approval, dependency inventory, cached-token review, job schedule impact, and compensating monitoring | A shared account is disabled while active cached tokens remain usable or critical jobs fail without monitoring |
+
+**Recommended classification:**
+
+| Automation State | Meaning | Containment Recommendation |
+|---|---|---|
+| `Dry Run` | Playbook records intended actions but does not enforce them | Use for validation, approval preparation, and business impact review |
+| `Approval Gated` | Human approval is required before enforcement | Preferred for high-impact identity, mailbox, cloud, DNS, and endpoint actions when threat speed permits |
+| `Enforced - Reversible` | Action is executed with snapshots, rollback owner, and validation telemetry | Acceptable for confirmed incidents where rollback evidence exists |
+| `Enforced - Not Reversible` | Action is destructive, cleanup-oriented, or cannot be restored quickly | Use only when immediate containment outweighs evidence, legal, and business risk |
+| `Not Evaluable` | Automation state, scope, or logs are unavailable | Do not mark containment ready; request the missing evidence |
 
 ### Step 3: Long-Term Containment
 
@@ -215,6 +244,9 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+| SOAR action logged and reversible | Review playbook run ID, approval record, pre-action snapshot, rollback owner, and action result | Action is approved, scoped, logged, and restorable or explicitly accepted as non-reversible |
+| Legal hold preserved | Confirm legal-hold, regulated-data, mailbox, endpoint, and cloud preservation gates before cleanup or destructive changes | Required evidence remains available and chain-of-custody is documented |
+| Validation telemetry still flowing | Confirm EDR, IdP, DNS, firewall, cloud audit, mailbox audit, and SOAR logs still capture the affected path | Containment does not blind the team to attacker activity or success/failure signals |
 
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
@@ -233,6 +265,8 @@ Define conditions under which containment actions should be rolled back or modif
 | Containment causes unacceptable business disruption exceeding incident impact | Reduce to surgical containment with enhanced monitoring | Incident Commander + Business Owner |
 | Forensic investigation requires attacker communication to continue (controlled observation) | Relax network blocks under monitored conditions with legal approval | Incident Commander + Legal + CISO |
 | Containment action was applied to wrong scope (false positive) | Remove containment controls from unaffected systems | Incident Commander |
+| SOAR automation disabled, removed, or modified the wrong identity, group, mailbox, host, DNS record, or cloud control | Restore from pre-action snapshot and place playbook back into dry-run or approval-gated mode | Incident Commander + System Owner |
+| Legal hold, regulated preservation, or forensic acquisition conflict is discovered after containment | Freeze further cleanup, preserve affected artifacts, and modify containment to maintain evidence | Incident Commander + Legal + Forensics Lead |
 | Eradication complete and validated | Phase out containment controls in stages with monitoring | Incident Commander + Security Team |
 
 ---
@@ -256,7 +290,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.0
+**Skill:** containment v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -288,6 +322,11 @@ threat severity and business criticality, and expected impact on operations.]
 | Service/System | Impact of Containment | Mitigation | Acceptable |
 |---|---|---|---|
 | [Service] | [Description of disruption] | [Workaround if any] | [Yes/No -- requires escalation] |
+
+### SOAR, Rollback, and Legal Hold Evidence
+| Action | Mode | Approval Evidence | Pre-Action Snapshot | Rollback Owner | Legal Hold / Preservation Status | Validation Telemetry |
+|---|---|---|---|---|---|---|
+| [SOAR/manual action] | [Dry Run/Approval Gated/Enforced/Not Evaluable] | [Approver/run ID] | [Snapshot source] | [Owner] | [Preserved/Not Applicable/Blocked] | [Logs still flowing?] |
 
 ### Containment Validation Checklist
 | Check | Result | Timestamp |
@@ -347,6 +386,14 @@ Disconnecting a business-critical production system from the network stops the a
 ### Pitfall 4: Not Validating Containment Effectiveness
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
+
+### Pitfall 5: Letting SOAR Automation Outrun Evidence and Rollback
+
+Automation can disable users, revoke sessions, remove group memberships, quarantine hosts, alter cloud security groups, and rewrite DNS faster than responders can assess the blast radius. Before enabling enforcement mode, require trigger confidence, approval state, action scope, pre-action snapshots, rollback owner, and action logs. For high-impact playbooks, prefer dry-run or approval-gated execution unless threat speed makes immediate enforcement necessary.
+
+### Pitfall 6: Breaking Legal Hold or Blinding Validation Telemetry
+
+Containment can conflict with evidence duties when cleanup scripts, endpoint isolation, mailbox changes, or temporary-file removal run before preservation. It can also cut off the telemetry needed to prove containment worked, such as EDR, IdP, DNS, firewall, cloud audit, mailbox audit, or SOAR logs. Check legal hold, regulated data, forensic acquisition, and log continuity before destructive changes, and document any emergency exception.
 
 ---
 
