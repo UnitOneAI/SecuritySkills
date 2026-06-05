@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -238,6 +238,55 @@ Secrets removed from current files may still exist in git history. Verify:
 
 **Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is **High**.
 
+#### 3.3 Secret Remediation Ledger
+
+When a real credential is found, treat removal from source as only the first
+step. A finding is not remediated until revocation or rotation is proven and all
+known consumers have moved off the exposed value.
+
+For each live credential finding, record:
+
+- **Live/Synthetic confidence:** Active, Synthetic/Training, Redacted sample, or
+  Unknown. Do not escalate redacted fixtures or known canary tokens as live
+  production leaks, but record the evidence supporting the classification.
+- **First exposure time and locations:** Current file, git history, CI logs,
+  build artifacts, package caches, container layers, chat transcripts, or ticket
+  attachments.
+- **Revocation proof:** Provider revocation timestamp, disabled/deleted key
+  state, certificate revocation record, or vault lease revocation event.
+- **Replacement deployment:** New secret version, rollout time, rollback plan,
+  and whether dual-key rollover was used.
+- **Consumer validation:** Every application, worker, cron job, webhook,
+  third-party integration, mobile client, and CI job that used the old value has
+  been restarted, redeployed, or verified against the new version.
+- **Audit-log review:** Unknown use, post-exposure access, source IPs, and any
+  suspicious actions before revocation.
+- **Residual cleanup:** History rewrite decision, artifact purge, cache expiry,
+  container rebuild, and downstream notification status.
+
+```
+Secret Remediation Ledger:
+- Finding ID:                [SEC-001]
+- Live/Synthetic Confidence: [Active | Synthetic/Training | Redacted Sample | Unknown]
+- First Exposure:            [timestamp or Unknown]
+- Exposure Locations:        [source, git history, CI logs, artifacts, caches]
+- Revocation Proof:          [provider event, disabled/deleted key, vault lease revocation]
+- Replacement Version:       [secret/version identifier, never the value]
+- Consumer Rotation Evidence:
+  - api:                     [validated at timestamp]
+  - worker:                  [validated at timestamp]
+  - ci:                      [validated at timestamp]
+- Audit Log Review:          [clean | suspicious use found | not available]
+- Residual Cleanup:          [history rewritten | artifacts purged | cache expiry accepted]
+- Closure Status:            [Open | Revoked | Rotated | Consumers Validated | Closed]
+```
+
+**Finding classification:** Live secret removed from source but not revoked is
+**Critical**. Secret rotated without validating all known consumers is **High**.
+Unknown live/synthetic confidence for a production-looking credential is
+**Medium** until resolved. Synthetic canary token hits should be routed to the
+honeytoken workflow, not closed as ordinary false positives.
+
 ---
 
 ### Step 4: Vault and Cloud Secrets Manager Integration (NIST SP 800-57, Section 5)
@@ -295,6 +344,9 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 - Rotation does not cause downtime (dual-key or graceful rollover pattern).
 - Rotation events are logged and monitored.
 - Failed rotations trigger alerts.
+- Rotation success includes consumer migration evidence; old values are disabled
+  or deleted after the rollover window and every dependent service has been
+  verified on the replacement version.
 
 **Finding classification:** No rotation for secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**.
 
@@ -357,7 +409,7 @@ spec:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault; rotated secret lacks consumer validation or old-version disablement. |
 | **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
@@ -397,6 +449,12 @@ spec:
 - **File:** <path to config file>
 - **Description:** <what was found -- NEVER include actual secret values>
 - **Remediation:** <concrete fix>
+
+### Secret Remediation Ledger
+
+| Finding ID | Live/Synthetic Confidence | First Exposure | Exposure Locations | Revocation Proof | Replacement Version | Consumer Rotation Evidence | Audit Log Review | Residual Cleanup | Closure Status |
+|---|---|---|---|---|---|---|---|---|---|
+| SEC-001 | Active | [timestamp] | [source, git history, CI logs] | [provider event or vault lease revocation] | [version id only] | [api/worker/ci validated] | [clean/suspicious/not available] | [history/artifact/cache status] | [Open/Revoked/Rotated/Consumers Validated/Closed] |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -442,6 +500,11 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Closing a secret incident after deleting the visible value.** Deleting a
+line from source or redacting a log does not revoke a credential. Close leaked
+secret findings only after revocation proof, consumer rotation evidence, audit
+log review, and residual cleanup are recorded.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -471,5 +534,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.1.0** -- Added secret remediation ledger for live/synthetic confidence, exposure locations, revocation proof, replacement deployment, consumer validation, audit review, residual cleanup, and closure status.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
