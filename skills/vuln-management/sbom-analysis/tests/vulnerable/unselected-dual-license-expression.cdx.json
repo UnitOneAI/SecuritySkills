@@ -50,9 +50,7 @@
       "purl": "pkg:generic/native-linker@1.0.0",
       "licenses": [
         {
-          "license": {
-            "id": "LicenseRef-Proprietary"
-          }
+          "expression": "LicenseRef-Proprietary"
         }
       ]
     }

@@ -75,7 +75,7 @@
       ],
       "affects": [
         {
-          "ref": "cpe:2.3:a:auth:auth:1.2.3:*:*:*:*:node.js:*:*"
+          "ref": "npm-unscoped-auth"
         }
       ]
     }
