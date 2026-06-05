@@ -208,8 +208,11 @@ PAM-AUTO-07: PAM/vault audit logs cannot correlate automation actions to job ID,
 PAM-AUTO-08: Connector/service identity can change policy, onboard accounts, retrieve broad secrets, or alter audit forwarding without owner review
 PAM-AUTO-09: Revocation runbook does not validate child tokens, leases, active brokered sessions, and post-revocation secret reads
 PAM-AUTO-10: OIDC/JWT federation exists but claim, audience, issuer, path, or environment mapping is not constrained
-PAM-AUTO-11: Acceptable automation pattern is reported solely because it uses AppRole, OIDC, or a PAM API
 ```
+
+**False-positive guards:**
+
+- Do not report a finding solely because an automation path uses AppRole, OIDC/JWT federation, a managed identity, or a PAM API. Report a finding only when evidence is missing or the scope, claims, TTLs, use counts, child-token/lease behavior, audit correlation, or revocation path is unsafe for the privilege being brokered.
 
 **Calibration examples:**
 
