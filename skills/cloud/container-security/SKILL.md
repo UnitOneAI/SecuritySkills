@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -127,8 +127,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |
-| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
-| **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, secrets as env vars |
+| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories, unconfined seccomp/AppArmor on application workloads |
+| **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing effective seccomp evidence, read-write root filesystem, secrets as env vars |
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
 | **Informational** | Observation with no direct security impact | Image size optimization, multi-stage build suggestions, label recommendations |
 
@@ -184,6 +184,13 @@ Produce the final report using the structure defined in the Output Format sectio
 |----------|-----------|-----------|------------|
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
+
+### Runtime Profile Effective-State Matrix
+
+| Workload | Container Type | Container | seccomp Effective State | AppArmor Effective State | Capabilities | Evidence |
+|----------|----------------|-----------|-------------------------|--------------------------|--------------|----------|
+| deploy/app | app | api | RuntimeDefault | RuntimeDefault | drop ALL | manifest + namespace PSA |
+| job/migrate | init | migrate | Unset / unknown | Unset / unknown | adds SYS_ADMIN | manifest |
 
 ### Prioritized Remediation Plan
 
@@ -244,7 +251,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Volumes | No hostPath | Restricted volume types only |
 | allowPrivilegeEscalation | -- | Must be false |
 | runAsNonRoot | -- | Must be true |
-| seccompProfile | -- | RuntimeDefault or Localhost |
+| seccompProfile | -- | RuntimeDefault or Localhost, proven at pod or container level |
+| AppArmor | RuntimeDefault unless explicitly overridden | RuntimeDefault or Localhost, not Unconfined |
 
 ---
 
@@ -257,6 +265,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Unset seccomp is not always RuntimeDefault.** If manifests omit `seccompProfile`, confirm kubelet `seccompDefault` or admission policy evidence before marking the workload as effectively confined. Otherwise record the effective state as unknown or unconfined.
+9. **Pod-level settings can be overridden per container.** Check `containers`, `initContainers`, and `ephemeralContainers`; a hardened pod-level `securityContext` does not prove every container keeps the same effective seccomp, AppArmor, or capability state.
 
 ---
 
@@ -283,8 +293,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
+- Kubernetes seccomp tutorial: https://kubernetes.io/docs/tutorials/security/seccomp/
+- Kubernetes seccomp reference: https://kubernetes.io/docs/reference/node/seccomp/
+- Kubernetes security context docs: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+- Kubernetes AppArmor tutorial: https://kubernetes.io/docs/tutorials/security/apparmor/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Docker seccomp security profiles: https://docs.docker.com/engine/security/seccomp/
+- Docker runtime privilege and Linux capabilities: https://docs.docker.com/engine/containers/run/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
@@ -293,4 +309,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added runtime-profile effective-state evidence for seccomp, AppArmor, Linux capabilities, init/ephemeral containers, kubelet `seccompDefault`, report output, references, and fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.

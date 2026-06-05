@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-runtime-profile
+spec:
+  selector:
+    matchLabels:
+      app: vulnerable-runtime-profile
+  template:
+    metadata:
+      labels:
+        app: vulnerable-runtime-profile
+    spec:
+      initContainers:
+        - name: migrate
+          image: busybox:1.36
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+            capabilities:
+              add: ["SYS_ADMIN"]
+      containers:
+        - name: app
+          image: nginx:1.25
+          securityContext:
+            allowPrivilegeEscalation: true
+            appArmorProfile:
+              type: Unconfined
+            capabilities:
+              add: ["NET_ADMIN"]

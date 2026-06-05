@@ -379,6 +379,80 @@ securityContext:
     add: ["NET_BIND_SERVICE"]  # Only if needed for ports < 1024
 ```
 
+#### Runtime Profile Effective-State Evidence Gate
+
+Do not treat a workload as Restricted-compatible until the effective runtime profile is proven for every container class:
+
+- `spec.containers[*]`
+- `spec.initContainers[*]`
+- `spec.ephemeralContainers[*]`
+
+Review both pod-level and per-container security contexts. A pod-level `seccompProfile` can provide the default for all containers, but a container-level field may override it. If the manifest omits `seccompProfile`, require independent evidence that kubelet `seccompDefault` or an admission policy applies `RuntimeDefault`; otherwise record the effective state as unknown or unconfined.
+
+**Seccomp evidence:**
+
+```yaml
+# GOOD: pod-level default applies unless a container overrides it.
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: migrate
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+  containers:
+    - name: app
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+
+# HIGH: explicit unconfined profile on an application container.
+securityContext:
+  seccompProfile:
+    type: Unconfined
+```
+
+**AppArmor evidence:**
+
+```yaml
+# GOOD: explicit runtime/default AppArmor profile where supported.
+securityContext:
+  appArmorProfile:
+    type: RuntimeDefault
+
+# HIGH: AppArmor disabled for an application workload.
+securityContext:
+  appArmorProfile:
+    type: Unconfined
+```
+
+**Capability evidence:**
+
+```yaml
+# Restricted-compatible default.
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+    add: ["NET_BIND_SERVICE"] # only when justified
+
+# HIGH or CRITICAL depending on workload sensitivity.
+securityContext:
+  capabilities:
+    add: ["SYS_ADMIN", "NET_ADMIN"]
+```
+
+**Finding classification:**
+
+- **Critical:** `privileged: true`, Docker socket mount, or `SYS_ADMIN` added on an application workload with host namespace or hostPath exposure.
+- **High:** `seccompProfile.type: Unconfined`, `appArmorProfile.type: Unconfined`, `allowPrivilegeEscalation: true`, or added `SYS_ADMIN`/`NET_ADMIN`/`SYS_PTRACE` without system-workload justification.
+- **Medium:** `seccompProfile` omitted without kubelet `seccompDefault` evidence; `capabilities.drop` does not include `ALL`; `readOnlyRootFilesystem` omitted for workloads that can support it.
+- **Low:** Runtime profile owner, exception reason, or review date missing while technical controls are otherwise present.
+
 #### CIS 5.2.11 -- Minimize the admission of Windows HostProcess containers
 
 Check for `windowsOptions.hostProcess: true`.
