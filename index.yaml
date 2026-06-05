@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -432,6 +432,18 @@ skills:
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- SecOps ---------------------------------------------------------------
+  - id: endpoint-security
+    name: "Endpoint Security Posture Review"
+    tags: [secops, endpoint, edr, mdm, device-compliance]
+    role: [security-engineer, soc-analyst, cloud-security-engineer, vciso]
+    phase: [operate, protect, detect]
+    activity: [assess, review]
+    frameworks: [CIS-Controls-v8, NIST-SP-800-83r1, MITRE-ATT&CK, CISA-StopRansomware]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/secops/endpoint-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
   - id: detection-engineering
     name: "Detection Engineering & Sigma Rules"
     tags: [secops, detection, sigma, mitre-attack]

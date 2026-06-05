@@ -1,0 +1,37 @@
+description: "Endpoint posture export with multiple endpoint-security findings expected."
+expected_findings:
+  - ENDPOINT-EDR-01
+  - ENDPOINT-EDR-04
+  - ENDPOINT-MDM-02
+  - ENDPOINT-MDM-03
+  - ENDPOINT-HARD-01
+  - ENDPOINT-TEL-04
+  - ENDPOINT-EXC-01
+endpoint_fleet:
+  total_devices: 2400
+  inventory_source: "asset_export_2026-06-01.csv"
+  edr_onboarded: 1730
+  edr_healthy: 1690
+  mdm_enrolled: 1550
+  devices_without_compliance_policy: "treated_as_compliant"
+  sensitive_apps_require_compliant_device: false
+  disk_encryption:
+    windows_bitlocker: "unknown recovery key escrow"
+    macos_filevault: "partial"
+  local_admins:
+    developer_laptops: "broad local admin"
+  edr_exclusions:
+    - path: "C:\\BuildTools\\*"
+      owner: null
+      expiry: null
+      compensating_control: null
+  alert_routing:
+    edr_high_severity: "email_only"
+  test_alert:
+    last_verified: null
+exceptions:
+  - endpoint_class: "legacy_kiosk"
+    count: 42
+    owner: null
+    expiry: null
+    compensating_control: null

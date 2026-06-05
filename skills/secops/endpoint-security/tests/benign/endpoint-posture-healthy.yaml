@@ -1,0 +1,33 @@
+description: "Endpoint posture export with no critical endpoint-security findings expected."
+expected_findings: []
+endpoint_fleet:
+  total_devices: 2400
+  inventory_source: "asset_export_2026-06-01.csv"
+  edr_onboarded: 2390
+  edr_healthy: 2388
+  mdm_enrolled: 2385
+  devices_without_compliance_policy: "not_compliant"
+  sensitive_apps_require_compliant_device: true
+  disk_encryption:
+    windows_bitlocker: "enabled_with_recovery_key_escrow"
+    macos_filevault: "enabled_with_recovery_key_escrow"
+    linux_luks: "required_for_laptops"
+  local_admins:
+    developer_laptops: "jit_elevation_with_approval"
+  edr_exclusions:
+    - path: "C:\\BuildTools\\cache\\*"
+      owner: "developer-platform"
+      expiry: "2026-07-31"
+      compensating_control: "restricted directory ACL plus weekly review"
+  alert_routing:
+    edr_high_severity: "soc_case_queue"
+    isolation_permission_tested: true
+  test_alert:
+    last_verified: "2026-06-01"
+    case_id: "SOC-2026-0601-EDR"
+exceptions:
+  - endpoint_class: "legacy_kiosk"
+    count: 3
+    owner: "retail-it"
+    expiry: "2026-08-31"
+    compensating_control: "network isolation and no sensitive app access"
