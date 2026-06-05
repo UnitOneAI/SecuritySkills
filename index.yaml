@@ -520,7 +520,7 @@ skills:
   # -- DevSecOps ------------------------------------------------------------
   - id: pipeline-security
     name: "CI/CD Pipeline Security Review"
-    tags: [devsecops, cicd, pipeline, supply-chain]
+    tags: [devsecops, cicd, pipeline, supply-chain, release-provenance]
     role: [security-engineer, devsecops]
     phase: [build, deploy]
     activity: [review, audit]

@@ -5,14 +5,14 @@ description: >
   OWASP Top 10 CI/CD Security Risks. Auto-invoked when reviewing GitHub Actions
   workflows, GitLab CI configs, Jenkins pipelines, or when discussing supply
   chain security. Produces a pipeline security assessment with SLSA level
-  determination and CICD-SEC risk findings.
-tags: [devsecops, cicd, pipeline, supply-chain]
+  determination, release provenance binding, and CICD-SEC risk findings.
+tags: [devsecops, cicd, pipeline, supply-chain, release-provenance]
 role: [security-engineer, devsecops]
 phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -130,6 +130,7 @@ Read each pipeline configuration file and evaluate against SLSA v1.0 build track
 - [ ] Builds execute on a hosted/managed build platform (GitHub Actions, GitLab CI SaaS, Cloud Build, etc.).
 - [ ] Build service generates signed provenance (e.g., using `actions/attest-build-provenance`, Sigstore, or in-toto).
 - [ ] Provenance includes: builder identity, source reference, build configuration reference, and build timestamp.
+- [ ] For release artifacts, provenance subject digest is bound to the release tag target commit, not just to a mutable branch name.
 
 #### SLSA Build L3 Checklist
 
@@ -392,6 +393,9 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Release workflows where the reviewed tag, checked-out commit, artifact digest, and provenance subject digest are not tied together.
+- Tag-triggered or release-triggered workflows that checkout `main`, `master`, or another branch instead of the event SHA/tag target commit.
+- Lightweight, unsigned, unprotected, or force-updateable release tags used as the release authority without compensating controls.
 
 **Grep patterns:**
 
@@ -412,9 +416,99 @@ sbom
 # Look for digest pinning in container references
 image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
+
+# Look for release source identity
+on:
+  push:
+    tags:
+      - "v*"
+on:
+  release:
+    types: [published]
+github.ref_name
+github.sha
+github.event.release.target_commitish
+git verify-tag
+git rev-parse
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+##### Release Source Identity Gate
+
+Do not flag a release workflow only because it is triggered by tags. Tag-triggered workflows can be acceptable when the release source identity is explicit, immutable enough for the risk level, and tied to artifact provenance.
+
+For every release, publish, or package workflow, record:
+
+| Evidence | Required Question | Pass Condition |
+|----------|-------------------|----------------|
+| Trigger type | Is the workflow triggered by `push.tags`, `release`, `workflow_dispatch`, or branch push? | Reviewer can identify the release authority and event payload. |
+| Checked-out commit | Does `actions/checkout` use the event SHA/tag target instead of `main` or `master`? | Built commit equals the release tag target commit. |
+| Tag object type | Is the release tag annotated/signed, lightweight, or platform-generated? | Annotated/signed or otherwise governed tags for production releases. |
+| Tag verification | Is the tag signature or protected tag policy verified? | `git verify-tag`, platform protection, or documented approval evidence exists. |
+| Artifact digest | Is the produced package/image digest captured? | Digest is recorded and used for downstream promotion or verification. |
+| Provenance subject | Does provenance identify the same artifact digest and source commit? | Provenance subject digest matches the released artifact digest. |
+| Re-run behavior | Can re-running the release workflow change the artifact for the same tag? | Inputs, dependencies, base images, and build config are pinned or documented. |
+
+**Unsafe GitHub Actions example:**
+
+```yaml
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: npm publish
+```
+
+This is **High** risk under CICD-SEC-9 unless the workflow proves `main` currently equals the release tag target. The release event does not by itself prove which commit was built.
+
+**Safer GitHub Actions pattern:**
+
+```yaml
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - run: git verify-tag "${GITHUB_REF_NAME}"
+      - run: test "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "${GITHUB_SHA}"
+      - run: npm pack --json > artifact-digest.json
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: dist/*
+```
+
+Treat this pattern as lower risk only when tag verification is meaningful for the repository, the artifact digest is retained, and consumers or downstream promotion can verify the attestation.
+
+##### Release Tag Protection Checks
+
+For repositories that publish release artifacts, verify:
+
+- Protected tag patterns exist for release tags such as `v*`.
+- Tag creation and deletion are restricted to trusted maintainers or release automation.
+- Force-updates of release tags are prevented or monitored.
+- Signed tags are required where the platform and release process support them.
+- Lightweight tags are either disallowed for production releases or backed by compensating controls such as protected tag patterns, release approvals, and digest-based promotion.
+- Monorepo releases bind each package path/build target to the same source commit and artifact digest recorded in provenance.
+
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, and whether release tags are bound to the checked-out commit and provenance subject digest.
 
 ---
 
@@ -471,6 +565,12 @@ Produce the final report using the following structure:
   - L2: <met/not met> -- <evidence>
   - L3: <met/not met> -- <evidence>
 - **Gap to next level:** <what is needed to reach the next SLSA level>
+
+### Release Provenance Evidence
+
+| Workflow | Trigger | Release Tag | Checked-Out Commit | Tag Verification | Artifact Digest | Provenance Subject Digest | Status |
+|----------|---------|-------------|--------------------|------------------|-----------------|---------------------------|--------|
+| release.yml | push.tags / release / workflow_dispatch | v1.2.3 | <sha> | Signed/Protected/None | sha256:<digest> | sha256:<digest> | Pass/Fail/Partial |
 
 ### OWASP CICD-SEC Findings
 
@@ -550,11 +650,15 @@ This skill processes user-supplied content including CI/CD configuration files, 
 - SLSA Build Track: https://slsa.dev/spec/v1.0/levels#build-track
 - OWASP Top 10 CI/CD Security Risks: https://owasp.org/www-project-top-10-ci-cd-security-risks/
 - GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+- GitHub Actions events that trigger workflows: https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows
+- GitHub repository rulesets for tags and branches: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets
 - Sigstore / Cosign: https://docs.sigstore.dev/
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
+- SLSA provenance format: https://slsa.dev/spec/v1.0/provenance
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added release source identity, protected tag, and artifact provenance binding evidence gates for CICD-SEC-9.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
