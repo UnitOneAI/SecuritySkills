@@ -1,0 +1,29 @@
+case_id: dep-scan-vex-downgrade-vulnerable-001
+fixture_intent: "Expected to fail a scan that downgrades a CVE using incomplete VEX or reachability evidence."
+expected_result: flag
+finding:
+  cve: CVE-2025-0001
+  package: json-stream-bridge
+  version: 3.2.0
+  fixed_in: 3.2.4
+  cvss: 9.1
+  epss_probability: 0.42
+  epss_percentile: 0.97
+  kev_listed: true
+  dependency_group: production
+  runtime_exposure: internet-facing_api
+scanner_downgrade_claim:
+  vex_status: not_affected
+  vex_product: platform-worker
+  vex_component: json-stream-bridge
+  vex_version: "3.x"
+  reachability_summary: "No route observed in staging smoke test"
+evidence_gaps:
+  - "VEX product does not match the shipped service name and version."
+  - "Subcomponent path is missing from the SBOM relationship graph."
+  - "The vulnerable parser function is reachable from /api/import in production."
+  - "EPSS percentile is high and the CVE is KEV-listed, so downgrade requires stronger evidence."
+  - "No retest date or fixed-version verification is recorded."
+expected_review:
+  priority: P0
+  action: "Do not downgrade. Patch or mitigate within the KEV timeline and document reachable production exposure."

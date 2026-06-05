@@ -1,0 +1,36 @@
+case_id: dep-scan-spdx-vex-benign-001
+fixture_intent: "Expected to pass when the scan records precise license, VEX, and reachability evidence."
+expected_result: allow_with_documented_evidence
+license_evidence:
+  package: report-exporter
+  version: 4.8.2
+  usage_scope: shipped-runtime
+  declared_license: "LGPL-2.1-only OR Apache-2.0"
+  selected_branch: "Apache-2.0"
+  evidence_source:
+    - "lockfile package metadata"
+    - "publisher license file"
+    - "approved-license policy entry"
+  expected_review: "Record the selected permissive branch and do not flag by the LGPL substring alone."
+dev_only_evidence:
+  package: fixture-snapshotter
+  version: 1.5.0
+  usage_scope: dev-only
+  declared_license: "GPL-3.0-only WITH Autoconf-exception-3.0"
+  distribution_evidence: "not bundled, not linked, not copied into container image"
+  expected_review: "Keep the finding informational unless distribution evidence changes."
+vex_reachability_evidence:
+  cve: CVE-2025-0002
+  package: xml-tokenizer
+  affected_version: 6.0.1
+  cvss: 8.8
+  epss_probability: 0.003
+  epss_percentile: 0.21
+  kev_listed: false
+  vex_status: not_affected
+  vex_product: "minorstep-importer 2.7.0"
+  vex_component: "xml-tokenizer 6.0.1"
+  vex_justification: "vulnerable code path is not present in the compiled production bundle"
+  call_graph_evidence: "parser.parseExternalEntity is not referenced by production routes"
+  retest_trigger: "dependency version, route exposure, or bundle target changes"
+expected_priority: P3

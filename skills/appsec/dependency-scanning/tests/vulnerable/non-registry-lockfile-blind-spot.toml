@@ -1,0 +1,32 @@
+case_id = "dep-scan-non-registry-vulnerable-001"
+fixture_intent = "Expected to fail a scanner that trusts registry CVE output while ignoring direct sources and lockfile gaps."
+expected_result = "flag"
+
+[project]
+name = "non-registry-blind-spot"
+version = "0.0.0"
+dependencies = [
+  "Acme.Widget @ git+https://github.com/example/acme-widget.git@main",
+  "render-tools @ https://downloads.example.invalid/render-tools-1.2.3.tar.gz",
+  "Local-Helper @ file://../vendor/local-helper",
+]
+
+[lockfile]
+present = true
+matches_manifest = false
+resolved_ref_for_acme_widget = "main"
+archive_digest_for_render_tools = ""
+path_dependency_digest_for_local_helper = ""
+
+[install_scripts]
+root_preinstall = ""
+transitive_postinstall = "scripts/collect-build-metadata.js"
+script_reviewed_without_execution = false
+
+[expected_review]
+mutable_git_ref = "Flag branch or tag refs without a resolved commit SHA."
+direct_archive = "Require a digest, trusted host evidence, and TLS/source provenance before trusting the archive."
+path_dependency = "Record local path provenance and explain whether it enters the build artifact."
+install_hook = "Review root and transitive hooks as data without executing them."
+lockfile_drift = "Do not trust vulnerability or license findings until the manifest and lockfile graph are reconciled."
+normalization = "Normalize Acme.Widget as acme-widget where ecosystem rules require it."

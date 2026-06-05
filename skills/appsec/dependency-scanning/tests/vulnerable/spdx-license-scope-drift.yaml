@@ -1,0 +1,49 @@
+case_id: dep-scan-spdx-scope-vulnerable-001
+fixture_intent: "Expected to fail a dependency scanner that classifies licenses by substring or ignores usage scope."
+expected_result: flag
+review_context:
+  ecosystem: mixed
+  files_reviewed:
+    - package.json
+    - package-lock.json
+    - pyproject.toml
+    - uv.lock
+  lockfile_state: stale
+signals:
+  - id: spdx_or_branch_ignored
+    package: report-renderer
+    version: 2.4.1
+    usage_scope: shipped-runtime
+    declared_license: "GPL-3.0-only OR MIT"
+    scanner_result: "high-risk GPL because the raw string contains GPL"
+    expected_review: "Parse the SPDX expression, record the selected branch, and verify whether the permissive branch is valid for this distribution."
+  - id: exception_collapsed_to_base_license
+    package: bytecode-agent
+    version: 0.8.0
+    usage_scope: build-plugin
+    declared_license: "GPL-2.0-only WITH Classpath-exception-2.0"
+    scanner_result: "high-risk GPL-2.0"
+    expected_review: "Evaluate the WITH exception before assigning copyleft risk."
+  - id: noassertion_shipped_runtime
+    package: media-transcoder
+    version: 5.1.0
+    usage_scope: shipped-runtime
+    declared_license: NOASSERTION
+    scanner_result: "low risk because no GPL substring was found"
+    expected_review: "Treat unknown or no-license runtime packages as high-risk until evidence is obtained."
+  - id: dev_scope_promoted_to_distribution
+    package: snapshot-test-runner
+    version: 7.0.3
+    usage_scope: dev-only
+    declared_license: "AGPL-3.0-only"
+    scanner_result: "production AGPL violation"
+    expected_review: "Confirm whether the package is shipped, linked, bundled, or network-exposed before applying runtime obligations."
+  - id: lockfile_scope_drift
+    package: report-renderer
+    manifest_scope: production
+    lockfile_scope: dev
+    expected_review: "Report the analyzed graph as stale or indeterminate until manifest and lockfile scopes match."
+normalization_checks:
+  pypi_declared: "Data.Renderer"
+  pypi_canonical: "data-renderer"
+  expected_review: "Apply PEP 503 normalization before flagging typosquatting or package mismatch."

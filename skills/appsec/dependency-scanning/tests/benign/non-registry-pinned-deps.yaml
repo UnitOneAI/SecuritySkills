@@ -1,0 +1,32 @@
+case_id: dep-scan-non-registry-benign-001
+fixture_intent: "Expected to pass only because non-registry dependencies are pinned, covered by lockfiles, and reviewed as data."
+expected_result: allow_with_documented_evidence
+dependencies:
+  - package: acme-widget
+    source_type: git
+    source_host: github.com
+    repository: example/acme-widget
+    requested_ref: release-1.4.2
+    resolved_commit: 9f1c7a2b4d6e8f00112233445566778899aabbcc
+    lockfile_digest: "sha256:2df3f7d2a8b4f67a834e6c06c2a0fcd32909cc891ca03d81683f5aefc3f52b41"
+    install_scripts: none
+  - package: render-tools
+    source_type: direct_archive
+    source_host: downloads.example.invalid
+    requested_url: "https://downloads.example.invalid/render-tools-1.2.3.tar.gz"
+    resolved_digest: "sha256:fa5b8e9d8d8be7d92e8bd3ed0e85ec38a057f8afcc95c58d6b26f3e23336a614"
+    lockfile_matches_manifest: true
+    install_scripts: none
+  - package: local-helper
+    source_type: local_path
+    requested_path: "../vendor/local-helper"
+    repository_path: "vendor/local-helper"
+    source_review: "vendored code included in SBOM component list"
+    lockfile_matches_manifest: true
+    install_scripts: reviewed_without_execution
+normalization_evidence:
+  pypi_declared: "Acme.Widget"
+  pypi_canonical: "acme-widget"
+expected_review:
+  supply_chain_status: "Documented non-registry dependency, no immediate vulnerability finding."
+  retest_trigger: "Any ref, digest, path, host, lockfile, or install-script change."
