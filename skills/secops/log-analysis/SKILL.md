@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Before beginning analysis, gather or confirm:
 - [ ] **Time window:** The specific time range to analyze.
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
+- [ ] **Time basis:** What timestamp fields exist for each source? Record event time, collector receive time, SIEM index time, timezone, and clock synchronization evidence.
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
@@ -63,6 +64,62 @@ Before beginning analysis, gather or confirm:
 ---
 
 ## 3. Process
+
+### Step 0: Time Normalization and Log Integrity Preflight
+
+Before correlating events, establish whether the timeline is trustworthy. Security timelines often combine endpoint, identity, network, proxy, DNS, EDR, and cloud logs that use different timestamp fields and ingestion paths. A correct analysis must separate when the event happened from when the collector or SIEM received it.
+
+#### Time Evidence to Gather
+
+| Evidence Item | Examples | Why It Matters |
+|---------------|----------|----------------|
+| Event timestamp | Windows `TimeCreated`, CloudTrail `eventTime`, Sysmon `UtcTime`, application `timestamp` | Primary time the event claims to have occurred |
+| Timezone / offset | `Z`, `+00:00`, local timezone, missing timezone | Missing offsets can shift events across the investigation window |
+| Collector receive time | `event.created`, `received_at`, collector envelope timestamp | Shows pipeline delay between event generation and collection |
+| SIEM index time | `@timestamp`, `_indextime`, `ingestion_time`, `TimeGenerated` | Shows when the event became searchable |
+| Source clock sync | NTP, chrony, Windows Time Service, cloud managed timestamp | Determines whether host-local event time is reliable |
+| Continuity evidence | heartbeat events, expected event volume, log sequence IDs, gap alerts | Detects dropped logs, paused forwarders, and anti-forensics |
+
+#### What to Look For
+
+- Log sources that mix local time, UTC, and SIEM index time without documenting which field is used for correlation.
+- Events that lack timezone offsets or use ambiguous local time during daylight-saving transitions.
+- Cross-source timelines where endpoint time and cloud/audit time differ by more than the stated clock-skew tolerance.
+- SIEM queries that sort by ingestion time rather than event time when reconstructing attacker actions.
+- Collector or forwarder delays that cause a late-arriving event to appear after containment even though it happened before containment.
+- Log gaps, reset sequence IDs, missing heartbeat events, or sudden zero-volume periods in normally chatty sources.
+- EDR, proxy, or SaaS sources that rewrite event timestamps during export without preserving the original event time.
+
+#### Detection Methods Using Allowed Tools
+
+```
+# Find timestamp fields and time normalization code
+Grep: "@timestamp|timestamp|eventTime|TimeCreated|UtcTime|time_generated|TimeGenerated|_indextime|ingestion_time|received_at|event.created|event.ingested" in **/*.{json,log,ndjson,csv,txt,yaml,yml,md}
+Grep: "timezone|time_zone|tz|UTC|Z$|offset|localtime|daylight|DST" in **/*.{json,log,ndjson,csv,txt,yaml,yml,md}
+
+# Find clock synchronization and collection health evidence
+Grep: "ntp|chrony|w32time|timesyncd|clock skew|clock drift|time sync|NTP" in **/*.{log,txt,md,yaml,yml,json}
+Grep: "heartbeat|sequence|dropped|gap|forwarder|collector|buffer|backpressure|late arrival|ingest delay" in **/*.{log,txt,md,yaml,yml,json}
+```
+
+#### Time Normalization Evidence Matrix
+
+| Log Source | Event Time Field | Timezone / Offset | Normalized UTC Rule | Collector / SIEM Time | Clock Sync Evidence | Observed Skew | Continuity Status | Confidence |
+|------------|------------------|-------------------|---------------------|-----------------------|--------------------|---------------|-------------------|------------|
+| [source] | [field] | [UTC/local/unknown] | [conversion rule] | [field/value] | [NTP/managed/unknown] | [duration] | [complete/gaps/unknown] | [High/Medium/Low] |
+
+#### Finding Criteria
+
+| Condition | Severity |
+|-----------|----------|
+| Incident timeline relies on mixed or unknown time bases for containment, legal, or breach-notification decisions | High |
+| Source clock skew exceeds the correlation window and no correction rule is documented | High |
+| Collector or SIEM ingestion delay hides pre-containment activity, and the report sorts by ingestion time only | High |
+| Missing timezone offsets make events impossible to order across sources | Medium |
+| Log continuity gaps exist during the analysis window without a gap reason or alternate source | Medium |
+| Event time and ingestion time are recorded, normalized to UTC, and skew is within tolerance | Informational |
+
+> **Rule:** Do not present a cross-source sequence as a confirmed timeline until event timestamps are normalized to UTC, the chosen ordering field is documented, and clock/ingestion uncertainty is recorded. If time evidence is incomplete, mark the affected timeline rows as `Low confidence` or `Not Evaluable` instead of forcing a precise order.
 
 ### Step 1: Log Source Taxonomy
 
@@ -312,7 +369,8 @@ Step 4: Pivot on host
   -> File log: What files were created, modified, or accessed after logon?
 
 Step 5: Build timeline
-  -> Combine all findings into a chronological sequence
+  -> Combine all findings into a chronological sequence using normalized UTC event time
+  -> Record event time, ingestion time, and confidence when late-arriving logs or clock skew affect ordering
   -> Map each event to an ATT&CK technique
   -> Identify gaps in visibility (log sources not available)
 ```
@@ -337,7 +395,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -348,9 +406,17 @@ Produce log analysis findings in this structure:
 | Field | Value |
 |-------|-------|
 | Time Window | [Start -- End, UTC] |
+| Time Basis | [event time / collector receive time / SIEM index time, with rationale] |
+| Clock Skew Tolerance | [e.g., +/- 2 minutes, unknown, or not applicable] |
 | Systems | [Hostnames, IPs, or network segments] |
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
+
+### Time Normalization and Log Integrity
+
+| Log Source | Event Time Field | Timezone / Offset | Normalized UTC Rule | Collector / SIEM Time | Clock Sync Evidence | Observed Skew | Continuity Status | Confidence |
+|------------|------------------|-------------------|---------------------|-----------------------|--------------------|---------------|-------------------|------------|
+| [source] | [field] | [UTC/local/unknown] | [rule] | [field/value] | [evidence] | [duration] | [complete/gaps/unknown] | [High/Medium/Low] |
 
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
@@ -370,9 +436,9 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Normalized Event Time (UTC) | Source Timestamp | Collector / SIEM Time | Source | Event | ATT&CK Technique | Time Confidence | Assessment |
+|-----------------------------|------------------|-----------------------|--------|-------|-------------------|-----------------|------------|
+| [HH:MM:SS] | [raw value] | [raw value or N/A] | [Source] | [Description] | [T-ID] | [High/Medium/Low] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
@@ -443,11 +509,15 @@ No single log source provides complete visibility. Authentication logs show who 
 
 The absence of logs can be as significant as their presence. If a server that normally generates 1000 events per hour suddenly shows zero events, the logging pipeline may be broken or an adversary may have disabled logging (T1070.001 -- Clear Windows Event Logs, T1562.001 -- Disable or Modify Tools). Monitor for gaps in log continuity.
 
-### Pitfall 4: Misinterpreting Event IDs Without Context
+### Pitfall 4: Building Timelines from Mixed Time Bases
+
+Sorting a timeline by SIEM index time can misorder events when collectors buffer logs, endpoints reconnect after being offline, or cloud services deliver audit events late. Sorting by raw event time can also be wrong when hosts have clock drift or missing timezone offsets. Always record the chosen time basis, normalize event time to UTC, and mark low-confidence rows when clock or ingestion uncertainty affects ordering.
+
+### Pitfall 5: Misinterpreting Event IDs Without Context
 
 A single Event ID can have very different meanings depending on the context. Event ID 4624 (successful logon) with LogonType 3 (network) is routine on a file server but suspicious on a developer workstation receiving inbound network logons. Always consider the LogonType, source/destination, user, time of day, and host role when interpreting events.
 
-### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
+### Pitfall 6: Not Establishing Baselines Before Looking for Anomalies
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
@@ -478,3 +548,5 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+12. **RFC 3339 -- Date and Time on the Internet: Timestamps** -- https://datatracker.ietf.org/doc/html/rfc3339
+13. **RFC 5905 -- Network Time Protocol Version 4** -- https://datatracker.ietf.org/doc/html/rfc5905
