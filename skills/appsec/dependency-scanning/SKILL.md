@@ -12,10 +12,10 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
-allowed-tools: Read, Grep, Glob
+allowed-tools: Read, Grep, Glob, WebFetch
 injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
@@ -103,6 +103,8 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 | **EPSS** | [FIRST EPSS](https://www.first.org/epss/) | Probability of exploitation in the next 30 days | Score > 0.1 (10%) indicates elevated real-world risk |
 | **CISA KEV** | [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Confirmed active exploitation in the wild | Any match requires remediation within the CISA-mandated timeline |
 
+Use WebFetch only for vulnerability enrichment sources, such as the FIRST EPSS API and the CISA KEV feed. If live enrichment cannot be performed, use scanner-supplied enrichment or a local cache when available, and record the source, date, and failure reason. Do not silently treat missing EPSS or KEV data as low risk.
+
 ### Triage Decision Matrix
 
 | CVSS | EPSS | KEV Listed | Priority | Action |
@@ -110,17 +112,30 @@ Not all CVEs carry equal operational risk. Use a three-signal triage model to pr
 | Critical/High | > 0.1 | Yes | P0 - Immediate | Patch or mitigate within 24-48 hours |
 | Critical/High | > 0.1 | No | P1 - Urgent | Patch within current sprint |
 | Critical/High | <= 0.1 | No | P2 - Scheduled | Patch in next release cycle |
+| Critical/High | Unknown / missing | Yes | P0 - Immediate | KEV overrides missing EPSS; patch or mitigate within 24-48 hours or by the KEV due date, whichever is sooner |
+| Critical/High | Unknown / missing | No / unknown | P1 - Urgent | Do not downgrade on missing enrichment; patch within current sprint and complete enrichment |
+| Critical/High | > 0.1 | Unknown / lookup failed | P0 - Immediate | EPSS indicates elevated exploitation probability; complete KEV check before closure |
 | Medium | > 0.1 | Yes | P1 - Urgent | Patch within current sprint |
+| Medium | Unknown / missing | Yes | P1 - Urgent | KEV overrides missing EPSS; patch within current sprint or by the KEV due date |
+| Medium | Unknown / missing | No / unknown | P2 - Scheduled | Schedule remediation and complete enrichment before deferral |
 | Medium | <= 0.1 | No | P3 - Backlog | Track and remediate opportunistically |
-| Low | Any | No | P4 - Monitor | Document and revisit quarterly |
+| Low | Any / unknown | No | P4 - Monitor | Document enrichment status and revisit quarterly |
 
 ### Enrichment Process
 
 1. Extract CVE identifiers from scanner output (e.g., `npm audit --json`, `pip-audit --format json`, `trivy fs --format json`).
-2. Query EPSS scores via `https://api.first.org/data/v1/epss?cve=CVE-XXXX-XXXXX`.
-3. Cross-reference against the CISA KEV catalog (available as JSON/CSV at `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`).
-4. Apply the decision matrix above to assign priority.
-5. Document each finding with CVE ID, affected package and version, CVSS score, EPSS score, KEV status, and recommended fix version.
+2. For each CVE, determine the enrichment source:
+   - `live-api`: fetched during the review using WebFetch.
+   - `scanner-supplied`: extracted from scanner output, such as Trivy or another scanner that embeds EPSS/KEV data.
+   - `local-cache`: read from a cached EPSS or KEV feed; record the cache generation date.
+   - `not-checked`: enrichment was intentionally not attempted; state why.
+   - `failed`: lookup was attempted but failed; record the error or blocker.
+3. Query EPSS scores via `https://api.first.org/data/v1/epss?cve=CVE-XXXX-XXXXX` when live API access is available. Record the EPSS score, percentile, API URL, and `date` returned by the API.
+4. Cross-reference against the CISA KEV catalog (available as JSON/CSV at `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json`) when live feed access or a current cache is available.
+5. For each KEV match, extract and report `vulnerabilityName`, `vendorProject`, `product`, `dateAdded`, `dueDate`, `requiredAction`, and `knownRansomwareCampaignUse`.
+6. If EPSS or KEV enrichment is missing or failed, preserve that state in the output and use the missing-data rows in the decision matrix. Missing enrichment must not be converted to `EPSS <= 0.1` or `KEV = No`.
+7. Apply the decision matrix above to assign priority.
+8. Document each finding with CVE ID, affected package and version, CVSS score, EPSS evidence, KEV evidence, enrichment status, priority, and recommended fix version.
 
 ## License Compliance
 
@@ -195,9 +210,16 @@ When performing a dependency scan, produce findings in the following structure:
 
 ### Vulnerability Findings
 
-| # | CVE | Package | Version | Fixed In | CVSS | EPSS | KEV | Priority |
-|---|-----|---------|---------|----------|------|------|-----|----------|
-| 1 | ... | ...     | ...     | ...      | ...  | ...  | ... | ...      |
+| # | CVE | Package | Version | Fixed In | CVSS | EPSS | EPSS Date | KEV | KEV Due | KEV Action | Enrichment Source | Enrichment Date | Lookup Status | Priority |
+|---|-----|---------|---------|----------|------|------|-----------|-----|---------|------------|-------------------|-----------------|---------------|----------|
+| 1 | ... | ...     | ...     | ...      | ...  | ...  | ...       | ... | ...     | ...        | live-api/scanner-supplied/local-cache/not-checked/failed | ... | ... | ... |
+
+### Enrichment Evidence
+
+| Feed | Source | Date / Version | Status | Failure Reason |
+|------|--------|----------------|--------|----------------|
+| FIRST EPSS | <API URL/scanner/cache> | <EPSS date> | live-api/scanner-supplied/local-cache/not-checked/failed | <if any> |
+| CISA KEV | <catalog URL/scanner/cache> | <catalogVersion/dateReleased/cache date> | live-api/scanner-supplied/local-cache/not-checked/failed | <if any> |
 
 ### License Findings
 
@@ -223,7 +245,7 @@ When performing a dependency scan, produce findings in the following structure:
 1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
-4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
+4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model and record enrichment status for every CVE.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
 7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
@@ -247,7 +269,16 @@ This skill processes user-supplied content including package manifests, lockfile
 - [CycloneDX Specification](https://cyclonedx.org/specification/overview/)
 - [SPDX Specification v2.3](https://spdx.github.io/spdx-spec/v2.3/)
 - [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+- [CISA KEV JSON Feed](https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json)
 - [FIRST EPSS Model](https://www.first.org/epss/)
+- [FIRST EPSS API](https://www.first.org/epss/api)
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added WebFetch for EPSS/KEV enrichment, auditable enrichment evidence fields, KEV due/action details, and missing-data triage fallbacks.
+- **1.0.0** -- Initial release for dependency vulnerability, license, SBOM, and supply chain risk assessment.
