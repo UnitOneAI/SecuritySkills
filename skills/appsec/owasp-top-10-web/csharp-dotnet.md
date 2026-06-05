@@ -167,6 +167,43 @@ builder.Services.AddControllersWithViews(options =>
 });
 ```
 
+**CSRF Credential Transport Gate:**
+
+Treat unsafe Razor/MVC, minimal API, logout, refresh-token, and session-extension
+routes as CSRF-sensitive when authentication is carried by cookies or other
+browser-attached credentials. Require anti-forgery validation or strict
+Origin/Referer enforcement for those routes, even when `SameSite=Lax` or
+`SameSite=Strict` is configured.
+
+Do not report missing anti-forgery validation solely because an endpoint accepts
+unsafe methods when the route is authenticated only with an explicit
+`Authorization: Bearer` header and rejects or ignores ambient cookies. For
+hybrid apps, evaluate refresh-cookie endpoints separately from bearer-only API
+routes.
+
+```csharp
+// VULNERABLE - cookie-authenticated unsafe action without CSRF validation
+[HttpPost]
+public IActionResult TransferFunds(TransferModel model)
+{
+    _bankService.Transfer(model.FromAccount, model.ToAccount, model.Amount);
+    return RedirectToAction("Success");
+}
+
+// BENIGN FOR CSRF - bearer-only API route that does not trust cookies
+app.MapPost("/api/profile", (ProfileUpdate update) => Results.NoContent())
+   .RequireAuthorization(new AuthorizeAttribute
+   {
+       AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme
+   });
+```
+
+`SameSite=None; Secure` can be legitimate for OIDC/SAML callbacks, federated
+logout, embedded widgets, and cross-site enterprise flows, but those paths still
+need state/nonce binding and explicit origin controls. Treat `SameSite` as
+defense-in-depth rather than a replacement for CSRF validation on high-value
+cookie-authenticated state changes.
+
 ---
 
 ### A02:2021 — Cryptographic Failures
