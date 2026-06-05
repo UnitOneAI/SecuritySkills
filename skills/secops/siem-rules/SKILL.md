@@ -429,10 +429,60 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 **Tuning methodology:**
 
 1. **Baseline:** Run the query in search mode for 7-30 days without alerting. Record the result count distribution.
-2. **Statistical analysis:** Calculate mean, median, and standard deviation of the daily/hourly result count.
-3. **Threshold selection:** Set the initial threshold at mean + 2 standard deviations to capture anomalous activity while filtering normal variance.
-4. **Iterative tuning:** After deployment, review alerts weekly for the first month. Adjust the threshold based on TP/FP ratio.
-5. **Exclusion management:** Add exclusions for confirmed legitimate activity. Document each exclusion with a ticket reference and review date.
+2. **Distribution analysis:** Calculate mean, median, standard deviation, percentiles, and outliers of the daily/hourly result count. Note whether the data is sparse, seasonal, or heavy-tailed.
+3. **Threshold selection:** Select a threshold method that matches the data shape. Mean + 2 standard deviations is acceptable only for stable distributions without extreme outliers. For sparse or heavy-tailed security telemetry, prefer percentiles, median absolute deviation, trimmed/winsorized baselines, peer-group baselines, or explicit rare-event rules.
+4. **Seasonality and entity scope:** Where possible, tune per entity or peer group (user, host, source IP, ASN, service account, application) and account for time-of-day, day-of-week, maintenance windows, and known campaigns.
+5. **Iterative tuning:** After deployment, review alerts weekly for the first month. Adjust the threshold based on TP/FP ratio and documented false negatives.
+6. **Exclusion management:** Add exclusions for confirmed legitimate activity. Document each exclusion with a ticket reference, owner, expiration date, and review date.
+
+**Threshold selection decision tree:**
+
+| Data shape | Safer starting point | Avoid |
+|------------|----------------------|-------|
+| Stable, high-volume, approximately symmetric | Mean + 2/3 standard deviations, validated against historical TP/FP data | Using mean/stddev without checking outliers |
+| Sparse or near-zero baseline | Explicit rare-event rule, first-seen logic, or peer-group comparison | Treating one or two benign events as statistically meaningful |
+| Heavy-tailed or bursty | Percentile threshold, median absolute deviation, trimmed/winsorized baseline | Letting rare operational bursts inflate the threshold |
+| Strong time-of-day or day-of-week pattern | Separate baselines per schedule window | One global threshold across business hours, nights, weekends, and maintenance |
+| Entity-specific behavior | Per-user, per-host, per-IP, per-ASN, or per-service-account baseline | One tenant-wide threshold that hides low-and-slow activity |
+
+**Threshold evidence block:** Every production rule should document:
+
+```yaml
+threshold_evidence:
+  method: percentile | mad | mean_stddev | rare_event | peer_group
+  lookback_period: 30d
+  sample_size: 720 hourly bins
+  entity_scope: per_user | per_host | per_source_ip | global
+  excluded_outliers:
+    - maintenance_window_CHG1234
+    - password_expiry_campaign_2026_06
+  seasonality_handled: true
+  expected_alert_volume_per_day: 3
+  validation_period: 14d
+  last_review_date: 2026-06-05
+  owner: detection-engineering
+```
+
+**Threshold validation fixtures:**
+
+Benign sparse baseline that should not become a noisy alert:
+
+```text
+Rule: Privileged account use outside business hours
+30-day history for admin workstation: 0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,2,0,0,0,0,1,0,0,0,0
+Current event: 1 approved maintenance login with change ticket
+Expected tuning outcome: suppress or lower severity when change-window, host-role, and approver evidence match.
+```
+
+Heavy-tailed baseline that can hide an attack if tuned globally:
+
+```text
+Rule: Password spray by source ASN
+Normal nightly job failures: 0-2 per 10 minutes
+Weekly patch window: 80-120 failures per 10 minutes
+Attack: 15 accounts from one unfamiliar ASN at 03:00
+Expected tuning outcome: exclude known patch windows and use per-ASN or peer-group thresholds so the low-and-slow spray still fires.
+```
 
 **Threshold tuning parameters:**
 
@@ -444,6 +494,9 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 | `lookback period` | Historical data to evaluate | `ago(1h)`, `ago(24h)` |
 | `frequency` | How often the rule runs | Every 5m, 15m, 1h |
 | `suppression window` | Cooldown after firing to prevent duplicate alerts | 1h, 4h, 24h |
+| `threshold method` | Statistical or deterministic approach used | `percentile`, `MAD`, `rare_event`, `peer_group` |
+| `entity scope` | Entity or peer group the threshold applies to | Per user, host, source IP, ASN, service account |
+| `exclusion expiry` | Date when an allowlist/suppression must be revalidated | `2026-09-30` |
 
 **KQL alert rule scheduling (Sentinel Analytics Rule):**
 
