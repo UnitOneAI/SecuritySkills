@@ -1,0 +1,5 @@
+--index-url https://pypi.org/simple
+--extra-index-url https://packages.corp.example/simple
+
+internal-payments==1.4.2
+requests==2.32.3

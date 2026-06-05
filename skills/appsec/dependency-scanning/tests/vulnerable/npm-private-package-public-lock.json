@@ -1,0 +1,15 @@
+{
+  "name": "private-registry-drift",
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "dependencies": {
+        "@company/auth": "1.0.0"
+      }
+    },
+    "node_modules/@company/auth": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/@company/auth/-/auth-1.0.0.tgz"
+    }
+  }
+}

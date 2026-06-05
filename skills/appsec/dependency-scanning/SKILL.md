@@ -11,8 +11,8 @@ role: [appsec-engineer, security-engineer]
 phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
-time_estimate: "15-30min"
-version: "1.0.0"
+time_estimate: "20-35min"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -32,7 +32,7 @@ Identify known vulnerabilities, license compliance violations, and supply chain 
 
 This skill activates when any of the following are present:
 
-- A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
+- A package manifest, lockfile, or registry configuration is shared or referenced: `package.json`, `package-lock.json`, `.npmrc`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `pip.conf`, `pip.ini`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
 - The user asks about dependency security, vulnerability scanning, SBOM generation, or supply chain risk.
 - A CI/CD pipeline configuration references dependency audit steps.
 
@@ -181,6 +181,60 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Private Registry and Source Integrity Gates
+
+Dependency confusion reviews must prove where packages are allowed to resolve from. Treat mixed public/private registry configuration as incomplete until registry boundaries, lockfile source hosts, and artifact integrity are checked together.
+
+### Python Index Review
+
+Flag pip configurations that use `--extra-index-url` or `extra-index-url` for private packages unless there is compensating evidence that internal names cannot fall back to public PyPI. pip's own documentation warns that `--extra-index-url` is unsafe for private packages because a public package with the same name can be chosen.
+
+Evidence to collect:
+
+- `requirements*.txt`, `pip.conf`, `pip.ini`, `pyproject.toml`, and CI install commands that set `index-url`, `extra-index-url`, or `--extra-index-url`.
+- Internal package names and whether they are reserved, scoped by naming policy, or served only through a single trusted proxy registry.
+- Whether public fallback is disabled for private namespaces and whether hashes are pinned with `--require-hashes` where feasible.
+
+### npm Registry and Lockfile Review
+
+For npm projects, verify both registry configuration and lockfile source integrity:
+
+- Private scopes such as `@company/*` should have explicit `.npmrc` mappings like `@company:registry=https://npm.company.example/`.
+- `package-lock.json` entries should have `resolved` hosts that match the expected registry for private packages.
+- Lockfile entries should include `integrity` metadata. Missing integrity, unexpected tarball hosts, or private packages resolved from `registry.npmjs.org` are dependency confusion indicators.
+- Global `registry=` settings are not enough for mixed public/private projects unless the global registry is a trusted proxy that enforces namespace policy.
+
+### Finding Criteria
+
+Report a dependency confusion or source-integrity finding when any of the following are true:
+
+1. pip uses `--extra-index-url` for private dependencies without a single trusted proxy or name-reservation evidence.
+2. `.npmrc` lacks a scope-to-registry mapping for private scoped packages.
+3. Lockfile `resolved` hosts do not match the expected private registry for internal packages.
+4. Lockfile entries omit `integrity` metadata for ecosystems where integrity is expected.
+5. CI install commands bypass reviewed registry configuration.
+
+### Evidence Output Fields
+
+Include these fields for private registry findings:
+
+| Field | Example |
+|---|---|
+| Package | `@company/auth` |
+| Ecosystem | npm |
+| Expected source | `https://npm.company.example/` |
+| Observed source | `https://registry.npmjs.org/` |
+| Lockfile integrity present | `no` |
+| Registry config evidence | `.npmrc` missing `@company:registry` |
+| Decision | `Fail - public fallback for private package` |
+
+### Remediation
+
+- Use a single trusted proxy registry that mediates public and private packages, or configure explicit private namespace routing.
+- Avoid pip `--extra-index-url` for private packages; prefer a private index or proxy that controls public fallback.
+- Commit lockfiles and review `resolved` hosts plus `integrity` fields in CI.
+- Reserve internal package names on public registries where possible and document deny/allow lists for public fallback.
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -212,6 +266,8 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Private registry fallback risk (`--extra-index-url`, missing scope registry, or mixed registry policy)
+- [ ] Lockfile source-integrity drift (unexpected `resolved` host or missing `integrity`)
 
 ### Recommendations
 
@@ -226,8 +282,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Private registry and source-integrity review**: Inspect `.npmrc`, pip index settings, CI install commands, and lockfile `resolved`/`integrity` metadata for private package fallback or source drift.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +308,6 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [pip install documentation - extra-index-url warning](https://pip.pypa.io/en/stable/cli/pip_install/)
+- [npm package-lock JSON - resolved and integrity](https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/)
+- [npm scopes and registry association](https://docs.npmjs.com/cli/v7/using-npm/scope)
