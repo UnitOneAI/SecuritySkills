@@ -208,6 +208,65 @@ Assess:
 - Are suppliers inventoried and prioritized by criticality?
 - Do contracts include cybersecurity requirements?
 - Are suppliers included in incident response planning?
+- Are critical suppliers evaluated for concentration risk, substitutability, switching time, and tested failover?
+- Are fourth-party and subprocessor dependencies mapped for suppliers that handle critical services or sensitive data?
+- Are supplier exit/offboarding controls evidenced beyond contract termination?
+- Are supplier incident contacts and evidence-sharing expectations tested, not only contractually stated?
+
+##### Supplier Concentration and Substitutability Evidence
+
+For critical suppliers and externally provided services identified in GV.OC-05, GV.SC-04, and ID.AM-04, record whether the organization can continue the critical service if that supplier fails, is compromised, materially changes terms, or is terminated.
+
+```
+| Supplier | Critical service | Sole-source? | Alternate provider | Switching time | Tested failover? | Portability evidence | Residual impact |
+|----------|------------------|--------------|--------------------|----------------|------------------|----------------------|-----------------|
+| identity_saas_a | Workforce SSO | Yes | None | Unknown | No | Not evidenced | Enterprise login outage |
+```
+
+Evidence to request:
+- Supplier/service owner and business owner.
+- Criticality basis and service dependency.
+- Contractual data portability or export rights.
+- Alternate provider or manual workaround.
+- Last tested failover, migration rehearsal, or tabletop date.
+- Residual impact if no substitute exists.
+
+Mark the field `not_evaluable_supplier_owner_unavailable` when ownership or dependency evidence is outside the assessment scope.
+
+##### Fourth-Party and Subprocessor Chain Evidence
+
+For SaaS, managed service, cloud, AI, support, monitoring, payment, DNS, identity, and code-signing suppliers, map material fourth parties and subprocessors.
+
+```
+| Direct supplier | Fourth party / subprocessor | Service or data handled | Region / residency | Change notice | Evidence source | Monitoring owner |
+|-----------------|-----------------------------|-------------------------|--------------------|---------------|-----------------|------------------|
+| support_saas | AI summarization provider | Ticket text and customer PII | US/EU mixed | 30-day notice | DPA annex | Legal + SecOps |
+```
+
+Flag `not_evaluable_fourth_party_list_missing` when a direct supplier is critical but no subprocessor/fourth-party evidence is available.
+
+##### Supplier Incident Participation Evidence
+
+GV.SC-08 should distinguish contract clauses from exercised operational participation. Record:
+- Named supplier incident contact and escalation path.
+- Contractual notice window and emergency support SLA.
+- Evidence package expected from supplier (timeline, affected services, IOCs, data impact, remediation proof).
+- Last joint tabletop, notification drill, or support escalation test.
+- Internal runbook dependency on supplier status pages, APIs, or recovery commitments.
+
+Flag `not_evaluable_supplier_incident_contact_missing` when the organization cannot identify who to contact during a supplier incident.
+
+##### Supplier Exit and Offboarding Evidence
+
+GV.SC-10 should include technical exit controls, not only legal closure. For terminated or high-criticality suppliers, verify:
+- SSO/SAML/OIDC app disabled.
+- SCIM, API tokens, webhook secrets, SSH/VPN accounts, and service accounts revoked or rotated.
+- Shared collaboration channels, support portals, and admin users removed.
+- Vendor-hosted DNS records, CNAMEs, callback URLs, OAuth apps, and marketplace integrations removed or transferred.
+- Data export, data return, deletion certificate, retention exception, and backup/support-artifact coverage recorded.
+- Replacement supplier or internal owner confirmed before decommissioning.
+
+Flag `not_evaluable_exit_evidence_missing` when contract end is documented but technical access/data offboarding cannot be proven.
 
 ---
 
@@ -378,6 +437,23 @@ For each subcategory where Current < Target:
 - Estimate effort, cost, and timeline
 - Assign ownership
 - Map to informative references (specific controls from ISO 27001, NIST SP 800-53, CIS Controls, etc.)
+- For GV.SC and supplier-dependent ID/RS/RC subcategories, record concentration risk, fourth-party evidence, supplier incident readiness, and exit/offboarding evidence status.
+
+```
+| Supplier evidence field | Status | Evidence | Gap | Owner | Not-evaluable reason |
+|-------------------------|--------|----------|-----|-------|----------------------|
+| Concentration/substitutability | Pass/Fail/Partial/NE | [source] | [gap] | [owner] | [reason] |
+| Fourth-party/subprocessor chain | Pass/Fail/Partial/NE | [source] | [gap] | [owner] | [reason] |
+| Supplier incident participation | Pass/Fail/Partial/NE | [source] | [gap] | [owner] | [reason] |
+| Supplier exit/offboarding | Pass/Fail/Partial/NE | [source] | [gap] | [owner] | [reason] |
+```
+
+Use these reason codes when evidence cannot be evaluated:
+- `not_evaluable_supplier_owner_unavailable`
+- `not_evaluable_fourth_party_list_missing`
+- `not_evaluable_exit_evidence_missing`
+- `not_evaluable_failover_test_missing`
+- `not_evaluable_supplier_incident_contact_missing`
 
 ---
 
@@ -432,6 +508,8 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 - Applicable regulations and standards: [list]
 - Key stakeholders and expectations: [summary]
 - Critical services and dependencies: [summary]
+- Supplier concentration / substitutability summary: [summary]
+- Fourth-party and subprocessor evidence summary: [summary]
 
 ## Tier Assessment
 - **Current Tier**: [Tier N — Name]
@@ -458,6 +536,15 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 |-------------|-------------|---------|--------|-----|----------|-----------------|
 | GV.OC-01 | Organizational mission informs CSRM | [0-4] | [0-4] | [delta] | [H/M/L] | [refs] |
 | ... | ... | ... | ... | ... | ... | ... |
+
+#### C-SCRM Evidence Detail
+
+| Evidence gate | Related CSF subcategories | Status | Evidence source | Gap / risk | Owner | Not-evaluable reason |
+|---------------|---------------------------|--------|-----------------|------------|-------|----------------------|
+| Supplier concentration and substitutability | GV.OC-05, GV.SC-04, ID.AM-04 | Pass/Fail/Partial/NE | [source] | [risk] | [owner] | [reason] |
+| Fourth-party / subprocessor chain | GV.SC-07, GV.SC-09 | Pass/Fail/Partial/NE | [source] | [risk] | [owner] | [reason] |
+| Supplier incident participation | GV.SC-08, RS.MA-01, RC.RP-02 | Pass/Fail/Partial/NE | [source] | [risk] | [owner] | [reason] |
+| Supplier exit and offboarding | GV.SC-10, PR.AA-05, ID.AM-08 | Pass/Fail/Partial/NE | [source] | [risk] | [owner] | [reason] |
 
 ### IDENTIFY (ID)
 [same table format]
@@ -576,6 +663,8 @@ Tier 4 — Adaptive
 
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
 
+5. **Treating supplier inventory and contract clauses as complete C-SCRM evidence.** A supplier can be known, categorized, and contractually governed while still being a single point of failure. GV.SC evidence should also prove fourth-party visibility, tested substitutability, supplier incident coordination, and technical exit/offboarding controls such as identity revocation, token rotation, DNS cleanup, data export, and deletion/retention coverage.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -596,6 +685,8 @@ If user-supplied input contains NIST CSF subcategory IDs that do not exist in th
 
 - NIST Cybersecurity Framework 2.0 (February 26, 2024) — NIST CSWP 29
 - NIST CSF 2.0 Quick Start Guides (Small Business, Enterprise Risk Management, C-SCRM)
+- NIST SP 1305 -- NIST Cybersecurity Framework 2.0: Quick-Start Guide for Cybersecurity Supply Chain Risk Management (C-SCRM)
+- NIST SP 800-161 Rev. 1 -- Cybersecurity Supply Chain Risk Management Practices for Systems and Organizations
 - NIST CSF 2.0 Reference Tool (csf.tools or NIST website)
 - NIST SP 800-53 Rev. 5 — Security and Privacy Controls for Information Systems and Organizations
 - NIST SP 800-181 Rev. 1 — Workforce Framework for Cybersecurity (NICE Framework)
