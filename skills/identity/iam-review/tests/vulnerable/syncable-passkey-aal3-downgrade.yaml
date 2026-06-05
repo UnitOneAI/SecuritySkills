@@ -1,0 +1,25 @@
+# Vulnerable fixture: the policy claims AAL3 but allows syncable passkeys and
+# email/SMS recovery paths that downgrade the effective assurance level.
+policy: privileged-admin-aal3
+claimed_aal: AAL3
+authentication:
+  password:
+    minimum_length: 12
+    blocklist_screening: true
+    use_context: mfa_factor_only
+  mfa:
+    enforced: true
+    allowed_methods:
+      - syncable_platform_passkey
+      - sms_otp
+    phishing_resistant_required: false
+    hardware_protected_required: false
+  recovery:
+    allowed_methods:
+      - email_otp
+      - helpdesk_reset_to_password_sms
+    reauthentication_after_recovery: false
+expected_findings:
+  - IAM-AUTH-06
+  - IAM-AUTH-11
+  - IAM-AUTH-12

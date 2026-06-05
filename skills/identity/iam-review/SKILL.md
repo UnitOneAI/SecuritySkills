@@ -1,7 +1,7 @@
 ---
 name: iam-review
 description: >
-  Reviews identity and access management configurations against NIST SP 800-63B,
+  Reviews identity and access management configurations against NIST SP 800-63B-4,
   NIST SP 800-207 zero trust principles, and CIS Controls v8. Auto-invoked when
   reviewing IAM policies, role definitions, user provisioning workflows, or when
   asked to assess identity security posture. Produces findings on least privilege
@@ -10,10 +10,10 @@ description: >
 tags: [identity, iam, access-control, zero-trust]
 role: [security-engineer, cloud-security-engineer, vciso]
 phase: [design, operate]
-frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
+frameworks: [NIST-SP-800-63B-4, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # IAM Review — Identity & Access Management Security Assessment
 
-> **Grounded in:** NIST SP 800-63B (Digital Identity Guidelines: Authentication and Lifecycle Management), NIST SP 800-207 (Zero Trust Architecture), CIS Controls v8 (Controls 5 and 6)
+> **Grounded in:** NIST SP 800-63B-4 (Digital Identity Guidelines: Authentication and Authenticator Management), NIST SP 800-207 (Zero Trust Architecture), CIS Controls v8 (Controls 5 and 6)
 
 ---
 
@@ -63,7 +63,7 @@ SECURITY BOUNDARY — This skill processes IAM configuration data only.
 
 | Framework | Relevant Controls | Focus |
 |---|---|---|
-| **NIST SP 800-63B** | AAL1, AAL2, AAL3 | Authenticator assurance levels, MFA requirements, credential lifecycle |
+| **NIST SP 800-63B-4** | AAL1, AAL2, AAL3 | Authenticator assurance levels, MFA requirements, authenticator lifecycle |
 | **NIST SP 800-207** | Tenets 1-7 | Zero trust principles: verify explicitly, least privilege, assume breach |
 | **CIS Controls v8 — Control 5** | 5.1, 5.2, 5.3, 5.4, 5.5, 5.6 | Account Management: inventory, disable unused, restrict admin, enforce MFA |
 | **CIS Controls v8 — Control 6** | 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8 | Access Control Management: authorization, least privilege, centralized management |
@@ -109,18 +109,18 @@ IAM-INV-05: Break-glass / emergency accounts not documented
 
 ### Step 2: Authentication Review
 
-**Objective:** Assess authentication strength against NIST SP 800-63B authenticator assurance levels.
+**Objective:** Assess authentication strength against NIST SP 800-63B-4 authenticator assurance levels.
 
-**NIST SP 800-63B Reference:** Authenticator Assurance Levels (AAL)
+**NIST SP 800-63B-4 Reference:** Authenticator Assurance Levels (AAL)
 **CIS Controls v8 Reference:** Control 5.2 — Use Unique Passwords; Control 5.5 — Establish and Maintain an Inventory of Service Accounts
 
-#### NIST SP 800-63B Assurance Levels
+#### NIST SP 800-63B-4 Assurance Levels
 
 | Level | Description | Authenticator Requirements | Appropriate For |
 |---|---|---|---|
 | **AAL1** | Some assurance of claimant identity | Single factor (password) | Low-risk, public-facing apps |
-| **AAL2** | High confidence in claimant identity | Two different authentication factors | Standard enterprise, sensitive data |
-| **AAL3** | Very high confidence in claimant identity | Hardware-based authenticator + verifier impersonation resistance | Critical systems, admin access, regulated data |
+| **AAL2** | High confidence in claimant identity | Two different authentication factors; phishing resistance is recommended and often required by local policy | Standard enterprise, sensitive data |
+| **AAL3** | Very high confidence in claimant identity | Non-exportable cryptographic authenticator with phishing resistance and verifier impersonation resistance | Critical systems, admin access, regulated data |
 
 #### Review Checklist
 
@@ -129,20 +129,38 @@ IAM-INV-05: Break-glass / emergency accounts not documented
 ```
 IAM-AUTH-01: MFA not enforced for all human users (CIS 5.4)
 IAM-AUTH-02: MFA not enforced for privileged / admin accounts
-IAM-AUTH-03: SMS-based MFA in use (vulnerable to SIM swap; does not meet AAL2 phishing-resistant)
-IAM-AUTH-04: No phishing-resistant authenticators deployed (FIDO2/WebAuthn for AAL3)
+IAM-AUTH-03: SMS/voice MFA accepted for privileged access without stronger compensating controls
+IAM-AUTH-04: No phishing-resistant authenticator option deployed for users requiring higher assurance
 IAM-AUTH-05: MFA bypass mechanisms exist without compensating controls
-IAM-AUTH-06: Recovery flows bypass MFA (password reset without second factor)
+IAM-AUTH-06: Recovery, helpdesk reset, remembered-device, or re-enrollment flows downgrade the claimed AAL
+IAM-AUTH-11: Admin/high-risk policies allow weaker fallback methods despite passkey/FIDO2 rollout
+IAM-AUTH-12: Syncable passkeys are treated as AAL3 or hardware-bound authenticators
 ```
 
 **Password Policy:**
 
 ```
-IAM-AUTH-07: Password length below 14 characters for privileged accounts
-IAM-AUTH-08: No breached password screening (NIST SP 800-63B Section 5.1.1.2)
+IAM-AUTH-07A: Single-factor password minimum below 15 characters
+IAM-AUTH-07B: Password used only as part of MFA below 8 characters
+IAM-AUTH-08: No blocklist screening for commonly used, expected, or compromised passwords
 IAM-AUTH-09: Forced periodic rotation without compromise trigger (NIST discourages arbitrary rotation)
-IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-63B Section 5.1.1.1)
+IAM-AUTH-10: Composition rules used instead of length-based policy
 ```
+
+**Authenticator assurance evidence:**
+
+| Evidence Field | Why It Matters |
+|---|---|
+| Authenticator method | Separates password, OTP, push, passkey, FIDO2/WebAuthn, certificate, and hardware token evidence |
+| Factor type | Confirms whether two different factors are actually present for AAL2 |
+| Phishing-resistant | Distinguishes FIDO2/WebAuthn or certificate-based authentication from SMS, OTP, and push-only MFA |
+| Syncable | Syncable passkeys can be strong phishing-resistant MFA, but their exportable private keys cannot support AAL3 |
+| Hardware-protected / non-exportable | Required evidence for AAL3 claims |
+| Allowed for admin/high-risk access | Shows whether conditional access accepts weaker fallback methods |
+| Recovery and re-enrollment path | Identifies account recovery flows that can downgrade the effective assurance level |
+| Observed sign-in evidence | Verifies policy intent against actual authentication method use |
+| Evidence date/source | Keeps authenticator reports tied to a specific policy export, IdP log, or assessment date |
+| Legacy baseline justification | Required if the assessment intentionally uses pre-800-63B-4 guidance |
 
 **Platform-specific checks:**
 
@@ -151,8 +169,15 @@ IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-
 | **AWS** | IAM Credential Report (`aws iam generate-credential-report`) | Users without MFA, unused credentials, access key age |
 | **AWS** | Account-level MFA on root account | Root without hardware MFA is critical severity |
 | **Azure / Entra ID** | Conditional Access policies, Security Defaults | MFA gaps in conditional access, legacy auth protocols allowed |
-| **Azure / Entra ID** | Authentication methods policy | Phishing-resistant methods (FIDO2, Windows Hello) adoption rate |
+| **Azure / Entra ID** | Authentication methods policy and sign-in authentication details | Phishing-resistant methods (FIDO2, Windows Hello), weaker fallback methods, syncable passkey usage |
 | **GCP** | Organization Policy constraints, 2-Step Verification enforcement | MFA not enforced at org level, allowed authentication methods |
+
+**AAL interpretation notes:**
+
+- Do not treat "MFA enabled" as equivalent to phishing resistance. SMS, voice, OTP, and push can satisfy some MFA policies, but they are not phishing-resistant by themselves.
+- For AAL3 claims, require evidence of a non-exportable private key and phishing-resistant cryptographic protocol. Syncable authenticators are exportable by design and must not be counted as AAL3.
+- For password findings, record whether the password is the sole authentication factor or only one factor in an MFA flow. NIST SP 800-63B-4 sets different minimums for those two cases.
+- Recovery codes, helpdesk resets, device re-enrollment, email OTP, and remembered-device exceptions can reduce the effective assurance level even when the primary sign-in flow is strong.
 
 ---
 
@@ -377,7 +402,8 @@ For each finding, produce a row with:
 | **Finding ID** | Unique identifier (e.g., IAM-AUTH-01) |
 | **Title** | Brief description of the finding |
 | **Severity** | Critical / High / Medium / Low |
-| **Framework Ref** | NIST SP 800-63B section, NIST SP 800-207 tenet, or CIS Control ID |
+| **Framework Ref** | NIST SP 800-63B-4 section, NIST SP 800-207 tenet, or CIS Control ID |
+| **Framework Version / Source Date** | Publication revision and evidence source date used for the finding |
 | **Affected Scope** | Accounts, roles, policies, or platforms impacted |
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
 | **Remediation** | Prioritized fix with implementation guidance |
@@ -391,6 +417,7 @@ For each finding, produce a row with:
 ### Scope
 - Environment(s) reviewed: [AWS/Azure/GCP/Hybrid]
 - Identity provider(s): [Entra ID, Okta, AWS IAM Identity Center, etc.]
+- Framework baseline: [NIST SP 800-63B-4 current baseline | legacy baseline with justification]
 - Date of assessment: [YYYY-MM-DD]
 - Assessor: [Agent/Analyst]
 
@@ -417,8 +444,11 @@ For each finding, produce a row with:
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
 
+### Authentication Assurance Evidence
+[Authenticator evidence table with method, factor type, phishing resistance, syncable status, hardware/non-exportable status, admin/high-risk allowance, recovery path, observed sign-in evidence, and evidence date/source]
+
 ### Framework Compliance Mapping
-[Map findings to NIST SP 800-63B, NIST SP 800-207, and CIS Controls v8 requirements]
+[Map findings to NIST SP 800-63B-4, NIST SP 800-207, and CIS Controls v8 requirements]
 ```
 
 ---
@@ -489,18 +519,25 @@ This skill processes user-supplied content including IAM policies, access config
 
 ---
 
-## Appendix: NIST SP 800-63B Quick Reference
+## Appendix: NIST SP 800-63B-4 Quick Reference
 
 | Section | Topic | Key Requirement |
 |---|---|---|
-| **4.1** | Authenticator Assurance Level 1 | Single factor; permits passwords meeting length/breach-check requirements |
-| **4.2** | Authenticator Assurance Level 2 | Two different factors; phishing resistance recommended |
-| **4.3** | Authenticator Assurance Level 3 | Hardware-based; verifier impersonation resistance required |
-| **5.1.1** | Memorized Secrets (Passwords) | Minimum 8 chars (14+ recommended), breached-password check, no composition rules |
-| **5.1.3** | Out-of-Band Authenticators | Pre-registered device; PSTN (SMS/voice) restricted use |
-| **5.1.4** | Single-Factor OTP Device | Something you have; time-based or event-based |
-| **5.1.7** | Multi-Factor Crypto Device | Hardware token; meets AAL3 requirements |
-| **5.2.3** | Reauthentication | AAL2 requires reauth every 12 hours or 30 minutes idle; AAL3 every 12 hours or 15 minutes idle |
+| **2** | Authenticator Assurance Levels | Select AAL based on risk and document the claimed assurance level |
+| **3.1.1** | Password Authenticators | Passwords are not phishing-resistant; screen blocklisted values; no composition rules |
+| **3.1.1.2** | Password Verifiers | Single-factor passwords require at least 15 characters; passwords used only in MFA require at least 8 characters |
+| **3.1.7 / 3.2.5** | Multi-factor cryptographic authenticators / phishing resistance | Cryptographic authenticators can provide verifier impersonation resistance when correctly enforced |
+| **4.2** | AAL2 | Two authentication factors; evaluate whether phishing-resistant options are available and enforced where required |
+| **4.3** | AAL3 | Requires a phishing-resistant cryptographic authenticator with a non-exportable private key |
+| **Appendix B** | Syncable Authenticators | Syncable authenticators are exportable and must not be counted as AAL3 authenticators |
+| **5.2** | Reauthentication | Reauthentication intervals and recovery flows must preserve the claimed AAL |
+
+## References
+
+- NIST SP 800-63B-4 final publication: https://csrc.nist.gov/pubs/sp/800/63/b/4/final
+- NIST SP 800-63B-4 authenticators: https://pages.nist.gov/800-63-4/sp800-63b/authenticators/
+- NIST SP 800-63B-4 authentication assurance levels: https://pages.nist.gov/800-63-4/sp800-63b/aal/
+- NIST SP 800-63B-4 syncable authenticators: https://pages.nist.gov/800-63-4/sp800-63b/syncable/
 
 ---
 
@@ -508,4 +545,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-03 | Refresh authenticator evidence to NIST SP 800-63B-4, including password minimum split, phishing-resistant MFA evidence, syncable passkey/AAL3 handling, recovery downgrade checks, and revision-aware output |
 | 1.0.0 | 2025-03-06 | Initial release |
