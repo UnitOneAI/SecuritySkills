@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -101,9 +101,19 @@ Use Glob to locate all relevant configuration files.
 **/*-rbac.yaml
 **/*-psp.yaml
 **/*-podsecuritypolicy.yaml
+**/*ephemeralcontainer*.yaml
+**/*debug*.yaml
 ```
 
 Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, and supporting configs. Record all discovered files.
+
+For Kubernetes workloads, inventory every container array separately:
+
+- `spec.containers`
+- `spec.initContainers`
+- `spec.ephemeralContainers`
+
+Treat `ephemeralContainers` as a security-relevant debug surface even though they are usually added through the `pods/ephemeralcontainers` subresource rather than declared in the original workload manifest. If debug-container evidence is unavailable, mark ephemeral-container coverage as **Not Evaluable** instead of assuming the workload is Restricted-compliant.
 
 ---
 
@@ -174,16 +184,17 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
 - **Container:** <container name>
+- **Container type:** regular / init / ephemeral
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
 - **Remediation:** <fix with code example>
 
 ### Pod Security Standards Compliance Matrix
 
-| Workload | Namespace | PSS Level | Violations |
-|----------|-----------|-----------|------------|
-| deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
-| deploy/worker | production | Privileged | privileged: true |
+| Workload | Namespace | PSS Level | Regular Containers | Init Containers | Ephemeral Containers | Violations |
+|----------|-----------|-----------|--------------------|-----------------|----------------------|------------|
+| deploy/app | production | Baseline (not Restricted) | Reviewed | Reviewed | Not Evaluable | runAsRoot, no seccomp |
+| pod/debug-target | production | Privileged | Reviewed | None | Reviewed | ephemeral container privileged: true |
 
 ### Prioritized Remediation Plan
 
@@ -246,17 +257,20 @@ Produce the final report using the structure defined in the Output Format sectio
 | runAsNonRoot | -- | Must be true |
 | seccompProfile | -- | RuntimeDefault or Localhost |
 
+Apply the container-level controls to `containers`, `initContainers`, and `ephemeralContainers`. A Restricted workload is not fully evaluated unless all three container arrays are checked or explicitly marked absent / Not Evaluable.
+
 ---
 
 ## Common Pitfalls
 
-1. **Init containers and sidecar containers are often missed.** Pod Security Standards apply to ALL containers in a pod, including init containers and ephemeral containers. Check every container spec.
+1. **Init, sidecar, and ephemeral containers are often missed.** Pod Security Standards apply to ALL containers in a pod, including init containers and ephemeral containers. Check every container spec and record whether debug/ephemeral-container evidence was available.
 2. **Helm template values may override security settings.** A Helm chart template may set `runAsNonRoot: true`, but `values.yaml` or environment-specific values files may override it to `false`. Always check both the templates and all values files.
 3. **Default namespace is not just a naming issue.** The `default` namespace typically has no NetworkPolicy and no Pod Security Admission labels. Workloads in `default` often bypass all policy controls.
 4. **Base64 encoding is not encryption.** Kubernetes Secrets store data as base64, which is trivially decodable. Secrets committed to version control in manifests are effectively plaintext.
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
-7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+7. **Distroless images have no shell.** While this is excellent for security, note that debugging often uses ephemeral containers (`kubectl debug`). Flag the need for debug workflow evidence, not the distroless image itself.
+8. **Debug containers can bypass the reviewed deployment manifest.** A workload manifest may be Restricted-compliant while an operator later injects a privileged ephemeral container into a running pod. Ask for admission-policy coverage of the `pods/ephemeralcontainers` subresource, RBAC on `pods/ephemeralcontainers`, and audit events for debug-container creation.
 
 ---
 
@@ -294,3 +308,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
+- **1.1.0** -- Added explicit ephemeral/debug container evidence requirements for Pod Security Standards review, including container inventory, report fields, and debug subresource coverage.

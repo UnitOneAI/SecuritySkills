@@ -264,6 +264,14 @@ Evaluate workload configurations against Kubernetes Pod Security Standards. The 
 | **Baseline** | Minimally restrictive. Prevents known privilege escalations. | Standard workloads |
 | **Restricted** | Heavily restricted. Follows current hardening best practices. | Security-sensitive and untrusted workloads |
 
+**Container inventory gate:** For every Pod template or Pod object, review all three container arrays:
+
+- `spec.containers`
+- `spec.initContainers`
+- `spec.ephemeralContainers`
+
+Container-level Pod Security Standards controls apply to all three. A manifest that hardens only `containers` but misses `initContainers` or `ephemeralContainers` is incomplete. If ephemeral containers are managed only at runtime through the `pods/ephemeralcontainers` subresource, collect RBAC, admission-policy, and audit-log evidence for that subresource or mark the check **Not Evaluable**.
+
 #### CIS 5.2.1 -- Ensure that the cluster has at least one active policy control mechanism installed
 
 Check for Pod Security Admission labels on namespaces:
@@ -331,6 +339,8 @@ spec:
 ```
 
 **Grep pattern:** Check for absence of `allowPrivilegeEscalation: false` on all containers.
+
+Apply this to `containers[*]`, `initContainers[*]`, and `ephemeralContainers[*]`.
 
 #### CIS 5.2.7 -- Minimize the admission of root containers
 
@@ -404,6 +414,65 @@ volumes:
 ports:
   - containerPort: 8080
     hostPort: 8080  # FAIL: binds directly to host
+```
+
+#### Ephemeral/debug container evidence gate
+
+Ephemeral containers are temporary containers added to an existing Pod for debugging. They are usually created via `kubectl debug` and the `pods/ephemeralcontainers` subresource, so they may not appear in the original Deployment, StatefulSet, DaemonSet, Job, or CronJob manifest.
+
+**Missed vulnerable pattern:**
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkout-api
+spec:
+  containers:
+    - name: app
+      image: registry.example.com/checkout-api@sha256:...
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+  ephemeralContainers:
+    - name: node-debug
+      image: busybox:1.36
+      targetContainerName: app
+      securityContext:
+        privileged: true
+        runAsUser: 0
+        allowPrivilegeEscalation: true
+        capabilities:
+          add: ["SYS_ADMIN"]
+```
+
+The regular container is Restricted-like, but the debug container violates the same PSS controls. Report this as a privileged ephemeral container, not as a clean workload.
+
+**Evidence to request when ephemeral containers are not present in manifests:**
+
+| Evidence | What to verify |
+|---|---|
+| RBAC for `pods/ephemeralcontainers` | Only authorized break-fix roles can create/update ephemeral containers |
+| Admission policy | Pod Security Admission, Kyverno, Gatekeeper, or equivalent evaluates the `ephemeralcontainers` subresource |
+| Audit events | `update` or `patch` calls to `pods/ephemeralcontainers` are logged with user, namespace, pod, image, target container, and security context |
+| Debug image policy | Debug images are pinned, approved, and scanned; no arbitrary image pull for production debug |
+| Runtime controls | Privileged, host namespace, hostPath, extra capabilities, non-default procMount, and root user are rejected or explicitly exception-approved |
+
+**Review checks:**
+
+```
+PSS-EPHEMERAL-01: `ephemeralContainers[*].securityContext.privileged` is not true
+PSS-EPHEMERAL-02: `ephemeralContainers[*].securityContext.allowPrivilegeEscalation` is false for Restricted workloads
+PSS-EPHEMERAL-03: `ephemeralContainers[*].securityContext.capabilities.drop` includes ALL and added capabilities are limited
+PSS-EPHEMERAL-04: `ephemeralContainers[*].securityContext.runAsNonRoot` is true or `runAsUser` is non-root
+PSS-EPHEMERAL-05: `ephemeralContainers[*].securityContext.seccompProfile.type` is RuntimeDefault or Localhost
+PSS-EPHEMERAL-06: RBAC restricts create/update on `pods/ephemeralcontainers`
+PSS-EPHEMERAL-07: Admission policy covers the `pods/ephemeralcontainers` subresource, not only normal pod create/update
+PSS-EPHEMERAL-08: Debug-container creation is audited and alertable in production namespaces
 ```
 
 ### CIS 5.3 -- Network Policies and CNI
@@ -648,7 +717,7 @@ securityContext:
 
 ## Comprehensive Security Context Evaluation
 
-For each workload (Deployment, StatefulSet, DaemonSet, Job, CronJob), evaluate the complete security context against the Restricted Pod Security Standard.
+For each workload (Deployment, StatefulSet, DaemonSet, Job, CronJob) and for standalone Pod objects, evaluate the complete security context against the Restricted Pod Security Standard. Include `containers`, `initContainers`, and `ephemeralContainers`.
 
 **Restricted PSS Requirements Checklist:**
 
@@ -690,3 +759,5 @@ spec:
 - Capabilities beyond the allowed set (only `NET_BIND_SERVICE` is permitted)
 - `procMount` other than `Default`
 - `appArmorProfile` of `unconfined`
+
+Container-level fields must be checked under `containers[*]`, `initContainers[*]`, and `ephemeralContainers[*]`. Report `ephemeralContainers: Not Evaluable` when runtime debug-container evidence is unavailable.
