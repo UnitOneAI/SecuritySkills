@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -89,11 +89,29 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 
 ---
 
+### Source Integrity Gate for Research References
+
+Before using recent research papers as named evidence for agent-risk categories, verify the source identity. arXiv papers can be revised, title shorthand can drift from the actual source title, and research sources are supporting evidence rather than normative control IDs.
+
+For each research-backed claim used in a finding or architecture report, record:
+
+| Field | Required Evidence |
+|---|---|
+| Source ID | arXiv ID, DOI, or stable official URL resolves successfully |
+| Exact title | Title matches the source metadata, or shorthand is explicitly marked as a descriptive label |
+| Source role | `primary-framework`, `supporting-evidence`, `concept-label`, or `not-cited` |
+| Status | `verified`, `title-mismatch`, `unresolved`, or `supporting-only` |
+| Date checked | Date the source metadata was verified |
+
+If a source is unresolved or title-mismatched, do not cite it as primary evidence in customer-facing findings until corrected. Use official OWASP/NIST sources for control mappings; use arXiv papers as supporting research evidence unless the report explicitly states otherwise.
+
+---
+
 ## Process
 
 ### Tri-Layered Risk Assessment Lens (FASA Framework)
 
-When assessing agent architectures, evaluate risks across three interdependent layers derived from the FASA tri-layered risk taxonomy (ArXiv 2603.13151):
+When assessing agent architectures, evaluate risks across three interdependent layers derived from the FASA tri-layered risk taxonomy described in arXiv:2603.12644 ("Uncovering Security Threats and Architecting Defenses in Autonomous Agents: A Case Study of OpenClaw"):
 
 | Layer | Scope | Example Risks |
 |---|---|---|
@@ -583,7 +601,7 @@ Glob: **/security_architecture*
 8. LangChain Arbitrary Code Execution -- CVE-2023-29374
 9. OWASP Application Security Verification Standard (ASVS), V14: Configuration -- https://owasp.org/www-project-application-security-verification-standard/
 10. Leike, J. et al. "Scalable Agent Alignment via Reward Modeling: a Research Direction" (2018) -- arXiv:1811.07871 -- foundational work on agent alignment and oversight mechanisms
-11. FASA Tri-Layered Risk Taxonomy for AI Agent Systems (2026) -- arXiv:2603.13151
-12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
-13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
+11. "Defensible Design for OpenClaw: Securing Autonomous Tool-Invoking Agents" (2026) -- arXiv:2603.13151 -- supporting source for OpenClaw defensive design patterns; verified 2026-06-05 -- https://arxiv.org/abs/2603.13151
+12. "Uncovering Security Threats and Architecting Defenses in Autonomous Agents: A Case Study of OpenClaw" (2026) -- arXiv:2603.12644 -- FASA tri-layered taxonomy, sequential tool attack chains, and context amnesia; verified 2026-06-05 -- https://arxiv.org/abs/2603.12644
+13. "Security Considerations for Artificial Intelligence Agents" (2026) -- arXiv:2603.12230 -- confused-deputy behavior, cascading failures, layered defenses, and NIST-aligned security gaps; verified 2026-06-05 -- https://arxiv.org/abs/2603.12230
 14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
