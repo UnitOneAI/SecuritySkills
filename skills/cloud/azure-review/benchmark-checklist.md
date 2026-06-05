@@ -781,9 +781,13 @@ Record these fields for each Key Vault-backed secret:
 | Secret version | pinned version, latest version, or not evaluable |
 | Vault controls | purge protection, RBAC authorization, private endpoint/logging where available |
 
-Flag findings when the identity is missing, the vault access is broader than needed, the URI is not a Key Vault reference for production secrets, or the secret version/rotation evidence is not documented.
+Flag `AZ-ACA-02` when the runtime identity is missing, the vault access is broader than needed, or the URI is not a Key Vault reference for production secrets.
 
-### AZ-ACA-03 -- Verify env, volume, and scale-rule secret references resolve to controlled secrets
+### AZ-ACA-03 -- Record Key Vault secret version and rotation evidence
+
+Flag `AZ-ACA-03` when a production Container Apps Key Vault reference uses the latest secret version without documented rotation, rollback, change-control, or deployment-revision evidence. Treat an unpinned secret version as an evidence item rather than an automatic high-severity failure when rotation and rollback controls are documented.
+
+### AZ-ACA-04 -- Verify env, volume, and scale-rule secret references resolve to controlled secrets
 
 Environment variables and scale rules can safely reference Container Apps secrets, but the referenced secret must exist and be backed by the appropriate source:
 
@@ -807,9 +811,9 @@ template {
 }
 ```
 
-Do not flag an environment variable solely because its name contains `KEY`, `TOKEN`, or `SECRET`. Flag it when `secret_name`, `secretRef`, volume secret, or scale-rule secret references a missing secret, a direct production value, or a secret whose Key Vault identity/access evidence is missing.
+Do not flag an environment variable solely because its name contains `KEY`, `TOKEN`, or `SECRET`. Flag `AZ-ACA-04` when `secret_name`, `secretRef`, volume secret, or scale-rule secret references a missing secret, a direct production value, or a secret whose Key Vault identity/access evidence is missing.
 
-### AZ-ACA-04 -- Review external Container Apps ingress and insecure transport separately from VM/NSG exposure
+### AZ-ACA-05 and AZ-ACA-06 -- Review external Container Apps ingress and insecure transport separately from VM/NSG exposure
 
 Container Apps can expose HTTP endpoints without a VM public IP or obvious NSG rule. Review `ingress` and Container Apps Environment evidence:
 
@@ -834,7 +838,7 @@ For each external endpoint, collect:
 | Workload context | public API, admin API, webhook, internal service, health endpoint |
 | Data classification | public, internal, confidential, regulated, unknown |
 
-`external_enabled = true` is not automatically a finding for a public API. Assign severity based on authentication, authorization, transport security, private endpoint/internal environment design, allowed origins, and workload/data classification.
+`external_enabled = true` is not automatically a finding for a public API. Flag `AZ-ACA-05` when external ingress lacks authentication, authorization, private endpoint/internal environment, or data-classification evidence. Flag `AZ-ACA-06` when insecure connections are allowed or HTTPS-only enforcement evidence is missing. Assign severity based on authentication, authorization, transport security, private endpoint/internal environment design, allowed origins, and workload/data classification.
 
 ### AZ-WIF-01 -- Verify federated identity credential issuer, audience, and subject precision
 
