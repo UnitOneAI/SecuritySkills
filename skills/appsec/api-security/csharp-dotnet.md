@@ -1042,6 +1042,179 @@ public class Query
 
 ---
 
+
+## SignalR Hub Security in .NET
+
+SignalR hubs are API surfaces. Review them separately from ordinary REST controllers because browser clients may negotiate with cookies or bearer tokens, WebSocket origin checks differ from CORS, hub authorization can be connection-level instead of method- or group-level, and long-lived connections can outlive role or tenant changes.
+
+### SignalR Discovery and Inventory
+
+Record each hub before deciding severity:
+
+- Hub route from `app.MapHub<T>("/path")` and whether it is browser-accessible or service-to-service only.
+- Hub class, base type (`Hub` or `Hub<T>`), and `[Authorize]` / policy attributes at hub and method level.
+- CORS policy, allowed origins, credential mode, and whether WebSocket origin validation is enforced by the hosting layer or reverse proxy.
+- Methods that accept tenant, account, channel, group, room, or command parameters.
+- Token transport mode, especially `access_token` query extraction for WebSockets or Server-Sent Events.
+- Buffer limits, `EnableDetailedErrors`, reconnect/revalidation behavior, and per-connection abuse controls.
+
+### SignalR Origin and Credential Flow -- Vulnerable
+
+```csharp
+// VULNERABLE: credentialed browser clients are accepted from arbitrary origins.
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyHeader()
+            .AllowAnyMethod()
+            .SetIsOriginAllowed(_ => true)
+            .AllowCredentials();
+    });
+});
+
+app.MapHub<AccountHub>("/accountHub");
+
+[Authorize]
+public class AccountHub : Hub
+{
+    public Task SubscribeAccount(Guid accountId)
+        => Groups.AddToGroupAsync(Context.ConnectionId, $"account:{accountId}");
+}
+```
+
+### SignalR Origin and Credential Flow -- Secure
+
+```csharp
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("SignalRPolicy", policy =>
+    {
+        policy.WithOrigins("https://app.example.com")
+            .WithMethods("GET", "POST")
+            .AllowCredentials();
+    });
+});
+
+app.MapHub<AccountHub>("/accountHub", options =>
+{
+    options.ApplicationMaxBufferSize = 16 * 1024;
+    options.TransportMaxBufferSize = 16 * 1024;
+}).RequireCors("SignalRPolicy")
+  .RequireAuthorization("AccountUser");
+```
+
+For browser-exposed hubs, do not score a hub as critical merely because `MapHub` exists. Require evidence that the origin policy is broad, credentialed, missing on the hub endpoint, or mismatched with the reverse proxy's WebSocket origin enforcement.
+
+### SignalR Method and Group Authorization -- Vulnerable
+
+```csharp
+[Authorize]
+public class SupportHub : Hub
+{
+    // VULNERABLE: any authenticated caller can select an arbitrary tenant group.
+    public Task JoinTenant(string tenantId)
+        => Groups.AddToGroupAsync(Context.ConnectionId, $"tenant:{tenantId}");
+
+    // VULNERABLE: connection-level auth does not prove command authorization.
+    public Task SendAdminCommand(string tenantId, string command)
+        => Clients.Group($"tenant:{tenantId}").SendAsync("AdminCommand", command);
+}
+```
+
+### SignalR Method and Group Authorization -- Secure
+
+```csharp
+[Authorize]
+public class SupportHub : Hub
+{
+    private readonly IAuthorizationService _authorization;
+    private readonly ITenantMembershipService _memberships;
+
+    public async Task JoinTenant(string tenantId)
+    {
+        if (!await _memberships.UserCanJoinTenant(Context.User!, tenantId))
+            throw new HubException("Tenant access denied");
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"tenant:{tenantId}");
+    }
+
+    [Authorize(Policy = "TenantAdmin")]
+    public async Task SendAdminCommand(string tenantId, string command)
+    {
+        var allowed = await _authorization.AuthorizeAsync(
+            Context.User!, tenantId, "TenantAdminCommand");
+        if (!allowed.Succeeded) throw new HubException("Command denied");
+
+        await Clients.Group($"tenant:{tenantId}").SendAsync("AdminCommand", command);
+    }
+}
+```
+
+Hub-level `[Authorize]` is sufficient only when the hub exposes low-sensitivity, user-private notifications or server-assigned groups and does not accept client-selected tenant, account, role, command, channel, or group identifiers. Otherwise require method-level policies or explicit resource checks.
+
+### SignalR Access Tokens in Query Strings
+
+ASP.NET Core SignalR browser clients may send bearer tokens in the `access_token` query parameter for WebSockets and Server-Sent Events. Treat this as a documented exception, not an automatic finding. It becomes a finding when extraction is not restricted to known hub paths, HTTPS is not required, tokens are long-lived, or request URL logging is not redacted.
+
+```csharp
+builder.Services.AddAuthentication()
+    .AddJwtBearer(options =>
+    {
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var path = context.HttpContext.Request.Path;
+                var accessToken = context.Request.Query["access_token"];
+
+                if (!StringValues.IsNullOrEmpty(accessToken)
+                    && path.StartsWithSegments("/accountHub")
+                    && context.Request.IsHttps)
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+    });
+```
+
+Review logging middleware, reverse proxies, APM agents, and access logs for query-string redaction on SignalR hub paths.
+
+### SignalR Resource and Error Controls
+
+```csharp
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = false;
+    options.MaximumReceiveMessageSize = 32 * 1024;
+});
+
+app.MapHub<ImportHub>("/importHub", options =>
+{
+    options.ApplicationMaxBufferSize = 32 * 1024;
+    options.TransportMaxBufferSize = 32 * 1024;
+});
+```
+
+Flag `EnableDetailedErrors = true`, `MaximumReceiveMessageSize = null`, zero/unbounded buffer sizes, missing per-user/per-connection quotas, or hub methods that accept bulk import payloads without server-side limits.
+
+### SignalR Review Checklist -- .NET
+
+- [ ] `MapHub<...>` routes, hub classes, and hub methods are inventoried separately from REST endpoints.
+- [ ] Browser-exposed hubs have an explicit trusted-origin policy and credential mode; WebSocket origin enforcement is documented where CORS is insufficient.
+- [ ] Hub endpoint mapping uses `.RequireAuthorization(...)` or the hub class/methods have `[Authorize]` with the expected policy.
+- [ ] Client-selected tenant/account/group/channel identifiers are checked with resource-based authorization before `Groups.AddToGroupAsync` or `Clients.Group` use.
+- [ ] Privileged hub methods use method-level policies or explicit `IAuthorizationService` checks, not only connection-level authentication.
+- [ ] `access_token` query extraction is restricted to known hub paths, requires HTTPS, uses short-lived tokens, and is paired with query-string log redaction.
+- [ ] `EnableDetailedErrors` is disabled in production and hub exceptions do not expose sensitive state.
+- [ ] `MaximumReceiveMessageSize`, `ApplicationMaxBufferSize`, `TransportMaxBufferSize`, and per-connection quotas are explicitly bounded.
+- [ ] Long-lived connections are disconnected or revalidated after role, tenant, account status, or token-revocation changes.
+
+---
+
 ## gRPC Security in .NET
 
 ### mTLS Configuration
@@ -1206,6 +1379,28 @@ IncludeExceptionDetails\s*=\s*true
 EnableDetailedErrors\s*=\s*true
 ```
 
+
+### SignalR Hubs
+
+```
+# Hub route and class discovery
+MapHub<
+class\s+\w+\s*:\s*Hub
+class\s+\w+\s*:\s*Hub<
+# Client-selected groups/channels and broad broadcasts
+Groups\.AddToGroupAsync
+Clients\.Group\(
+Clients\.All
+# Query-token transport and logging review
+access_token
+OnMessageReceived\s*=\s*context\s*=>
+# Resource and error controls
+EnableDetailedErrors\s*=\s*true
+MaximumReceiveMessageSize\s*=\s*null
+ApplicationMaxBufferSize\s*=\s*0
+TransportMaxBufferSize\s*=\s*0
+```
+
 ### Unsafe Upstream Consumption
 
 ```
@@ -1237,6 +1432,8 @@ MapPost\(.*password.*\)(?![\s\S]*?RequireRateLimiting)
 - [CWE-770: Allocation of Resources Without Limits or Throttling](https://cwe.mitre.org/data/definitions/770.html)
 - [CWE-918: Server-Side Request Forgery](https://cwe.mitre.org/data/definitions/918.html)
 - [CWE-942: Permissive Cross-domain Policy with Untrusted Domains](https://cwe.mitre.org/data/definitions/942.html)
+- [ASP.NET Core SignalR security considerations](https://learn.microsoft.com/en-us/aspnet/core/signalr/security)
+- [ASP.NET Core SignalR authentication and authorization](https://learn.microsoft.com/en-us/aspnet/core/signalr/authn-and-authz)
 - [CWE-295: Improper Certificate Validation](https://cwe.mitre.org/data/definitions/295.html)
 - [Microsoft ASP.NET Core Security Documentation](https://learn.microsoft.com/en-us/aspnet/core/security/)
 - [Microsoft Rate Limiting Middleware](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)
