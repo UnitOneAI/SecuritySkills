@@ -138,43 +138,87 @@ Configure or optimize scan policies to balance detection coverage, accuracy, and
 | **Time-based exclusions** | Systems that cannot be scanned during business hours | Scan scheduling adjustment (see Step 6) |
 | **Credential exclusions** | Systems where credentialed scanning is not permitted by policy | Documented reason; accept reduced detection accuracy |
 
-### Step 3: Authenticated vs. Unauthenticated Scanning
+### Step 3: Scanner Modality and Credential Confidence
 
-Evaluate and configure credential-based (authenticated) scanning for improved accuracy.
+Evaluate scanner modality, credential type, and authentication/API permission success before making confidence claims. "Authenticated" does not mean the same thing across host scanners, container scanners, SCA tools, CSPM platforms, DAST tools, and agent-based products.
 
 **Framework mapping:** CIS Controls v8 (Control 7: Continuous Vulnerability Management)
 
-#### Comparison Matrix
+#### Scanner Modality Matrix
 
-| Attribute | Unauthenticated (Remote) | Authenticated (Credentialed) |
-|---|---|---|
-| **Detection accuracy** | Low-Medium (60-70% of vulnerabilities) | High (90-95% of vulnerabilities) |
-| **False positive rate** | Higher (relies on banners, remote probes) | Lower (validates installed versions directly) |
-| **Detection scope** | Network-exposed services and configurations only | Installed packages, local configurations, file permissions, registry entries |
-| **Credential management** | None required | Requires credential vault integration (CyberArk, HashiCorp Vault, scanner-native vault) |
-| **Performance impact** | Lower (fewer checks) | Higher (more thorough checks per host) |
-| **Risk** | Low (non-invasive) | Medium (credential exposure, elevated access) |
-| **Compliance** | Insufficient for most compliance mandates (PCI, HIPAA, DISA STIG) | Required for PCI internal scanning, DISA STIG compliance |
+| Scanner Modality | Credential / Access Model | Confidence Evidence | Common False Confidence |
+|---|---|---|---|
+| External attacker-view network scan | No credentials by design | Confirms externally observable exposure, open services, TLS posture, and perimeter reachability | Treating lack of host credentials as a tuning failure when attacker-view is the objective |
+| Internal host vulnerability scan | OS credentials, local agent, or authenticated package inventory | Credential success rate, package manager evidence, local check success, asset coverage | "Authenticated" policy configured but authentication failed on material asset groups |
+| Network device / appliance scan | SNMPv3, SSH, API, or vendor integration | Device family coverage, read-only command success, firmware/config retrieval evidence | Banner-only checks used where API/CLI evidence is required |
+| Container image scan | Registry/artifact access by digest or image tag | Image digest, SBOM/package enumeration, base-layer attribution | Applying host credential assumptions to image/SCA findings |
+| SCA / dependency scan | Source repository, lockfile, SBOM, or package registry access | Manifest/lockfile coverage, transitive dependency resolution, ecosystem support | Treating source-only coverage as deployed runtime coverage |
+| CSPM / cloud posture scan | Read-only cloud API role across org/account/project/subscription | API permission success, org/folder/project/account scope, denied API calls | Missing child accounts/projects because the scanner role lacks scope |
+| DAST / API scan | HTTP session, API token, browser auth, OpenAPI/GraphQL schema | Auth/session validity, endpoint coverage, destructive-action exclusions | Calling an API scan "unauthenticated" when API tokens are configured, or over-trusting a login that expires mid-scan |
+| IaC scan | Repository access to Terraform/CloudFormation/Bicep/Pulumi | File discovery, module resolution, variable context, plan/state evidence where available | Treating static IaC findings as proof of deployed exposure |
+| Agent-based scan | Installed agent with local inventory | Agent check-in freshness, policy version, last inventory timestamp | Stale agents producing outdated vulnerability status |
 
-#### Credential Configuration Best Practices
+#### Credential / Permission Configuration Best Practices
 
 1. **Use service accounts:** Dedicated scan service accounts with least-privilege access (read-only where possible, local admin/root only when required for patch-level detection)
 2. **Rotate credentials:** Scan credentials should follow the same rotation policy as other service accounts
 3. **Vault integration:** Store scan credentials in an enterprise secret management solution, not in the scanner's local credential store
 4. **Per-platform credentials:** Maintain separate credentials for Windows (local admin or domain account), Linux/Unix (root or sudo-enabled account), network devices (read-only SNMP community/SSH), databases (read-only DB account), and VMware/cloud APIs
-5. **Credential verification:** Run a credential verification scan before full scan to confirm authentication success across all targets
+5. **Credential verification:** Run a credential verification scan before full scan to confirm authentication or API permission success across all targets
+6. **Scope verification:** For cloud, container, SCA, DAST, and IaC scanners, verify that the scanner can see the intended org/accounts/projects/registries/repos/endpoints/modules, not just that a token exists
+7. **Freshness verification:** For agent-based and SBOM-driven scans, verify last check-in, last inventory time, image digest, SBOM generation time, and deployed-version mapping
 
 ```
-Authentication Configuration:
-- Scan Type:           [Authenticated | Unauthenticated | Mixed]
-- Credential Source:   [Scanner-native | CyberArk | HashiCorp Vault | Other]
-- Windows Auth:        [Domain account: DOMAIN\svc-scan | Local admin | N/A]
-- Linux Auth:          [SSH key (preferred) | SSH password with sudo | root | N/A]
-- Network Devices:     [SNMPv3 (preferred) | SNMPv2c | SSH read-only | N/A]
-- Database Auth:       [Read-only DB account | N/A]
-- Cloud/API Auth:      [API key with read-only role | N/A]
-- Credential Rotation: [Every N days]
-- Last Verification:   [YYYY-MM-DD, success rate: [N]%]
+Scanner Access Confidence:
+- Scanner Modality:         [External network | Host credentialed | Container image | SCA | CSPM | DAST/API | IaC | Agent]
+- Assessment Objective:     [Attacker-view exposure | Patch verification | Dependency inventory | Cloud posture | Runtime app testing]
+- Credential / Access Type: [None by design | OS login | SNMP/SSH | API role | Registry token | Repo token | Browser/API session | Agent]
+- Intended Scope:           [Asset groups, accounts, projects, registries, repos, endpoints]
+- Successful Coverage:      [N/N assets or % by platform/scope]
+- Failed / Denied Scope:    [Assets/accounts/projects/endpoints not reached]
+- Verification Evidence:    [Credential test, API permission check, package inventory, image digest, endpoint crawl, agent check-in]
+- Last Verification:        [YYYY-MM-DD]
+- Confidence:               [High | Medium | Low | Not applicable]
+```
+
+#### Credential Confidence Rules
+
+1. **Do not use fixed universal accuracy percentages.** Authenticated host scans are generally more reliable than banner-only scans for patch status, but accuracy varies by scanner, plugin family, credential success, platform, and asset type.
+2. **Do not penalize unauthenticated scans when attacker-view is the purpose.** External perimeter and internet-exposure scans are intentionally unauthenticated; their confidence comes from reachability evidence, not local package inventory.
+3. **Treat "configured credentials" as unproven until success is measured.** A scan policy with credentials is only credentialed for assets where login/API permission checks succeeded.
+4. **Distinguish credential failure from false positives.** A banner-based finding caused by failed authentication should be tracked as low-confidence or needs-authenticated-rescan, not immediately suppressed.
+5. **Use modality-specific evidence.** Container/SCA/CSPM/DAST/IaC tools need artifact, API, session, module, or crawl coverage evidence rather than host OS credential evidence.
+
+**False-positive fixture: credentialed policy with failed authentication**
+
+```yaml
+scanner_report:
+  policy_name: weekly-authenticated-host-scan
+  credentialed_policy_configured: true
+  windows_auth_success: 52%
+  linux_auth_success: 94%
+  finding:
+    plugin: outdated_openssl_banner
+    asset_group: windows_servers
+    evidence: remote_banner_only
+expected_tuning_outcome:
+  disposition: low_confidence_needs_rescan
+  action: fix Windows credential failures before suppressing or accepting the finding
+```
+
+**Benign fixture: unauthenticated external scan is intentional**
+
+```yaml
+scanner_report:
+  modality: external_attacker_view_network_scan
+  credentialed_policy_configured: false
+  finding:
+    service: rdp
+    exposure: 0.0.0.0/0
+    port: 3389
+expected_tuning_outcome:
+  disposition: true_positive_external_exposure
+  note: lack of host credentials is not a weakness because the scan objective is attacker-view reachability
 ```
 
 ### Step 4: Severity Override Criteria
