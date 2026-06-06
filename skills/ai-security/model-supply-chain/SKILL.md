@@ -133,6 +133,58 @@ Glob: **/config.json
 
 ---
 
+### Step 1A -- Model Promotion Evidence
+
+Verify that the model artifact approved after evaluation is the exact artifact deployed to each environment. Treat provenance, evaluation, and approval as incomplete unless they are bound to immutable model identity.
+
+**What to look for in code and configuration:**
+
+- Deployment manifests that reference mutable model aliases such as `latest`, `main`, `prod`, `current`, unversioned bucket paths, or Hugging Face default revisions.
+- Evaluation reports that identify only the model family or repository name, not the exact commit SHA, object version, checksum, or model registry version.
+- Approval tickets that approve a model name without binding the model digest, model card version, evaluation run ID, vulnerability scan result, and backdoor test result.
+- Rollback procedures that point to a previous alias or bucket prefix without verifying checksum, signature, evaluation status, and known issue status.
+- Adapter releases that approve an adapter but do not bind the base model digest and adapter digest together.
+- Separate staging, canary, shadow, and production deployments that do not record which immutable model artifact each environment served.
+
+**Detection methods using allowed tools:**
+
+```
+# Find mutable model references in release and deployment paths
+Grep: "latest|main|current|prod|production|model_uri|model_id|revision" in **/*.{py,yaml,yml,json,toml,md}
+Grep: "from_pretrained|snapshot_download|hf_hub_download" in **/*.py
+Grep: "deploy|promote|approval|release|rollback|canary|shadow" in **/*.{py,sh,yaml,yml,json,md}
+
+# Find identity fields that should be tied together
+Grep: "sha256|digest|checksum|commit|revision|version|run_id|model_card|attestation|signature" in **/*.{py,yaml,yml,json,md}
+```
+
+**Promotion evidence required:**
+
+| Evidence Item | Required Binding |
+|---|---|
+| Model artifact | Immutable digest, commit SHA, object version, or registry version |
+| Evaluation result | Evaluation run ID and metrics tied to the same artifact identity |
+| Model card | Version or commit tied to the same artifact identity |
+| Approval record | Approver, timestamp, scope, environment, and approved artifact identity |
+| Deploy manifest | Environment and runtime image referencing the approved artifact identity |
+| Rollback target | Previously approved artifact identity with verified checksum/signature and evaluation status |
+| Adapter stack | Base model identity plus adapter identity, evaluated and approved as a pair |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Production deploy references mutable model alias with no digest/version binding | High |
+| Evaluation report cannot be tied to deployed artifact identity | High |
+| Approval record names a model family but not the exact artifact identity | High |
+| Rollback target is mutable or lacks checksum/signature verification | Medium |
+| Adapter deployment does not bind base model and adapter identities together | Medium |
+| Canary or shadow deployments omit artifact identity evidence | Low |
+
+**False positive to avoid:** Do not mark a model release path as controlled because it has a model card, evaluation report, or approval ticket. The reviewer must prove those artifacts refer to the exact model digest/revision deployed in the target environment.
+
+---
+
 ### Step 2 -- Training Data Lineage
 
 Assess the provenance, integrity, and governance of data used to train or fine-tune models.
@@ -382,10 +434,16 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|---|---|
 | [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
 
+## Model Promotion Evidence
+
+| Model | Environment | Artifact Identity | Evaluation Run | Model Card Version | Approval Record | Deploy Reference | Rollback Verified | Status |
+|---|---|---|---|---|---|---|---|---|
+| [name] | [staging/prod/etc.] | [digest/revision/version] | [run ID] | [version/commit] | [ticket/approver] | [manifest/model URI] | [Yes/No] | [Pass/Partial/Fail] |
+
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Provenance | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
+- **Category:** [Provenance | Model Promotion | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM03:2025 -- Supply Chain Vulnerabilities
 - **MITRE ATLAS Technique:** [technique ID and name]
@@ -401,6 +459,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Domain | Current State | Target State | Gap Severity |
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
+| Model promotion | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
