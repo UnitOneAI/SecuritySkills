@@ -135,6 +135,21 @@ IAM-AUTH-05: MFA bypass mechanisms exist without compensating controls
 IAM-AUTH-06: Recovery flows bypass MFA (password reset without second factor)
 ```
 
+**Session and token assurance:**
+
+```
+IAM-SESSION-01: Device-code flow allowed without Conditional Access, approved-client, or monitoring controls
+IAM-SESSION-02: Push MFA lacks number matching or additional context for high-risk users
+IAM-SESSION-03: Sign-in risk or user-risk policy is disabled, report-only, or scoped to a narrow subset
+IAM-SESSION-04: Refresh-token revocation after disablement, password reset, or risk change is not tested
+IAM-SESSION-05: CAE enabled in policy but unsupported by key resource applications
+IAM-SESSION-06: Sign-in frequency or token lifetime exceeds business need for privileged sessions
+IAM-SESSION-07: Risky users or risky sign-ins are not reviewed and remediated from audit evidence
+IAM-SESSION-08: Legacy authentication or non-phishing-resistant methods remain available as MFA fallbacks
+```
+
+**Required evidence fields:** `device_code_policy`, `mfa_push_protection`, `risk_policy_mode`, `risk_policy_scope`, `refresh_token_revocation_test`, `cae_resource_coverage`, `sign_in_frequency`, `legacy_auth_status`, and `risky_sign_in_review_evidence`.
+
 **Password Policy:**
 
 ```
@@ -152,7 +167,10 @@ IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-
 | **AWS** | Account-level MFA on root account | Root without hardware MFA is critical severity |
 | **Azure / Entra ID** | Conditional Access policies, Security Defaults | MFA gaps in conditional access, legacy auth protocols allowed |
 | **Azure / Entra ID** | Authentication methods policy | Phishing-resistant methods (FIDO2, Windows Hello) adoption rate |
+| **Azure / Entra ID** | Sign-in logs, audit logs, risky users, CAE-capable apps | Device-code flow results, revoke-sessions events, risk policy enforcement, CAE coverage |
+| **AWS IAM Identity Center** | MFA settings, session duration, CloudTrail sign-in events | MFA method strength, reauthentication interval, token/session revocation evidence |
 | **GCP** | Organization Policy constraints, 2-Step Verification enforcement | MFA not enforced at org level, allowed authentication methods |
+| **Google Workspace / Cloud Identity** | Login challenges, 2-Step Verification reports, token audit logs | Admin phishing-resistant MFA, risky-login response, OAuth token revocation |
 
 ---
 
@@ -353,6 +371,15 @@ IAM-ZT-09: No centralized policy decision point (PDP) — fragmented authorizati
 IAM-ZT-10: Implicit trust for internal service-to-service communication
 ```
 
+**Token/session assurance overlay:**
+
+```
+IAM-ZT-SESSION-01: Device-code flow can mint tokens without compliant-device, approved-client, or risk checks
+IAM-ZT-SESSION-02: Refresh tokens remain valid after account disablement, password reset, or risk escalation
+IAM-ZT-SESSION-03: CAE policy exists but covered applications do not honor revocation events
+IAM-ZT-SESSION-04: Risk policies are report-only, partially scoped, or missing remediation evidence
+```
+
 **Platform-specific checks:**
 
 | Platform | Mechanism | What to verify |
@@ -360,7 +387,8 @@ IAM-ZT-10: Implicit trust for internal service-to-service communication
 | **AWS** | IAM policy conditions (`aws:SourceIp`, `aws:SourceVpc`, `aws:PrincipalTag`), VPC endpoints | Context-based conditions, VPC endpoint policies |
 | **AWS** | AWS Verified Access | Device trust integration, continuous verification |
 | **Azure / Entra ID** | Conditional Access policies, Compliant device requirement | Risk-based policies, device compliance as grant control |
-| **Azure / Entra ID** | Continuous Access Evaluation (CAE) | Token revocation on critical events (near real-time) |
+| **Azure / Entra ID** | Device-code flow controls, risky users, sign-in logs, audit logs | Device-code restrictions, number matching, risk policy mode/scope, revoke-sessions event evidence |
+| **Azure / Entra ID** | Continuous Access Evaluation (CAE) | Token revocation on critical events and proof that covered resource apps honor CAE |
 | **GCP** | BeyondCorp Enterprise, Access Context Manager | Access levels based on device, IP, user attributes |
 | **GCP** | IAM Conditions, VPC Service Controls | Context-aware IAM bindings, service perimeter enforcement |
 
@@ -382,6 +410,17 @@ For each finding, produce a row with:
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
+
+For authentication and zero-trust findings, include session evidence where applicable:
+
+| Evidence Field | Description |
+|---|---|
+| **device_code_policy** | Whether device-code flow is blocked, restricted to approved clients, or monitored with compensating controls |
+| **mfa_push_protection** | Number matching, additional context, phishing-resistant method coverage, and fallback method restrictions |
+| **risk_policy_mode** | Enforced, report-only, disabled, or partially scoped sign-in/user-risk policy state |
+| **refresh_token_revocation_test** | Evidence that disablement, password reset, risk change, or session revoke invalidates refresh tokens |
+| **cae_resource_coverage** | Resource applications that honor CAE/revocation events and exceptions that do not |
+| **risky_sign_in_review_evidence** | Audit trail showing risky users/sign-ins were reviewed, remediated, or accepted with justification |
 
 ### Summary Report Structure
 
@@ -431,6 +470,8 @@ For each finding, produce a row with:
 | **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, no stale account process |
 | **P2 — Important** | 31-90 days | No phishing-resistant MFA, incomplete identity inventory, no access review cadence |
 | **P3 — Planned** | 91-180 days | Zero trust maturity gaps, device trust integration, continuous access evaluation |
+
+Session assurance escalation examples: token replay after account disablement is P0, device-code phishing that issues attacker tokens is P1, missing number matching/additional context is P2, and partial CAE resource coverage is P3 unless privileged or regulated resources are affected.
 
 ---
 
