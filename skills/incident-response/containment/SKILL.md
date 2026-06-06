@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -224,6 +224,42 @@ After implementing containment, verify effectiveness before proceeding to eradic
 
 If containment fails, escalate to full network isolation and engage external incident response support.
 
+### Step 5b: Containment Action Authorization and Execution Ledger
+
+Containment actions are high-risk operational changes. Record authorization, execution grouping, validation ownership, and rollback proof before marking an action complete.
+
+**What to look for:**
+
+```
+CONT-AUTH-01: Containment action has no incident commander or business owner approval
+CONT-AUTH-02: Action owner, executor, validation owner, or rollback owner is missing
+CONT-AUTH-03: Containment was executed one action at a time when simultaneous execution was required to avoid tipping off the attacker
+CONT-AUTH-04: Blast radius and business-service dependency impact were not documented
+CONT-AUTH-05: Validation result is missing or based only on change-ticket closure
+CONT-AUTH-06: Rollback criteria exist but rollback test/proof is missing
+CONT-AUTH-07: Action status is marked complete while evidence preservation, legal, or privacy gate is Not Evaluable
+CONT-AUTH-08: Temporary containment control has no expiry, review owner, or conversion path to permanent control
+```
+
+**Containment Action Ledger:**
+
+| Field | Required Evidence |
+|---|---|
+| Action group | Coordinated batch name, wave, or single-action reason |
+| Target and scope | System, identity, network, SaaS tenant, cloud resource, or segment |
+| Approval | Incident commander, business owner, legal/privacy if needed, timestamp |
+| Business impact | Service dependency, user/customer impact, SLA or regulatory impact |
+| Evidence gate | Volatile evidence captured, intentionally deferred, or Not Evaluable reason |
+| Executor | Named team or role performing the change |
+| Execution window | Planned time, actual time, and whether actions were simultaneous |
+| Validation owner | Named team or role proving attacker capability stopped |
+| Validation method | Logs, EDR, network flow, authentication failure, sinkhole telemetry, health check |
+| Rollback owner | Named team or role authorized to modify or remove the control |
+| Rollback proof | Tested rollback, staged rollback plan, or reason rollback is unsafe |
+| Expiry / review | Expiry timestamp, next review, or permanent-control conversion path |
+
+Do not treat a change ticket as validation. A firewall rule, account disablement, DNS sinkhole, or token revocation is complete only after the specific attacker capability it was meant to block has stopped and business impact is understood.
+
 ### Step 6: Rollback Criteria
 
 Define conditions under which containment actions should be rolled back or modified:
@@ -234,6 +270,14 @@ Define conditions under which containment actions should be rolled back or modif
 | Forensic investigation requires attacker communication to continue (controlled observation) | Relax network blocks under monitored conditions with legal approval | Incident Commander + Legal + CISO |
 | Containment action was applied to wrong scope (false positive) | Remove containment controls from unaffected systems | Incident Commander |
 | Eradication complete and validated | Phase out containment controls in stages with monitoring | Incident Commander + Security Team |
+
+**Rollback validation evidence:**
+
+- Rollback does not restore the attack path that containment blocked.
+- Temporary controls have expiry, monitoring, and owner review.
+- Business service health checks pass after rollback or staged relaxation.
+- Detection coverage remains in place for the original ATT&CK technique.
+- Any permanent control conversion has an owner and due date.
 
 ---
 
@@ -294,6 +338,11 @@ threat severity and business criticality, and expected impact on operations.]
 |---|---|---|
 | [Validation item] | [Pass/Fail/Pending] | [timestamp] |
 
+### Containment Action Authorization Ledger
+| Action Group | Target / Scope | Approval | Business Impact | Evidence Gate | Executor | Execution Window | Validation Owner | Validation Method | Rollback Owner | Rollback Proof | Expiry / Review |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| [wave/name] | [system/account/network] | [approver + timestamp] | [impact] | [captured/deferred/Not Evaluable] | [team] | [planned/actual] | [team] | [proof] | [team] | [tested/plan/unsafe] | [timestamp/path] |
+
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
 
@@ -347,6 +396,14 @@ Disconnecting a business-critical production system from the network stops the a
 ### Pitfall 4: Not Validating Containment Effectiveness
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
+
+### Pitfall 5: Confusing Change Completion with Containment Completion
+
+A ticket marked closed, firewall rule pushed, account disabled, or DNS record updated does not prove containment. The plan must record who approved the action, who executed it, who validated it, what attacker capability stopped, what business impact occurred, and how the control will be rolled back or converted to a permanent control.
+
+### Pitfall 6: Executing Coordinated Containment One Step at a Time
+
+Resetting one account or blocking one C2 domain before other containment actions are ready can tip off an attacker with alternate access. For multi-foothold incidents, group related actions into a coordinated execution wave and validate the whole wave.
 
 ---
 
