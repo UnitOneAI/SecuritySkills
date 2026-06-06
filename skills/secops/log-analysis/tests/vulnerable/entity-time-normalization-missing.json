@@ -1,0 +1,23 @@
+[
+  {
+    "source": "windows",
+    "Account": "ACME\\alice",
+    "Computer": "WS-17",
+    "EventID": 4624,
+    "TimeCreated": "2026-06-05T12:00:04Z"
+  },
+  {
+    "source": "azuread",
+    "UserPrincipalName": "alice@acme.example",
+    "DeviceId": "aad-device-123",
+    "TimeGenerated": "2026-06-05T12:00:01Z"
+  },
+  {
+    "source": "edr",
+    "user.name": "alice",
+    "host.hostname": "ws-17.acme.example",
+    "event.created": "2026-06-05T11:54:58Z",
+    "event.ingested": "2026-06-05T12:19:30Z",
+    "clock_skew": "-5m02s"
+  }
+]

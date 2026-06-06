@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -120,6 +120,49 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | Azure Activity Log | Azure | Resource operations -- create, delete, modify at the control plane | Cloud Service (DS0025) |
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
+
+### Step 1.5: Timestamp and Entity Normalization
+
+Before building timelines or pivoting across sources, document how each source's
+time and entity fields are normalized. Do not infer causality from ingestion
+order, raw local timestamps, or unverified parser output.
+
+#### Timestamp Provenance
+
+For each log source, record:
+
+| Evidence field | Required analysis |
+|----------------|-------------------|
+| Canonical event-time field | Field used for event ordering, such as `TimeCreated`, `@timestamp`, `event.created`, `eventTime`, or `TimeGenerated`. |
+| Ingestion/collector-time field | Field showing when the collector or SIEM received the event. |
+| Timezone or offset source | Explicit offset in the event, source configuration, parser rule, or collector metadata used to convert to UTC. |
+| UTC normalization status | Whether event time was converted to UTC with the original offset preserved. |
+| Ingestion lag | Difference between event time and ingestion time; flag material lag before ordering events. |
+| Clock skew / time-sync status | Known NTP/chrony/domain time status or observed skew for the source host/device. |
+| Fallback rule | How to handle sources that only provide ingestion time or local time without offset. |
+
+**Finding classification:** If suspicious activity is confirmed only when events
+are ordered by ingestion time, mark the timeline as **Not Evaluable** until
+event-time ordering is validated. Missing timezone or material clock skew in a
+critical source is a **Medium** visibility gap, or **High** if it changes incident
+scope, first-seen time, or containment decisions.
+
+#### Entity Normalization
+
+For every cross-source pivot, record how identities and hosts are joined:
+
+| Evidence field | Required analysis |
+|----------------|-------------------|
+| Normalized user key | Canonical user identifier, such as UPN, SID, immutable ID, or HR identity ID. |
+| Raw user fields | Source fields joined into the normalized key, such as `DOMAIN\\user`, UPN, email, short name, or cloud principal ID. |
+| Normalized host key | Canonical host/device identifier, such as FQDN, asset ID, EDR device ID, instance ID, or serial number. |
+| Raw host fields | NetBIOS name, FQDN, hostname, device ID, cloud instance ID, IP, or container/pod identity. |
+| Join confidence | High when immutable IDs align, Medium when names align with directory/asset inventory support, Low when only display names or shared IPs align. |
+| Collision / ambiguity | Shared admin accounts, renamed hosts, NAT, DHCP churn, reused hostnames, or multi-tenant SaaS identifiers. |
+
+Do not merge `DOMAIN\\alice`, `alice@example.com`, `alice`, and `aad-device-123`
+into one investigation entity unless the report records the normalization
+evidence and join confidence.
 
 ### Step 2: Critical Windows Event IDs
 
@@ -337,7 +380,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.1.0
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -351,6 +394,11 @@ Produce log analysis findings in this structure:
 | Systems | [Hostnames, IPs, or network segments] |
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
+
+### Timestamp and Entity Normalization
+| Source | Canonical Event Time | Ingested At | Timezone / Offset Evidence | Ingestion Lag | Clock Skew / Sync | Normalized User Key | Normalized Host Key | Entity Join Confidence |
+|--------|----------------------|-------------|----------------------------|---------------|-------------------|---------------------|---------------------|------------------------|
+| [source] | [field] | [field] | [UTC offset / parser / source config] | [duration] | [status] | [UPN/SID/etc.] | [FQDN/asset ID/etc.] | [High/Medium/Low/Not Evaluable] |
 
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
@@ -370,15 +418,19 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Event Time (UTC) | Ingested At (UTC) | Source | Normalized Entity | Event | ATT&CK Technique | Source Clock Confidence | Entity Join Confidence | Assessment |
+|------------------|-------------------|--------|-------------------|-------|-------------------|-------------------------|------------------------|------------|
+| [HH:MM:SS] | [HH:MM:SS] | [Source] | [user/host key] | [Description] | [T-ID] | [High/Medium/Low] | [High/Medium/Low] | [Suspicious / Benign / Confirmed malicious / Not Evaluable] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
 
 ### Visibility Gaps
 [Log sources that were not available but would have provided relevant data]
+
+Include timestamp and entity normalization gaps here, such as missing source
+timezone, material ingestion lag, unknown clock skew, parser ambiguity, or
+low-confidence user/host joins.
 
 ### Recommendations
 - [ ] [Action 1]
@@ -451,6 +503,15 @@ A single Event ID can have very different meanings depending on the context. Eve
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
+### Pitfall 6: Treating Ingestion Order or Raw Local Time as Attack Order
+
+SIEM ingestion time, collector time, local device time, and event creation time
+can differ by seconds, minutes, or hours. Backlog replay, offline endpoints,
+cloud audit delivery delays, timezone parsing errors, and clock skew can invert
+the apparent attack sequence. Normalize event time to UTC, preserve the original
+offset, record ingestion lag, and document clock confidence before making
+second-level causality claims.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -467,7 +528,7 @@ This skill processes user-supplied content that may include raw log data, event 
 
 ## 9. References
 
-1. **NIST SP 800-92 -- Guide to Computer Security Log Management** -- https://csrc.nist.gov/publications/detail/sp/800-92/final
+1. **NIST SP 800-92 -- Guide to Computer Security Log Management** -- https://www.nist.gov/publications/guide-computer-security-log-management
 2. **MITRE ATT&CK Enterprise Matrix v16** -- https://attack.mitre.org/matrices/enterprise/
 3. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 4. **Windows Security Event Log Reference** -- https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview
@@ -478,3 +539,10 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+
+---
+
+## 10. Changelog
+
+- **1.1.0** -- Added timestamp provenance, UTC normalization, ingestion-lag, clock-skew, and entity-normalization evidence gates for timeline and cross-source correlation.
+- **1.0.0** -- Initial release. Structured log-source taxonomy, anomaly patterns, baseline guidance, correlation workflow, and ATT&CK/NIST SP 800-92 references.

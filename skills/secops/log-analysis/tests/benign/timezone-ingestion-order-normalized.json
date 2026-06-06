@@ -1,0 +1,17 @@
+[
+  {
+    "source": "vpn",
+    "event_time": "2026-06-05T09:59:58-07:00",
+    "ingested_at": "2026-06-05T17:00:07Z",
+    "user": "admin@example.com",
+    "event": "vpn_login"
+  },
+  {
+    "source": "windows-security",
+    "event_time": "2026-06-05T17:00:02Z",
+    "ingested_at": "2026-06-05T17:00:04Z",
+    "user": "ACME\\admin",
+    "event_id": 4672,
+    "event": "special_privilege_logon"
+  }
+]
