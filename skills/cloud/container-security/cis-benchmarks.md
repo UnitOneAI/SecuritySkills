@@ -264,6 +264,16 @@ Evaluate workload configurations against Kubernetes Pod Security Standards. The 
 | **Baseline** | Minimally restrictive. Prevents known privilege escalations. | Standard workloads |
 | **Restricted** | Heavily restricted. Follows current hardening best practices. | Security-sensitive and untrusted workloads |
 
+**Container coverage requirement:** Apply every Pod Security Standards check to:
+
+- `spec.containers[*]`
+- `spec.initContainers[*]`
+- `spec.ephemeralContainers[*]`
+
+If only workload manifests are available and runtime ephemeral-container
+evidence is missing, mark ephemeral debug container coverage as **Not
+Evaluable** rather than passing the workload.
+
 #### CIS 5.2.1 -- Ensure that the cluster has at least one active policy control mechanism installed
 
 Check for Pod Security Admission labels on namespaces:
@@ -294,6 +304,15 @@ spec:
 ```
 
 **Grep pattern:** `privileged: true`
+
+Also check `ephemeralContainers`:
+
+```yaml
+ephemeralContainers:
+  - name: debug
+    securityContext:
+      privileged: true  # CRITICAL/HIGH FAIL
+```
 
 #### CIS 5.2.3 -- Minimize the admission of containers wishing to share the host process ID namespace
 
@@ -331,6 +350,8 @@ spec:
 ```
 
 **Grep pattern:** Check for absence of `allowPrivilegeEscalation: false` on all containers.
+
+Include `spec.ephemeralContainers[*].securityContext.allowPrivilegeEscalation`.
 
 #### CIS 5.2.7 -- Minimize the admission of root containers
 
@@ -377,6 +398,33 @@ securityContext:
   capabilities:
     drop: ["ALL"]
     add: ["NET_BIND_SERVICE"]  # Only if needed for ports < 1024
+```
+
+Ephemeral debug containers must not add broad capabilities such as `SYS_ADMIN`,
+`SYS_PTRACE`, or `NET_ADMIN` unless a documented breakglass exception, admission
+approval, and audit trail exist.
+
+### CIS 5.2 Debug Container Evidence Gate
+
+Review ephemeral containers and runtime debug paths:
+
+| Evidence | Pass condition |
+|----------|----------------|
+| Static manifests | `spec.ephemeralContainers` absent or Restricted-compliant when present. |
+| RBAC | `pods/ephemeralcontainers` update/patch rights limited to approved operational roles. |
+| Admission | PSA/Kyverno/Gatekeeper policies cover ephemeral container subresource updates. |
+| Audit | Audit policy logs `pods/ephemeralcontainers` changes with actor, namespace, pod, image, and reason. |
+| Debug images | Images are approved, scanned, and pinned by digest. |
+
+**Grep patterns:**
+
+```
+ephemeralContainers:
+pods/ephemeralcontainers
+kubectl debug
+SYS_ADMIN
+allowPrivilegeEscalation: true
+privileged: true
 ```
 
 #### CIS 5.2.11 -- Minimize the admission of Windows HostProcess containers

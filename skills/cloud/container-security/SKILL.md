@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -120,6 +120,30 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 Produce the final report using the structure defined in the Output Format section.
 
+### Step 8: Ephemeral Debug Container Evidence
+
+Kubernetes Pod Security Standards apply to regular containers, init containers,
+and `spec.ephemeralContainers[*]`. Inventory all three container arrays before
+declaring a workload Baseline or Restricted compliant.
+
+For each workload or live pod, record:
+
+| Evidence field | Required review |
+|----------------|-----------------|
+| Container coverage | `containers`, `initContainers`, and `ephemeralContainers` were all checked. |
+| PSS parity | Ephemeral containers meet the same Restricted controls: no privileged mode, no privilege escalation, drop capabilities, non-root, seccomp, and approved volume use. |
+| Debug image policy | Debug images are approved, pinned by digest, scanned, and pulled from trusted registries. |
+| RBAC subresource | `pods/ephemeralcontainers` create/update/patch permissions are limited to approved breakglass or SRE roles. |
+| Admission coverage | Pod Security Admission, Kyverno, Gatekeeper, or equivalent policies cover the `pods/ephemeralcontainers` subresource. |
+| Audit evidence | Kubernetes audit logs capture updates to `pods/ephemeralcontainers`, including actor, namespace, pod, image, and justification. |
+
+**Finding classification:** Privileged or root ephemeral debug containers in
+production are **Critical** when paired with host namespace, hostPath, or
+dangerous capabilities, otherwise **High**. Missing RBAC/admission/audit evidence
+for runtime debug containers is **Medium**. A Restricted-compliant debug workflow
+with approved pinned images and audited breakglass access can pass with
+documentation.
+
 ---
 
 ## Findings Classification
@@ -163,6 +187,18 @@ Produce the final report using the structure defined in the Output Format sectio
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
+
+### Container Coverage Matrix
+
+| Workload | Namespace | Regular Containers | Init Containers | Ephemeral Containers | Coverage Status |
+|----------|-----------|--------------------|-----------------|----------------------|-----------------|
+| [workload] | [namespace] | [N checked] | [N checked / N/A] | [N checked / runtime evidence / Not Evaluable] | [Complete/Partial] |
+
+### Ephemeral Debug Container Evidence
+
+| Workload / Pod | Namespace | Debug Image | PSS Controls | RBAC Subresource | Admission Coverage | Audit Evidence | Finding |
+|----------------|-----------|-------------|--------------|------------------|--------------------|----------------|---------|
+| [pod] | [namespace] | [image digest] | [Restricted/Baseline/Fail] | [role evidence] | [policy evidence] | [audit event] | [Pass/Finding ID] |
 
 ### Detailed Findings
 
@@ -258,6 +294,16 @@ Produce the final report using the structure defined in the Output Format sectio
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
 
+8. **Reviewing only `containers` and `initContainers`.** Ephemeral containers can
+be added after pod creation through the `pods/ephemeralcontainers` subresource.
+PSS checks, RBAC, admission policy, and audit logging must cover that runtime
+debug path.
+
+9. **Treating all debug workflows as privileged.** A distroless workload may have
+a legitimate debug-container process. The review should require approved pinned
+debug images, Restricted security context, scoped RBAC, admission controls, and
+audit evidence instead of blanket-failing all ephemeral containers.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -283,6 +329,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
+- Kubernetes Ephemeral Containers: https://kubernetes.io/docs/concepts/workloads/pods/ephemeral-containers/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
@@ -293,4 +340,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added ephemeral debug container PSS coverage, RBAC/admission/audit evidence gates, container coverage matrix, and benign/vulnerable debug-container fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
