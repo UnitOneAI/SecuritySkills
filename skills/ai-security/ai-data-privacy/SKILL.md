@@ -3,7 +3,7 @@ name: ai-data-privacy
 description: >
   Reviews AI/ML systems for data privacy and governance risks including training
   data privacy, PII exposure in prompts and completions, data retention policies,
-  model memorization risks, and regulatory compliance. Auto-invoked when reviewing
+  model memorization and membership-inference risks, and regulatory compliance. Auto-invoked when reviewing
   systems that process personal data through LLMs, train or fine-tune models on
   user data, or deploy AI in regulated industries. Produces a structured assessment
   mapped to NIST AI RMF 1.0 and OWASP LLM02:2025 (Sensitive Information Disclosure).
@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Invoke this skill when any of the following conditions are true:
 - Data retention or deletion policies need to be assessed for AI-specific components (vector stores, conversation logs, training datasets, embeddings).
 - The system uses a third-party LLM API where user data is transmitted to the provider.
 - Consent management for AI training data usage is under review.
+- Model, embedding, or retrieval endpoints expose confidence scores, logits, similarity scores, nearest-neighbor IDs, or debug traces derived from personal or sensitive training/index data.
 
 Do NOT invoke this skill for:
 
@@ -81,6 +82,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
 | Data classification scheme | Governance documentation | Defines sensitivity levels applied to AI data flows |
 | Regulatory requirements | Compliance documentation, legal counsel input | Identifies applicable data protection obligations |
+| Model output surfaces and query controls | API handlers, SDK response schemas, rate-limit configs, vector search wrappers | Determines whether attackers can infer training or index membership from scores, labels, repeated queries, or neighbor metadata |
 
 ---
 
@@ -288,7 +290,63 @@ Grep: "dedup|deduplicate|exact_match|near_duplicate|minhash|simhash" in **/*.py
 
 ---
 
-### Step 5 -- EU AI Act Data Governance Requirements
+### Step 5 -- Membership Inference and Privacy Attack Surface
+
+Assess whether model, embedding, and retrieval endpoints leak enough signal for an attacker to infer whether a person, record, document, or chunk was present in training data or an indexed corpus.
+
+**What to look for in code and configuration:**
+
+- Prediction APIs that return logits, calibrated probabilities, confidence scores, top-k class probabilities, entropy-like values, or threshold distances for models trained on personal or sensitive records.
+- Embedding/RAG endpoints that return raw similarity scores, stable document IDs, chunk IDs, nearest-neighbor debug output, or per-record retrieval traces to users who are not authorized to know corpus membership.
+- Label-only endpoints that are assumed safe without residual-risk review, despite overfitting, sensitive training data, repeated adaptive queries, or decision-boundary probing.
+- Debug, explainability, or support endpoints that expose nearest training examples, training-set row IDs, or per-example loss values.
+- Missing query-budget controls for privacy attacks: no authentication, weak rate limits, no bulk-query limits, no perturbation/anomaly detection, or no monitoring for repeated near-duplicate queries.
+- Differential privacy or privacy-preserving training claims that do not include the mechanism, epsilon/delta where applicable, clipping/noise configuration, training population scope, or evaluation evidence.
+
+**Detection methods using allowed tools:**
+
+```
+# Find high-resolution model outputs
+Grep: "predict_proba|logits|confidence|probability|top_k|entropy|margin|score_threshold" in **/*.{py,ts,js}
+Grep: "return.*score|return.*confidence|return.*prob|return.*logit" in **/*.{py,ts,js}
+
+# Find embedding and nearest-neighbor score exposure
+Grep: "similarity_search_with_score|distance|nearest|neighbor|chunk_id|document_id|case_id" in **/*.{py,ts,js}
+Grep: "embedding|vector|retriev|rag" in **/*.{py,ts,js,yaml,yml,json}
+
+# Check query controls and privacy mitigations
+Grep: "rate_limit|quota|throttle|bulk|anomaly|duplicate|perturb" in **/*.{py,ts,js,yaml,yml,json}
+Grep: "differential_privacy|epsilon|delta|dp_sgd|opacus|privacy_budget|membership_inference" in **/*.{py,yaml,yml,json,md}
+```
+
+**Membership inference evidence matrix:**
+
+| Endpoint / Model | Training or Index Data Type | Output Granularity | Query Controls | Privacy Evaluation | Embedding/RAG Exposure | Mitigation Evidence | Outcome |
+|---|---|---|---|---|---|---|---|
+| [name/path] | [personal / aggregate / synthetic / anonymized] | [label / confidence / logits / similarity scores / debug IDs] | [auth, rate limit, anomaly detection] | [MI test / label-only review / Not Applicable / Not Evaluable] | [scores, IDs, neighbor traces] | [DP, dedup, output minimization, cohort thresholds] | [Pass / Finding / N/A] |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Sensitive personal training or index data plus exposed logits, confidence scores, top-k probabilities, raw similarity scores, or nearest-neighbor IDs with no membership-inference evaluation or query controls | High |
+| Debug/explainability endpoint exposes nearest training examples, per-example loss, training row IDs, or document/chunk membership to unauthorized users | High |
+| Label-only endpoint on sensitive data has no residual-risk review, overfitting/generalization evidence, or adaptive-query controls | Medium |
+| Differential privacy or privacy-preserving training is claimed without epsilon/delta, mechanism, population scope, or verifiable run evidence | Medium |
+| Endpoint has output minimization and query controls but lacks documented membership-inference assessment | Low |
+| Synthetic or aggregate non-personal data has no per-person membership relationship and the report documents why membership inference is not applicable | Informational |
+
+**Remediation guidance:**
+
+1. Minimize model outputs: return labels or coarse buckets by default, suppress logits/probabilities/raw similarity scores unless a trusted caller has a documented need, and round or bucket scores where precision is not required.
+2. Protect retrieval metadata: replace stable document/chunk IDs with opaque request-scoped handles, enforce authorization before retrieval, and avoid exposing nearest-training-example or debug traces to untrusted users.
+3. Add query-budget controls: require authentication, per-user rate limits, bulk-query limits, duplicate/perturbation detection, and alerting for adaptive probing behavior.
+4. Require privacy evaluation evidence for sensitive models: membership-inference tests, label-only residual-risk review, overfitting/generalization checks, or a documented Not Applicable rationale for synthetic/non-personal data.
+5. Treat unverified privacy claims as Not Evaluable. Differential privacy evidence should include the mechanism, epsilon/delta where applicable, clipping/noise settings, training population scope, and run identity.
+
+---
+
+### Step 6 -- EU AI Act Data Governance Requirements
 
 Assess compliance with the EU AI Act's data governance requirements for AI systems deployed in or affecting EU residents.
 
@@ -338,7 +396,7 @@ Glob: **/technical_documentation*
 
 ---
 
-### Step 6 -- Consent Management for AI Training Data
+### Step 7 -- Consent Management for AI Training Data
 
 Assess whether consent mechanisms for AI training data usage are implemented, enforceable, and aligned with regulatory requirements.
 
@@ -384,8 +442,8 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 | Severity | Criteria | Response SLA |
 |---|---|---|
 | **Critical** | Personal data processed without legal basis, PHI exposed without HIPAA controls, or regulatory non-compliance with immediate enforcement risk. | Immediate -- halt processing |
-| **High** | Significant privacy risk with clear exposure path: PII in prompts without redaction, missing retention policies on PII-containing stores, or no consent mechanism for training data. | 7 days -- remediate before next release |
-| **Medium** | Moderate privacy gap requiring specific conditions: incomplete documentation, missing memorization testing, or partial consent implementation. | 30 days -- schedule remediation |
+| **High** | Significant privacy risk with clear exposure path: PII in prompts without redaction, missing retention policies on PII-containing stores, exposed high-resolution model/retrieval outputs over sensitive data, or no consent mechanism for training data. | 7 days -- remediate before next release |
+| **Medium** | Moderate privacy gap requiring specific conditions: incomplete documentation, missing memorization or membership-inference testing, label-only endpoint residual risk, or partial consent implementation. | 30 days -- schedule remediation |
 | **Low** | Minor gap with limited direct privacy risk: defense-in-depth recommendations, documentation improvements, or best practice deviations. | 90 days -- track in backlog |
 | **Informational** | Recommendations for improvement with no current privacy risk. | No SLA -- advisory |
 
@@ -411,7 +469,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | Membership Inference | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -431,6 +489,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
+| Membership inference controls | [Yes/Partial/No/N/A] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
 
@@ -450,6 +509,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | NIST AI RMF 1.0 | MANAGE 2.4 | Mechanisms for tracking and responding to AI privacy risks |
 | NIST AI RMF 1.0 | GOVERN 1.1 | Legal and regulatory requirements applicable to the AI system |
 | OWASP Top 10 for LLMs (2025) | LLM02 | Sensitive Information Disclosure -- model reveals training data, PII, or confidential information |
+| MITRE ATLAS | AML.T0024.000 | Infer Training Data Membership -- adversary uses model behavior to determine if data was present in training |
 | GDPR | Art. 5, 6, 13, 17, 22, 25, 35 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, DPIA |
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
@@ -472,6 +532,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
+6. **Treating confidence masking as a complete membership-inference defense.** Removing logits or probabilities reduces attack signal, but label-only APIs, repeated perturbation queries, overfit models, and raw retrieval-score endpoints can still leak membership. Review output granularity, query budgets, model generalization, and embedding/RAG metadata together instead of relying on one masked field.
+
 ---
 
 ## References
@@ -484,6 +546,9 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - Carlini, N. et al. (2021). "Extracting Training Data from Large Language Models." USENIX Security Symposium. arXiv:2012.07805
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
 - Ippolito, D. et al. (2023). "Preventing Verbatim Memorization in Language Models Gives a False Sense of Privacy." arXiv:2210.17546
+- Shokri, R. et al. (2017). "Membership Inference Attacks Against Machine Learning Models." IEEE Symposium on Security and Privacy. arXiv:1610.05820
+- Choquette-Choo, C. A. et al. (2021). "Label-Only Membership Inference Attacks." International Conference on Machine Learning. arXiv:2007.14321
+- MITRE ATLAS, including AML.T0024.000 Infer Training Data Membership -- https://atlas.mitre.org/
 - Microsoft Presidio (PII detection and anonymization) -- https://github.com/microsoft/presidio
 - NIST SP 800-188, De-Identifying Government Datasets -- https://csrc.nist.gov/publications/detail/sp/800-188/final
 - Article 29 Working Party, Guidelines on Data Protection Impact Assessment (WP 248) -- https://ec.europa.eu/newsroom/article29/items/611236
