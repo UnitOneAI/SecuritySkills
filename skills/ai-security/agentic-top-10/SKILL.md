@@ -196,6 +196,21 @@ In 2024, researchers demonstrated a persistent memory poisoning attack against a
 4. Implement memory decay and review cycles. Periodically audit long-term memory for anomalous entries. Apply TTLs to user-sourced memories.
 5. In multi-agent systems, isolate memory per agent. Shared memory must be mediated by a trusted memory broker that validates writes.
 
+**Memory Integrity Evidence Gates:**
+
+When AG04 is in scope, verify the full lifecycle of persistent memory, not just whether a memory store exists.
+
+- **Write authorization:** Identify every path that can create or update memory, including user uploads, tool outputs, agent summaries, operator notes, and background jobs. Confirm untrusted inputs cannot be promoted to long-term memory without validation or approval.
+- **Provenance metadata:** Saved memories must retain source type, source identity, timestamp, creating agent, approval state, trust tier, TTL, and the original content or immutable reference used to derive the memory.
+- **Trust-tiered retrieval:** Retrieval must filter or rank by trust tier so user-sourced or externally sourced memories cannot override system/developer instructions or trusted operational knowledge.
+- **Integrity and replay:** Memory records should be append-only or versioned with hash/integrity metadata, allowing reviewers to reconstruct what changed, when, and by whom.
+- **Poisoning detection:** Review whether the system tests memory writes with prompt-injection payloads, malicious summaries, conflicting facts, and tool-output instructions before release.
+- **Containment and removal:** The design must include quarantine, tombstone/delete, downstream cache invalidation, re-embedding, and audit replay procedures for confirmed poisoned memory.
+- **Residual derived data:** Deleting a memory entry is insufficient if derived summaries, embeddings, vector replicas, prompt caches, or analytics exports can still reintroduce the poisoned content.
+- **Scope boundaries:** Distinguish ephemeral session memory, per-user memory, per-agent memory, and globally shared memory. Higher trust and wider reuse require stronger approval and audit evidence.
+
+**False positive to avoid:** Do not mark AG04 as mitigated because the system uses a managed vector database, has a delete endpoint, or says memory is reviewed periodically. The review must prove that untrusted content cannot be silently written, retrieved as trusted context, or persist through derived caches after removal.
+
 **Framework Mapping:**
 
 - OWASP LLM Top 10 2025: LLM01 — Prompt Injection, LLM02 — Sensitive Information Disclosure
@@ -494,6 +509,12 @@ Structure the final report as follows:
 - Memory stores: [types]
 - Human approval gates: [present/absent, description]
 - Multi-agent communication: [method]
+
+## Memory Integrity Review
+
+| Store | Write Sources | Trust Labels | Approval Gate | Retrieval Filter | Integrity Metadata | Removal/Quarantine | Residual Cache Risk | AG04 Status |
+|---|---|---|---|---|---|---|---|---|
+| [store name] | [user/tool/agent/operator] | [present/absent] | [present/absent] | [trust-tier/filter details] | [hash/version/audit] | [procedure] | [low/medium/high] | [Pass/Partial/Fail] |
 
 ## Findings by Threat Category
 
