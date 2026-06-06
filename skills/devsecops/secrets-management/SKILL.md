@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -240,6 +240,55 @@ Secrets removed from current files may still exist in git history. Verify:
 
 ---
 
+#### 3.3 Secret Exposure Response Ledger and Safe Validation
+
+When a suspected secret is detected, do not treat file deletion or replacement secret creation as closure. Prove that the exposed credential is no longer valid, that downstream consumers have moved, and that the exposure did not propagate into other systems.
+
+**Validation safety rule:** Never test a detected secret by using it against production APIs unless an approved incident-response runbook explicitly authorizes that action. Prefer provider-side metadata, secret-scanning validity signals, key IDs, owner confirmation, revocation APIs, and provider audit logs. Never paste detected secret values into shell commands, tickets, screenshots, chat, or terminal output.
+
+**Secret Exposure Response Ledger:**
+
+| Field | Evidence to Record |
+|-------|--------------------|
+| **Detector and confidence** | Tool, rule ID, provider-specific match, entropy-only match, verified state, and scan timestamp |
+| **Safe validation method** | Provider metadata, scanner validity check, owner confirmation, audit log, revocation API, or `not_safely_verifiable` |
+| **Validity state** | `detected`, `provider_verified`, `unknown_validity`, `not_safely_verifiable`, or `revoked` |
+| **Secret identity** | Provider key ID, alias, fingerprint, or hash prefix that cannot reconstruct the secret; never the secret value |
+| **Owner and affected system** | Owning team, application, environment, integration, supplier, and data or action scope |
+| **First exposure** | Commit, artifact, log line reference, package version, image digest, ticket, or other first-known location |
+| **Public exposure status** | Private repo, internal artifact, public repo, fork, package registry, public image, issue, chat, or unknown |
+| **Revocation proof** | Old credential disabled, expired, deleted, rotated by provider, revoked by vault, or compensating reason |
+| **Replacement deployment** | New credential version deployed, redeploy time, rollout window, rollback key status, and dual-key overlap |
+| **Post-rotation last-use check** | Provider audit log, access log, SIEM query, or reason why last-use evidence is not available |
+| **Downstream integrations checked** | CI/CD, workers, cron, webhooks, vendor integrations, mobile apps, serverless functions, and break-glass paths |
+| **Residual exposure locations** | Git history, public forks, CI logs, build artifacts, container layers, package tarballs, tickets, PR comments, chatops logs |
+| **Evidence confidence** | `Verified`, `Partial`, `Missing`, or `Not Evaluable` with owner and date |
+
+**Closure criteria:**
+
+1. File deletion alone is not closure.
+2. New secret creation alone is not closure.
+3. Closure requires exposed credential revocation or expiry, redeployment where needed, downstream consumer migration, and post-rotation last-use evidence.
+4. If provider validity cannot be safely checked, mark `not_safely_verifiable` and rely on revocation plus residual exposure scoping.
+5. If git history or public forks remain, document why history rewrite is or is not appropriate after revocation.
+
+**What to look for:**
+
+```
+SM-EXP-01: Detected secret was live-tested against a production API without approved runbook
+SM-EXP-02: Finding marked remediated because file was deleted but exposed credential was not revoked
+SM-EXP-03: Replacement credential created but old credential last-use or disabled state is unknown
+SM-EXP-04: Downstream consumers, rollback keys, webhooks, or integrations still trust the old credential
+SM-EXP-05: Exposure scope excludes forks, CI logs, build artifacts, container layers, packages, tickets, or chatops logs
+SM-EXP-06: Scanner validity state is reported without source, date, provider support, or safe-verification method
+SM-EXP-07: Secret value was copied into shell history, tickets, screenshots, chat, or findings output during validation
+SM-EXP-08: Report overstates an entropy-only or generic detector match as a provider-verified active credential
+```
+
+**Finding classification:** Unsafe live validation with production credentials is **High**; raise to **Critical** if it creates unauthorized access, data exposure, or provider-side state changes. Unrevoked provider-verified credentials in current code, history, public forks, logs, artifacts, or packages are **Critical**. Missing revocation proof, last-use evidence, or downstream consumer validation is **High** for production or privileged credentials and **Medium** otherwise.
+
+---
+
 ### Step 4: Vault and Cloud Secrets Manager Integration (NIST SP 800-57, Section 5)
 
 Evaluate the secrets management architecture against NIST SP 800-57 key management lifecycle requirements.
@@ -357,8 +406,8 @@ spec:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault; unsafe live validation; missing revocation or downstream-consumer proof after exposure. |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection); unknown scanner validity without source/date. |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -388,6 +437,12 @@ spec:
 | DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
+
+### Secret Exposure Response Ledger
+
+| Finding | Validity State | Safe Validation Method | Secret Identity (No Value) | Revocation Proof | Replacement Deployed | Post-Rotation Last Use | Residual Exposure | Evidence Status |
+|---------|----------------|------------------------|-----------------------------|------------------|----------------------|------------------------|-------------------|-----------------|
+| F-001 | provider_verified / unknown_validity / revoked | provider metadata / scanner status / owner confirmation / not_safely_verifiable | key ID or non-reversible fingerprint | disabled/deleted/expired event | app/version/time | clean / observed / unavailable | forks/logs/artifacts/images/packages/tickets | Verified/Partial/Not Evaluable |
 
 ### Findings
 
@@ -442,6 +497,12 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Live-testing leaked credentials.** Using a suspected secret against a production API can create new access events, leak the secret into shell history or logs, and violate provider rules. Use safe validation metadata or revoke first.
+
+6. **Treating deletion as remediation.** Removing a token from a file does not invalidate the historical credential. Track revocation proof, replacement deployment, downstream consumer migration, and last-use evidence.
+
+7. **Stopping exposure scope at the repository.** Secrets frequently replicate into public forks, CI logs, build artifacts, image layers, package archives, issue comments, PR reviews, and chatops logs.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -461,6 +522,7 @@ This skill processes configuration files and code that may contain secret values
 - OWASP Secrets Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 - NIST SP 800-57 Part 1 Rev 5: https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final
 - NIST SP 800-57 Part 1 Rev 5 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf
+- GitHub Secret Scanning and validity checks: https://docs.github.com/en/code-security/secret-scanning
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
@@ -471,5 +533,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Add safe-validation guardrails, secret exposure response ledger, validity states, revocation proof, post-rotation last-use checks, downstream integration review, and residual exposure scoping.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
