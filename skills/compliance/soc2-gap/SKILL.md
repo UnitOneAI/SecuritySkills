@@ -112,6 +112,25 @@ System Description Boundary:
 - Data: ___
 ```
 
+#### 1.4 Subservice Organization Scope Check
+
+Before scoring CC9.2, identify whether any critical provider is only a vendor or is also a SOC 2 subservice organization relied on to meet system objectives. Do not treat "vendor SOC 2 report collected" as audit-ready evidence until the system description impact and complementary controls are mapped.
+
+Build a subservice organization scope matrix:
+
+| Provider | Service dependency | Data/control reliance | SOC 2 role | Reporting method | CUECs/CSOCs mapped? | Report period coverage | Gap status |
+|----------|--------------------|-----------------------|------------|------------------|---------------------|------------------------|------------|
+| ___ | ___ | ___ | Vendor / Carved-out subservice / Included subservice / Not Evaluable | Carve-out / Inclusive / N/A / Unknown | Yes / Partial / No | Covered / Bridge letter / Gap / Unknown | ___ |
+
+For each provider that supports in-scope system objectives, record:
+
+- whether the provider is a vendor, carved-out subservice organization, or included subservice organization;
+- which controls the service organization relies on the provider to operate;
+- whether the vendor SOC 2 report identifies complementary user entity controls (CUECs) or complementary subservice organization controls (CSOCs);
+- the internal control owner, frequency, and evidence artifact for each mapped CUEC or CSOC;
+- the report opinion, exceptions, trust service criteria covered, report period, bridge letter coverage, and review date;
+- a Not Evaluable reason if the subservice method, report period, CUECs/CSOCs, or bridge evidence cannot be verified.
+
 ---
 
 ### Step 2: Common Criteria Review (CC1-CC9)
@@ -321,6 +340,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - [ ] Implement change management controls in CI/CD pipeline (CC8.1)
 - [ ] Document and publish incident response plan (CC7.3, CC7.4)
 - [ ] Initiate vendor inventory and begin collecting vendor SOC 2 reports (CC9.2)
+- [ ] Classify critical providers as vendors, carved-out subservice organizations, or included subservice organizations (CC9.2)
 - [ ] Conduct initial risk assessment (CC3.2)
 
 **Days 31-60: Program Development**
@@ -332,6 +352,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - [ ] Establish control monitoring and deficiency tracking (CC4.1, CC4.2)
 - [ ] Implement backup monitoring and conduct restoration test (A1.2, A1.3)
 - [ ] Complete vendor risk assessments for critical vendors (CC9.2)
+- [ ] Extract CUECs/CSOCs from critical vendor SOC 2 reports and map each one to an internal owner, frequency, and evidence artifact (CC9.2)
 
 **Days 61-90: Maturation and Evidence Collection**
 - [ ] Conduct incident response tabletop exercise (CC7.4)
@@ -339,6 +360,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - [ ] Complete business impact analysis (CC9.1)
 - [ ] Establish annual policy review cycle with documented approvals (CC5.3)
 - [ ] Conduct fraud risk assessment (CC3.3)
+- [ ] Verify vendor report-period coverage, bridge letters, report opinions, exceptions, and criteria coverage for the observation period (CC9.2)
 - [ ] Compile evidence binder for all in-scope criteria
 - [ ] Perform self-assessment using the scoring matrix from Step 4
 - [ ] Engage SOC 2 auditor for readiness assessment (if score >= 3.0)
@@ -352,6 +374,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - Perform annual security awareness training refresh
 - Review and update policies annually
 - Collect vendor SOC 2 reports annually
+- Refresh the subservice organization matrix and CUEC/CSOC mappings when providers, products, regions, or audit periods change
 - Conduct annual DR test
 - Perform annual incident response tabletop exercise
 
@@ -362,12 +385,13 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 When performing a SOC 2 gap analysis, produce the following deliverables:
 
 1. **Scope Summary**: Table of in-scope Trust Services Categories with justifications.
-2. **Gap Assessment Matrix**: Completed scoring template from Step 4 with all in-scope criteria scored and annotated.
-3. **Category Summary**: Average maturity score per category with narrative assessment.
-4. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
-5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
-6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
-7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+2. **Subservice Organization Matrix**: Provider role, carve-out/inclusive method, control reliance, CUEC/CSOC mapping status, report-period coverage, bridge evidence, and Not Evaluable reasons.
+3. **Gap Assessment Matrix**: Completed scoring template from Step 4 with all in-scope criteria scored and annotated.
+4. **Category Summary**: Average maturity score per category with narrative assessment.
+5. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
+6. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
+7. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
+8. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
 
 ## Prompt Injection Safety Notice
 
