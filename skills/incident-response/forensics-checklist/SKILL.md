@@ -62,6 +62,8 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Ephemeral workload metadata** -- Kubernetes pod specifications, namespace definitions, deployment configs, and active/previous container logs.
+- [ ] **Serverless immutable references** -- Functions version IDs, deployment hashes, execution roles, and event mappings.
 
 ---
 
@@ -332,12 +334,70 @@ gcloud compute disks snapshot [disk-name] --zone [zone] --snapshot-names forensi
 gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-DDT23:59:59Z"'
 ```
 
+#### 6b: Ephemeral Cloud Workloads (Containers & Serverless)
+
+Ephemeral workloads such as Kubernetes pods, managed containers (ECS, Fargate, Cloud Run, AKS, EKS, GKE), and serverless functions (Lambda, Cloud Functions) present unique forensic challenges. They are highly mutable, lack persistent disks, and are often rapidly recycled, scaled down, or evicted. Evidence collection must prioritize capturing state metadata and immutable identifiers before they are lost.
+
+**Evidence collection commands and guidelines:**
+
+**Kubernetes Pod & Container Workloads:**
+```bash
+# Capture full Pod specification and current status configuration
+kubectl get pod [pod_name] -n [namespace] -o yaml > [pod_name]_spec_[YYYYMMDD].yaml
+
+# Capture Pod events (recent lifecycle, scheduling, and eviction reasons)
+kubectl get events -n [namespace] --field-selector involvedObject.name=[pod_name] -o yaml > [pod_name]_events_[YYYYMMDD].yaml
+
+# Capture active runtime logs
+kubectl logs [pod_name] -n [namespace] --all-containers=true > [pod_name]_logs_[YYYYMMDD].log
+
+# Capture logs of the previous container instance (crucial if crashed or restarted)
+kubectl logs [pod_name] -n [namespace] --all-containers=true --previous=true > [pod_name]_previous_logs_[YYYYMMDD].log
+
+# Describe Pod to capture node name, IP, container statuses, and owner references
+kubectl describe pod [pod_name] -n [namespace] > [pod_name]_describe_[YYYYMMDD].txt
+```
+
+**AWS ECS / Fargate Workloads:**
+```bash
+# Capture task definition and current task status
+aws ecs describe-tasks --cluster [cluster_name] --tasks [task_arn] --output json > task_status_[YYYYMMDD].json
+
+# Capture container definition
+aws ecs describe-task-definition --task-definition [task_definition_arn] --output json > task_def_[YYYYMMDD].json
+```
+
+**Serverless Workloads (AWS Lambda):**
+```bash
+# Capture Lambda function configuration, version, code location, and execution role
+aws lambda get-function --function-name [function_name] --qualifier [version_or_alias] --output json > lambda_config_[YYYYMMDD].json
+
+# Capture environment variables, layer configurations, and runtime settings
+aws lambda get-function-configuration --function-name [function_name] --qualifier [version_or_alias] --output json > lambda_runtime_config_[YYYYMMDD].json
+```
+
+**Workload Verification findings:**
+
+Before declaring evidence complete, verify against these potential gaps:
+
+```
+EPHEMERAL-WL-01: Pod spec, events, or namespace metadata not captured before eviction/recycling
+EPHEMERAL-WL-02: Managed container image referenced by mutable tag (e.g., :latest) instead of immutable SHA-256 digest
+EPHEMERAL-WL-03: Serverless function captured via mutable alias (e.g., prod) instead of immutable version/revision ID and deployment package hash
+EPHEMERAL-WL-04: Serverless trigger or execution role references are missing or unvalidated
+EPHEMERAL-WL-05: Container runtime logs and previous container exit logs are unarchived or rotated
+```
+
+**Required Ephemeral Workload verification fields:** `workload_type`, `resource_name`, `namespace_or_cluster`, `immutable_image_digest`, `resolved_version_id`, `deployment_package_hash`, `pod_spec_yaml_hash`, `events_json_hash`, `active_logs_hash`, `previous_logs_hash`, `execution_role_arn`, and `trigger_mapping_captured`.
+
 **Cloud forensic considerations:**
 - Snapshots are not bitstream images -- they capture allocated blocks only, not unallocated space or slack
 - Enable VPC Flow Logs, CloudTrail (with log file validation), and audit logging BEFORE incidents occur
 - Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- Ephemeral workloads (pods, managed containers, serverless) require capturing metadata, events, and immutable references (digests/versions) rather than relying on mutable tags/aliases or VM disk snapshots alone
+- Ensure that Kubernetes events, container lifecycle logs (current and previous/exit logs), and function package hashes are hashed and preserved to establish forensic bisectability and code-level reproducibility
 
 ---
 
@@ -350,6 +410,8 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 | P2 | Medium | Evidence of suspicious activity requiring further analysis. Investigation value probable. | Targeted acquisition (specific logs, memory). Prioritize within 24 hours. |
 | P3 | Low | Supplementary evidence that may support investigation but is not primary. | Log preservation. Disk imaging if convenient. |
 | P4 | Informational | Contextual information (network topology, configuration baselines) supporting analysis. | Document and preserve digitally. |
+
+Escalate ephemeral workload metadata and container/log capture to Critical (P0) or High (P1) if an active or evicted container is at risk of eviction, scale-down, redeployment, or recycling. Treat mutable container tags or serverless aliases as an elevated risk or evidence gap, as they compromise forensic reproducibility.
 
 ---
 
@@ -401,6 +463,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### Ephemeral Cloud Workloads (if applicable)
+| Workload Type | Resource ID / Name | Namespace / Cluster | Immutable ID (Digest / Version Hash) | Metadata Captured (Spec/Events/Logs) | Risk / Mutable Reference | Status | Notes |
+|---|---|---|---|---|---|---|---|
+| [Kubernetes Pod/ECS/Serverless] | [Resource Name] | [Namespace/Cluster ID] | [SHA-256 digest | Version ID | Deployment Hash] | [Yes/No] | [Mutable tag/alias used | None] | [Captured/Evidence Gap] | [Notes] |
 ```
 
 ---
@@ -461,6 +528,10 @@ Applying traditional forensic methods to cloud environments without adaptation l
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
 
+### Pitfall 6: Relying on Mutable Tags and Aliases for Ephemeral Workloads
+
+Container tags (e.g., `latest` or `v1.2-stable`) and serverless function aliases (e.g., `prod` or `active`) are highly mutable. They can be overwritten at any time by developers, automated CI/CD pipelines, or an attacker attempting to cover their tracks. Capturing only the tag or alias during an investigation does not guarantee that the code examined or redeployed during analysis matches what was actually executing during the incident. To ensure forensic reproducibility and code-level bisectability, always resolve and document the immutable container image SHA-256 digest, serverless function version/revision ID, and deployment package cryptographic hash.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -487,3 +558,6 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
 9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
 10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+11. **Kubernetes Pods** -- https://kubernetes.io/docs/concepts/workloads/pods/
+12. **AWS Lambda function versions** -- https://docs.aws.amazon.com/lambda/latest/dg/configuration-versions.html
+13. **NIST SP 800-190** -- Application Container Security Guide -- https://csrc.nist.gov/publications/detail/sp/800-190/final
