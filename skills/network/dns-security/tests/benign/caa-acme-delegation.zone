@@ -1,0 +1,13 @@
+$ORIGIN example.com.
+@ 3600 IN CAA 0 issue "letsencrypt.org;validationmethods=dns-01"
+@ 3600 IN CAA 0 issue "digicert.com;accounturi=https://ca.example/acct/123456"
+@ 3600 IN CAA 0 issuewild ";"
+@ 3600 IN CAA 0 iodef "mailto:security@example.com"
+
+_acme-challenge.api 300 IN CNAME api-example-com.acme-dns.example.net.
+
+; Evidence expected with this benign pattern:
+; owner: platform-security
+; dns-api-scope: _acme-challenge.api.example.com only
+; acme-account: letsencrypt-prod-platform
+; ct-monitoring: enabled with unexpected-certificate alerts
