@@ -98,6 +98,44 @@ For detailed tool-specific rule sets, detection patterns, vulnerable code exampl
 
 ---
 
+### Supplemental: Plan, Apply, State, and Provenance Evidence
+
+Source-code scanning is necessary but not sufficient. IaC risk also depends on
+which plan was approved, who applied it, where state is stored, whether drift
+exists, and whether the generated plan is traceable to the reviewed commit.
+
+```
+IAC-PLAN-01: No saved plan artifact is available for security review before apply
+IAC-PLAN-02: Plan artifact is not tied to commit SHA, module version, provider lock file, and CI run
+IAC-PLAN-03: Apply was performed from a different plan, workspace, or variable set than reviewed
+IAC-PLAN-04: Manual console or CLI drift exists after IaC approval
+IAC-STATE-01: Terraform/Pulumi state is local, unencrypted, unlocked, or broadly accessible
+IAC-STATE-02: State contains secrets but access controls and retention are not documented
+IAC-PROV-01: Module/provider provenance is not pinned or verified before plan generation
+IAC-PROV-02: Break-glass apply path lacks owner, expiry, change ticket, and post-apply review
+```
+
+**Evidence requirements:**
+
+| Evidence | Required Detail | Failure Mode |
+|---|---|---|
+| Plan artifact | Commit SHA, workspace, variables, provider lock file, module refs, CI run ID | Reviewed code does not match applied plan |
+| Apply record | Actor, timestamp, plan hash, approval, environment, change ticket | Unauthorized or unreviewed apply |
+| State backend | Encryption, locking, access policy, retention, audit logs | Secrets or drift hidden in state |
+| Drift report | Last refresh/plan, unmanaged resources, console changes, owner disposition | Deployed state differs from IaC |
+| Provenance | Pinned provider, checksum/lock file, module source, commit/tag, registry source | Supply-chain substitution risk |
+| Break-glass path | Owner, expiry, scope, rollback, post-apply reconciliation | Emergency changes become permanent |
+
+**Decision guidance:**
+
+| Situation | Assessment action |
+|---|---|
+| Terraform plan is generated locally and not saved | Medium; High for production or privileged IAM changes |
+| State is local or committed to repository | Critical if secrets or credentials are present |
+| Apply uses `-auto-approve` without prior plan artifact | High for production changes |
+| Drift exists but is not reconciled before review | Medium; High if drift weakens access, network, or encryption controls |
+| Module is pinned to a branch instead of immutable ref | Medium; High for privileged or internet-facing resources |
+
 
 ---
 
@@ -170,6 +208,15 @@ Produce the final report using the structure defined in the Output Format sectio
 - State locking: <enabled / disabled>
 - Lock file committed: <yes / no>
 
+### Plan / Apply / State Evidence
+| Area | Evidence | Status | Gap |
+|------|----------|--------|-----|
+| Plan artifact | <commit/workspace/plan hash/CI run> | Pass/Fail/Not Evaluable | <gap> |
+| Apply record | <actor/approval/timestamp/plan hash> | Pass/Fail/Not Evaluable | <gap> |
+| State backend | <backend/encryption/locking/access/audit> | Pass/Fail/Not Evaluable | <gap> |
+| Drift | <last refresh/unmanaged resources/owner disposition> | Pass/Fail/Not Evaluable | <gap> |
+| Provenance | <provider lock/module refs/checksums> | Pass/Fail/Not Evaluable | <gap> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** <finding> -- <action>
@@ -200,6 +247,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Build integrity | IaC plans generated in CI, not applied manually |
 | Provenance | State files track who applied what changes |
 | Dependencies | Provider and module versions locked, lock file committed |
+| Verification | Generated plan is traceable to source revision, dependencies, and environment |
 
 ### Checkov / tfsec / KICS Rule Equivalents
 
@@ -230,6 +278,9 @@ This skill applies checks equivalent to the following high-impact rules:
 5. **Confusing `aws_s3_bucket_acl` with `aws_s3_bucket_public_access_block`.** The public access block overrides ACLs. Check both, but the access block is the stronger control.
 6. **Terraform state file secrets.** Even when variables are marked `sensitive`, they may appear in plaintext in the state file. Verify state encryption and access controls.
 7. **Provider-specific encryption defaults.** Some providers encrypt by default (e.g., AWS S3 since January 2023). Know the defaults before flagging missing explicit encryption configuration.
+8. **Reviewing source without the generated plan.** Variables, workspaces, provider defaults, and module versions can change the effective deployment. Require a saved plan artifact for production reviews.
+9. **Assuming remote state is secure by default.** S3, GCS, Azure Storage, Terraform Cloud, and Pulumi Cloud still need encryption, access controls, locking, audit logging, and retention review.
+10. **Ignoring drift after approval.** Console changes after plan approval can invalidate the reviewed configuration. Compare deployed state with the reviewed plan before declaring pass.
 
 ---
 
@@ -259,6 +310,8 @@ This skill applies checks equivalent to the following high-impact rules:
 - KICS (Keeping Infrastructure as Code Secure): https://docs.kics.io/
 - cfn-nag Rules: https://github.com/stelligent/cfn_nag
 - Terraform Security Best Practices: https://developer.hashicorp.com/terraform/cloud-docs/recommended-practices
+- Terraform State Security: https://developer.hashicorp.com/terraform/language/state/sensitive-data
+- Terraform Dependency Lock File: https://developer.hashicorp.com/terraform/language/files/dependency-lock
 - AWS Security Best Practices in IAM: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
 
 ---
