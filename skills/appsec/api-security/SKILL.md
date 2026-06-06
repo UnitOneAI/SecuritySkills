@@ -3,15 +3,17 @@ name: api-security
 description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting,
+  multipart file uploads, archive/parser boundaries, storage/download
+  controls, and SSRF. Produces findings mapped to API1-API10 with remediation
+  guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,6 +40,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **Identify file-processing surfaces** -- Multipart upload endpoints, archive imports, image/document converters, malware scanners, object storage buckets, and download handlers.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -66,6 +69,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
+| **Parser/Storage Evidence** | For file flows, record gateway, framework parser, scanner/quarantine, storage, archive, and download-header evidence |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -92,7 +96,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** [reviewer name] -- api-security skill v1.1.0
 
 ### Summary
 
@@ -147,6 +151,82 @@ The final review output must be structured as follows:
 | API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, XXE |
 | API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, deprecated versions, missing documentation |
 | API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
+
+---
+
+## File Upload, Multipart, Archive, and Download Boundaries
+
+File upload and file-processing APIs cross several OWASP API risks. Resource exhaustion maps to API4, parser and storage mistakes map to API8, and downstream scanners, converters, and importers can map to API10 when their output is trusted without validation. Review the full lifecycle instead of accepting one gateway body limit or one MIME-type check as sufficient evidence.
+
+### Discovery Patterns
+
+Use allowed read/search tools to inventory these surfaces:
+
+```
+multipart|form-data|multer|busboy|formidable|IFormFile|MultipartFile|request.files|upload.single|upload.array
+originalname|filename|mimetype|Content-Type|content_type|magic|signature|file-type
+ZipFile|extractall|tarfile|unzip|archive|compression|decompress|zip-slip
+quarantine|antivirus|clamav|sandbox|scanner|converter|imagemagick|libreoffice|pdf
+Content-Disposition|nosniff|object storage|bucket policy|public-read|web root
+```
+
+### Required Evidence Table
+
+| Evidence Area | Required Review Evidence | OWASP Mapping |
+|---|---|---|
+| Upload limits | Gateway body limit, framework parser limit, per-file size, file count, and total multipart part count are all bounded and aligned | API4 |
+| Type validation | Extension allowlist is paired with signature/magic-byte validation and safe parser validation; user `Content-Type` is not trusted alone | API8 |
+| Filename and storage | Storage names are server-generated, path separators are stripped, files are outside executable web roots, and object keys are not predictable | API8 |
+| Archive handling | Compressed size, uncompressed size, expansion ratio, entry count, nesting depth, symlink behavior, and canonical extraction paths are bounded | API4/API8 |
+| Scanner/quarantine | Files remain inaccessible until malware scanning, sandboxing, and downstream parser validation have completed successfully | API8/API10 |
+| Parser consistency | Gateway, framework parser, scanner, storage, archive extractor, converter, and business logic process the same accepted file set under the same limits | API4/API10 |
+| Download controls | Downloads use `Content-Disposition: attachment` for untrusted content, `X-Content-Type-Options: nosniff`, non-executable serving, and appropriate cache policy | API8 |
+| Object storage policy | Buckets are private by default, release is explicit, keys are unguessable, and public URLs cannot bypass scan/quarantine state | API8 |
+
+### Review Decision Flow
+
+1. Inventory every endpoint that accepts, stores, extracts, converts, scans, or returns user-controlled files.
+2. Build a lifecycle row for each endpoint: gateway -> framework parser -> type validation -> scanner/quarantine -> storage -> downstream parser/converter -> download path.
+3. Mark the flow `Pass` only when every lifecycle stage has aligned limits and the file cannot be reached before release.
+4. Mark the flow `Not Evaluable` when the implementation, storage policy, scanner behavior, or download behavior is unavailable. List the missing evidence instead of assuming safe or vulnerable behavior.
+5. Raise a finding when one layer accepts a file that another layer does not limit, scan, validate, quarantine, or serve safely.
+
+### API Mapping Rules
+
+- Use **API4:2023** when the primary failure is unbounded body size, multipart part count, file count, archive expansion, parser CPU/memory/time, or downstream converter resource use.
+- Use **API8:2023** when the primary failure is trusting attacker-controlled file labels, writing to executable/web-served storage, exposing public object URLs, missing safe download headers, or releasing before quarantine state is enforced.
+- Use **API10:2023** when scanner, converter, metadata parser, archive importer, or upstream file-processing output is consumed as trusted data without validation.
+- Include secondary mappings when the same endpoint crosses categories, but choose the finding title and severity from the most directly exploitable failure.
+
+### Severity Guidance
+
+| Condition | Severity |
+|---|---|
+| Upload endpoint stores attacker-controlled filenames or active content under a web-served/executable path while trusting `Content-Type`, extension, or original filename | High |
+| Archive extraction lacks canonical path checks, expansion ratio limits, entry/depth limits, symlink controls, or isolated extraction workspace | High |
+| Files are reachable before required scan/quarantine/parser decisions complete | High |
+| Gateway limit exists but framework parser, scanner, archive expansion, converter, or business file-count limits are inconsistent or not evidenced | Medium |
+| Object storage is used but bucket policy, random object keys, safe download headers, and release gating are not evidenced | Medium |
+| Uploads are encrypted, quarantined, never parsed, never extracted, and only moved to a trusted offline workflow, but the report lacks full evidence | Low |
+| Upload endpoint has complete limits, signature validation, quarantine-before-release, safe storage, and safe download headers | Informational or no finding |
+
+### False Positive and Not Evaluable Rules
+
+- Do not report every upload endpoint as vulnerable. First determine whether size, count, type, signature, quarantine, storage, and download controls are evidenced.
+- Mark `Not Evaluable` when only an OpenAPI path is available and the implementation/storage/scanner behavior cannot be inspected. State the missing evidence rather than assuming vulnerability.
+- Treat `Content-Type`, extension, and original filename as attacker-controlled labels. They can support logging or UX, but not the security decision by themselves.
+- Treat polyglot files, signature mismatches, and parser differentials as separate evidence checks. A file can match one parser while triggering another downstream parser differently.
+- For asynchronous malware scanning, quarantine is acceptable only when the file is inaccessible until the clean verdict and downstream parser validation complete.
+- Object storage is not automatically safe. Verify private bucket policy, non-guessable keys, explicit release state, safe content disposition, `nosniff`, and no direct public path around quarantine.
+
+### Remediation Requirements
+
+1. Enforce aligned request, multipart, per-file, file-count, archive expansion, converter, and scanner limits.
+2. Validate with extension allowlists, signature/magic-byte checks, and safe parser validation. Reject mismatches and polyglot formats unless explicitly supported and safely processed.
+3. Generate storage names server-side, normalize metadata only for display, and never write user filenames into web-served or executable paths.
+4. Extract archives only into isolated workspaces after canonical path, symlink, entry count, depth, compressed size, uncompressed size, and expansion-ratio checks.
+5. Keep files quarantined until scan, sandbox, and downstream parser decisions pass; enforce release state in every download and object-storage URL path.
+6. Serve untrusted files with `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, disabled execute permissions, and cache controls appropriate to sensitivity.
 
 ---
 

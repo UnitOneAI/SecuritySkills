@@ -267,11 +267,31 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```javascript
+// VULNERABLE: Multipart parser has no file count or per-file size limits
+const upload = multer();
+app.post('/api/documents/upload', upload.array('files'), async (req, res) => {
+  return res.json({ accepted: req.files.length });
+});
+```
+
+```python
+# VULNERABLE: Archive expansion has no size, ratio, entry, or depth limits
+@app.post('/api/import')
+def import_archive():
+    archive = zipfile.ZipFile(request.files['archive'])
+    archive.extractall('/srv/imports')
+    return {'entries': len(archive.infolist())}
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
+- For multipart endpoints, enforce aligned gateway body, framework body, multipart part count, file count, per-file size, and total upload size limits.
+- For archive imports, enforce compressed size, uncompressed size, expansion ratio, entry count, nesting depth, symlink behavior, and extraction timeout limits.
+- Apply equivalent bounds to scanners, image/document converters, and downstream parsers so a file accepted by the upload layer cannot exhaust a later processing layer.
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
@@ -281,6 +301,9 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations.
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
+- [ ] Multipart upload endpoints enforce file size, total size, file count, and part count limits across gateway and application parser layers.
+- [ ] Archive processing enforces compressed size, uncompressed size, expansion ratio, entry count, nesting depth, symlink, and timeout limits.
+- [ ] Scanner, converter, and downstream parser limits are aligned with upload acceptance limits.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
@@ -423,6 +446,14 @@ def register_webhook():
 **CWE:** CWE-16 (Configuration), CWE-611 (Improper Restriction of XML External Entity Reference), CWE-942 (Permissive Cross-domain Policy with Untrusted Domains)
 **Severity:** High to Medium
 
+### What to Look For
+
+- Upload handlers that make security decisions from `Content-Type`, framework `mimetype`, filename extension, or original filename without signature and parser validation.
+- Files written under web-served or executable paths, or object keys derived from user-controlled path segments.
+- Public object URLs, signed URLs, redirects, or download handlers that bypass scan/quarantine release state.
+- Missing `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, private bucket policy, cache controls, or non-executable serving controls for untrusted content.
+- Archive extraction that does not reject absolute paths, parent-directory entries, symlinks, or canonical paths outside the isolated extraction workspace.
+
 ### Vulnerable Patterns
 
 ```python
@@ -450,6 +481,35 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+```javascript
+// VULNERABLE: Trusts client MIME type and original filename for storage
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  if (req.file.mimetype !== 'image/png') return res.status(400).end();
+  await fs.promises.writeFile(`/var/www/uploads/${req.file.originalname}`, req.file.buffer);
+  res.json({ url: `/uploads/${req.file.originalname}` });
+});
+```
+
+```javascript
+// VULNERABLE: Public object storage serves untrusted files inline
+app.get('/api/files/:key', async (req, res) => {
+  res.json({
+    url: `https://public-bucket.example.com/uploads/${req.params.key}`,
+    contentDisposition: 'inline',
+    xContentTypeOptions: 'missing',
+  });
+});
+```
+
+```javascript
+// VULNERABLE: Download path releases files before scan/quarantine passes
+app.get('/api/files/:id/download', async (req, res) => {
+  const file = await files.findById(req.params.id);
+  if (!file) return res.status(404).end();
+  return res.redirect(file.objectUrl);
+});
+```
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
@@ -460,6 +520,12 @@ Document doc = builder.parse(request.getInputStream());
 - Return generic error messages in production. Log detailed errors server-side with correlation IDs.
 - Disable unnecessary HTTP methods. Return `405 Method Not Allowed` for unsupported methods.
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
+- For uploads, generate storage names server-side, strip path separators from display metadata, and store files outside executable web roots.
+- Validate file type with extension allowlists, signature/magic-byte checks, and safe parser validation. Do not trust `Content-Type`, `mimetype`, or original filename alone.
+- Serve untrusted downloads with `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, disabled execute permissions, and cache controls appropriate to the data.
+- For object storage, verify private bucket policy, non-guessable keys, explicit scan/quarantine release state, and no public URL path that bypasses download controls.
+- Enforce scan/quarantine release state inside every download, redirect, signed URL, CDN, and object storage path. Returning scan status in metadata is not a control unless access is denied before a clean verdict.
+- For archives, reject absolute paths, parent-directory entries, symlinks, device files, and canonical paths outside the extraction workspace before writing any entry.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
 
@@ -469,6 +535,11 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] Security headers are present on all API responses.
 - [ ] Error responses in production are generic; no stack traces, SQL queries, or internal paths.
 - [ ] Only required HTTP methods are enabled per endpoint.
+- [ ] Upload handlers do not trust original filenames, filename extensions, or client-supplied content types as security decisions.
+- [ ] Stored files use server-generated names, isolated storage, non-executable permissions, and no direct web-root write path.
+- [ ] Download handlers and object storage responses use safe `Content-Disposition`, `nosniff`, private bucket policy, and scan/quarantine release gates.
+- [ ] Direct object URLs, signed URLs, redirects, CDN paths, and API download paths all enforce the same clean-release state.
+- [ ] Archive extractors reject path traversal, absolute paths, symlinks, and writes outside an isolated canonical extraction workspace.
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
@@ -544,6 +615,23 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```javascript
+// VULNERABLE: Downstream scanner checks only the first multipart file
+app.post('/api/import', upload.array('files'), async (req, res) => {
+  await scanner.scan(req.files[0].buffer);
+  await Promise.all(req.files.map((file) => storeAndProcess(file)));
+  return res.json({ imported: req.files.length });
+});
+```
+
+```python
+# VULNERABLE: Converter output is trusted after a weak signature check
+def convert_upload(file):
+    if file.content_type == "application/pdf":
+        return libreoffice_convert(file.stream.read())
+    raise ValueError("unsupported")
+```
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
@@ -552,6 +640,9 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
+- Treat malware scanners, archive extractors, image processors, document converters, and metadata parsers as untrusted downstream consumers. Validate their input and output schemas.
+- Ensure every uploaded part that business logic stores or processes is scanned and parser-validated; do not scan only the first multipart part.
+- Sandbox converters and parsers with memory, CPU, wall-clock, output-size, and filesystem limits, and reject parser differentials or signature mismatches.
 
 ### Review Checklist
 
@@ -560,3 +651,5 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+- [ ] Downstream scanners, archive extractors, converters, and parsers validate every accepted file part under explicit resource limits.
+- [ ] Converter/parser output is treated as untrusted until schema, content, and storage decisions are re-validated.
