@@ -6,14 +6,15 @@ description: >
   ATT&CK v16 techniques. Auto-invoked when the user discusses detection logic,
   Sigma rules, ATT&CK coverage gaps, or asks "how do I detect this technique?"
   Produces Sigma-formatted detection rules, ADS documentation, and coverage
-  heatmap methodology for systematic detection program management.
+  heatmap methodology for systematic detection program management, including
+  platform/logsource compatibility checks for non-Windows and cloud detections.
 tags: [secops, detection, sigma, mitre-attack]
 role: [soc-analyst, security-engineer]
 phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,11 +56,13 @@ Before beginning, gather or confirm:
 - [ ] **Available log sources:** What telemetry is collected? (Windows Event Logs, Sysmon, EDR, cloud audit logs, proxy logs, DNS logs, firewall logs).
 - [ ] **SIEM platform(s):** Target SIEM for rule deployment (Microsoft Sentinel, Splunk, Elastic, Chronicle, QRadar) -- determines Sigma backend conversion target.
 - [ ] **Environment context:** Operating systems, domain structure, cloud providers, key applications in the environment.
+- [ ] **Target platform:** Windows, Linux, macOS, AWS, Azure, GCP, SaaS, network, or multi-platform.
+- [ ] **Actual telemetry sources:** Sysmon, Windows Security 4688, auditd, EndpointSecurity, osquery, CloudTrail, Azure Activity Logs, GCP Audit Logs, EDR schema, proxy, DNS, firewall, or SaaS audit logs.
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
 - [ ] **Detection priority:** Is this for a known active threat, proactive coverage expansion, or compliance requirement?
 - [ ] **Organizational naming conventions:** Rule ID format, severity taxonomy, and tagging standards used by the detection engineering team.
 
-If the ATT&CK technique is provided but other context is missing, proceed with conservative assumptions (Windows enterprise environment, Sysmon + Windows Security logs available) and note assumptions in the output.
+If the ATT&CK technique is provided but other context is missing, proceed with conservative assumptions only for Windows endpoint detections and note assumptions in the output. For Linux, macOS, cloud, SaaS, network, or unknown-platform requests, mark platform-specific coverage `Not Evaluable` until the target platform, telemetry, field mapping, backend support, and validation method are known.
 
 ---
 
@@ -84,6 +87,62 @@ ATT&CK Technique Analysis:
 - Required Log Sources: [Sysmon EventID 1, Windows Security 4688, PowerShell 4104/4103]
 - Sub-techniques:     [.001 PowerShell, .002 AppleScript, .003 Windows Command Shell, ...]
 - Detection Scope:    [Sub-technique specific | Parent technique broad]
+```
+
+### Step 1.5: Platform and Logsource Compatibility Gate
+
+Before authoring a Sigma rule, confirm the requested detection can be expressed for the target platform and deployed backend.
+
+| Gate | Required Evidence | Fail / Not Evaluable When |
+|------|-------------------|---------------------------|
+| `DE-PLATFORM-01` | Target platform and ATT&CK platform mapping | Platform is unknown and the output silently defaults to Windows fields |
+| `DE-PLATFORM-02` | Required telemetry and actual collected log source | Technique needs process, command, identity, cloud audit, DNS, proxy, or EDR events that are not collected |
+| `DE-PLATFORM-03` | Sigma `product`, `service`, and `category`, or a reason Sigma is not suitable | Linux, macOS, AWS, Azure, GCP, SaaS, or network detections use Windows `process_creation` by default |
+| `DE-PLATFORM-04` | Field mapping from source telemetry to Sigma/backend fields, including lossy or missing mappings | Output uses fields such as `Image`, `CommandLine`, or `ParentImage` without proving the selected backend normalizes to them |
+| `DE-PLATFORM-05` | Backend conversion/deployment support for Splunk, Sentinel, Elastic, Chronicle, QRadar, Sigma backend, or native query | Sigma backend does not support the selected product/service/category and no native query fallback is documented |
+| `DE-PLATFORM-06` | Platform-matched validation method: Atomic test, replayed event fixture, sandbox API call, conversion unit test, or negative control | Validation runs only on a different platform or uses a Windows Atomic test for Linux, macOS, or cloud control-plane coverage |
+| `DE-PLATFORM-07` | Platform blind spots: event truncation, latency, disabled audit policy, normalized schema gaps, regional/cloud aggregation gaps | Coverage is reported as deployable without recording known platform blind spots |
+
+For multi-platform techniques, either produce separate deployable rules per platform/backend or include a matrix showing each platform's deployability status and `Not Evaluable` reason.
+
+**Examples:**
+
+```yaml
+linux_shell_detection:
+  technique: T1059.004
+  logsource:
+    product: linux
+    category: process_creation
+  actual_telemetry: auditd execve or EDR process events
+  field_mapping:
+    process_path: exe
+    command_line: cmdline
+    user: uid / auid / username
+  validation: replay auditd execve fixture or approved Atomic Red Team Linux test
+
+macos_applescript_detection:
+  technique: T1059.002
+  logsource:
+    product: macos
+    category: process_creation
+  actual_telemetry: EndpointSecurity or osquery process_events
+  field_mapping:
+    process_path: process.path
+    command_line: process.command_line
+    signing_identity: process.code_signature
+  validation: replay osascript execution fixture and benign automation negative control
+
+aws_valid_accounts_detection:
+  technique: T1078
+  logsource:
+    product: aws
+    service: cloudtrail
+  actual_telemetry: CloudTrail management events
+  field_mapping:
+    event_name: eventName
+    identity_type: userIdentity.type
+    source_ip: sourceIPAddress
+  validation: replay CloudTrail fixture or sandbox IAM API call
 ```
 
 ### Step 2: Detection Logic Design
@@ -376,6 +435,18 @@ Produce detection engineering deliverables in this structure:
 | Tactic(s) | [Execution (TA0002)] |
 | Data Sources | [Process Creation, Command Execution] |
 
+### Platform and Logsource Compatibility
+| Field | Value |
+|-------|-------|
+| Target Platform | [Windows / Linux / macOS / AWS / Azure / GCP / SaaS / Network / Multi-platform] |
+| Required Telemetry | [Process / command / cloud audit / identity / DNS / proxy / EDR / other] |
+| Actual Log Source | [Sysmon / auditd / EndpointSecurity / CloudTrail / Azure Activity / GCP Audit Logs / vendor schema] |
+| Sigma Logsource | [`product`, `service`, `category`, or Not Suitable reason] |
+| Field Mapping | [source fields -> Sigma/backend fields; missing/lossy mappings] |
+| Backend Support | [Splunk / Sentinel / Elastic / Chronicle / QRadar / Sigma backend / native query / Not Evaluable] |
+| Validation Method | [platform-matched Atomic test / replayed event fixture / sandbox API call / conversion unit test / negative control] |
+| Blind Spots | [platform-specific missing, delayed, truncated, or uncollected events] |
+
 ### Sigma Rule
 [Full Sigma YAML rule]
 
@@ -446,6 +517,10 @@ Sigma is a generic and open signature format for SIEM systems. It allows writing
 | `image_load` | `windows` | DLL/image load events (Sysmon 7) |
 | `process_creation` | `linux` | Process start events (auditd, syslog) |
 | `file_event` | `linux` | File creation/modification |
+| `process_creation` | `macos` | Process start events from EndpointSecurity, EDR, or osquery |
+| (service-specific) | `aws` | AWS CloudTrail, GuardDuty, IAM, S3, and other service logs |
+| (service-specific) | `azure` | Azure Activity Logs, Entra ID sign-in/audit logs, resource logs |
+| (service-specific) | `gcp` | Google Cloud Audit Logs and service-specific logs |
 | `firewall` | (various) | Firewall allow/deny logs |
 | `proxy` | (various) | Web proxy access logs |
 | `webserver` | (various) | Web server access/error logs |
@@ -494,6 +569,10 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
+### Pitfall 6: Defaulting Non-Windows Detections to Windows Logs
+
+Windows `process_creation` examples are not portable evidence for Linux, macOS, cloud, SaaS, or network detections. A Linux `auditd` rule, macOS EndpointSecurity/osquery rule, AWS CloudTrail rule, Azure Activity rule, or GCP Audit Logs rule needs platform-specific logsource metadata, field mapping, backend support, validation, and blind-spot documentation. Mark unsupported or missing evidence `Not Evaluable` instead of presenting a Windows-shaped rule as complete.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -522,3 +601,7 @@ This skill processes user-supplied content that may include log samples, detecti
 10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
 11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
 12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+13. **Sigma Log Sources Appendix** -- https://sigmahq.io/docs/basics/log-sources.html
+14. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
+15. **AWS CloudTrail event reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
+16. **Apple Endpoint Security** -- https://developer.apple.com/documentation/endpointsecurity
