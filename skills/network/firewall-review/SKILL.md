@@ -6,14 +6,14 @@ description: >
   Firewall Policy). Auto-invoked when reviewing firewall configurations, ACLs,
   or network security policies. Produces a prioritized findings report covering
   overly permissive rules, shadowed rules, logging gaps, and egress filtering
-  deficiencies.
+  deficiencies, including IPv6 parity and temporary-rule expiry evidence.
 tags: [network, firewall, segmentation]
 role: [security-engineer]
 phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Use Glob and Grep to locate firewall configuration files, ACL definitions, and n
 ```
 # Platform-specific firewall configs
 **/iptables*
+**/ip6tables*
 **/nftables*
 **/firewalld*
 **/pf.conf
@@ -80,6 +81,8 @@ Record all discovered files. Categorize each by:
 - **Platform:** iptables, nftables, pf, cloud security groups, Kubernetes NetworkPolicy, vendor-specific (Palo Alto, Fortinet, Cisco ASA).
 - **Direction:** Perimeter (north-south) vs. internal (east-west).
 - **Scope:** Server, endpoint, network segment.
+- **Address family:** IPv4, IPv6, dual-stack, or Not Applicable with evidence.
+- **Rule lifecycle:** permanent, temporary, emergency, migration, vendor maintenance, or unknown.
 
 ---
 
@@ -105,8 +108,17 @@ The rule base MUST terminate with an explicit deny-all rule. Every traffic flow 
 :FORWARD DROP
 :OUTPUT DROP
 
+# ip6tables -- IPv6 default policy should match IPv4 intent
+:INPUT DROP
+:FORWARD DROP
+:OUTPUT DROP
+
+# nftables dual-stack table
+table inet filter
+
 # Cloud security groups -- verify no 0.0.0.0/0 allow-all egress
 egress: 0.0.0.0/0 allow all
+egress: ::/0 allow all
 
 # Terraform
 default_action = "Allow"    # BAD -- should be "Deny"
@@ -141,6 +153,14 @@ ingress {
   to_port     = 0
   protocol    = "-1"
   cidr_blocks = ["0.0.0.0/0"]
+}
+
+# Terraform AWS IPv6
+ingress {
+  from_port        = 22
+  to_port          = 22
+  protocol         = "tcp"
+  ipv6_cidr_blocks = ["::/0"]
 }
 ```
 
@@ -254,6 +274,38 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 
 ---
 
+#### 2.8 IPv6 Parity and Temporary-Rule Evidence
+
+IPv4 and IPv6 controls must be reviewed independently. Do not assume IPv6 inherits IPv4 default-deny, privileged-ingress, egress, routing, logging, or proxy controls. If IPv6 is disabled, record interface, subnet, route-table, and cloud-assignment evidence and mark the IPv6 checks `Not Applicable`.
+
+**IPv6 evidence gates:**
+
+| Check | Evidence Required | Fail / Not Evaluable When |
+|-------|-------------------|---------------------------|
+| `FW-IPV6-01` | IPv6 enabled/disabled evidence from interfaces, subnets, route tables, security groups, NSGs, or firewall policy | IPv6 status is unknown but IPv6 rules are ignored |
+| `FW-IPV6-02` | IPv4 and IPv6 default-deny status for inbound, forward, and outbound chains/policies | IPv4 is default deny but IPv6 is allow by default or unreviewed |
+| `FW-IPV6-03` | Privileged ingress review for `::/0` on SSH, RDP, databases, admin panels, and management interfaces | IPv4 ingress is restricted but IPv6 exposes privileged ports |
+| `FW-IPV6-04` | Egress parity for `::/0`, DNS, SMTP, SSH/RDP, proxy routing, and direct internet routes | IPv4 egress is restricted but IPv6 egress is unrestricted or unlogged |
+| `FW-IPV6-05` | Logging and SIEM ingestion for IPv6 allow/deny events | IPv6 deny/permit events are not logged while IPv4 events are |
+
+**Temporary-rule and exception evidence gates:**
+
+| Check | Evidence Required | Fail / Not Evaluable When |
+|-------|-------------------|---------------------------|
+| `FW-TEMP-01` | Rule owner, business justification, change ticket, implementation date, and affected assets | Temporary or emergency rule lacks ownership or ticket evidence |
+| `FW-TEMP-02` | Expiry or next-review date, renewal approval, and removal plan | Temporary access has no expiry or expired without renewal/removal evidence |
+| `FW-TEMP-03` | Last-hit baseline timestamp, flow-log/SIEM dependency check, and asset-owner confirmation before removal | Zero-hit rule is removed without proving counters were not recently reset |
+| `FW-TEMP-04` | Risk owner, compensating controls, approved duration, and post-stabilization review for broad emergency access | Broad emergency rule remains active as a permanent exception |
+
+Severity guidance:
+
+- Reachable privileged `::/0` ingress is **Critical** unless IPv6 is proven disabled or unrouted.
+- Unrestricted IPv6 egress while IPv4 egress is controlled is **High**.
+- Temporary privileged access with no owner, ticket, or expiry is **High**.
+- Broad IPv6 HTTPS egress can be **Medium** or **Low** only when routing, proxy enforcement, logging, owner, and expiry evidence are complete.
+
+---
+
 ### Step 3: Compile Assessment Report
 
 Produce the final report using the following structure.
@@ -265,7 +317,7 @@ Produce the final report using the following structure.
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Missing default deny; any/any inbound rules. Immediate exploitation risk. |
-| **High** | Overly permissive outbound rules; shadowed deny rules; no logging on deny actions; missing anti-spoofing; unused rules to decommissioned resources. |
+| **High** | Overly permissive outbound rules; shadowed deny rules; no logging on deny actions; missing anti-spoofing; unused rules to decommissioned resources; unrestricted IPv6 egress; temporary privileged rules without owner/ticket/expiry. |
 | **Medium** | Shadowed permit rules; missing egress DNS restriction; unused rules (active resources); missing logging on sensitive permits; missing stealth rules. |
 | **Low** | Rule documentation gaps; suboptimal rule ordering with no current security impact; cosmetic rule base issues. |
 
@@ -301,21 +353,34 @@ Produce the final report using the following structure.
 - **Remediation:** <concrete fix with example>
 
 ### Default Deny Status
-| Direction | Status | Evidence |
-|-----------|--------|----------|
-| Inbound   | Pass/Fail | <rule reference> |
-| Outbound  | Pass/Fail | <rule reference> |
+| Direction | Address Family | Status | Evidence |
+|-----------|----------------|--------|----------|
+| Inbound   | IPv4 / IPv6 | Pass/Fail/N/A | <rule reference> |
+| Outbound  | IPv4 / IPv6 | Pass/Fail/N/A | <rule reference> |
+
+### IPv6 Parity Review
+| Check | Status | Evidence | Follow-up |
+|-------|--------|----------|-----------|
+| IPv6 enabled/routed | Pass/Fail/N/A | <interface, subnet, route, or cloud assignment evidence> | <action> |
+| Privileged `::/0` ingress | Pass/Fail/N/A | <rule reference> | <action> |
+| Unrestricted IPv6 egress | Pass/Fail/N/A | <rule reference> | <action> |
+| IPv6 logging parity | Pass/Fail/N/A | <log/SIEM evidence> | <action> |
 
 ### Shadowed Rules Summary
 | Shadowed Rule | Position | Shadowing Rule | Position | Impact |
 |---------------|----------|----------------|----------|--------|
 
 ### Egress Filtering Status
-| Protocol/Port | Restricted | Authorized Destinations |
-|---------------|-----------|------------------------|
-| DNS (53)      | Yes/No    | <resolver IPs>         |
-| SMTP (25)     | Yes/No    | <mail server IPs>      |
-| HTTPS (443)   | Yes/No    | <proxy or direct>      |
+| Protocol/Port | Address Family | Restricted | Authorized Destinations |
+|---------------|----------------|-----------|------------------------|
+| DNS (53)      | IPv4 / IPv6    | Yes/No    | <resolver IPs>         |
+| SMTP (25)     | IPv4 / IPv6    | Yes/No    | <mail server IPs>      |
+| HTTPS (443)   | IPv4 / IPv6    | Yes/No    | <proxy or direct>      |
+
+### Temporary Rules and Exceptions
+| Rule ID | Owner | Ticket | Purpose | Created | Expires/Review Date | Last Hit Baseline | Status |
+|---------|-------|--------|---------|---------|---------------------|-------------------|--------|
+| <id> | <owner> | <change ticket> | <business purpose> | <date> | <date> | <counter/flow-log date> | Active / Expired / Remove / Renew |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -361,6 +426,10 @@ Produce the final report using the following structure.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
+6. **Treating broad IPv6 rules without reachability context.** A `::/0` rule can be Critical when routed to privileged services, but it may be Not Applicable when IPv6 is disabled or lower severity when it is narrow, owned, logged, expiring, and forced through an inspection proxy.
+
+7. **Letting temporary rules become permanent.** Emergency and migration access should have owner, ticket, expiry, compensating control, and removal or renewal evidence. Missing metadata is itself a review finding.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -381,9 +450,13 @@ This skill processes firewall configurations that may contain user-supplied comm
 - NIST SP 800-41 Rev 1, Guidelines on Firewalls and Firewall Policy: https://csrc.nist.gov/publications/detail/sp/800-41/rev-1/final
 - NIST SP 800-41 Rev 1 (PDF): https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-41r1.pdf
 - CIS Benchmarks (platform-specific firewall hardening): https://www.cisecurity.org/cis-benchmarks
+- AWS Security group rules: https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html
+- Azure Network security groups: https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview
+- Google Cloud firewall rules: https://cloud.google.com/firewall/docs/firewalls
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added IPv6 parity and temporary-rule expiry evidence gates with output fields and calibration fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
