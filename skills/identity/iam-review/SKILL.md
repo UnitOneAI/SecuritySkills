@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -260,7 +260,7 @@ IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for pr
 
 #### Downstream Deprovisioning and Token Revocation Evidence Gate
 
-Do not mark deprovisioning complete based only on the IdP account status or a successful SCIM user disable event. Verify that relying-party accounts, sessions, app-local roles, refresh tokens, API tokens, mobile/device tokens, and owned machine identities no longer preserve effective access.
+Do not mark deprovisioning complete based only on the IdP account status or a successful SCIM user disable event. Verify that relying-party accounts, sessions, app-local roles, refresh tokens, API tokens, mobile/device tokens, and owned machine identities no longer preserve effective access. When standards apply, map SCIM PATCH/DELETE evidence to RFC 7644 behavior and token revocation evidence to RFC 7009 semantics.
 
 ```
 IAM-DEPROV-01: IdP disabled or SCIM event succeeded, but relying-party account/session state is not verified
@@ -280,7 +280,7 @@ IAM-DEPROV-08: Downstream lifecycle evidence is unavailable; deprovisioning must
 | Source lifecycle event | Hire, transfer, termination, group removal, owner change, emergency access use, HRIS/IdP ticket, source-of-truth ID, event timestamp | Review cannot prove the access change is authoritative or timely |
 | IdP and provisioning evidence | Directory status, SCIM PATCH/DELETE event, IdP group delta, provisioning job result, failure queue, retry status, and event ID | SCIM may fail partially or disable only the identity object |
 | Relying-party state | App-local user state, roles/groups, entitlement table, data warehouse grants, cloud/SaaS role bindings, cache TTL, last sync, and audit event | Effective access can persist outside the IdP |
-| Token/session revocation | Browser sessions, mobile sessions, OAuth refresh tokens, personal API tokens, device tokens, CLI tokens, and service-specific sessions | Users can remain authenticated after account disablement |
+| Token/session revocation | Browser sessions, mobile sessions, OAuth refresh tokens, personal API tokens, device tokens, CLI tokens, service-specific sessions, RFC 7009 token revocation response, and residual token validation result | Users can remain authenticated after account disablement |
 | Machine identity impact | Owned service accounts, deploy keys, OAuth apps, GitHub/GitLab tokens, CI/CD secrets, OIDC trust policies, static keys, workload identity bindings, and owner reassignment | Departed owners can leave non-human production access behind |
 | Non-SCIM compensating controls | Manual disable checklist, API revocation proof, periodic reconciliation, exception owner, review cadence, and residual access result | SSO-only apps can retain local access without lifecycle coverage |
 | Break-glass exceptions | Account owner, business purpose, expiry, monitoring, test result, vaulting, post-use password/key rotation, and approval evidence | Emergency access can become permanent ungoverned access |
@@ -302,7 +302,15 @@ IAM-DEPROV-08: Downstream lifecycle evidence is unavailable; deprovisioning must
 | **Azure / Entra ID** | Access Reviews (Entra ID Governance) | Configured and completing on schedule |
 | **Azure / Entra ID** | Continuous Access Evaluation, refresh-token revocation, enterprise app assignments | Token/session revocation, app-local roles, stale service principals |
 | **GCP** | Policy Analyzer, Admin Activity audit logs | Service accounts with no API calls, unused IAM bindings |
-| **SaaS / IdP** | SCIM job logs, app audit logs, OAuth app/token inventory, session APIs | Downstream disablement, token/session revocation, group cache propagation |
+| **SaaS / IdP** | SCIM job logs, app audit logs, OAuth app/token inventory, session APIs, RFC 7644 PATCH/DELETE evidence, RFC 7009 token revocation evidence | Downstream disablement, token/session revocation, group cache propagation |
+
+**Reference standards for this gate:**
+
+| Standard | Review use |
+|---|---|
+| **RFC 7009** | Confirm refresh/access token revocation endpoints exist, are called for affected clients, and are followed by residual-token validation evidence. |
+| **RFC 7644** | Confirm SCIM PATCH/DELETE/deactivate operations are not treated as complete until downstream relying-party state and failure queues are verified. |
+| **NIST SP 800-207** | Apply per-session access, continuous evaluation, and assume-breach principles to sessions, tokens, app-local roles, and machine identities. |
 
 **Severity Classification:**
 
@@ -553,5 +561,6 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.2 | 2026-06-06 | Add RFC 7009, RFC 7644, and NIST SP 800-207 reference mapping for downstream deprovisioning evidence |
 | 1.0.1 | 2026-06-06 | Add downstream deprovisioning and token revocation evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
