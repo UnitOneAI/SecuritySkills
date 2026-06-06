@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -294,13 +294,76 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
+### Step 6A: Resolver Privacy and Log Minimization Evidence
+
+DNSSEC validation, encrypted transport, RPZ filtering, and query logging do not prove that resolver privacy is acceptable. For each recursive resolver, forwarder, or managed protective DNS service, collect privacy evidence before marking the resolver posture as Pass.
+
+#### Review Checklist
+
+```
+DNS-PRIV-01: QNAME minimization disabled without compatibility justification or resolver support evidence
+DNS-PRIV-02: EDNS Client Subnet forwards full or overly specific client prefixes without documented exception
+DNS-PRIV-03: ECS exception lacks prefix length, affected domains, owner, review date, and performance/security rationale
+DNS-PRIV-04: Query logs retain full client IPs, user IDs, full QNAMEs, ECS values, or response data longer than justified
+DNS-PRIV-05: Detailed DNS logs lack aggregation, pseudonymization, encryption, access controls, or access-review evidence
+DNS-PRIV-06: Managed or external resolver privacy policy is missing, stale, or silent on retention/sharing/operator access
+DNS-PRIV-07: Threat-hunting exception lacks purpose, retention window, scope, owner, and incident-response justification
+DNS-PRIV-08: Encrypted DNS transport is treated as log minimization evidence
+DNS-PRIV-09: Resolver privacy evidence is unavailable; privacy posture must be Not Evaluable
+```
+
+#### Required Evidence Matrix
+
+| Evidence Area | Required Detail | Risk if Missing |
+|---|---|---|
+| Resolver inventory | Recursive resolver, forwarder, protective DNS provider, client population, network boundary, and whether the service is managed internally or externally | Privacy risk can be hidden behind generic "DNS is encrypted" or "protective DNS is enabled" statements |
+| QNAME minimization | Resolver setting, software/version support, compatibility exceptions, affected zones, and test output or config evidence | Full query names can be exposed to every delegation level during iterative resolution |
+| EDNS Client Subnet | ECS mode, IPv4/IPv6 prefix lengths, domains/providers receiving ECS, coarsening/anonymization behavior, and opt-out scope | Client location or network identity can be forwarded to upstream resolvers or authoritative servers |
+| Query log fields | Client IP/subnet, authenticated user/device, full QNAME, query type, response code, response data, ECS prefix, and timestamps | Detailed logs can become a long-lived browsing history and user-behavior dataset |
+| Retention and minimization | Retention period, aggregation, truncation, hashing/pseudonymization, sampling, deletion path, and backup/log archive handling | Sensitive DNS telemetry may outlive the security need that justified collection |
+| Access and protection | Encryption at rest, SIEM destination, privileged access groups, access review cadence, break-glass path, and audit logs | Resolver logs can be misused or copied without detection |
+| Exception governance | Purpose, owner, approval date, expiration/review date, affected identities and domains, and compensating controls | Temporary threat-hunting or CDN-performance exceptions can become permanent privacy debt |
+| External resolver policy | Provider privacy statement, retention/sharing terms, subprocessors, legal request handling, and operator access controls | Outsourced resolver operation can shift sensitive query data outside the reviewed control boundary |
+
+#### Decision Rules
+
+- Mark QNAME minimization disabled as **Medium** unless there is documented incompatibility or resolver support evidence. Raise to **High** for sensitive client populations or broad external forwarding.
+- Mark ECS forwarding as **Medium** when prefixes are coarse and justified, and **High** when full client prefixes or user-identifiable subnets are forwarded without owner, scope, and review evidence.
+- Mark long-lived detailed query logs as **High** when they contain user-identifiable fields and lack retention, minimization, encryption, or access-review evidence.
+- Mark resolver privacy as **Not Evaluable** when only DNSSEC, DoH/DoT, RPZ, or query-logging status is available without QNAME, ECS, log-field, retention, and policy evidence.
+- Allow protective DNS or threat-hunting exceptions only when purpose, scope, retention, owner, and review/expiry evidence are documented.
+
+**Common configuration evidence:**
+
+```
+# BIND recursive resolver
+qname-minimization yes;
+
+# Unbound recursive resolver
+qname-minimisation: yes
+module-config: "subnetcache validator iterator"
+send-client-subnet: <allowed destination prefix>
+client-subnet-always-forward: no
+
+# Managed/protective DNS evidence to request
+privacy_policy_url
+retention_days
+ecs_prefix_length_ipv4
+ecs_prefix_length_ipv6
+log_fields
+access_review_cadence
+exception_expiry
+```
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; detailed user-identifiable DNS logs retained without minimization/access controls; full ECS forwarding without exception evidence. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; QNAME minimization disabled without justification; coarse ECS forwarding without review evidence. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -343,6 +406,12 @@ abcdef0123456789.dnscat.example.com TXT
 - Entropy-based detection: <Deployed / Not deployed>
 - Volumetric thresholds: <Configured / Not configured>
 - SIEM integration: <Yes / No>
+
+### Resolver Privacy and Log Minimization
+
+| Resolver | QNAME Minimization | ECS Mode / Prefix | Log Fields | Retention | Minimization Controls | Access Controls | Exception Evidence | Decision |
+|----------|--------------------|-------------------|------------|-----------|-----------------------|-----------------|--------------------|----------|
+| resolver1 | Enabled/Disabled/Unknown | Disabled/Coarse/Full/Unknown | Full QNAME/client IP/user/ECS | 14d/30d/365d | Aggregated/Hashed/Truncated/None | Encryption/access review/audit | Owner/date/expiry or N/A | Pass/Fail/Partial/Not Evaluable |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -405,6 +474,9 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
+- RFC 9156 -- DNS Query Name Minimisation to Improve Privacy: https://www.rfc-editor.org/rfc/rfc9156
+- RFC 7871 -- Client Subnet in DNS Queries: https://www.rfc-editor.org/rfc/rfc7871
+- RFC 8932 -- Recommendations for DNS Privacy Service Operators: https://www.rfc-editor.org/rfc/rfc8932
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
@@ -413,4 +485,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Add resolver privacy and log minimization evidence gates for QNAME minimization, ECS, query log retention, and privacy exceptions.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
