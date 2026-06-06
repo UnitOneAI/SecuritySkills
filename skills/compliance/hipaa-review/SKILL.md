@@ -320,6 +320,17 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Classify login-only logging, missing ePHI activity event coverage, mutable logs with no integrity evidence, missing time basis, or activity reviews disconnected from collected audit events as **Partial Compliance** or **Non-Compliance** depending on scope and risk.
 - Mark legacy or Business Associate systems as **Not Evaluable** when event coverage, integrity, or review evidence cannot be obtained. Do not infer compliance from retention policy text alone.
 
+**Audit-control evidence gate:**
+
+| Evidence Area | Required Detail | Downgrade / Cap Rule |
+|---------------|-----------------|----------------------|
+| ePHI system coverage | EHR, patient portal, API, data warehouse, billing, interface engine, medical device, cloud service, and Business Associate platforms that contain or use ePHI | Missing production ePHI systems cap the standard at **Non-Compliance** or **Critical Non-Compliance** when systemic |
+| Event taxonomy | Login/logout, ePHI view/export/print/share, create/update/delete/restore, failed access, emergency/break-glass, admin role/audit-config change, API/service-account access | Login-only or authentication-only logging caps the standard at **Partial Compliance** |
+| Log source | Application, database, cloud, API gateway, endpoint/EDR, SIEM, or BA-provided audit evidence for each event family | Unmapped event families are **Not Evaluable** until source evidence is produced |
+| Integrity and time basis | NTP/time source, immutable or tamper-evident storage, hash/signature/archive controls, chain of custody, export/restore test | Mutable logs with unknown time basis cannot be marked **Compliant** |
+| Retention and documentation | Six-year documentation handling under 164.316, archive location, legal hold/exception handling, restore/export evidence | Retention policy text without test/export evidence caps at **Partial Compliance** |
+| Activity-review linkage | 164.308(a)(1)(ii)(D) report/query, owner, cadence, reviewed exceptions, escalation outcome, follow-up ticket or risk acceptance | Collected logs with no documented examination cap at **Partial Compliance** or **Non-Compliance** |
+
 #### 164.312(c)(1) — Integrity (Standard)
 
 **164.312(c)(2) — Mechanism to Authenticate Electronic Protected Health Information (A)**

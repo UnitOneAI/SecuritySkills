@@ -67,6 +67,63 @@ expected_decision: not_evaluable
 reason: The reviewer cannot infer 164.312(b) coverage from a BAA without audit-event evidence.
 ```
 
+## Vulnerable: Logs Collected but Activity Review Disconnected
+
+```yaml
+systems:
+  - ehr-prod
+  - patient-api
+  - billing-platform
+audit_logs:
+  event_taxonomy:
+    - login
+    - ephi_view
+    - ephi_export
+    - admin_privilege_change
+activity_review:
+  cfr: 164.308(a)(1)(ii)(D)
+  review_report: missing
+  owner: missing
+  cadence: missing
+  exceptions_reviewed: false
+  escalation_outcome: missing
+expected_decision: non_compliance
+reason: Audit collection is not enough when the organization cannot show records are examined and exceptions are followed up.
+```
+
+## Benign: Legacy System With Compensating Audit Evidence
+
+```yaml
+system: legacy-lab-interface
+contains_ephi: true
+native_audit_events:
+  ephi_view_export: unsupported
+compensating_controls:
+  upstream_api_gateway:
+    authenticated_requests: covered
+    ephi_payload_export: covered
+    service_account_access: covered
+  database_audit:
+    create_update_delete: covered
+    admin_schema_change: covered
+  network_tap:
+    interface_messages: sampled
+integrity_time_basis:
+  ntp_source: documented
+  immutable_archive: enabled
+retention_evidence:
+  period: six_years
+  archive_location: compliance_archive
+  export_test: 2026-05-30
+activity_review_linkage:
+  cfr: 164.308(a)(1)(ii)(D)
+  report: weekly_legacy_interface_review
+  owner: security_official
+  exceptions_tracked: true
+expected_decision: partial_compliance
+reason: Native logging is incomplete, but compensating audit evidence is documented and reviewable.
+```
+
 ## Benign: Complete Audit-Control Evidence
 
 ```yaml
