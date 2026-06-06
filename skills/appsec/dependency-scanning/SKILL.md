@@ -33,6 +33,7 @@ Identify known vulnerabilities, license compliance violations, and supply chain 
 This skill activates when any of the following are present:
 
 - A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
+- A container definition file is shared or referenced: `Dockerfile`, `Containerfile`, `docker-compose.yml`.
 - The user asks about dependency security, vulnerability scanning, SBOM generation, or supply chain risk.
 - A CI/CD pipeline configuration references dependency audit steps.
 
@@ -181,6 +182,25 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Container Base Image and OS Dependencies
+
+### Scope and Importance
+
+Language dependency scans (npm, pip, cargo) often miss OS packages installed in container base images (e.g., `apt-get install`, `apk add`), unmanaged native binaries downloaded via `curl`, or files copied from multi-stage builds. Production dependency risk must include the final container image layer stack.
+
+### Key Container Risks
+
+1. **Mutable Base Tags**: Using tags like `node:20-bullseye` or `ubuntu:latest` means the base image changes over time. Always pin to a `sha256` digest to ensure immutability.
+2. **Unmanaged Binaries**: `RUN curl | sh` patterns or `COPY --from=build` introduce binaries not tracked by language manifests. These require final-image SBOM analysis.
+3. **Multi-Arch Discrepancies**: Multi-architecture images resolve to different layer digests per platform, leading to inconsistent scan results.
+4. **Distroless/Minimal Bases**: If minimal bases (like `gcr.io/distroless/*`) are used, OS package visibility might be marked missing falsely without an image scanner, as traditional package managers are absent.
+
+### Evidence & Gates
+
+- **Base Image Pinning**: Ensure every `FROM` statement uses a `@sha256:` digest, not just a mutable tag.
+- **Final Image SBOM**: Require tools like Trivy, Grype, or Docker Scout to scan the *final, deployable image artifact* rather than solely source manifests.
+- **Tracking Downloads**: Flag any `RUN curl`, `wget`, or unverified native downloads for manual provenance check.
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -220,13 +240,13 @@ When performing a dependency scan, produce findings in the following structure:
 
 ## Procedure
 
-1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
-2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
+1. **Identify manifests**: Use Glob to locate all package manifest, lockfiles, `Dockerfile`, and `Containerfile` files in the project.
+2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges. Check Dockerfiles for base images and manually installed tools.
 3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
-4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
+4. **Vulnerability scan**: Cross-reference packages, container bases, and OS packages against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned base image digests, provenance availability, and final image SBOM evidence.
 8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
