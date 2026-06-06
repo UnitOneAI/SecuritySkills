@@ -84,13 +84,43 @@ Use Glob to locate all IaC configuration files.
 **/Pulumi.*.yaml
 **/__main__.py       # Pulumi Python
 **/index.ts          # Pulumi TypeScript
+**/Program.cs        # Pulumi .NET
+**/main.go           # Pulumi Go
+**/main.py           # Pulumi Python alternate
+**/*.bicepparam
 ```
 
 Classify the IaC stack(s) in use. Record the total file count and frameworks detected.
 
 ---
 
-### Step 2 through Step 9: Security Domain Evaluation
+### Step 2: Framework-Specific Secret Semantics
+
+Before applying generic hardcoded-secret rules, determine whether the framework has its own secret-taint or secure-input model. Terraform, CloudFormation, Pulumi, and Bicep expose sensitive values differently, so findings must include the evidence origin and should not be based only on a sensitive-looking property name.
+
+**Pulumi evidence gates:**
+
+| Gate | Evidence to Collect | Finding When Missing |
+|---|---|---|
+| Secret config read | `requireSecret`, `getSecret`, `pulumi.secret`, or stack config entry marked `secret: true` | Sensitive resource argument is sourced from `Config.require`, `get`, environment variables, or plaintext stack config |
+| Secret-taint propagation | Secret `Output` remains secret through transformations | `apply` callback logs, writes, returns to non-secret output, or sends the plaintext to an untrusted sink |
+| Stack output handling | `export` / stack outputs and `additionalSecretOutputs` reviewed | Secret values are exported as non-secret outputs or provider-computed secrets are not marked as additional secret outputs |
+| Secrets provider posture | Pulumi backend and secrets provider are identified | Self-managed or local backends store stack state without an approved encryption provider |
+
+**Bicep evidence gates:**
+
+| Gate | Evidence to Collect | Finding When Missing |
+|---|---|---|
+| Secure parameter use | `@secure()` on string/object parameters used for passwords, keys, tokens, and connection strings | Sensitive property such as `adminPassword` is fed by a plain parameter |
+| Secure output use | `@secure()` output where supported, or no output for sensitive values | `list*()` values, secure parameters, keys, or connection strings are emitted into deployment history |
+| Linter-equivalent results | `use-secure-value-for-secure-inputs` and `outputs-should-not-contain-secrets` outcomes | Review does not distinguish safe secure parameters from unsafe plaintext values |
+| Module/deployment-script boundaries | Module outputs, deployment scripts, and nested templates are traced | Secrets are re-exposed after a secure top-level parameter passes into a child module or script |
+
+Record the evidence origin for each finding as one of: `Terraform source`, `Terraform plan`, `Terraform state`, `CloudFormation template`, `Pulumi SDK`, `Pulumi stack config`, `Pulumi state`, `Bicep source`, `Bicep linter`, `ARM deployment history`, or `Not Evaluable`.
+
+---
+
+### Step 3 through Step 10: Security Domain Evaluation
 
 Evaluate all IaC configurations across eight security domains: Hardcoded Secrets Detection, Public Exposure Analysis, Encryption Gap Analysis, IAM and Access Control Review, Logging and Monitoring Gaps, Network Security Review, Supply Chain Integrity (SLSA Alignment), and Resource Hardening.
 
@@ -101,7 +131,7 @@ For detailed tool-specific rule sets, detection patterns, vulnerable code exampl
 
 ---
 
-### Step 10: Compile Assessment Report
+### Step 11: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -157,6 +187,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Fail
 - **Severity:** Critical / High / Medium / Low
 - **Equivalent Rule:** Checkov CKV_XXX_NN / tfsec xxx-xxx / KICS xxxxxxxx
+- **Evidence Origin:** Terraform source / Terraform plan / Terraform state / CloudFormation template / Pulumi SDK / Pulumi stack config / Pulumi state / Bicep source / Bicep linter / ARM deployment history / Not Evaluable
 - **File:** <path>
 - **Line(s):** <line numbers>
 - **Description:** <what was found>
@@ -169,6 +200,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - State encryption: <encrypted / unencrypted>
 - State locking: <enabled / disabled>
 - Lock file committed: <yes / no>
+- Pulumi secrets provider: <approved / weak / not applicable / not evaluable>
+- Pulumi secret-taint review: <passed / failed / not applicable / not evaluable>
+- Bicep secure input/output review: <passed / failed / not applicable / not evaluable>
 
 ### Prioritized Remediation Plan
 
@@ -230,6 +264,8 @@ This skill applies checks equivalent to the following high-impact rules:
 5. **Confusing `aws_s3_bucket_acl` with `aws_s3_bucket_public_access_block`.** The public access block overrides ACLs. Check both, but the access block is the stronger control.
 6. **Terraform state file secrets.** Even when variables are marked `sensitive`, they may appear in plaintext in the state file. Verify state encryption and access controls.
 7. **Provider-specific encryption defaults.** Some providers encrypt by default (e.g., AWS S3 since January 2023). Know the defaults before flagging missing explicit encryption configuration.
+8. **Treating Pulumi property names as proof of plaintext secrets.** A Pulumi `password` property may be safe if it receives a secret-tainted `Output` from `requireSecret()` or `pulumi.secret()`. Confirm the source, state encryption, stack output behavior, and `apply` callback sinks before flagging.
+9. **Treating Bicep `adminPassword` as automatically unsafe.** A sensitive property fed by an `@secure()` parameter is the expected pattern. Flag plain parameters, `list*()` output leakage, and deployment-history exposure instead of the property name alone.
 
 ---
 
@@ -260,9 +296,15 @@ This skill applies checks equivalent to the following high-impact rules:
 - cfn-nag Rules: https://github.com/stelligent/cfn_nag
 - Terraform Security Best Practices: https://developer.hashicorp.com/terraform/cloud-docs/recommended-practices
 - AWS Security Best Practices in IAM: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
+- Pulumi Secrets: https://www.pulumi.com/docs/iac/concepts/secrets/
+- Pulumi Configuration: https://www.pulumi.com/docs/iac/concepts/config/
+- Azure Bicep Parameters: https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/parameters
+- Bicep linter rule: use secure value for secure inputs: https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/linter-rule-use-secure-value-for-secure-inputs
+- Bicep linter rule: outputs should not contain secrets: https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/linter-rule-outputs-should-not-contain-secrets
 
 ---
 
 ## Changelog
 
 - **1.0.0** -- Initial release. Coverage of eight security domains across Terraform, CloudFormation, Pulumi, and Bicep with Checkov/tfsec/KICS rule equivalents.
+- **1.0.1** -- Added Pulumi secret-taint and Bicep secure-input/output evidence gates with evidence-origin reporting.

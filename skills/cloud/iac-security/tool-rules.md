@@ -79,6 +79,185 @@ variable "db_password" {
 }
 ```
 
+### Pulumi Secret Flow and State Checks
+
+Pulumi programs are imperative code, so a sensitive-looking property name is not enough to prove a plaintext secret. Track whether the value is secret-tainted from configuration through resource arguments, callbacks, stack outputs, and state.
+
+**Benign Pulumi patterns:**
+
+```ts
+import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
+
+const cfg = new pulumi.Config();
+const dbPassword = cfg.requireSecret("dbPassword");
+
+new aws.rds.Instance("db", {
+  allocatedStorage: 20,
+  engine: "postgres",
+  instanceClass: "db.t4g.micro",
+  username: "app",
+  password: dbPassword,
+});
+```
+
+```yaml
+# Pulumi.production.yaml
+config:
+  app:dbPassword:
+    secure: v1:...
+```
+
+```py
+import pulumi
+import pulumi_aws as aws
+
+cfg = pulumi.Config()
+db_password = cfg.require_secret("dbPassword")
+
+aws.rds.Instance("db",
+    allocated_storage=20,
+    engine="postgres",
+    instance_class="db.t4g.micro",
+    username="app",
+    password=db_password)
+```
+
+**Pulumi findings to catch:**
+
+```ts
+// BAD: Plain config read flows into a secret-bearing resource argument.
+const cfg = new pulumi.Config();
+const dbPassword = cfg.require("dbPassword");
+
+new aws.ssm.Parameter("db-password", {
+  type: "SecureString",
+  value: dbPassword,
+});
+```
+
+```ts
+// BAD: Secret value is exposed inside an apply callback.
+const apiToken = cfg.requireSecret("apiToken");
+
+apiToken.apply((token) => {
+  console.log(`deploy token: ${token}`);
+  return token;
+});
+```
+
+```py
+# BAD: Plain config read flows into a secret-bearing Python resource argument.
+cfg = pulumi.Config()
+db_password = cfg.require("dbPassword")
+
+aws.ssm.Parameter("db-password",
+    type="SecureString",
+    value=db_password)
+```
+
+```ts
+// BAD: Stack output may disclose a secret unless kept secret-tainted.
+export const connectionString = db.endpoint.apply((endpoint) => `postgres://${dbPassword}@${endpoint}`);
+```
+
+**Detection patterns:**
+
+```
+# Pulumi config and secret APIs
+Grep: "new pulumi.Config|Config\\(|requireSecret|getSecret|pulumi.secret|Output.secret|additionalSecretOutputs" in **/*.{ts,js,py,go,cs}
+Grep: "require\\(|get\\(|process.env|os.environ|System.getenv|Environment.GetEnvironmentVariable" in **/*.{ts,js,py,go,cs}
+
+# Pulumi callback, output, and logging sinks
+Grep: "\\.apply\\(|pulumi.interpolate|export const|ctx.Export|pulumi.export" in **/*.{ts,js,py,go,cs}
+Grep: "console.log|print\\(|logger|writeFile|appendFile|setOutput|GITHUB_OUTPUT" in **/*.{ts,js,py,go,cs}
+
+# Pulumi stack configuration and secrets provider posture
+Grep: "secretsprovider|encryptedkey|secure:|secret: true" in **/Pulumi*.yaml
+```
+
+**Severity calibration:**
+
+| Condition | Severity |
+|---|---|
+| Plain Pulumi config or environment value flows into a password/token/key field | Critical |
+| Secret `Output` is logged, written to disk, CI output, or a non-secret stack output | Critical |
+| Pulumi stack state uses a weak or unknown secrets provider for production secrets | High |
+| Provider-computed secret output is not listed in `additionalSecretOutputs` | Medium |
+| Safe `requireSecret` / `pulumi.secret` value is passed directly to a sensitive property | Pass |
+
+### Bicep Secure Input and Deployment History Checks
+
+Bicep and ARM deployments can leak secrets through plain parameters, plain outputs, `list*()` functions, deployment scripts, and module outputs. Match Bicep linter-equivalent rules before applying generic secret-name heuristics.
+
+**Benign Bicep pattern:**
+
+```bicep
+@secure()
+param adminPassword string
+
+resource vm 'Microsoft.Compute/virtualMachines@2025-04-01' = {
+  name: 'safe-vm'
+  location: resourceGroup().location
+  properties: {
+    osProfile: {
+      computerName: 'safe-vm'
+      adminUsername: 'azureuser'
+      adminPassword: adminPassword
+    }
+  }
+}
+```
+
+**Bicep findings to catch:**
+
+```bicep
+// BAD: Sensitive VM password is sourced from a plain parameter.
+param adminPassword string
+
+resource vm 'Microsoft.Compute/virtualMachines@2025-04-01' = {
+  name: 'unsafe-vm'
+  location: resourceGroup().location
+  properties: {
+    osProfile: {
+      computerName: 'unsafe-vm'
+      adminUsername: 'azureuser'
+      adminPassword: adminPassword
+    }
+  }
+}
+```
+
+```bicep
+// BAD: list* value is exposed through deployment history.
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: 'prodsa'
+}
+
+output primaryKey string = storage.listKeys().keys[0].value
+```
+
+**Detection patterns:**
+
+```
+# Bicep sensitive inputs and outputs
+Grep: "@secure\\(\\)|param .*Password|param .*Secret|param .*Token|param .*Key|output .*string" in **/*.bicep **/*.bicepparam
+Grep: "adminPassword|connectionString|clientSecret|listKeys\\(|listSecrets\\(|listCredentials\\(|list[A-Za-z]+\\(" in **/*.bicep
+
+# Bicep module and deployment-script boundaries
+Grep: "module .* =|Microsoft.Resources/deploymentScripts|outputs\\.|environmentVariables|secureValue" in **/*.bicep
+```
+
+**Severity calibration:**
+
+| Condition | Severity |
+|---|---|
+| Sensitive Bicep property is sourced from a plain parameter or variable | Critical |
+| `list*()` secret, key, token, or connection string is emitted as a plain output | Critical |
+| Secure top-level parameter is re-exposed through a module output or deployment script log | Critical |
+| Bicep linter secure-input/output evidence is missing for production templates | Medium |
+| Sensitive Bicep property is fed by an `@secure()` string/object parameter with no output exposure | Pass |
+
 ---
 
 ## Public Exposure Analysis
