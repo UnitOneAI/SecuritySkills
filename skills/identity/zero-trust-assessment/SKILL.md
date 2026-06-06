@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -343,13 +343,72 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ---
 
+### Step 7: Policy Decision Continuity and Fail-Secure Behavior
+
+**Objective:** Verify that dynamic access policy remains fail-secure when the policy engine, policy administrator, enforcement point, or trust-signal sources are unavailable, stale, or recovering from outage.
+
+**NIST SP 800-207 Reference:** Tenets 3, 4, 5, 6, 7; PE/PA/PEP logical architecture
+**Supporting Reference:** NIST SP 800-53 SA-8 and SC-24 secure defaults / fail in known state
+
+Zero trust maturity must not be scored from component presence alone. For each critical access path, collect evidence for the access decision dependency chain and how it behaves during degraded operation.
+
+#### Policy Decision Continuity Matrix
+
+| Evidence Field | Required Review Detail |
+|---|---|
+| **Critical access path** | User or workload, resource, sensitivity, privileged/regulated-data status |
+| **Policy Engine (PE)** | Decision source, HA design, last outage, default decision when unreachable |
+| **Policy Administrator (PA)** | Mechanism that opens, updates, or terminates sessions after PE decision |
+| **Policy Enforcement Point (PEP)** | Gateway, proxy, agent, service mesh, API gateway, or local control enforcing the decision |
+| **Trust-signal sources** | IdP risk, MDM/CDM, EDR/XDR health, threat intelligence, asset inventory, data classification |
+| **Signal freshness** | Maximum allowed age, last successful update, stale-signal action, Not Evaluable gaps |
+| **Cache and token TTL** | Policy cache TTL, access-token TTL, refresh-token TTL, tunnel/session TTL, local deny cache |
+| **Revocation propagation** | Disabled user, device non-compliance, high-risk user, compromised workload, or revoked role test result |
+| **Outage behavior** | Fail-closed, last-known-deny, bounded degraded mode, unknown, or unbounded fail-open |
+| **Break-glass boundary** | Scope, approver, duration, alerting, session capture, post-use review, credential/session rotation |
+| **Outage test evidence** | Date, scenario, observed result, affected paths, remediation owner, next retest |
+
+#### Review Procedure
+
+1. Identify critical access paths for privileged administration, production systems, regulated data, finance, identity administration, and remote contractor access.
+2. For each path, map the PE, PA, PEP, trust-signal sources, and the control that can terminate an existing session after a deny or revocation.
+3. Request outage or tabletop evidence for PE unreachable, PA unreachable, PEP disconnected, IdP risk unavailable, MDM/CDM stale, EDR stale, and threat-intelligence feed unavailable.
+4. Record whether new sessions, existing sessions, privileged actions, sensitive downloads, and administrative APIs fail closed, continue read-only, continue normally, or become unknown.
+5. Verify cache, access-token, refresh-token, tunnel, and local-policy TTLs. Compare TTLs with the expected revocation and signal freshness window for the resource sensitivity.
+6. Test or inspect evidence for disabled users, revoked roles, non-compliant devices, high-risk sign-ins, and compromised workload identities. Record the actual propagation time to each PEP.
+7. Evaluate emergency access separately from fail-open behavior. Credit only bounded break-glass paths with approval, scope, duration, alerting, session capture, post-use review, and rotation evidence.
+8. Mark evidence as `Not Evaluable` when outage behavior, stale-signal action, TTLs, or revocation propagation cannot be demonstrated for a critical path.
+
+#### What to look for
+
+```
+ZT-CONT-01: Critical access path lacks PE/PA/PEP failure-mode evidence
+ZT-CONT-02: PEP allows new sessions when PE/PA decision plane is unreachable
+ZT-CONT-03: Cached allow decisions outlive user disablement, role revocation, device non-compliance, or high-risk signals
+ZT-CONT-04: Trust-signal source is stale or unreachable but normal access continues
+ZT-CONT-05: Cache, token, tunnel, or session TTL exceeds the resource's required revocation window
+ZT-CONT-06: Revocation propagation is untested or only verified at the IdP, not at each PEP
+ZT-CONT-07: Break-glass access lacks scope, approval, duration, alerting, session capture, post-use review, or rotation
+ZT-CONT-08: Maturity score claims Advanced/Optimal without continuity evidence for critical access paths
+```
+
+#### Scoring Guidance
+
+- Cap affected Identity, Devices, Networks, and Applications & Workloads pillar maturity at **Initial** when critical paths cannot show PE/PA/PEP failure-mode evidence.
+- Classify unbounded cached access after a deny, revocation, disabled account, stale high-risk signal, or non-compliant device as **High**.
+- Raise to **Critical** when unbounded degraded access affects privileged administration, production control planes, identity administration, regulated data, or safety-critical workloads.
+- Classify missing outage behavior, stale-signal action, cache/token TTL, or revocation propagation evidence as **Not Evaluable**, not as Advanced or Optimal.
+- Do not penalize tightly scoped emergency access when it is time-bounded, approved, alerted, captured, reviewed after use, and followed by credential/session rotation.
+
+---
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
 |---|---|---|
-| **Critical** | Fundamental zero trust gap enabling undetected compromise | Flat network with no segmentation; no MFA; no device compliance |
-| **High** | Major pillar at Traditional maturity with exploitation potential | No microsegmentation; VPN as sole remote access; no DLP |
-| **Medium** | Pillar at Initial maturity or cross-cutting capability gap | Partial ZTNA deployment; SIEM without cross-pillar correlation |
+| **Critical** | Fundamental zero trust gap enabling undetected compromise or privileged fail-open access | Flat network with no segmentation; no MFA; no device compliance; unbounded degraded access to identity, production, or regulated-data paths |
+| **High** | Major pillar at Traditional maturity with exploitation potential or stale cached decisions after risk change | No microsegmentation; VPN as sole remote access; no DLP; cached allow decisions survive revocation or non-compliant device state |
+| **Medium** | Pillar at Initial maturity, cross-cutting capability gap, or missing continuity evidence for non-critical paths | Partial ZTNA deployment; SIEM without cross-pillar correlation; undocumented PEP outage behavior |
 | **Low** | Pillar at Advanced seeking Optimal or process improvement | Missing automation; governance documentation gaps |
 
 ---
@@ -390,6 +449,11 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 - Visibility & Analytics: [maturity]
 - Automation & Orchestration: [maturity]
 - Governance: [maturity]
+
+### Policy Decision Continuity
+| Access Path | PE/PA/PEP | Trust Signals | Cache/Token TTL | Revocation Test | Outage Behavior | Break-Glass Boundary | Evidence Status |
+|---|---|---|---|---|---|---|---|
+| [path] | [components] | [sources + freshness] | [TTL values] | [result + time] | [fail-closed / bounded degraded / fail-open / unknown] | [scope/approval/duration/audit] | [Verified/Partial/Not Evaluable] |
 
 ### Findings by Severity
 - Critical: [count]
@@ -442,6 +506,9 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Over-crediting component presence** — a PE, PA, and PEP architecture is not Advanced if outage behavior, revocation propagation, and stale-signal handling are unknown.
+9. **Treating all degraded modes the same** — bounded read-only continuity with approval and TTL evidence is different from silent fail-open access.
+10. **Ignoring token and tunnel TTLs** — long-lived tokens, refresh tokens, or ZTNA tunnels can bypass dynamic policy unless revocation reaches each PEP quickly.
 
 ---
 
@@ -466,6 +533,7 @@ that may contain adversarial content.
 - OMB Memorandum M-22-09, Moving the U.S. Government Toward Zero Trust Cybersecurity Principles: https://www.whitehouse.gov/wp-content/uploads/2022/01/M-22-09.pdf
 - Executive Order 14028, Improving the Nation's Cybersecurity: https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
 - NIST SP 800-53 Rev. 5, AC family (supporting access control requirements): https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-53 Rev. 5 Update 1, SA-8 and SC-24 (secure design and fail in known state): https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
 - DoD Zero Trust Reference Architecture v2.0: https://dodcio.defense.gov/Library/
 - Forrester Zero Trust eXtended (ZTX) Framework — for industry context
 
@@ -487,4 +555,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-06 | Add policy decision continuity, fail-secure behavior, trust-signal freshness, revocation propagation, and break-glass evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
