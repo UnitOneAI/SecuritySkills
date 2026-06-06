@@ -1,0 +1,23 @@
+{
+  "name": "runtime-adapter-switching",
+  "deploymentMode": "multi-adapter-serving",
+  "loadingCode": {
+    "load": "model.load_adapter(adapter_path_from_config, adapter_name=request.headers[\"x-adapter\"])",
+    "activate": "model.set_adapter(request.headers[\"x-adapter\"])"
+  },
+  "runtimeControls": {
+    "activeAdapterAllowlist": null,
+    "requestSelectedAdapter": true,
+    "activationAudit": false,
+    "packagedAdapters": [
+      "approved-support-lora",
+      "experimental-admin-lora",
+      "vendor-debug-lora"
+    ]
+  },
+  "expectedThreatModelFinding": {
+    "category": "Adapter Composition",
+    "severity": "High",
+    "evidence": "Request data can choose and activate adapters without allowlist or audit evidence."
+  }
+}

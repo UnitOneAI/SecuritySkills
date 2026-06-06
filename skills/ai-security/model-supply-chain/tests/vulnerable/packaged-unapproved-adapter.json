@@ -1,0 +1,30 @@
+{
+  "name": "packaged-unapproved-adapter",
+  "deploymentMode": "unmerged-adapter",
+  "servingImage": {
+    "image": "registry.example.test/classifier:2026-06-06",
+    "adapterDirectory": "/models/adapters",
+    "packagedAdapters": [
+      {
+        "name": "risk-lora-v3",
+        "approval": "approved",
+        "active": true
+      },
+      {
+        "name": "shadow-eval-lora",
+        "approval": "missing",
+        "active": false
+      }
+    ]
+  },
+  "runtimeControls": {
+    "environmentSelectedAdapter": true,
+    "featureFlagSelectedAdapter": true,
+    "activationAudit": "not-evidenced"
+  },
+  "expectedThreatModelFinding": {
+    "category": "Adapter Composition",
+    "severity": "Medium",
+    "evidence": "An unapproved packaged adapter is present and can become active through environment or feature flag changes without proven audit controls."
+  }
+}

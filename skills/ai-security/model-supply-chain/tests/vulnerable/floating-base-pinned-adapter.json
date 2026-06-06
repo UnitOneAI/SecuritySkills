@@ -1,0 +1,20 @@
+{
+  "name": "floating-base-pinned-adapter",
+  "deploymentMode": "unmerged-adapter",
+  "loadingCode": {
+    "baseModel": "AutoModelForCausalLM.from_pretrained(\"acme/customer-support-base\")",
+    "adapter": "PeftModel.from_pretrained(base, \"acme/customer-support-lora\", revision=\"d12e0f1480a64d8c82412e9e84c0699f123f76aa\")"
+  },
+  "evidence": {
+    "baseRevision": null,
+    "baseChecksum": null,
+    "adapterRevision": "d12e0f1480a64d8c82412e9e84c0699f123f76aa",
+    "tokenizerRevision": null,
+    "evaluationRunBoundToComposition": false
+  },
+  "expectedThreatModelFinding": {
+    "category": "Adapter Composition",
+    "severity": "High",
+    "evidence": "Adapter is pinned, but the base model and tokenizer can float to a different release than the one reviewed."
+  }
+}

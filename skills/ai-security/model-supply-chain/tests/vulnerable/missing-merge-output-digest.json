@@ -1,0 +1,24 @@
+{
+  "name": "missing-merge-output-digest",
+  "deploymentMode": "merged-model",
+  "mergeScript": {
+    "steps": [
+      "base = AutoModelForCausalLM.from_pretrained(base_repo, revision=base_revision)",
+      "model = PeftModel.from_pretrained(base, adapter_repo, revision=adapter_revision)",
+      "merged = model.merge_and_unload()",
+      "merged.save_pretrained(\"./release\")"
+    ]
+  },
+  "evidence": {
+    "baseDigest": "sha256:8aa4eb5e1f2ed8b4b47c2d73f7627b7d08d5571c62e8f1315a027b7f0da2c777",
+    "adapterDigest": "sha256:98f665f19dc22a3d68ceb520d8235b0de498efc5752f8e782c0eb708d4c22c45",
+    "mergeToolVersion": null,
+    "mergedOutputDigest": null,
+    "validationRunId": null
+  },
+  "expectedThreatModelFinding": {
+    "category": "Adapter Composition",
+    "severity": "High",
+    "evidence": "Merged release is a new artifact, but no merge tool version, output digest, or validation run is recorded."
+  }
+}

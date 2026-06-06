@@ -1,0 +1,30 @@
+{
+  "name": "pinned-adapter-composition",
+  "deploymentMode": "unmerged-adapter",
+  "baseModel": {
+    "repo": "huggingface.co/acme/classifier-base",
+    "revision": "6ef39c2b4b2a0a3c7f6b1fd8a9c4e84f9c91b215",
+    "sha256": "e4b7c6f29873b0a24f88400a84f7f6d9d092c4d872ccf9bd829e7bc118a2d4c7"
+  },
+  "adapter": {
+    "repo": "huggingface.co/acme/classifier-risk-lora",
+    "revision": "d12e0f1480a64d8c82412e9e84c0699f123f76aa",
+    "sha256": "91afe5d888ee4e67a8e00350176a8e14430f33e2868c44221d3d3db46e62c131",
+    "adapterConfigSha256": "b31c21a9f6c04836f4037f1122564db159b3e3cba9e617387d7ba4224fd09937"
+  },
+  "runtime": {
+    "activeAdapterAllowlist": [
+      "risk-lora-v3"
+    ],
+    "requestSelectedAdapter": false,
+    "environmentSelectedAdapter": false,
+    "activationAudit": true
+  },
+  "boundArtifacts": {
+    "tokenizerRevision": "6ef39c2b4b2a0a3c7f6b1fd8a9c4e84f9c91b215",
+    "generationConfigRevision": "6ef39c2b4b2a0a3c7f6b1fd8a9c4e84f9c91b215",
+    "promptTemplateRevision": "release-2026-06-06",
+    "evaluationRunId": "eval-run-2026-06-06-risk-lora-v3"
+  },
+  "expectedThreatModelOutcome": "Pass: base, adapter, tokenizer/config, prompt template, runtime allowlist, and evaluation evidence are bound to one reviewed release."
+}

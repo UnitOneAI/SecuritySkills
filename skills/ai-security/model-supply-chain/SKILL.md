@@ -2,8 +2,8 @@
 name: model-supply-chain
 description: >
   Reviews AI/ML model supply chains for security risks including model provenance
-  verification, training data lineage, fine-tuning pipeline integrity, inference
-  dependency review, and backdoor detection. Auto-invoked when reviewing systems
+  verification, training data lineage, fine-tuning pipeline integrity, adapter
+  composition evidence, inference dependency review, and backdoor detection. Auto-invoked when reviewing systems
   that download pre-trained models, fine-tune foundation models, or deploy models
   from third-party sources. Produces a structured assessment mapped to OWASP
   LLM03:2025, SLSA v1.0 supply chain levels, and MITRE ATLAS poisoning and
@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -81,7 +81,9 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Inference dependencies | requirements.txt, pyproject.toml, Dockerfile, package.json | Identifies vulnerable libraries in serving path |
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
 | Access controls on model storage | Cloud storage IAM, artifact registry permissions | Determines who can replace or modify model weights |
-| Adapter/plugin sources | LoRA configs, adapter download code | Third-party adapters inherit the same supply chain risks |
+| Adapter/plugin sources | LoRA configs, PEFT adapter repos, adapter download code | Third-party adapters inherit the same supply chain risks |
+| Adapter composition manifest | Release manifests, adapter_config.json, merge scripts, runtime adapter config | Binds base, adapter, tokenizer/config, prompt template, and merged output to one reviewed release |
+| Runtime adapter activation | Serving config, feature flags, environment variables, request headers, audit logs | Determines whether unreviewed adapters can be activated after deployment |
 
 ---
 
@@ -95,6 +97,7 @@ Determine where every model artifact originates and whether its authenticity and
 
 - Model download code that pulls weights from Hugging Face, S3, GCS, or other sources. Check whether SHA256 checksums or cryptographic signatures are verified after download.
 - Use of `from_pretrained()` calls (Hugging Face transformers, diffusers, sentence-transformers) without pinning to a specific commit hash or revision. Model repos on Hugging Face can be updated at any time; unpinned references pull the latest, potentially compromised weights.
+- PEFT, LoRA, or QLoRA adapters loaded against a base model, tokenizer, config, generation config, or prompt template that is not pinned to the same reviewed release.
 - Models loaded from shared network drives, team Slack channels, or email attachments with no integrity verification.
 - Absence of SLSA provenance attestations or Sigstore signatures for model artifacts.
 - Models identified only by name ("llama-2-7b") without specifying the exact source organization, revision, or checksum.
@@ -109,8 +112,11 @@ Grep: "huggingface|hf_hub|transformers|diffusers|sentence.transformers" in **/*.
 # Check for integrity verification
 Grep: "sha256|checksum|hash|verify|digest|signature|sigstore|cosign" in **/*.{py,sh,yaml,yml}
 
-# Check for pinned model versions
-Grep: "revision=|commit_hash|model_version" in **/*.{py,yaml,yml,json}
+# Check for pinned model versions and adapter composition metadata
+Grep: "revision=|commit_hash|model_version|base_model_name_or_path" in **/*.{py,yaml,yml,json}
+Grep: "PeftModel|AutoPeftModel|PeftAdapterMixin|load_adapter|set_adapter|active_adapter|merge_and_unload|adapter_name" in **/*.py
+Glob: **/adapter_config.json
+Glob: **/adapter_model.{bin,safetensors}
 
 # Find model artifact storage
 Glob: **/*.{pt,bin,safetensors,pkl,onnx,pb,h5,gguf,ggml}
@@ -127,6 +133,7 @@ Glob: **/config.json
 | Models loaded via `pickle.load` or `torch.load` without `weights_only=True` | Critical |
 | No checksum or signature verification on model download | High |
 | Model source unpinned (no commit hash, revision, or version lock) | High |
+| Adapter and base model are not pinned to the same reviewed release manifest | High |
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
@@ -226,6 +233,59 @@ Glob: **/Jenkinsfile
 | No code review requirement on training configuration changes | Medium |
 | Training pipeline lacks reproducibility controls | Medium |
 | No experiment tracking or training audit trail | Medium |
+
+---
+
+### Step 3A -- Adapter Composition and Runtime Activation
+
+Assess LoRA, QLoRA, PEFT, and similar adapter-based deployments as composed model artifacts. An adapter can be small compared with the base weights, but it still changes production behavior. The review must prove that the deployed behavior matches the reviewed release, not just that one adapter file is pinned.
+
+**Composition evidence gates:**
+
+| Evidence gate | Required evidence | Finding if missing |
+|---|---|---|
+| Deployment mode | Unmerged adapter, merged model, multi-adapter serving, or Not Applicable rationale | Adapter risk cannot be classified without knowing how behavior is composed |
+| Base model identity | Registry, organization, immutable revision, checksum or signature, and model format | Pinned adapter can run against a changed base model |
+| Adapter identity | Adapter repo or storage path, immutable revision, checksum, owner, import approval, and adapter_config.json | Reviewed adapter cannot be distinguished from a replaced adapter |
+| Tokenizer/config/prompt identity | Tokenizer revision, config revision, generation config, chat template or prompt template, and compatibility notes | Adapter behavior can drift even when weights are pinned |
+| Merge output | Merge command, merge tool version, base digest, adapter digest, output digest, validation run ID, and storage location | Merged artifact is a new model with no reproducible composition proof |
+| Runtime activation | Active adapter allowlist, default adapter, request/env/feature-flag switching controls, and audit trail | Unreviewed adapter can be activated after deployment |
+| Packaged adapter inventory | All adapters included in the image, mounted volume, or registry package with approval status | Dormant adapters can become production behavior overlays |
+| Evaluation binding | Evaluation dataset/run ID tied to the exact base, adapter, tokenizer/config, prompt template, and merge output | Release evidence may validate a different behavior surface |
+
+Use `Not Applicable` only when the system has no adapters, plugins, adapter-like deltas, or runtime model overlays in scope. Use `Not Evaluable` when adapters exist but the release manifest, runtime activation config, or packaged-adapter inventory is unavailable; do not mark the adapter path low risk by default.
+
+**What to look for in code and configuration:**
+
+- `adapter_config.json` references `base_model_name_or_path`, but deployment code loads the base model from `main`, `latest`, or a mutable local path.
+- Adapter weights are pinned, but tokenizer, generation config, chat template, or prompt template are not tied to the release.
+- `load_adapter()`, `set_adapter()`, `active_adapter`, request headers, environment variables, or feature flags can change the active adapter without an allowlist and audit event.
+- `merge_and_unload()` or equivalent merge scripts save a new artifact without recording source digests, merge tool version, validation run, and merged-model digest.
+- Serving images or mounted volumes contain extra adapters that are not approved for the production release.
+
+**Detection methods using allowed tools:**
+
+```
+# Find PEFT and adapter loading paths
+Grep: "PeftModel|AutoPeftModel|PeftAdapterMixin|load_adapter|set_adapter|active_adapter|disable_adapter|delete_adapter" in **/*.py
+Grep: "merge_and_unload|save_pretrained|adapter_name|base_model_name_or_path" in **/*.{py,json,yaml,yml}
+
+# Find adapter artifacts and composition manifests
+Glob: **/adapter_config.json
+Glob: **/adapter_model.{bin,safetensors}
+Grep: "base_model|adapter|tokenizer|generation_config|chat_template|prompt_template|revision|sha256|digest|allowlist" in **/*.{json,yaml,yml,md}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Production adapter deployment lacks pinned base model and adapter revisions | High |
+| Adapter can be switched or activated at runtime without allowlist and audit evidence | High |
+| Merged model artifact lacks a digest that ties base, adapter, tokenizer/config, prompt template, merge tool, and validation run | High |
+| Evaluation evidence is not bound to the exact adapter composition deployed | High |
+| Unused or unapproved adapters are packaged in the serving image, mounted volume, or registry release | Medium |
+| Adapter compatibility evidence exists but omits tokenizer/config or prompt-template identity | Medium |
 
 ---
 
@@ -357,7 +417,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Severity | Criteria | Response SLA |
 |---|---|---|
 | **Critical** | Arbitrary code execution via model loading, known exploited CVE in inference path, or confirmed model tampering. Exploitation requires no special access beyond normal deployment flow. | Immediate -- block deployment |
-| **High** | No provenance verification on production models, uncontrolled training data pipeline, or dangerous deserialization patterns. Clear attack path exists. | 7 days -- remediate before next release |
+| **High** | No provenance verification on production models, uncontrolled training data pipeline, dangerous deserialization patterns, unbound adapter composition, or runtime adapter switching without allowlist and audit evidence. Clear attack path exists. | 7 days -- remediate before next release |
 | **Medium** | Incomplete model documentation, missing reproducibility controls, or absent behavioral testing. Exploitation requires specific conditions or insider access. | 30 days -- schedule remediation |
 | **Low** | Defense-in-depth gaps, minor documentation omissions, or best practice deviations with limited direct risk. | 90 days -- track in backlog |
 | **Informational** | Recommendations for improvement with no current exploitable risk. | No SLA -- advisory |
@@ -378,14 +438,14 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ## Model Inventory
 
-| Model | Source | Format | Checksum Verified | Pinned Version | Model Card |
-|---|---|---|---|---|---|
-| [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
+| Model | Source | Format | Checksum Verified | Pinned Version | Composition Digest | Model Card |
+|---|---|---|---|---|---|---|
+| [name] | [source] | [format] | [Yes/No] | [Yes/No] | [composition digest or N/A] | [Complete/Partial/Missing] |
 
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Provenance | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
+- **Category:** [Provenance | Training Data | Fine-Tuning Pipeline | Adapter Composition | Inference Dependency | Model Card | Backdoor Detection]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM03:2025 -- Supply Chain Vulnerabilities
 - **MITRE ATLAS Technique:** [technique ID and name]
@@ -403,9 +463,16 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Model provenance | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
+| Adapter composition | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
 | Model documentation | [description] | [recommendation] | [severity] |
 | Backdoor detection | [description] | [recommendation] | [severity] |
+
+## Adapter Composition Evidence
+
+| Model | Deployment Mode | Base Revision / Digest | Adapter Revision / Digest | Tokenizer/Config/Prompt Bound | Merge Output Digest | Runtime Allowlist | Packaged Adapter Inventory | Evaluation Binding | Outcome |
+|---|---|---|---|---|---|---|---|---|---|
+| [name] | [unmerged/merged/multi-adapter/N/A] | [value] | [value] | [Yes/No/Not Evaluable] | [value/N/A] | [Yes/No/Not Evaluable] | [reviewed/unreviewed/missing] | [run ID or gap] | [Pass/Finding/Not Evaluable] |
 
 ## Recommendations
 [Prioritized list of remediation actions]
@@ -441,6 +508,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
 
+6. **Treating adapters as harmless deltas.** LoRA and PEFT adapters are small compared with full model weights, but they still change deployed behavior. Reviewers must bind the adapter to the exact base model, tokenizer/config set, prompt template, merge output, evaluation run, and active runtime adapter list; otherwise an approved base model can run with an unreviewed behavior overlay.
+
 ---
 
 ## References
@@ -450,6 +519,9 @@ Assess whether architectural and procedural controls exist to detect model backd
 - MITRE ATLAS -- https://atlas.mitre.org
 - Mithril Security. "PoisonGPT: How We Hid a Lobotomized LLM on Hugging Face to Spread Fake News" (2023) -- https://blog.mithrilsecurity.io/poisongpt-how-we-hid-a-lobotomized-llm-on-hugging-face-to-spread-fake-news/
 - Oligo Security. "ShadowRay: First Known Attack Campaign Targeting Ray AI Framework" (2024) -- https://www.oligo.security/blog/shadowray-attack-ai-workloads-actively-exploited-in-the-wild
+- Hugging Face Transformers. "PEFT" -- https://huggingface.co/docs/transformers/main/peft
+- Hugging Face PEFT. "PEFT checkpoint format" -- https://huggingface.co/docs/peft/developer_guides/checkpoint
+- Hugging Face PEFT. "Model merge" -- https://huggingface.co/docs/peft/developer_guides/model_merging
 - Mitchell, M. et al. "Model Cards for Model Reporting" (2019) -- arXiv:1810.03993
 - Gu, T. et al. "BadNets: Identifying Vulnerabilities in the Machine Learning Model Supply Chain" (2017) -- arXiv:1708.06733
 - Hubinger, E. et al. "Sleeper Agents: Training Deceptive LLMs that Persist Through Safety Training" (2024) -- arXiv:2401.05566

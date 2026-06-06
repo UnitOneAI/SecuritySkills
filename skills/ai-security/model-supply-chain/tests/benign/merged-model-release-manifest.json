@@ -1,0 +1,24 @@
+{
+  "name": "merged-model-release-manifest",
+  "deploymentMode": "merged-model",
+  "sourceComposition": {
+    "baseDigest": "sha256:8aa4eb5e1f2ed8b4b47c2d73f7627b7d08d5571c62e8f1315a027b7f0da2c777",
+    "adapterDigest": "sha256:98f665f19dc22a3d68ceb520d8235b0de498efc5752f8e782c0eb708d4c22c45",
+    "tokenizerDigest": "sha256:7d9b2eb5c353c774979d8d3d28f0e69af0f97d8c1fa131181bb83b4ef7fd4448",
+    "promptTemplateDigest": "sha256:27e0c7b7bc7a10281f8c3ddcb6ef4e77c2dfcda99da74b148dc7d01103ea81a2"
+  },
+  "merge": {
+    "tool": "peft",
+    "toolVersion": "0.12.0",
+    "command": "merge_and_unload",
+    "outputDigest": "sha256:cb7a1f0529a5c0954240c4e857f1a0c611d82bb25a21e6b8f96a8c9ed35205b1",
+    "signedProvenance": true
+  },
+  "validation": {
+    "runId": "eval-merged-risk-lora-v3-2026-06-06",
+    "cleanAccuracyMin": 0.91,
+    "backdoorCanaryMax": 0.02,
+    "result": "pass"
+  },
+  "expectedThreatModelOutcome": "Pass: merged artifact records source digests, merge tool, output digest, provenance, and validation binding."
+}
