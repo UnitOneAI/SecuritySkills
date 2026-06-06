@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +55,9 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Attacker access scope** -- What accounts, systems, and network segments has the attacker accessed or potentially compromised?
 - [ ] **Business criticality of affected systems** -- Revenue impact, customer impact, SLA obligations, regulatory implications of downtime.
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
+- [ ] **Cloud identity and session scope** -- Tenant, IdP, SaaS, OAuth/OIDC apps, refresh tokens, service accounts, API keys, cloud roles, and privileged sessions reachable by the attacker.
+- [ ] **Cloud metadata exposure** -- Whether affected compute workloads can reach AWS/GCP/Azure metadata services, whether IMDSv2/session-token enforcement is enabled, and which workload credentials could be minted.
+- [ ] **API abuse dynamics** -- Whether the incident involves automated API exfiltration, scraping, credential stuffing, or business-logic abuse where throttling may preserve observability better than a hard block.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
 
@@ -95,6 +98,26 @@ NIST SP 800-61 Rev 2 (Section 3.3.1) identifies the following criteria for conta
                                 +-----------+
 ```
 
+**Preserve-before-destroy decision gate:**
+
+Use shutdown or power-off only when the destructive risk of keeping the system online exceeds the forensic value of volatile evidence. For SEV-1 incidents that are not active wipers, prefer network isolation, VM suspension/snapshot, EDR network containment, or quarantine VLAN placement before power-off.
+
+```
+CONT-CLOUD-01: Power-off or rebuild is selected before memory/process/network evidence status is recorded
+CONT-CLOUD-02: SaaS/cloud token compromise is handled only with network isolation and no identity-level containment
+CONT-CLOUD-03: Cloud workload compromise lacks IMDS isolation or metadata-credential blast-radius evidence
+CONT-CLOUD-04: API exfiltration containment uses hard blocking without assessing throttling, deception, or observation-preserving controls
+CONT-CLOUD-05: Reconnection/rollback lacks post-containment integrity validation for the isolated host or workload
+CONT-CLOUD-06: Containment plan does not mark missing identity, IMDS, telemetry, or integrity evidence as Not Evaluable
+```
+
+**Decision rules:**
+
+- Mark containment risk **Critical** when a compromised cloud or SaaS identity still has active refresh tokens, sessions, service-account keys, or workload credentials after host/network isolation.
+- Mark containment risk **High** when affected compute can reach a metadata service and the plan does not block metadata access, enforce IMDSv2/session-token controls, or revoke the minted credentials.
+- Mark containment risk **Medium** when API abuse could be slowed with rate limits, quota reduction, scoped token revocation, or deception controls but the plan only lists broad blocking.
+- Mark rollback **Not Evaluable** when integrity checks, EDR/AV scan status, persistence review, or credential/session revocation evidence is unavailable before reconnecting a contained asset.
+
 ### Step 2: Short-Term Containment
 
 Short-term containment aims to stop the immediate threat with minimal preparation. These are rapid-response actions executed within minutes to hours.
@@ -121,6 +144,34 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Service account reset** | Reset service account passwords and regenerate keys | Lateral movement via service accounts | Downstream services may break |
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
+
+**Cloud and SaaS identity containment strategies:**
+
+| Strategy | Method | Use When | Evidence Required |
+|----------|--------|----------|-------------------|
+| **Refresh-token revocation** | Revoke user refresh tokens / sign-in sessions in the IdP or SaaS control plane | Valid cloud/SaaS session, token theft, BEC, admin-account compromise | Revocation timestamp, affected principals, downstream apps, reauthentication status |
+| **OAuth app containment** | Disable app consent, revoke grants, rotate client secrets, block risky app IDs | Malicious OAuth app, consent phishing, API exfiltration via delegated scopes | App ID, scopes, consenting users, grant revocation, residual access check |
+| **Privileged role deactivation** | Remove active PIM/JIT elevation, disable emergency roles, require MFA reauth | Admin token or privileged role abuse | Role assignment, activation window, approval trail, reauth evidence |
+| **Cloud service-account key rotation** | Disable exposed keys, rotate workload credentials, revoke short-lived sessions where supported | Service account or workload identity misuse | Key/session inventory, affected workloads, successful rotation, dependency impact |
+| **Tenant-wide session reset** | Force sign-out or revoke sessions for affected population | Broad credential theft, IdP compromise, impossible-travel token replay | Population scope, business impact approval, sign-in log confirmation |
+
+**Cloud metadata-service containment:**
+
+| Platform | Containment Action | Use When | Validation |
+|----------|-------------------|----------|------------|
+| AWS EC2 / containers | Block `169.254.169.254` where safe, require IMDSv2 tokens, restrict hop limit, rotate instance-role credentials, review STS activity | SSRF, container escape, workload compromise, suspicious role assumption | IMDSv2/token evidence, route/firewall evidence, STS credential revocation or expiration, CloudTrail review |
+| Google Cloud | Block metadata access for compromised workload where safe, enforce metadata concealment patterns, rotate service-account keys, review service-account token use | SSRF, workload compromise, service-account token theft | Metadata access controls, service-account audit logs, token/key rotation, IAM scope review |
+| Azure | Restrict IMDS reachability where safe, rotate managed-identity credentials by disabling/re-enabling identity or removing role assignments, review sign-in/activity logs | Managed identity misuse, workload compromise | Managed identity assignment status, RBAC changes, activity log review |
+
+**API exfiltration containment:**
+
+Use hard blocking when immediate data loss or destructive action is in progress. Use throttling, scoped quota reduction, event hold queues, deception, or narrow token revocation when slowing the attacker preserves telemetry and reduces collateral business impact.
+
+| Scenario | Preferred Action | Avoid |
+|----------|------------------|-------|
+| Automated API data scraping with valid tokens | Revoke affected tokens, reduce quota/rate, require step-up auth, preserve logs | Blocking only the endpoint while tokens remain valid elsewhere |
+| Partner/API key abuse | Disable or scope the affected key, rotate secrets, throttle partner integration, alert owner | Global API shutdown without partner impact assessment |
+| Suspected exfil destination under observation | Throttle and monitor with legal/IR approval, preserve payload metadata, prepare cutover block | Silent monitoring without approval or evidence-preservation plan |
 
 ### Step 3: Long-Term Containment
 
@@ -212,9 +263,13 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | C2 communication blocked | Monitor network traffic for C2 indicators | No outbound connections to known C2 IPs/domains |
 | Lateral movement blocked | Monitor authentication logs and network flows between segments | No unauthorized cross-segment authentication |
 | Compromised credentials revoked | Attempt authentication with known-compromised credentials | Authentication fails |
+| Cloud/SaaS sessions revoked | Review IdP/SaaS sign-in and token revocation logs | Refresh tokens and active sessions invalidated for affected principals |
+| Metadata-service access contained | Test from affected workload or review network/metadata controls | IMDS/metadata credentials cannot be minted outside approved path |
+| API abuse slowed or blocked | Review gateway logs, quotas, and authorization denials | Exfiltration rate drops to approved containment threshold or stops |
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+| Post-containment integrity verified | Run EDR/AV scan, persistence review, configuration drift check, and credential/session review before reconnecting | No active malware, persistence, unauthorized config drift, or unreconciled credentials |
 
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
@@ -234,6 +289,8 @@ Define conditions under which containment actions should be rolled back or modif
 | Forensic investigation requires attacker communication to continue (controlled observation) | Relax network blocks under monitored conditions with legal approval | Incident Commander + Legal + CISO |
 | Containment action was applied to wrong scope (false positive) | Remove containment controls from unaffected systems | Incident Commander |
 | Eradication complete and validated | Phase out containment controls in stages with monitoring | Incident Commander + Security Team |
+
+Before reconnecting any contained system, record a post-containment integrity decision. Minimum evidence: EDR/AV result, persistence mechanism review, local admin/service-account review, cloud role/session revocation status, configuration drift check, and restored telemetry status. If any evidence is unavailable, rollback is **Not Evaluable** and requires Incident Commander approval.
 
 ---
 
@@ -256,7 +313,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.0
+**Skill:** containment v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -293,6 +350,16 @@ threat severity and business criticality, and expected impact on operations.]
 | Check | Result | Timestamp |
 |---|---|---|
 | [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+
+### Cloud, Identity, and Metadata Containment
+| Target | Identity / Workload Risk | Containment Action | Evidence | Decision |
+|---|---|---|---|---|
+| [user/app/workload] | [session/token/IMDS/API abuse] | [revocation/isolation/throttle] | [logs/config/timestamp] | [Pass/Gap/Not Evaluable] |
+
+### Reconnection Integrity Gate
+| Asset | EDR/AV Scan | Persistence Review | Credential/Session Review | Config Drift | Telemetry Restored | Decision |
+|---|---|---|---|---|---|---|
+| [asset] | [pass/fail/missing] | [pass/fail/missing] | [pass/fail/missing] | [pass/fail/missing] | [yes/no] | [Reconnect/Hold/Not Evaluable] |
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
@@ -348,6 +415,14 @@ Disconnecting a business-critical production system from the network stops the a
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
 
+### Pitfall 5: Treating Host Isolation as Cloud Identity Containment
+
+Network isolation of a laptop, VM, or pod does not revoke cloud sessions, OAuth grants, refresh tokens, service-account keys, or metadata-derived credentials that already left the host. SaaS and cloud incidents need identity-level containment in parallel with network controls. Record token/session revocation and downstream app validation separately.
+
+### Pitfall 6: Reconnecting Without an Integrity Gate
+
+Removing quarantine because the business outage is painful can reintroduce persistence, exposed tokens, altered configuration, or disabled telemetry. Require post-containment integrity evidence before reconnecting, even when eradication is planned as a later phase.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -376,3 +451,17 @@ This skill processes incident data including attacker-controlled indicators (IP 
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+13. **AWS EC2 Instance Metadata Service v2** -- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
+14. **AWS IMDS credential protection guidance** -- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-metadata-security-credentials.html
+15. **Microsoft Entra revoke user refresh tokens** -- https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.users.actions/revoke-mgusersigninsession
+16. **Google Cloud metadata server overview** -- https://cloud.google.com/compute/docs/metadata/overview
+17. **Azure Instance Metadata Service** -- https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.2 | 2026-06-06 | Add cloud identity, metadata-service, API throttling, volatile-evidence, and reconnection integrity containment gates. |
+| 1.0.1 | Initial | Add destructive malware containment guidance. |
