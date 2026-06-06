@@ -1,0 +1,15 @@
+$ORIGIN example.com.
+@ 3600 IN CAA 0 issue "letsencrypt.org"
+
+old-app 300 IN CNAME old-app.azurewebsites.net.
+static 300 IN CNAME abandoned-bucket.s3-website-us-east-1.amazonaws.com.
+legacy 3600 IN NS ns1.unclaimed-delegation.example.net.
+_acme-challenge.old-app 300 IN TXT "stale-validation-token"
+
+; Evidence gaps expected with this vulnerable pattern:
+; issuewild: absent
+; iodef: absent
+; dns-api-scope: zone:example.com:*:write
+; acme-account: unknown
+; ct-monitoring: none
+; dangling-target-ownership: missing
