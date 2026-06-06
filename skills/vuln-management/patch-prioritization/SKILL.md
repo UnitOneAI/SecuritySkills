@@ -256,6 +256,49 @@ Risk Exception Request:
 - Status:                 [Pending | Approved | Denied | Expired]
 ```
 
+### Step 7: Deferred Vulnerability Revalidation
+
+Risk exceptions and deferred patch decisions are temporary. Revalidate them whenever threat intelligence, patch availability, exploitability, asset exposure, or compensating control status changes. Do not wait for the scheduled review date if a trigger invalidates the original assumptions.
+
+#### Revalidation Triggers
+
+| Trigger | Required Action | Why It Matters |
+|---|---|---|
+| Vendor patch or hotfix becomes available | Replace "patch unavailable" justification with a remediation deadline and patch window | The original exception basis no longer applies |
+| CVE is added to CISA KEV | Re-run SSVC, escalate SLA tier, and apply KEV-driven deadlines | Confirmed exploitation changes urgency |
+| EPSS surges or crosses tier threshold | Re-run EPSS trend analysis and update SLA tier if needed | Exploitation likelihood changed materially |
+| Public exploit or reliable PoC appears | Re-run SSVC exploitation and automatability decisions | Attack feasibility may have changed |
+| Active exploitation observed internally or by trusted intelligence | Escalate to P0/P1 and require incident-response coordination | The risk is no longer theoretical |
+| Asset exposure changes | Re-score internet-facing, newly critical, or newly reachable assets | Previous risk acceptance may depend on obsolete exposure assumptions |
+| Compensating control changes or fails validation | Re-test the control and remove SLA extension if ineffective | Extensions depend on verified control effectiveness |
+| Exception reaches 50% of approved duration | Confirm patch status, controls, residual risk, and owner accountability | Prevent silent aging toward expiration |
+
+#### Revalidation Record
+
+```
+Deferred Vulnerability Revalidation:
+- CVE ID:                 [CVE-YYYY-NNNNN]
+- Exception ID:           [EXC-YYYY-NNNN or N/A]
+- Last Revalidated:       [YYYY-MM-DD]
+- Trigger Checked:        [Patch Available | KEV | EPSS | Public Exploit | Asset Exposure | Control Validation | Duration Aging]
+- Trigger Source:         [Vendor advisory / CISA KEV / EPSS API / threat intel / CMDB / control test]
+- Previous Assumption:    [Why deferral or exception was allowed]
+- Current Finding:        [What changed or "No material change"]
+- Required Action:        [Maintain exception | Escalate tier | Schedule patch | Expire exception | Re-test control]
+- New SLA Deadline:       [YYYY-MM-DD or N/A]
+- Owner:                  [Name/team]
+- Next Revalidation Date: [YYYY-MM-DD]
+```
+
+#### Revalidation Rules
+
+1. **Patch available:** If the exception reason is "patch unavailable" and a vendor patch is released, set a new remediation deadline based on current SSVC, EPSS, KEV, and asset exposure. The old exception must not remain open unchanged.
+2. **KEV or active exploitation:** Any KEV listing or credible active exploitation signal overrides routine review cadence. Reclassify immediately and notify the vulnerability owner and security leadership for P0/P1 decisions.
+3. **EPSS threshold change:** If EPSS crosses a threshold used in the SLA matrix or is classified as Surging, update the SLA tier or document why SSVC evidence supports keeping the current tier.
+4. **Exposure drift:** If an asset moves from internal to internet-facing, becomes business-critical, or is newly reachable from untrusted networks, re-run asset criticality and exposure modifiers.
+5. **Control dependency:** If an exception depends on a WAF, IPS, segmentation rule, EDR detection, or disabled feature, re-test that control whenever exploit details, traffic path, or affected asset scope changes.
+6. **Expiration enforcement:** Expired exceptions become SLA breaches unless a new exception is approved by the required authority before expiration.
+
 ---
 
 ## Findings Classification
@@ -326,6 +369,13 @@ findings requiring immediate action.]
 | Exception ID | CVE ID(s) | Original SLA | New Deadline | Approver | Status |
 |---|---|---|---|---|---|
 | [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] |
+
+### Deferred Vulnerability Revalidation
+[List deferred vulnerabilities and exceptions that were revalidated or require revalidation]
+
+| CVE ID | Exception ID | Last Revalidated | Trigger Checked | Current Finding | Required Action | Next Revalidation |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [EXC-ID/N/A] | [date] | [Patch/KEV/EPSS/Exploit/Exposure/Control] | [Finding] | [Maintain/Escalate/Schedule/Expire/Re-test] | [date] |
 
 ### Recommendations
 1. [Highest-priority actionable recommendation]
