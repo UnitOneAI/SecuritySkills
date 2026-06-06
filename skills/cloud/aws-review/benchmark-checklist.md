@@ -488,3 +488,141 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+## Supplemental AWS Service Review -- Lambda Function URL and Invocation Evidence
+
+These checks are not part of the CIS AWS Foundations v3.0.0 denominator. Report them in the supplemental AWS service findings section as `AWS-LAMBDA-URL-*` controls.
+
+### AWS-LAMBDA-URL-01 -- Discover every Lambda Function URL
+
+Search Terraform, CloudFormation, SAM, CDK, and AWS CLI exports for function URL resources. Include aliases and qualified ARNs when available.
+
+**Grep patterns:**
+
+```
+aws_lambda_function_url
+AWS::Lambda::Url
+FunctionUrlConfig
+addFunctionUrl
+create-function-url-config
+get-function-url-config
+```
+
+Record function name, alias/qualifier, URL auth type, CORS block, source file, and the intended public or private access path.
+
+### AWS-LAMBDA-URL-02 -- Verify URL auth type and intended public path
+
+`authorization_type = "NONE"` is not automatically wrong for intentionally public APIs, but it requires evidence for business justification, route purpose, data sensitivity, abuse controls, edge/WAF path, CORS, rate limits, and audit coverage.
+
+```hcl
+# Vulnerable: unauthenticated URL on sensitive function with no compensating evidence
+resource "aws_lambda_function_url" "admin" {
+  function_name      = aws_lambda_function.admin.function_name
+  authorization_type = "NONE"
+}
+
+# Benign only with complete caller, edge, CORS, and audit evidence
+resource "aws_lambda_function_url" "private_api" {
+  function_name      = aws_lambda_function.private_api.function_name
+  authorization_type = "AWS_IAM"
+}
+```
+
+Do not pass `AWS_IAM` by auth type alone. Confirm the caller identity policy, resource policy, and edge/invocation path are all in scope.
+
+### AWS-LAMBDA-URL-03 -- Scope the resource-based invoke policy
+
+Review every `lambda:InvokeFunctionUrl` statement. Flag broad principals, missing function URL auth constraints, missing invoked-via-function-url constraints where represented in policy exports, and absent source account/source ARN constraints when the caller is an AWS service or known edge distribution.
+
+```hcl
+# Vulnerable: broad principal without URL-specific constraints
+resource "aws_lambda_permission" "public_invoke" {
+  statement_id  = "PublicInvoke"
+  action        = "lambda:InvokeFunctionUrl"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "*"
+}
+
+# Better: scoped service principal, source ARN, and auth type
+resource "aws_lambda_permission" "allow_cloudfront_function_url" {
+  statement_id           = "AllowCloudFrontFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.private_api.function_name
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = aws_cloudfront_distribution.api.arn
+  function_url_auth_type = "AWS_IAM"
+}
+```
+
+### AWS-LAMBDA-URL-04 -- Bind caller identity permissions to the intended path
+
+For `AWS_IAM` URLs, require evidence of who can call the function. Review IAM identity policies, STS role trust, CloudFront origin access patterns, service principal assumptions, cross-account callers, and session conditions.
+
+Flag cases where the resource policy is scoped but the caller identity policy grants `lambda:InvokeFunctionUrl` to `*` resources or broad principals can assume the caller role.
+
+### AWS-LAMBDA-URL-05 -- Combine invocation exposure with execution-role blast radius
+
+Severity should reflect what the function can do after invocation. Review the Lambda execution role for secrets access, data-store access, role assumption, infrastructure mutation, admin managed policies, and permissions boundaries.
+
+**Critical combinations:**
+
+```
+authorization_type = "NONE"
+principal = "*"
+policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+secretsmanager:GetSecretValue on Resource = "*"
+sts:AssumeRole on Resource = "*"
+```
+
+### AWS-LAMBDA-URL-06 -- Treat VPC configuration as dependency evidence, not inbound protection
+
+Lambda VPC configuration allows function code to reach VPC resources; it does not make a Function URL private. If a review claim says "private subnet" or security groups protect inbound Function URL access, mark that claim as false.
+
+Record VPC/subnet/security-group evidence only for downstream dependency reachability, egress restrictions, NAT exposure, and data-store impact.
+
+### AWS-LAMBDA-URL-07 -- Map event sources and alternate invocation paths
+
+Function URLs can coexist with API Gateway, ALB, EventBridge, S3, SNS, SQS, Step Functions, and cross-account event source mappings. Map each invocation path so the report does not over-focus on the URL and miss a broader trigger.
+
+**Grep patterns:**
+
+```
+aws_lambda_event_source_mapping
+AWS::Lambda::EventSourceMapping
+aws_apigatewayv2_integration
+aws_lb_target_group_attachment
+aws_s3_bucket_notification
+aws_cloudwatch_event_target
+aws_scheduler_schedule
+```
+
+### AWS-LAMBDA-URL-08 -- Require audit and change-monitoring evidence
+
+Supplement CIS CloudTrail/CloudWatch checks with Lambda URL and invoke-policy events:
+
+```
+CreateFunctionUrlConfig
+UpdateFunctionUrlConfig
+DeleteFunctionUrlConfig
+AddPermission
+RemovePermission
+UpdateFunctionConfiguration
+PutFunctionConcurrency
+```
+
+For sensitive or public URLs, also look for edge logs, WAF logs, Lambda application logs with redaction, data events where enabled, alert routing, and breakglass exception review.
+
+### AWS-LAMBDA-URL-09 -- Mark incomplete URL evidence as Not Evaluable
+
+If a Function URL is present but the review material omits the resource policy, caller policy, execution role, or audit path, do not infer safety from missing files. Mark the relevant supplemental controls `Not Evaluable` and list the missing artifacts.
+
+Minimum artifacts for a confident pass:
+
+- Function URL config with auth type and CORS
+- Lambda resource-based policy
+- Caller identity policy and trust policy for `AWS_IAM` URLs
+- Execution role policy
+- Intended public/edge path and abuse-control evidence for `NONE` URLs
+- CloudTrail or equivalent monitoring for URL and permission changes

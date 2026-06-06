@@ -4,16 +4,17 @@ description: >
   Performs an AWS security posture review against the CIS Amazon Web Services
   Foundations Benchmark v3.0.0. Auto-invoked when reviewing AWS infrastructure,
   IAM policies, S3 configurations, CloudTrail settings, VPC security groups, or
-  RDS encryption. Walks through all five benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
+  RDS encryption. Walks through all five benchmark sections, adds supplemental
+  Lambda Function URL invocation evidence gates, evaluates each recommendation,
+  and produces a prioritized findings report with remediation guidance mapped to
+  specific CIS and supplemental AWS control IDs.
 tags: [cloud, aws, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,7 +39,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Reviewing AWS infrastructure-as-code before deployment
 - Assessing an existing AWS environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
-- Evaluating IAM policies, S3 bucket configurations, CloudTrail settings, VPC security groups, or RDS encryption configurations
+- Evaluating IAM policies, S3 bucket configurations, CloudTrail settings, VPC security groups, Lambda Function URLs, or RDS encryption configurations
 - Onboarding a new AWS account into a security program
 
 ---
@@ -99,7 +100,22 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Supplemental Lambda Function URL and Invocation Review
+
+Evaluate Lambda Function URL exposure separately from the CIS score. Function URLs can create internet-reachable HTTPS endpoints without API Gateway or security-group evidence, so review the URL configuration, resource-based invoke policy, caller identity policy, execution role, VPC/dependency access, event sources, and audit coverage together.
+
+Use the `AWS-LAMBDA-URL-*` checks in [benchmark-checklist.md](benchmark-checklist.md) for Terraform, CloudFormation, SAM, CDK, and AWS CLI exports. Keep these findings in a supplemental AWS service section so they do not inflate or reduce the CIS AWS Foundations denominator.
+
+Calibrate the result carefully:
+
+- Mark `authorization_type = "NONE"` as a finding when the public API justification, abuse controls, CORS, edge path, and audit evidence are absent or weak.
+- Do not fail an IAM-authenticated Function URL solely because it has a URL. Require evidence for `AWS_IAM`, caller permissions, scoped resource-based policy conditions, intended path, and monitoring.
+- Treat VPC configuration as dependency-egress evidence only. It does not make the Function URL private or protect inbound invocation.
+- If the URL exists but the resource policy, caller policy, CloudTrail coverage, or edge logs are missing from the review material, mark the supplemental check `Not Evaluable` rather than passing by absence.
+
+---
+
+### Step 8: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -158,6 +174,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Supplemental AWS Service Findings
+
+| Control | Service | Resource | Status | Severity | Evidence | Required Follow-up |
+|---------|---------|----------|--------|----------|----------|--------------------|
+| AWS-LAMBDA-URL-01 | Lambda | <function or alias> | Pass / Fail / Not Evaluable | Critical / High / Medium / Low | <URL auth, policy, caller, edge, and log evidence> | <fix, compensating control, or missing artifact> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -200,6 +222,8 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Treating Lambda VPC config as inbound protection.** VPC-enabled functions can still expose public Function URLs. Record VPC config as dependency/egress context, not as proof the URL is private.
+8. **Passing `AWS_IAM` Function URLs without policy evidence.** IAM auth still requires caller identity permissions and scoped Lambda resource policy conditions such as function URL auth type, source account/ARN where applicable, and invoked-via-function-url context.
 
 ---
 
@@ -225,10 +249,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- AWS Lambda Function URL access control: https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html
+- AWS Lambda Function URL configuration and CORS: https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html
+- AWS Lambda resource-based policies: https://docs.aws.amazon.com/lambda/latest/dg/access-control-resource-based.html
+- AWS Lambda VPC configuration: https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc.html
+- AWS Lambda event source mappings: https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added supplemental Lambda Function URL and invocation evidence gates with reporting fields and calibration fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
