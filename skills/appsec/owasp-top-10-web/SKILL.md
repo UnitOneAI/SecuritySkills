@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -674,6 +674,10 @@ Classify each verified finding using the following severity ratings:
 | **Medium** | Requires some preconditions (authenticated attacker, specific configuration); leads to limited data exposure or partial control. CVSS 4.0-6.9 equivalent. |
 | **Low** | Requires significant preconditions or attacker proximity; limited impact, defense-in-depth improvement. CVSS 0.1-3.9 equivalent. |
 | **Informational** | Best practice deviation; no direct exploitability but increases attack surface or complicates future security. |
+
+## Calibration Fixtures
+
+Use `tests/ai-api-ssrf-evidence-fixtures.md` to sanity-check the AI-integrated rendering, API-first authentication, and cloud metadata SSRF evidence gates before reporting findings. The fixtures intentionally include both benign-with-evidence and finding-expected cases so reviewers can calibrate severity, Not Evaluable outcomes, and the `Evidence Gate` output field without treating every grep hit as exploitable.
 
 ## Output Format
 
