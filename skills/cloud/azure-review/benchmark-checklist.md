@@ -290,6 +290,60 @@ resource "azurerm_storage_account" {
 }
 ```
 
+### Supplemental Storage Access -- SAS, Shared Key, and Effective Principals
+
+These checks reduce false assurance where storage accounts pass public-access, HTTPS, TLS, and network-rule controls but still expose data through bearer tokens or effective data-plane permissions.
+
+#### Shared Key authorization
+
+Check for explicit Shared Key disablement on sensitive storage accounts:
+
+```hcl
+resource "azurerm_storage_account" "records" {
+  shared_access_key_enabled = false
+}
+```
+
+For ARM/Bicep or exported configuration, verify `allowSharedKeyAccess` is explicitly `false`. Treat a missing/null value as permitting Shared Key authorization unless an Azure Policy or live setting proves otherwise.
+
+**Flag as High** when sensitive or externally shared storage permits Shared Key access and there is no migration plan, compatibility exception, owner, or expiry.
+
+#### SAS token inventory and expiry
+
+Review operational evidence for account SAS, service SAS, and user delegation SAS usage:
+
+- Azure Monitor logs or equivalent evidence for requests where `AuthenticationType` is `AccountKey` or `SAS`.
+- Maximum SAS expiry policy and observed SAS token expiry.
+- SAS permissions and resource scope: broad combinations such as read/write/delete/list/add/create/update/process across blob/file services should be justified.
+- Whether Blob/Data Lake workflows prefer user delegation SAS where supported.
+
+**Flag as High** when an account SAS or service SAS is long-lived, grants broad permissions, and is not backed by a revocation path. **Flag as Medium** when SAS usage exists but logging cannot identify token type, caller, or expiry.
+
+#### Stored access policies and revocation
+
+For service SAS tokens, check whether a stored access policy is used to support revocation without rotating account keys:
+
+```bash
+az storage container policy list \
+  --account-name <storage-account> \
+  --container-name <container>
+```
+
+Stored access policies do not apply to account SAS or user delegation SAS. If account SAS is used, require key rotation evidence and an emergency revocation playbook.
+
+**Flag as High** when broad service SAS tokens are not bound to stored access policies and no alternative revocation evidence exists. **Flag stale policies as Medium** when they have no owner, review date, or expiry.
+
+#### External principals and ADLS Gen2 ACL parity
+
+Private containers can still be accessible through data-plane RBAC, guest groups, service principals, and ADLS Gen2 ACLs. Verify:
+
+- Role assignments for `Storage Blob Data Owner`, `Storage Blob Data Contributor`, `Storage Blob Data Reader`, and custom roles with data actions.
+- Guest users, external groups, cross-tenant service principals, and managed identities with data-plane access.
+- ADLS Gen2 access ACLs and default ACLs on directories and files, not just container-level RBAC.
+- Recursive ACL evidence for existing child items when default ACLs changed after data was created.
+
+**Flag as High** when external or stale principals retain contributor/owner access to sensitive data without access-review evidence. **Flag ACL/RBAC divergence as High** for sensitive data when write or broad read access is granted outside the approved access model.
+
 ---
 
 ## Section 4 -- Database Services

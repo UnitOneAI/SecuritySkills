@@ -88,6 +88,25 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 10A: Storage Bearer Access Evidence
+
+After the CIS storage checks, review Azure Storage access paths that are not captured by public access, TLS, or network-rule settings. Private containers can still be exposed through broad shared access signatures (SAS), Shared Key authorization, external RBAC principals, or ADLS Gen2 ACLs.
+
+Collect and report the following evidence for each storage account that stores sensitive or externally shared data:
+
+- **Shared Key authorization:** `allowSharedKeyAccess` / `shared_access_key_enabled` value and whether account key access is explicitly disabled.
+- **SAS type inventory:** account SAS, service SAS, and user delegation SAS usage from Azure Monitor logs or operational inventory.
+- **SAS expiry and scope:** maximum permitted expiry, observed expiry dates, allowed services/resource types, and permissions such as `rwdlacupiytfx`.
+- **Stored access policies:** whether service SAS tokens are bound to stored access policies, whether policies are stale, and whether account SAS exceptions require key rotation for revocation.
+- **User delegation preference:** whether Blob/Data Lake workflows prefer Microsoft Entra ID-backed user delegation SAS over account/service SAS where supported.
+- **External principals:** guest users, external groups, service principals, and cross-tenant identities with `Storage Blob Data Owner`, `Storage Blob Data Contributor`, or equivalent roles.
+- **ADLS Gen2 ACL parity:** effective RBAC plus access/default ACL permissions for containers, directories, and files; include recursive ACL evidence for existing child paths.
+- **Logging and revocation evidence:** diagnostic logs for `AuthenticationType in ("AccountKey", "SAS")`, key rotation history, SAS revocation playbook, and exception owner/expiry.
+
+**Finding classification:** Long-lived account SAS with broad permissions and no revocation path is **High**. Shared Key access enabled on sensitive storage without migration/exception evidence is **High**. External contributor access without access-review evidence is **High**. ADLS Gen2 ACL/RBAC divergence that grants unintended write or read access is **High** for sensitive data and **Medium** otherwise. Missing SAS inventory or logging is **Medium**.
+
+---
+
 
 ---
 
@@ -153,6 +172,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
+
+### Storage Bearer Access Review
+
+| Storage Account | Shared Key Disabled | SAS Type(s) | Max SAS Expiry | Stored Access Policy | External Principals | ADLS ACL/RBAC Parity | Status |
+|-----------------|---------------------|-------------|----------------|----------------------|---------------------|----------------------|--------|
+| <name> | Yes/No/Unknown | Account/Service/User Delegation/Unknown | <duration> | Present/Missing/N/A | Reviewed/Unreviewed | Matched/Divergent/N/A | Pass/Fail/Not Evaluable |
 
 ### Prioritized Remediation Plan
 
@@ -223,6 +248,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Defender for Cloud Documentation: https://learn.microsoft.com/en-us/azure/defender-for-cloud/
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
+- Prevent Shared Key authorization: https://learn.microsoft.com/en-us/azure/storage/common/shared-key-authorization-prevent
+- Configure a SAS expiration policy: https://learn.microsoft.com/en-us/azure/storage/common/sas-expiration-policy
+- Define a stored access policy: https://learn.microsoft.com/en-us/rest/api/storageservices/define-stored-access-policy
+- ADLS Gen2 access control lists: https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-access-control
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
