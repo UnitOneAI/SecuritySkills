@@ -138,6 +138,43 @@ PCI DSS v4.0 requires scope confirmation at least every 12 months and upon signi
 - All in-scope system components are identified
 - Segmentation controls are validated
 
+#### 1.5 Significant Change Scope Impact Analysis (Req 12.5.3)
+
+For each significant change, verify that PCI scope impact was assessed before production release or through a documented emergency-change follow-up.
+
+**Significant-change triggers to look for:**
+
+- New or changed payment channel, payment page, API, mobile flow, serverless function, queue, storage bucket, or batch process that can store, process, transmit, or redirect CHD/SAD.
+- Network, firewall, routing, VPN, Kubernetes, security group, IAM, or DNS changes that affect CDE segmentation or connected-to systems.
+- New security-impacting services for the CDE, including identity providers, logging/SIEM, endpoint security, vulnerability scanning, secrets management, backup, monitoring, and admin access paths.
+- TPSP additions or responsibility changes, including payment processors, fraud providers, analytics tags, payment page scripts, hosting providers, and managed security providers.
+- Cloud architecture changes that alter shared responsibility, inherited controls, region/account/project boundaries, or data residency.
+
+**Evidence required:**
+
+| Evidence Item | What to Verify |
+|---|---|
+| Change record | Change ID, owner, date, risk classification, and whether PCI impact was considered |
+| Data flow update | CHD/SAD flow diagram updated or explicitly confirmed unchanged |
+| Scope inventory update | CDE, connected-to, and security-impacting system list updated |
+| Segmentation validation | Firewall/route/security group/Kubernetes policy impact reviewed; penetration-test or validation evidence refreshed when segmentation changed |
+| TPSP matrix update | Provider inventory, written responsibility acknowledgments, AoC/ROC status, and responsibility matrix updated when providers or duties changed |
+| Control evidence refresh | Requirements affected by the change mapped to updated evidence, including Req 1, 6, 10, 11, and 12 where applicable |
+| Approval and residual risk | PCI owner, security owner, and business owner sign-off with residual scope risk documented |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Significant change deployed with no PCI scope impact analysis | High |
+| New CHD/SAD flow not reflected in scope diagrams or system inventory | High |
+| Segmentation-affecting change lacks revalidation evidence | High |
+| TPSP or payment page responsibility changed without updating provider inventory and responsibility matrix | High |
+| Emergency change lacks retrospective scope impact review | Medium |
+| Scope reduction claim lacks updated evidence after architecture change | Medium |
+
+**False positive to avoid:** Do not credit annual scope confirmation as proof that mid-cycle significant changes were assessed. Req 12.5.3 requires change-specific evidence that the change was evaluated for PCI DSS scope impact.
+
 ---
 
 ### Step 2: Requirement-by-Requirement Assessment
@@ -424,6 +461,12 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 - **Scope reduction methods**: [tokenization, P2PE, segmentation, outsourcing]
 - **Connected-to systems**: [list]
 - **Third-party service providers in scope**: [list]
+
+## Significant Change Scope Impact
+
+| Change ID | Trigger | CHD/SAD Flow Impact | Scope Inventory Updated | Segmentation Revalidated | TPSP Matrix Updated | Evidence Refreshed | Owner / Approval | Status |
+|-----------|---------|---------------------|--------------------------|--------------------------|---------------------|--------------------|------------------|--------|
+| [change] | [payment/network/TPSP/cloud/etc.] | [Yes/No/Unknown] | [Yes/No] | [Yes/No/N/A] | [Yes/No/N/A] | [requirements/evidence] | [owner/date] | [Pass/Partial/Fail] |
 
 ## Requirement Assessment Summary
 
