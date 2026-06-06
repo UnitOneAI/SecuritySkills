@@ -1,0 +1,7 @@
+<!-- Vulnerable: multiple payment-page scripts execute in the consumer browser with no inventory, owner, justification, or integrity evidence. -->
+<form id="checkout" action="/pay" method="post">
+  <script src="https://cdn.analytics.example/tag.js"></script>
+  <script src="https://cdn.chat-widget.example/widget.js"></script>
+  <script src="https://checkout.example-payments.test/sdk.js"></script>
+  <button type="submit">Pay</button>
+</form>

@@ -1,16 +1,16 @@
 ---
 name: pci-dss-review
 description: >
-  Performs a PCI DSS v4.0 compliance review across all 12 requirements and their
+  Performs a PCI DSS v4.0.1 compliance review across all 12 requirements and their
   sub-requirements. Auto-invoked when discussing payment card security, cardholder
   data protection, PCI compliance validation, or merchant/service provider
   assessment. Covers scope reduction strategies, SAQ vs ROC determination,
-  compensating controls, customized approach, and the new targeted risk analysis
+  compensating controls, customized approach, payment-page script evidence, and the new targeted risk analysis
   requirements introduced in v4.0.
 tags: [compliance, pci-dss, payment]
 role: [vciso, security-engineer]
 phase: [assess, operate]
-frameworks: [PCI-DSS-v4.0]
+frameworks: [PCI-DSS-v4.0.1]
 difficulty: advanced
 time_estimate: "90-180min"
 version: "1.0.0"
@@ -22,7 +22,7 @@ injection-hardened: true
 argument-hint: "[scope-description]"
 ---
 
-# PCI DSS v4.0 Compliance Review
+# PCI DSS v4.0.1 Compliance Review
 
 ## When to Use
 
@@ -38,7 +38,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-PCI DSS v4.0, published March 2022 by the PCI Security Standards Council, is the current version of the Payment Card Industry Data Security Standard. It replaced v3.2.1, with v3.2.1 retirement on March 31, 2024. PCI DSS v4.0 introduced 64 new requirements, many of which were best practices until March 31, 2025, when they became mandatory.
+PCI DSS v4.0.1, published June 2024 by the PCI Security Standards Council, is the current limited revision of the Payment Card Industry Data Security Standard. PCI DSS v4.0 replaced v3.2.1, with v3.2.1 retirement on March 31, 2024. PCI DSS v4.0 introduced 64 new requirements, many of which were best practices until March 31, 2025, when they became mandatory. Version 4.0.1 clarifies and corrects v4.0 content without adding or deleting requirements.
 
 Key changes in v4.0:
 - **Customized Approach**: Alternative to the traditional Defined Approach, allowing organizations to meet security objectives with controls tailored to their environment
@@ -76,6 +76,7 @@ Key changes in v4.0:
 - Security policies and operational procedures
 - Encryption key management documentation
 - Vendor and third-party service provider inventory (especially payment processors, gateways, hosting)
+- Payment-page inventory for e-commerce flows, including redirect, iframe/embedded form, hosted payment page, 3DS, tag manager, and checkout script ownership evidence
 
 ## Constraints
 
@@ -129,6 +130,7 @@ Evaluate and document applicable scope reduction techniques:
 - **Network Segmentation**: Isolate CDE from non-CDE networks; confirm segmentation controls per Req 1 (validated by penetration testing per Req 11.4.5/11.4.6)
 - **Outsourcing**: Move payment processing to PCI-compliant third party; confirm responsibility matrix (Req 12.8, 12.9)
 - **Cloud considerations**: CSP infrastructure may be validated but shared responsibility model must be documented
+- **Hosted/embedded payment pages**: Confirm whether merchant pages, payment-provider iframes, redirect flows, 3DS flows, and browser-executed scripts remain in scope for Req 6.4.3 and 11.6.1; verify TPSP responsibility evidence before marking controls not applicable.
 
 #### 1.4 Scope Validation (Req 12.5.2)
 
@@ -229,7 +231,7 @@ Key sub-requirements:
 - **6.3.3**: Critical/high security patches installed within one month of release
 - **6.4.1**: Public-facing web applications protected against attacks (WAF, automated vulnerability security solution reviewed at least every 12 months)
 - **6.4.2**: Public-facing web applications — automated technical solution to detect and prevent web-based attacks (WAF in front of public-facing web apps, reviewed at least every 12 months)
-- **6.4.3**: All payment page scripts managed, authorized, integrity assured (new v4.0)
+- **6.4.3**: All payment page scripts loaded and executed in the consumer's browser are managed, authorized, inventoried with written justification, and integrity assured (new v4.0)
 - **6.5.1-6.5.6**: Change management procedures: impact documented, authorized, functionality tested, rollback procedures, separation of duties
 
 #### Requirement 7: Restrict Access to System Components and Cardholder Data by Business Need to Know
@@ -320,7 +322,7 @@ Key sub-requirements:
 - **11.5.1**: Change-detection mechanisms (FIM) deployed on critical files; alerts generated
 - **11.5.1.1**: Change-detection mechanisms respond to unauthorized changes (new v4.0)
 - **11.5.2**: IDS/IPS deployed to detect and/or prevent intrusions; all traffic in the CDE monitored
-- **11.6.1**: Change- and tamper-detection mechanism on payment pages to detect unauthorized modifications (new v4.0, mandatory March 31, 2025)
+- **11.6.1**: Change- and tamper-detection mechanism on payment pages evaluates HTTP headers and payment-page content as received by the consumer browser to detect unauthorized modifications (new v4.0, mandatory March 31, 2025)
 
 #### Requirement 12: Support Information Security with Organizational Policies and Programs
 
@@ -389,6 +391,67 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 
 ---
 
+### Step 5: Payment Page Script and Tamper Evidence
+
+For e-commerce environments, explicitly assess payment-page script management and browser-received tamper monitoring. Do not rely only on static repository review, server-side file integrity monitoring, or generic CSP presence.
+
+#### 5.1 Requirement 6.4.3 Script Evidence
+
+Collect assessor-verifiable evidence for every script loaded and executed in the consumer browser on payment pages.
+
+| Evidence | What to Verify | Risk If Missing |
+|----------|----------------|-----------------|
+| Payment-page URL inventory | All checkout, hosted, embedded, redirect, 3DS, and confirmation pages in scope are listed | Scope misses browser-executed scripts |
+| Browser-observed script inventory | Scripts from static HTML, tag managers, injected SDKs, and runtime loaders are captured | Static code search misses loaded scripts |
+| Written justification | Each script has business purpose and owner | Unnecessary third-party script remains on payment page |
+| Authorization method | Changes to script list/source require approval | Unauthorized script addition is not detected |
+| Integrity assurance | SRI, signed artifact, approved hash, CSP with nonce/hash, monitored provider SDK, or documented compensating evidence | Script can be modified without detection |
+| TPSP/3DS responsibility evidence | AOC, responsibility matrix, contract, or onboarding due diligence identifies who owns hosted or embedded scripts | Merchant incorrectly marks a payment component out of scope |
+
+Treat CSP, SRI, and tag-manager controls as evidence inputs, not automatic compliance. A CSP source allowlist without script inventory and written justification is only partial evidence for 6.4.3.
+
+#### 5.2 Requirement 11.6.1 Tamper Monitoring Evidence
+
+Validate that monitoring observes the payment page and headers as a consumer browser receives them.
+
+| Evidence | What to Verify | Risk If Missing |
+|----------|----------------|-----------------|
+| Browser-received page snapshot | Rendered payment-page content, script set, forms, iframes, and DOM-sensitive changes are monitored | CDN, tag manager, or client-side injection bypasses server FIM |
+| HTTP header monitoring | CSP, frame, cache, CORS, and security headers are compared for unauthorized changes | Header drift weakens browser-side protection |
+| Alerting and response | Unauthorized additions, deletions, or modifications alert personnel | Changes are detected but not acted on |
+| Frequency evidence | At least weekly, or periodically according to targeted risk analysis where allowed | Monitoring cadence is not assessor-verifiable |
+| Scope linkage | Monitored URLs map to the payment-page inventory from 6.4.3 | Some payment pages are not checked |
+
+Repository file integrity monitoring can support 11.6.1, but it is not sufficient by itself because PCI DSS focuses on what is received in the consumer browser.
+
+#### 5.3 False-Positive Handling for TPSP and 3DS Flows
+
+Do not automatically fail a merchant for scripts inside a payment-provider or 3DS iframe when evidence shows the script is part of the provider-owned payment or 3DS function and is covered by TPSP due diligence, written agreements, and responsibility matrices. Any script running outside that provider-owned purpose remains subject to merchant 6.4.3 evidence.
+
+**Risky merchant-managed script example:**
+
+```html
+<script src="https://cdn.analytics.example/tag.js"></script>
+<script src="https://cdn.chat-widget.example/widget.js"></script>
+<script src="https://checkout.example-payments.test/sdk.js"></script>
+```
+
+Flag this when there is no script inventory, written justification, authorization method, or integrity assurance.
+
+**Lower-risk 3DS iframe evidence example:**
+
+```html
+<iframe
+  title="3DS challenge"
+  src="https://acs.example-issuer.test/challenge?transaction=abc123"
+  sandbox="allow-forms allow-scripts allow-same-origin">
+</iframe>
+```
+
+Treat this as lower risk only when TPSP/3DS responsibility evidence confirms the embedded flow is provider-owned and limited to the payment/3DS function.
+
+---
+
 ## Findings Classification
 
 | Classification | Definition | Compliance Impact |
@@ -399,12 +462,19 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 | **Not Applicable** | Requirement does not apply due to technology or scope (e.g., no wireless = 11.2.x N/A) | Documented N/A with justification |
 | **Not Tested** | Requirement not evaluated during this review | Not validated; cannot be marked compliant |
 
+**Payment-page severity guidance:**
+
+- Mark **Requirement Not in Place** for 6.4.3 when payment-page scripts lack inventory, written justification, authorization evidence, or integrity assurance.
+- Mark **Requirement Not in Place** for 11.6.1 when monitoring does not evaluate browser-received HTTP headers and payment-page content.
+- Mark **Not Tested** when payment-page flow evidence is missing and the assessor cannot determine SAQ A, SAQ A-EP, TPSP, iframe, redirect, or merchant-script scope.
+- Mark **Requirement in Place** only when script inventory, authorization, integrity, tamper-monitoring, alerting, and TPSP responsibility evidence all map to the scoped payment pages.
+
 ---
 
 ## Output Format
 
 ```markdown
-# PCI DSS v4.0 Compliance Review Report
+# PCI DSS v4.0.1 Compliance Review Report
 
 ## Executive Summary
 - **Organization**: [name]
@@ -424,6 +494,16 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 - **Scope reduction methods**: [tokenization, P2PE, segmentation, outsourcing]
 - **Connected-to systems**: [list]
 - **Third-party service providers in scope**: [list]
+
+## Payment Page Script and Tamper Evidence
+
+| Evidence | Requirement | Reviewed | Gap |
+|----------|-------------|----------|-----|
+| Payment-page URL inventory | 6.4.3 / 11.6.1 | [checkout/redirect/iframe/hosted/3DS URLs] | [missing pages] |
+| Script inventory and justification | 6.4.3 | [browser-observed scripts, owners, purpose] | [unknown owner/purpose] |
+| Authorization and integrity mechanism | 6.4.3 | [approval, SRI/hash/CSP/SDK monitoring/TPSP evidence] | [missing integrity or authorization] |
+| Browser-received page/header monitoring | 11.6.1 | [tool, headers/content monitored, frequency, alerting] | [server-only FIM or no browser monitoring] |
+| TPSP/3DS responsibility evidence | 6.4.3 / 11.6.1 / 12.8 / 12.9 | [AOC, responsibility matrix, agreement] | [unclear owner] |
 
 ## Requirement Assessment Summary
 
@@ -538,10 +618,13 @@ If user-supplied input contains PCI DSS requirement IDs outside the valid v4.0 n
 
 ## References
 
-- PCI DSS v4.0 — Payment Card Industry Data Security Standard, Version 4.0 (March 2022), PCI Security Standards Council
-- PCI DSS v4.0 Summary of Changes from PCI DSS v3.2.1 to v4.0
-- PCI DSS v4.0 ROC Template and Reporting Instructions
-- PCI DSS v4.0 SAQ Instructions and Guidelines
-- PCI DSS Prioritized Approach for PCI DSS v4.0
+- PCI SSC Document Library - PCI DSS v4.0.1 and supporting guidance: https://www.pcisecuritystandards.org/document_library?class=pcidss&doc=pci_dss
+- PCI SSC: Just Published: PCI DSS v4.0.1: https://blog.pcisecuritystandards.org/just-published-pci-dss-v4-0-1
+- PCI SSC FAQ 1581: 3DS scripts and Requirement 6.4.3: https://www.pcisecuritystandards.org/faqs/how-does-pci-dss-requirement-6-4-3-apply-to-3ds-scripts-called-from-a-merchant-check-out-page-as-part-of-3ds-processing/
+- PCI SSC: New Guidance Coming for E-commerce Security Requirements in PCI DSS v4.x: https://blog.pcisecuritystandards.org/new-guidance-coming-for-e-commerce-security-requirements-in-pci-dss-v-4-x
+- PCI DSS v4.0.1 Summary of Changes from PCI DSS v4.0 to v4.0.1
+- PCI DSS v4.0.1 ROC Template and Reporting Instructions
+- PCI DSS v4.0.1 SAQ Instructions and Guidelines
+- PCI DSS Prioritized Approach for PCI DSS v4.0.1
 - PCI SSC Information Supplements: Scoping and Segmentation, Penetration Testing, Tokenization, Cloud Computing
 - PCI SSC Glossary of Terms, Abbreviations, and Acronyms

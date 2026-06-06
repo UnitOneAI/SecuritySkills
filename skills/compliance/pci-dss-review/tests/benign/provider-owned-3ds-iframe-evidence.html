@@ -1,0 +1,9 @@
+<!-- Benign evidence: 3DS challenge iframe is provider-owned and backed by TPSP due diligence. -->
+<!-- TPSP evidence reviewed: AOC current, responsibility matrix maps embedded 3DS scripts to provider, contract covers 3DS flow. -->
+<form id="checkout" action="/pay" method="post">
+  <iframe
+    title="3DS challenge"
+    src="https://acs.example-issuer.test/challenge?transaction=abc123"
+    sandbox="allow-forms allow-scripts allow-same-origin">
+  </iframe>
+</form>
