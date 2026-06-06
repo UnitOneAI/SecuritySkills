@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -181,6 +181,45 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Go Private Module Proxy and Checksum Evidence
+
+Go modules can disclose private module paths to public infrastructure when `GOPROXY`, `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB`, or `GOSUMDB` are missing or mis-scoped. SBOM output and `go.sum` prove what resolved, but they do not prove whether private coordinates were sent to `proxy.golang.org`, `sum.golang.org`, or another public proxy/checksum service during resolution.
+
+Collect this evidence for Go projects with private module prefixes, enterprise proxies, or custom module paths:
+
+- **Private prefixes:** Internal module paths from `go.mod`, replace directives, imports, and private VCS hosts.
+- **Proxy order:** `GOPROXY` from CI and representative developer/build environments, including fallback order and `direct`.
+- **Privacy variables:** `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB`, and whether their patterns cover every private prefix.
+- **Checksum behavior:** `GOSUMDB` value, scoped exclusions, internal checksum mirror policy, or global `off` justification.
+- **CI evidence:** `go env` output from CI, container image, or build runner, not only a local workstation.
+- **Fallback behavior:** Whether the private proxy returns 404/410 for private modules and whether fallback can query public infrastructure.
+- **Insecure transport:** `GOINSECURE` patterns and whether they are incorrectly used as privacy controls.
+
+Classify Go private module posture:
+
+| Status | Criteria | Finding Guidance |
+|---|---|---|
+| **Benign / controlled** | Private prefixes are covered by `GOPRIVATE` or scoped `GONOPROXY`/`GONOSUMDB`, proxy order is documented, CI `go env` matches expected policy, and public checksum verification remains enabled for public modules | Record evidence; do not flag dependency-confusion or path-disclosure risk |
+| **Private path disclosure** | Private prefixes are not covered by privacy variables, or public proxy/checksum services can receive internal coordinates | High supply-chain privacy finding |
+| **Fallback leak risk** | Private proxy is first, but fallback to public proxy/direct can occur for private modules because `GOPRIVATE`/`GONOPROXY` is missing or incomplete | Medium/High depending on module sensitivity |
+| **Overbroad checksum disablement** | `GOSUMDB=off` disables public-module transparency without a scoped internal mirror policy | Governance/supply-chain finding |
+| **Not evaluable** | CI/build `go env`, private prefix list, or proxy fallback behavior is missing | Request evidence before concluding safe or unsafe |
+
+```
+Go Private Module Evidence:
+- Private Prefixes:     [Module path prefixes from go.mod/imports/replaces]
+- GOPROXY:              [Proxy chain and fallback order]
+- GOPRIVATE:            [Patterns or empty]
+- GONOPROXY:            [Patterns or empty]
+- GONOSUMDB:            [Patterns or empty]
+- GOSUMDB:              [sum.golang.org | internal mirror | off]
+- CI go env Evidence:   [Source and timestamp]
+- Public Fallback Path: [Can private modules query public proxy/sumdb? yes/no/unknown]
+- GOINSECURE:           [Patterns and rationale]
+- Status:               [Benign / controlled | Private path disclosure | Fallback leak risk | Overbroad checksum disablement | Not evaluable]
+- Remediation:          [Scoped GOPRIVATE/GONOSUMDB/GONOPROXY, private proxy routing, checksum mirror, CI policy]
+```
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -212,6 +251,13 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Go private module proxy/checksum disclosure risk
+
+### Private Registry / Proxy Evidence
+
+| Ecosystem | Private Prefix / Scope | Proxy / Registry Chain | Privacy Controls | Public Fallback Risk | Status |
+|---|---|---|---|---|---|
+| Go | [GOPRIVATE/GONOPROXY/GONOSUMDB scope] | [GOPROXY chain] | [GOPRIVATE/GONOSUMDB/GOSUMDB evidence] | [Yes/No/Unknown] | [Controlled/Risk/Not Evaluable] |
 
 ### Recommendations
 
@@ -226,8 +272,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Private registry/proxy assessment**: For npm/pip/Java/Go ecosystems with private packages or custom repositories, capture registry/proxy routing and privacy controls. For Go, include `GOPROXY`, `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB`, `GOSUMDB`, and CI `go env` evidence.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +298,6 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Go Modules Reference -- Private modules](https://go.dev/ref/mod#private-modules)
+- [Go Modules Reference -- Environment variables](https://go.dev/ref/mod#environment-variables)
+- [Go Modules and private code configuration](https://go.dev/wiki/Modules#how-do-i-configure-go-to-use-a-proxy-and-the-checksum-database)
