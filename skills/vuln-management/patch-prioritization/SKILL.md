@@ -265,23 +265,26 @@ Approved exceptions and deferred patch decisions are not static. Revalidate them
 | Trigger | Why It Matters | Required Action |
 |---|---|---|
 | **Vendor patch or workaround released** | "Patch unavailable" is no longer a valid justification | Set a new remediation deadline and update patch window scheduling |
-| **CISA KEV listing added** | Confirmed exploitation changes SSVC and compliance urgency | Re-run SSVC, apply KEV override, and escalate to P0/P1 as applicable |
+| **CISA KEV listing or BOD deadline added** | Confirmed exploitation and mandatory due dates change SSVC and compliance urgency | Re-run SSVC, apply KEV/BOD override, record required due date, and escalate to P0/P1 as applicable |
 | **EPSS surge or percentile jump** | Exploitation likelihood changed before review date | Re-run EPSS trend analysis and escalate tier when thresholds are met |
 | **Public exploit/PoC published** | Attack feasibility and automatability may have changed | Re-run SSVC exploitation/automatable decisions and retest controls |
 | **Active exploitation observed** | Risk is no longer theoretical | Break exception, start incident/vulnerability emergency workflow |
 | **Asset becomes internet-facing or business-critical** | Prior exposure or mission-prevalence assumptions are stale | Re-score asset context and shorten SLA/exception duration |
 | **Compensating control changed or failed test** | Residual risk assumption is invalid | Retest control, remove SLA extension if ineffective |
+| **Threat-intel or scanner feed is stale/unavailable** | Missing current evidence can hide KEV, EPSS, exploit, or patch changes | Mark revalidation Not Evaluable, fail open to human review, and refresh evidence before continuing the exception |
 | **Exception owner, system owner, or service scope changes** | Approval accountability may no longer be valid | Re-approve exception with current owner and updated scope |
 
 #### Revalidation Requirements
 
 For every deferred vulnerability or active exception, record:
 
-- **Last revalidation date** and evidence source checked.
+- **Last revalidation date**, evidence source checked, feed timestamp, and source freshness status.
 - **Next scheduled revalidation date** based on exception severity.
-- **Triggers checked**: vendor advisory, CISA KEV, EPSS, public exploit, active exploitation, asset exposure, business criticality, and compensating control status.
-- **Resulting action**: maintain exception, shorten deadline, escalate SLA tier, schedule patch, retest compensating control, or revoke risk acceptance.
+- **Triggers checked**: vendor advisory, CISA KEV, BOD deadline, EPSS, public exploit, active exploitation, asset exposure, business criticality, scanner evidence, and compensating control status.
+- **Resulting action**: maintain exception, shorten deadline, escalate SLA tier, schedule patch, retest compensating control, revoke risk acceptance, or route Not Evaluable records to human review.
 - **Patch-available deadline** when a vendor fix becomes available after exception approval.
+- **Mandatory due date** when CISA KEV or BOD evidence imposes a stricter deadline than the original exception.
+- **Control retest evidence** with test date, method, exploit path covered, asset coverage, and pass/fail result.
 - **Human approver** for any decision to keep accepting risk after a trigger fires.
 
 #### Revalidation Cadence
@@ -293,9 +296,9 @@ For every deferred vulnerability or active exception, record:
 | **P3** | Monthly | Within 5 business days of trigger |
 | **P4/P5** | At scheduled review date, max quarterly | At next backlog review unless KEV/active exploitation appears |
 
-Do not count exceptions with missed revalidation, stale evidence, or untested compensating controls as "healthy" patch posture.
+Do not count exceptions with missed revalidation, stale evidence, unavailable source feeds, or untested compensating controls as "healthy" patch posture.
 
-**Test fixture:** Use `tests/deferred-revalidation-gates.md` to validate patch-available, KEV/EPSS surge, exposure drift, failed compensating control, and no-material-change revalidation paths.
+**Test fixture:** Use `tests/deferred-revalidation-gates.md` to validate patch-available, KEV/BOD/EPSS surge, exposure drift, failed compensating control, stale-source Not Evaluable, and no-material-change revalidation paths.
 
 ---
 
@@ -313,6 +316,7 @@ Classify the overall patch posture into one of the following states:
 **Exception health modifiers:**
 
 - Downgrade to **Elevated Risk** when any active exception has stale revalidation evidence, a missed review date, or an untested compensating control.
+- Downgrade to **Elevated Risk** when KEV, EPSS, vendor advisory, scanner, or asset-inventory evidence is stale or unavailable for active exceptions.
 - Downgrade to **Critical Backlog** when a deferred vulnerability becomes KEV-listed, actively exploited, or patch-available without an updated deadline and owner-approved action.
 
 ---
@@ -374,9 +378,9 @@ findings requiring immediate action.]
 | [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] | [date] | [date] |
 
 ### Deferred Vulnerability Revalidation
-| CVE ID | Exception ID | Triggers Checked | Trigger Fired? | Current Evidence | Resulting Action | Human Approver |
-|---|---|---|---|---|---|---|
-| [CVE-ID] | [EXC-ID] | [Vendor patch, KEV, EPSS, exploit, exposure, control status] | [Yes/No] | [Evidence source/date] | [Maintain/Escalate/Schedule patch/Revoke exception/Retest control] | [Name/title] |
+| CVE ID | Exception ID | Triggers Checked | Trigger Fired? | Evidence Freshness | Mandatory Due Date | Control Retest | Resulting Action | Human Approver |
+|---|---|---|---|---|---|---|---|---|
+| [CVE-ID] | [EXC-ID] | [Vendor patch, KEV/BOD, EPSS, exploit, exposure, scanner, control status] | [Yes/No/Not Evaluable] | [source/timestamp/freshness] | [date or N/A] | [Pass/Fail/Not Tested] | [Maintain/Escalate/Schedule patch/Revoke exception/Retest control/Human review] | [Name/title] |
 
 ### Recommendations
 1. [Highest-priority actionable recommendation]
