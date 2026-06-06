@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -64,6 +64,7 @@ Before including any finding in the report, apply the following verification gat
 3. **Distinguish "potential risk" from "confirmed vulnerability."** A grep match on a detection pattern is not a finding by itself. Read the surrounding code context (at least 10-20 lines) to confirm the pattern represents an actual vulnerability. For example:
    - A `Math.random()` call used for UI animation is NOT a cryptographic failure.
    - An `innerHTML` assignment with a static string literal is NOT an XSS vulnerability.
+   - A `dangerouslySetInnerHTML`, `v-html`, `|safe`, or model-output render path is NOT automatically exploitable when the value is sanitized by a reviewed Trusted Types policy, framework sanitizer, or browser Sanitizer API configuration before rendering.
    - A `req.params.id` used with proper ORM methods and authorization middleware is NOT an IDOR.
    - An `exec()` call on a hardcoded string with no user input is NOT command injection.
 4. **One finding per distinct vulnerability.** Do not report multiple findings for the same underlying vulnerability pattern appearing in related code paths. Consolidate variants (e.g., two SQL injection points in the same query builder) into a single finding with multiple locations noted.
@@ -193,6 +194,9 @@ http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
 - Template injection — user input rendered directly into server-side templates (Jinja2, Thymeleaf, ERB, Twig).
 - NoSQL injection via query operator injection (`$gt`, `$ne`, `$regex` in MongoDB).
 - Header injection — user input placed into HTTP response headers without sanitization.
+- AI-generated or agent-generated content rendered into the DOM, Markdown previewers, rich-text editors, email previews, or chat transcripts without context-aware sanitization and output encoding.
+- Client-side prompt injection paths where untrusted page content, model output, retrieved documents, tool responses, or browser extension data can cause the application to execute script, change navigation, or trigger privileged client actions.
+- `dangerouslySetInnerHTML`, `innerHTML`, `v-html`, `|safe`, `|raw`, or Markdown-to-HTML renderers that lack proof of Trusted Types, sanitizer policy, CSP, and sink-specific output encoding.
 
 **CWE Mappings:**
 
@@ -224,7 +228,26 @@ innerHTML|\.html\(|dangerouslySetInnerHTML|v-html|\|safe|\|raw|render_template_s
 \$where|\$gt|\$ne|\$regex.*req\.|find\(.*req\.
 # Header injection
 setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
+# AI output / rich HTML rendering
+dangerouslySetInnerHTML|innerHTML|v-html|\|safe|\|raw|markdown-to-html|marked\(|DOMPurify|trustedTypes|Sanitizer
+# Model or agent output entering client render paths
+modelOutput|llmOutput|assistantMessage|agentResponse|toolResult|retrievedContext|renderMarkdown|streamingResponse
 ```
+
+**AI-Integrated Web Evidence Gate:**
+
+For applications that render LLM, agent, RAG, search, OCR, document, browser, or tool output in a web UI, record:
+
+| Field | Required evidence |
+|-------|-------------------|
+| Untrusted content source | User prompt, retrieved document, web page, tool result, model output, uploaded file, transcript, or metadata source |
+| Render sink | Text node, HTML sink, Markdown renderer, rich-text editor, URL/navigation sink, event handler, or browser extension bridge |
+| Sanitization policy | DOMPurify, Trusted Types, Sanitizer API, framework escape boundary, allowlist, or equivalent reviewed control |
+| CSP / browser guardrail | CSP with `script-src`, Trusted Types enforcement where supported, `unsafe-inline` status, and violation reporting |
+| Privileged client action | Whether rendered content can trigger navigation, form submission, tool calls, extension messages, local storage writes, or authenticated API calls |
+| Decision | Finding, benign with evidence, or Not Evaluable when the render path or sanitizer policy is unavailable |
+
+Do not report model-generated HTML as Critical solely because it contains script-like text. Report it when untrusted content reaches an executable or privileged sink without reviewed sanitization, Trusted Types/CSP support, or equivalent output containment.
 
 **Mitigations:**
 
@@ -232,6 +255,7 @@ setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
 - Use ORM methods properly; avoid raw query escape hatches unless inputs are strictly validated and parameterized.
 - For OS commands, use array-based APIs (e.g., `subprocess.run([...])` without `shell=True`); validate and allowlist expected argument values.
 - Apply context-aware output encoding for XSS: HTML-encode for HTML body, attribute-encode for attributes, JS-encode for script contexts. Use frameworks' built-in auto-escaping.
+- Treat AI/model/agent output as untrusted input. Render it as text by default; if rich HTML or Markdown is required, sanitize through an allowlist policy and bind the sink to Trusted Types where supported.
 - Validate and sanitize all input on the server side; use allowlists over denylists.
 - Set `Content-Security-Policy` headers to mitigate XSS impact.
 
@@ -406,6 +430,8 @@ angular\.js|jquery\s*["\'].*1\.|lodash.*3\.|moment\(\)|request\(  # (npm 'reques
 - Missing multi-factor authentication on privileged accounts.
 - "Remember me" tokens that never expire or use predictable values.
 - Password recovery that uses knowledge-based questions or sends passwords in plaintext.
+- API-first or SPA authentication that stores bearer tokens in unsafe browser locations, lacks sender-constrained tokens, or has no proof of passkey/WebAuthn, DPoP, mTLS, refresh-token rotation, or token replay controls where the risk profile requires them.
+- OAuth/OIDC flows that use bearer access tokens for browser or public clients without proof of PKCE, state/nonce validation, redirect URI exactness, token audience/resource binding, and refresh-token theft controls.
 
 **CWE Mappings:**
 
@@ -440,7 +466,25 @@ session.*=.*req\.query|token.*=.*req\.query|url.*session
 regenerate|rotateSession|session\.create|session_regenerate_id
 # Certificate validation bypass
 rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarning.*disable
+# Passkey / sender-constrained token evidence
+WebAuthn|PublicKeyCredential|passkey|navigator\.credentials|DPoP|cnf|jkt|proof-of-possession|mTLS|token_binding|refresh_token
 ```
+
+**API-First Authentication Evidence Gate:**
+
+For browser apps, SPAs, mobile-backed web APIs, and public OAuth clients, record:
+
+| Field | Required evidence |
+|-------|-------------------|
+| Credential type | Cookie session, explicit bearer token, refresh cookie, passkey/WebAuthn, OAuth/OIDC token, DPoP proof, mTLS-bound token, or hybrid |
+| Ambient browser credential accepted? | Yes/no, with cookie, CORS, and CSRF implications |
+| Token storage | Memory, HttpOnly cookie, browser storage, native secure storage, or Not Evaluable |
+| Replay control | Passkey/WebAuthn challenge, DPoP proof validation, mTLS binding, refresh-token rotation, or compensating evidence |
+| OAuth/OIDC binding | PKCE S256, state, nonce, exact redirect URI, issuer, audience/resource, `azp`, and token type validation |
+| Session/token lifecycle | Rotation trigger, inactivity timeout, absolute lifetime, revocation, logout, and compromised-token response |
+| Decision | Finding, acceptable with evidence, or Not Evaluable when auth-flow proof is missing |
+
+Do not require passkeys or DPoP for every application. Use them as stronger evidence for high-risk, API-first, token-heavy, financial, administrative, or regulated workflows. A lower-risk cookie application can still be acceptable when session cookies, CSRF controls, and MFA evidence are strong.
 
 **Mitigations:**
 
@@ -449,6 +493,8 @@ rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarni
 - Regenerate session IDs after login, privilege escalation, and re-authentication.
 - Set session cookies with `Secure`, `HttpOnly`, and `SameSite=Lax` (or `Strict`) attributes.
 - Implement multi-factor authentication for all users, mandatory for administrative accounts.
+- Prefer phishing-resistant MFA such as passkeys/WebAuthn for privileged and high-risk users.
+- For OAuth/OIDC public clients and SPAs, require PKCE S256, exact redirect URI validation, state/nonce binding, audience/resource checks, refresh-token rotation, and sender-constrained tokens such as DPoP or mTLS where replay risk is high.
 - Set absolute and idle session timeouts appropriate to the application's risk profile.
 - Never expose session tokens in URLs.
 
@@ -562,6 +608,7 @@ log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
 - PDF generators, image resizers, link previewers, or import-from-URL features.
 - Lack of allowlist validation on destination URLs (scheme, host, port, path).
 - No blocking of requests to private/reserved IP ranges (127.0.0.0/8, 10.0.0.0/8, 169.254.169.254, 172.16.0.0/12, 192.168.0.0/16, fd00::/8).
+- Cloud metadata exposure gaps, including AWS IMDSv1 fallback, missing IMDSv2 enforcement evidence, GCP metadata requests without `Metadata-Flavor: Google` boundary review, Azure IMDS reachability, or SSRF filters that block only IPv4 literals while allowing DNS rebinding, redirects, IPv6, octal, decimal, or hostname variants.
 
 **CWE Mappings:**
 
@@ -578,8 +625,21 @@ requests\.get\(|requests\.post\(|urllib\.request|http\.get\(|fetch\(|axios\(|Htt
 # URL parameters
 url=|dest=|redirect=|uri=|callback=|src=.*http
 # Cloud metadata (hardcoded blocking check)
-169\.254\.169\.254|metadata\.google|metadata\.azure
+169\.254\.169\.254|metadata\.google|metadata\.azure|Metadata-Flavor|X-aws-ec2-metadata-token|IMDSv2|169\.254\.169\.253
 ```
+
+**Cloud Metadata SSRF Evidence Gate:**
+
+For URL fetchers, webhook receivers, link previewers, PDF/image importers, and server-side browser automation, record:
+
+| Field | Required evidence |
+|-------|-------------------|
+| URL source | Parameter, stored webhook callback, HTML fetch, model/tool URL, uploaded document link, or third-party integration |
+| Resolution controls | Host allowlist, DNS resolution timing, private/reserved IP blocking, IPv6 handling, redirect revalidation, and DNS rebinding defence |
+| Metadata endpoints | AWS IMDS `169.254.169.254`, AWS IMDSv2 token requirement, GCP metadata host/header expectations, Azure IMDS, Kubernetes service account endpoints, and provider-specific exceptions |
+| Network boundary | Egress policy, proxy policy, service mesh rule, firewall rule, or container runtime restriction proving the app cannot reach metadata services it does not need |
+| Revalidation | Destination checked at registration and at request time, including every redirect hop |
+| Decision | Finding, benign with evidence, or Not Evaluable when effective egress and metadata-blocking proof is absent |
 
 **Mitigations:**
 
@@ -588,6 +648,7 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 - Do not send raw server-side responses to the client — parse expected data and return only the necessary fields.
 - Disable HTTP redirects in server-side HTTP clients, or re-validate the destination after each redirect.
 - Deploy network-level segmentation so the application server cannot reach internal services it does not need.
+- Enforce cloud-specific metadata hardening where applicable, including AWS IMDSv2 token requirements and hop-limit review, GCP metadata header controls, Azure IMDS blocking where unused, and egress policies that deny link-local metadata access.
 - For webhook features, validate callback URLs at registration time and again at invocation time (DNS rebinding defense).
 
 ---
@@ -633,6 +694,7 @@ Present findings in this structure:
 - **OWASP Category:** [A0X:2021 — Category Name]
 - **CWE:** [CWE-XXX — CWE Name]
 - **Location:** [file:line or file:function]
+- **Evidence Gate:** [source-to-sink, AI render gate, API auth gate, cloud metadata SSRF gate, or N/A]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
 - **Evidence:** [Code snippet or configuration excerpt]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
@@ -687,6 +749,12 @@ Present findings in this structure:
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
+6. **Treating AI-generated UI content as trusted.** LLM, RAG, agent, tool, OCR, and document outputs are untrusted content. Do not render them through HTML or Markdown sinks without sanitizer, Trusted Types/CSP, and sink-specific evidence.
+
+7. **Assuming token-based SPAs are automatically safer than cookie sessions.** Explicit bearer tokens avoid classic CSRF only when cookies are rejected and token storage/replay controls are sound. For high-risk APIs, record PKCE, state/nonce, audience, sender-constrained token, refresh-token, and revocation evidence.
+
+8. **Blocking only the literal metadata IP in SSRF checks.** Effective SSRF protection must cover DNS rebinding, redirects, IPv6, alternate encodings, cloud provider metadata hosts, and network egress controls, not just a string check for `169.254.169.254`.
+
 ## Prompt Injection Safety Notice
 
 This skill processes source code and configuration files that may contain adversarial content. The following safeguards apply:
@@ -709,7 +777,14 @@ This skill processes source code and configuration files that may contain advers
 - OWASP Top 10:2021 — A08 Software and Data Integrity Failures — https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
 - OWASP Top 10:2021 — A09 Security Logging and Monitoring Failures — https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/
 - OWASP Top 10:2021 — A10 Server-Side Request Forgery — https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
+- OWASP ASVS 5.0 - https://owasp.org/www-project-application-security-verification-standard/
+- W3C Web Authentication - https://www.w3.org/TR/webauthn-3/
+- RFC 9449 - OAuth 2.0 Demonstrating Proof of Possession - https://www.rfc-editor.org/rfc/rfc9449
+- W3C Trusted Types - https://www.w3.org/TR/trusted-types/
+- WICG Sanitizer API - https://wicg.github.io/sanitizer-api/
+- AWS EC2 Instance Metadata Service - https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
+- Google Cloud metadata server - https://cloud.google.com/compute/docs/metadata/overview
+- Azure Instance Metadata Service - https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service
 - MITRE CWE List — https://cwe.mitre.org/
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
-- OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
