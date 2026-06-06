@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,12 +52,38 @@ Before starting, collect or confirm:
 - [ ] **Compensating controls inventory:** WAF rules, network segmentation, EDR policies, disabled features currently in place
 - [ ] **Compliance mandates:** Applicable regulatory requirements (CISA BOD 22-01, PCI DSS 4.0 Requirement 6.3.3, HIPAA, FedRAMP)
 - [ ] **Historical EPSS data:** EPSS score trends over 7/30/90 days if available (API: https://api.first.org/data/v1/epss)
+- [ ] **KEV enrichment fields:** CISA KEV due date, known ransomware campaign use, required action, and date the KEV feed was checked
+- [ ] **Exception TTL evidence:** Expiration date, owner, review cadence, compensating-control retest date, and maximum duration for any deferred patch
+- [ ] **Virtual patch evidence:** WAF/IPS/RASP/API-gateway rule ID, protected asset scope, exploit-pattern coverage, bypass test, telemetry, and rollback plan for systems that cannot be physically patched
 
 If asset context is missing, assume internet-facing and business-critical, and flag assumptions in the output.
 
 ---
 
 ## Process
+
+### Step 0: Active Exploitation and Deferral Evidence Gate
+
+Before accepting a standard SLA, low-EPSS deferral, or compensating-control extension, verify that active exploitation, ransomware usage, and exception TTL evidence are complete.
+
+```
+PATCH-ACTIVE-01: CISA KEV entry lacks knownRansomwareCampaignUse, due date, required action, or date-checked evidence
+PATCH-ACTIVE-02: KEV plus known ransomware campaign use is not escalated to P0 / emergency handling
+PATCH-ACTIVE-03: CVSS-critical vulnerability is deferred based only on low current EPSS without SSVC, exposure, exploit maturity, and asset-criticality evidence
+PATCH-ACTIVE-04: EPSS trend is rising or surging but SLA tier is not accelerated or explicitly justified
+PATCH-ACTIVE-05: Compensating control or risk exception lacks expiration date, owner, retest cadence, or maximum TTL
+PATCH-ACTIVE-06: Virtual patch is accepted without rule ID, protected scope, PoC/bypass test, telemetry, and rollback evidence
+PATCH-ACTIVE-07: Legacy/medical/OT/embedded system cannot be patched and the plan omits virtual patching or other compensating-control options
+PATCH-ACTIVE-08: Missing KEV, EPSS-history, exception-TTL, or virtual-patch evidence is not marked Not Evaluable
+```
+
+**Decision rules:**
+
+- Escalate to **P0 -- Emergency** when a CVE is in KEV and `knownRansomwareCampaignUse` is known or confirmed.
+- Do not downgrade a CVSS-critical finding solely because current EPSS is low. Deferral requires SSVC `Scheduled` or `Defer`, non-internet exposure, no KEV listing, no known public weaponization, documented asset context, and compensating-control evidence.
+- Accelerate one tier when EPSS is **Rising** and two tiers, or directly to P1/P0 as appropriate, when EPSS is **Surging** or crosses the organization's high-probability threshold.
+- Cap virtual patch and WAF/IPS-based extensions at the shortest applicable TTL from this skill's SLA matrix, the risk-acceptance policy, or regulatory requirement. Require retest before renewal.
+- Mark findings **Not Evaluable** when KEV feed date, EPSS history, asset exposure, compensating-control TTL, or virtual-patch validation evidence is unavailable.
 
 ### Step 1: Inventory and Classify Pending Vulnerabilities
 
@@ -80,6 +106,8 @@ Vulnerability Inventory Entry:
 - CVSS 4.0 Base:       [0.0 - 10.0]
 - EPSS Score:          [0.0 - 1.0] (as of [date])
 - CISA KEV:            [Yes | No]
+- KEV Ransomware Use: [Known | Unknown | N/A]
+- Active Exploitation Evidence: [KEV | Vendor advisory | Exploit telemetry | None | Missing]
 - SSVC Decision:       [Immediate | Out-of-Cycle | Scheduled | Defer]
 - Patch Available:     [Yes (version) | No | Workaround Only]
 - Current SLA:         [Tier and deadline]
@@ -109,6 +137,8 @@ Assign or validate SLA tiers using the following matrix. SLA tiers are derived f
 2. **SSVC primacy:** The SSVC decision outcome is the primary driver; EPSS and CVSS serve as secondary validation
 3. **Upward adjustment only:** If EPSS or KEV status indicates higher urgency than the SSVC decision alone, escalate the tier; never use EPSS to downgrade an SSVC Immediate decision
 4. **Asset criticality modifier:** For non-critical assets (dev, test, sandbox), the SLA tier may be relaxed by one level with documented justification
+5. **Low-EPSS deferral guard:** A low current EPSS score may support deferral only when exposure, asset criticality, SSVC decision, KEV status, public exploit maturity, and compensating controls also support the lower tier
+6. **Ransomware KEV override:** Any KEV item with known ransomware campaign use is P0 unless a documented, tested control proves the affected asset is not vulnerable or not reachable
 
 ### Step 3: EPSS Trend Analysis
 
@@ -128,6 +158,8 @@ Analyze EPSS score trajectory to identify vulnerabilities with increasing exploi
 | **Rising** | EPSS increased by >= 0.05 (absolute) or >= 50% (relative) in 30 days | Monitor closely; prepare patch for next available window |
 | **Stable** | EPSS change < 0.05 in 30 days | Maintain current SLA tier |
 | **Declining** | EPSS decreased by >= 0.05 in 30 days | May support risk acceptance for Scheduled/Defer tier findings |
+
+Use percentile and absolute probability together. A low absolute score that jumps rapidly from baseline can indicate new exploit development, while a high percentile with stable history may require asset/context validation before emergency scheduling.
 
 ```
 EPSS Trend Analysis:
@@ -153,6 +185,7 @@ For each compensating control claimed, validate:
 3. **Control durability:** Is the control persistent (e.g., network ACL) or ephemeral (e.g., manual process)?
 4. **Control verification:** Can the control's effectiveness be independently verified or tested?
 5. **Residual risk:** What risk remains after the compensating control is applied?
+6. **Time to live:** When does the control expire, when was it last retested, and who owns renewal or removal?
 
 #### Compensating Control Evaluation Matrix
 
@@ -160,6 +193,7 @@ For each compensating control claimed, validate:
 |---|---|---|---|
 | **Network segmentation** | VLAN isolation, firewall rules blocking attack vector port/protocol | Prevents network path to vulnerable service; verified by scan | +14 days for P2/P3 |
 | **WAF/IPS rule** | Virtual patch rule targeting specific CVE exploit pattern | Rule tested against known PoC; bypass testing performed | +7 days for P1/P2 |
+| **RASP/API gateway virtual patch** | Request/response filter, schema gate, route deny, exploit signature, rate limit | Rule ID mapped to vulnerable route/component; bypass and telemetry tested | +7 days for P1/P2 |
 | **Feature/service disabled** | Vulnerable component disabled or uninstalled | Component confirmed absent from runtime configuration | Reclassify to P4 or close |
 | **EDR/XDR detection** | Behavioral detection for exploitation indicators | Detection rule tested; alert routing confirmed | +7 days for P2 only |
 | **Access restriction** | MFA requirement, IP allowlisting, privilege reduction | Attack requires access that is now gated | +7 days for P2/P3 |
@@ -172,9 +206,13 @@ Compensating Control Assessment:
 - Effectiveness:       [Full | Partial | Insufficient]
 - Coverage:            [All affected assets | Subset ([N] of [M])]
 - Verification:        [Tested on [date] | Unverified]
+- Expiration / TTL:    [YYYY-MM-DD or Not Evaluable]
+- Retest Cadence:      [Daily | Weekly | Before renewal | Missing]
 - Max SLA Extension:   [Days, per matrix above]
 - Residual Risk:       [Description of remaining risk]
 ```
+
+For legacy, medical, OT, embedded, end-of-life, or vendor-locked systems where a physical patch cannot be deployed inside SLA, evaluate virtual patching before accepting residual risk. Virtual patching must include a concrete control artifact, protected scope, exploit-pattern mapping, bypass test, alert/telemetry evidence, and a rollback/removal plan.
 
 ### Step 5: Patch Window Scheduling
 
@@ -278,7 +316,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Patch Prioritization Report
 **Date:** [YYYY-MM-DD]
-**Skill:** patch-prioritization v1.0.0
+**Skill:** patch-prioritization v1.0.1
 **Frameworks:** SSVC 2.1, EPSS v3, CISA KEV
 **Reviewer:** AI-assisted (human review required for P0/P1 actions and risk acceptances)
 
@@ -307,6 +345,12 @@ findings requiring immediate action.]
 |---|---|---|---|---|
 | [CVE-ID] | [score] | [score] | [Surging/Rising] | [Action] |
 
+### Active Exploitation and Deferral Evidence
+
+| CVE ID | KEV | Ransomware Use | EPSS Trend | Low-EPSS Deferral Evidence | Decision |
+|---|---|---|---|---|---|
+| [CVE-ID] | [Yes/No/date checked] | [Known/Unknown/N/A] | [Surging/Rising/Stable/Declining] | [SSVC/exposure/control evidence] | [Pass/Gap/Not Evaluable] |
+
 ### Prioritized Patch Schedule
 
 | Priority | CVE ID(s) | Target System | Patch | Scheduled Window | SLA Deadline | Status |
@@ -319,6 +363,12 @@ findings requiring immediate action.]
 | CVE ID | Control Type | Effectiveness | SLA Extension | Expiration |
 |---|---|---|---|---|
 | [CVE-ID] | [type] | [Full/Partial] | [+N days] | [date] |
+
+### Virtual Patch and Exception TTL Evidence
+
+| CVE ID | Control ID | Protected Scope | Exploit / Bypass Test | Telemetry | Expiration / Retest | Decision |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [WAF/IPS/RASP/API rule] | [assets/routes] | [pass/fail/missing] | [alerts/logs] | [date/cadence] | [Pass/Gap/Not Evaluable] |
 
 ### Risk Exceptions
 [List all active risk acceptance/exception records]
@@ -374,6 +424,10 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
 
+6. **Using low EPSS as a blanket exception.** Low current EPSS does not prove a critical vulnerability is safe to defer. Confirm SSVC decision, exposure, exploit maturity, KEV status, affected asset context, and control evidence before relaxing SLA.
+
+7. **Letting virtual patches become permanent patches.** WAF/IPS/RASP/API rules are temporary risk-reduction controls, not remediation. They require TTL, retest, telemetry, and owner evidence.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -400,3 +454,12 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 - ISO 27005:2022 (Risk Treatment): https://www.iso.org/standard/80585.html
 - PCI DSS 4.0 Requirement 6.3.3: https://www.pcisecuritystandards.org/
 - ITIL 4 Change Enablement: https://www.axelos.com/certifications/itil-service-management
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.1 | 2026-06-06 | Add active exploitation, KEV ransomware, low-EPSS deferral, exception TTL, and virtual patch evidence gates. |
+| 1.0.0 | Initial | Initial patch prioritization and SLA management guidance. |
