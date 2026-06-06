@@ -31,13 +31,25 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
-1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
+1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, WebSocket, SSE, webhook/callback, async job/result flow, or hybrid. Each style has distinct attack patterns.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions. For non-request/response surfaces, list WebSocket/SSE channels, webhook receivers, outbound callbacks, worker queues, job status endpoints, export/result URLs, and GraphQL subscription transports.
 3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, webhook senders, callback targets, message brokers, background workers, and result storage that the API consumes.
+
+### Real-Time, Webhook, and Async Surface Inventory Gate
+
+Do not classify a WebSocket, SSE stream, webhook, callback, or async result URL as a finding only because it is absent from OpenAPI. Classify it as vulnerable when required evidence is missing or unsafe.
+
+| Surface | Inventory Evidence | Security Evidence Required | OWASP API Mapping |
+|---|---|---|---|
+| **WebSocket / GraphQL subscription** | Route, namespace, event names, upgrade path, gateway config, subscription schema | WSS, handshake authentication, Origin allowlist, CSRF/CSWSH protection, session expiry, logout disconnect, per-message authorization, schema validation, replay nonce, payload limit, connection and message rate limits | API1, API2, API4, API5, API8, API9 |
+| **Server-Sent Events (SSE)** | Stream endpoint, event types, subscription filters, tenant/user binding | Authenticated subscription, per-event authorization, tenant filter evidence, disconnect on logout, payload redaction, stream limits, logging | API1, API2, API4, API5, API9 |
+| **Webhook receiver** | Registered sender, endpoint, event allowlist, secret owner, replay cache, failure queue | Raw-body signature verification, sender identity, timestamp tolerance, nonce/event ID replay defense, idempotency key, event allowlist, secret rotation, safe failure handling | API2, API4, API8, API10 |
+| **Outbound callback** | Callback registration path, target validation, dispatch worker, retry policy | Target ownership, SSRF allowlist, callback signing, event allowlist, retry/backoff limits, dead-letter handling, redacted logs | API5, API7, API8, API10 |
+| **Async job/result flow** | Create endpoint, job ID, status endpoint, worker queue, callback, result/download URL, storage bucket | Job owner binding, status/result authorization, worker-side auth context, callback target authorization, pre-signed URL TTL, result expiry, queue limits | API1, API4, API5, API6, API9 |
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -62,7 +74,7 @@ Each finding produced by this review must include the following fields:
 | **OWASP API Risk** | API1:2023 through API10:2023 identifier |
 | **Severity** | Critical, High, Medium, Low, or Informational |
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
-| **API Style** | REST, GraphQL, gRPC, or General |
+| **API Style** | REST, GraphQL, gRPC, WebSocket, SSE, Webhook, Callback, Async Job, Hybrid, or General |
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
@@ -89,7 +101,7 @@ The final review output must be structured as follows:
 ## API Security Review Report
 
 **Scope:** [API name, version, endpoints reviewed]
-**API Style:** [REST / GraphQL / gRPC / Hybrid]
+**API Style:** [REST / GraphQL / gRPC / WebSocket / SSE / Webhook / Callback / Async Job / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
 **Reviewer:** AI Agent -- api-security skill v1.0.0
@@ -118,7 +130,7 @@ The final review output must be structured as follows:
 - **OWASP API Risk:** API[N]:2023 -- [Name]
 - **Severity:** [Critical|High|Medium|Low|Informational]
 - **CWE:** CWE-[number] -- [name]
-- **API Style:** [REST|GraphQL|gRPC|General]
+- **API Style:** [REST|GraphQL|gRPC|WebSocket|SSE|Webhook|Callback|Async Job|Hybrid|General]
 - **Location:** [file:line or spec path]
 - **Description:** [explanation]
 - **Evidence:**
@@ -129,6 +141,12 @@ The final review output must be structured as follows:
 - **Status:** Open
 
 [Repeat for each finding]
+
+### Real-Time, Webhook, and Async Evidence
+
+| Surface | Inventory Source | Auth/Session Evidence | Per-Message/Event Authz | Integrity/Freshness | Resource Controls | Logging/Monitoring | Decision |
+|---|---|---|---|---|---|---|---|
+| [WebSocket/SSE/Webhook/Callback/Async Job] | [Route/gateway/schema/registry/queue] | [Handshake/session/origin/CSRF/logout] | [Message/event/job/result owner check] | [Raw-body signature/timestamp/nonce/idempotency] | [Connection/message/job/result TTL limits] | [Connect/authz/validation/replay logs] | [Secure/Vulnerable/Partial/Not Evaluable] |
 ```
 
 ---
@@ -149,6 +167,44 @@ The final review output must be structured as follows:
 | API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
 
 ---
+
+## Real-Time, Webhook, and Async Flow Considerations
+
+Persistent, callback-driven, and background-job APIs share the OWASP API Top 10 risks but need evidence beyond the initial HTTP request.
+
+### WebSocket and SSE Controls
+
+For WebSocket, GraphQL subscription, and SSE surfaces, verify:
+
+- Secure transport (`wss://` for WebSocket) and gateway/proxy coverage.
+- Handshake authentication plus Origin allowlist and CSRF/CSWSH protection where cookies are used.
+- Session lifecycle enforcement: session expiry revalidation, token refresh rules, and disconnect on logout or privilege change.
+- Per-message or per-event authorization for action, object owner, tenant, and role. Initial connection authentication is not enough.
+- Message schema validation, payload size limits, connection limits, and per-user message-rate limits.
+- Replay protection for state-changing messages, especially nonce or idempotency checks.
+- Logging for connect, disconnect, authorization failure, validation failure, replay rejection, and sensitive payload redaction.
+
+### Webhook and Callback Controls
+
+For inbound webhooks and outbound callbacks, verify:
+
+- Raw request body is used for signature verification; do not verify a re-serialized JSON object.
+- Sender identity, event type allowlist, timestamp freshness window, nonce/event ID replay cache, and idempotency behavior are documented.
+- Webhook secret rotation, multiple active secret handling, and failure/dead-letter behavior are defined.
+- Callback targets are owner-verified and SSRF-constrained; retries use bounded backoff and do not leak sensitive payloads in logs.
+
+### Async Job and Result Controls
+
+For async exports, reports, imports, workflows, and queued jobs, model the full lifecycle:
+
+1. Request creation and job ID issuance.
+2. Status polling and cancellation.
+3. Worker-side authorization context.
+4. Callback dispatch or notification.
+5. Result download URL, storage object, or export artifact.
+6. Expiry, deletion, retry, and error handling.
+
+Verify owner binding at each step. A secure `POST /exports` does not prove `GET /exports/jobs/{id}/result`, pre-signed URLs, callbacks, or worker outputs are authorized for the same user, tenant, and role.
 
 ## GraphQL-Specific Considerations
 
@@ -215,6 +271,12 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Treating the initial WebSocket upgrade as the whole API.** API gateways often log only the upgrade request, while later messages carry privileged operations. Review message-level authorization, validation, replay controls, rate limits, and monitoring.
+
+8. **Verifying webhook signatures after parsing JSON.** Many providers sign the raw request body. Re-serializing JSON before HMAC verification can create signature bypass or false assurance.
+
+9. **Reviewing async APIs as separate endpoints instead of a lifecycle.** Job creation, status polling, callback dispatch, result storage, and download URLs must share owner and tenant authorization. A safe create endpoint can still leak another user's result.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -237,5 +299,6 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **OWASP WebSocket Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
