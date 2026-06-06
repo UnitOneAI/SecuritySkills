@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -256,6 +256,47 @@ Risk Exception Request:
 - Status:                 [Pending | Approved | Denied | Expired]
 ```
 
+### Step 7: Deferred Vulnerability Revalidation
+
+Approved exceptions and deferred patch decisions are not static. Revalidate them whenever exploitability, patch availability, asset exposure, or business impact changes, even if the scheduled review date has not arrived.
+
+#### Revalidation Trigger Matrix
+
+| Trigger | Why It Matters | Required Action |
+|---|---|---|
+| **Vendor patch or workaround released** | "Patch unavailable" is no longer a valid justification | Set a new remediation deadline and update patch window scheduling |
+| **CISA KEV listing added** | Confirmed exploitation changes SSVC and compliance urgency | Re-run SSVC, apply KEV override, and escalate to P0/P1 as applicable |
+| **EPSS surge or percentile jump** | Exploitation likelihood changed before review date | Re-run EPSS trend analysis and escalate tier when thresholds are met |
+| **Public exploit/PoC published** | Attack feasibility and automatability may have changed | Re-run SSVC exploitation/automatable decisions and retest controls |
+| **Active exploitation observed** | Risk is no longer theoretical | Break exception, start incident/vulnerability emergency workflow |
+| **Asset becomes internet-facing or business-critical** | Prior exposure or mission-prevalence assumptions are stale | Re-score asset context and shorten SLA/exception duration |
+| **Compensating control changed or failed test** | Residual risk assumption is invalid | Retest control, remove SLA extension if ineffective |
+| **Exception owner, system owner, or service scope changes** | Approval accountability may no longer be valid | Re-approve exception with current owner and updated scope |
+
+#### Revalidation Requirements
+
+For every deferred vulnerability or active exception, record:
+
+- **Last revalidation date** and evidence source checked.
+- **Next scheduled revalidation date** based on exception severity.
+- **Triggers checked**: vendor advisory, CISA KEV, EPSS, public exploit, active exploitation, asset exposure, business criticality, and compensating control status.
+- **Resulting action**: maintain exception, shorten deadline, escalate SLA tier, schedule patch, retest compensating control, or revoke risk acceptance.
+- **Patch-available deadline** when a vendor fix becomes available after exception approval.
+- **Human approver** for any decision to keep accepting risk after a trigger fires.
+
+#### Revalidation Cadence
+
+| Original SLA Tier | Minimum Revalidation Cadence | Event-Driven Revalidation |
+|---|---|---|
+| **P0/P1** | Daily to weekly while deferred | Immediate on any trigger |
+| **P2** | Weekly to biweekly | Within 1 business day of KEV, exploit, EPSS surge, or exposure change |
+| **P3** | Monthly | Within 5 business days of trigger |
+| **P4/P5** | At scheduled review date, max quarterly | At next backlog review unless KEV/active exploitation appears |
+
+Do not count exceptions with missed revalidation, stale evidence, or untested compensating controls as "healthy" patch posture.
+
+**Test fixture:** Use `tests/deferred-revalidation-gates.md` to validate patch-available, KEV/EPSS surge, exposure drift, failed compensating control, and no-material-change revalidation paths.
+
 ---
 
 ## Findings Classification
@@ -269,6 +310,11 @@ Classify the overall patch posture into one of the following states:
 | **On Track** | Remediation is proceeding within SLA for all tiers | No findings past SLA; all P0/P1 addressed or in active remediation |
 | **Healthy** | Minimal outstanding findings; strong patch posture | No P0-P2 findings open; P3/P4 within SLA; exception rate < 5% |
 
+**Exception health modifiers:**
+
+- Downgrade to **Elevated Risk** when any active exception has stale revalidation evidence, a missed review date, or an untested compensating control.
+- Downgrade to **Critical Backlog** when a deferred vulnerability becomes KEV-listed, actively exploited, or patch-available without an updated deadline and owner-approved action.
+
 ---
 
 ## Output Format
@@ -278,7 +324,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Patch Prioritization Report
 **Date:** [YYYY-MM-DD]
-**Skill:** patch-prioritization v1.0.0
+**Skill:** patch-prioritization v1.0.1
 **Frameworks:** SSVC 2.1, EPSS v3, CISA KEV
 **Reviewer:** AI-assisted (human review required for P0/P1 actions and risk acceptances)
 
@@ -323,9 +369,14 @@ findings requiring immediate action.]
 ### Risk Exceptions
 [List all active risk acceptance/exception records]
 
-| Exception ID | CVE ID(s) | Original SLA | New Deadline | Approver | Status |
-|---|---|---|---|---|---|
-| [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] |
+| Exception ID | CVE ID(s) | Original SLA | New Deadline | Approver | Status | Last Revalidated | Next Revalidation |
+|---|---|---|---|---|---|---|---|
+| [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] | [date] | [date] |
+
+### Deferred Vulnerability Revalidation
+| CVE ID | Exception ID | Triggers Checked | Trigger Fired? | Current Evidence | Resulting Action | Human Approver |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [EXC-ID] | [Vendor patch, KEV, EPSS, exploit, exposure, control status] | [Yes/No] | [Evidence source/date] | [Maintain/Escalate/Schedule patch/Revoke exception/Retest control] | [Name/title] |
 
 ### Recommendations
 1. [Highest-priority actionable recommendation]
@@ -370,9 +421,13 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 
 3. **Allowing risk exceptions to auto-renew without review.** Risk acceptances that roll over indefinitely create a shadow backlog of unpatched vulnerabilities. Every exception must have a hard expiration date and mandatory re-evaluation. Track exception aging as a KPI and report to leadership quarterly.
 
-4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
+4. **Waiting for the scheduled review date after risk changes.** A valid exception can become invalid the same day a vendor patch ships, the CVE enters CISA KEV, exploit code becomes public, EPSS surges, or the asset becomes internet-facing. Event-driven triggers must reopen the decision before the calendar review date.
 
-5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+5. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
+
+6. **Not retesting compensating controls after trigger changes.** A WAF rule, segmentation boundary, or EDR detection that worked before exploit conditions changed may no longer reduce risk. Retest controls after public exploit release, KEV listing, exposure change, or control/configuration drift.
+
+7. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
 
 ---
 
