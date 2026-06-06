@@ -488,3 +488,99 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+## Supplemental Service Exposure -- Lambda Function URLs
+
+These checks are outside the CIS AWS Foundations v3.0.0 recommendation count. Report them as supplemental AWS service findings when Lambda functions, function URLs, or Lambda resource-based policies are present.
+
+### AWS-LAMBDA-URL-01 -- Inventory Lambda Function URLs
+
+Search for Terraform, CloudFormation, SAM, CDK, and serverless definitions:
+
+```hcl
+resource "aws_lambda_function_url" "api" {
+  function_name      = aws_lambda_function.api.function_name
+  authorization_type = "AWS_IAM" # or "NONE"
+}
+```
+
+Also check for `AWS::Lambda::Url`, CDK `FunctionUrlAuthType`, SAM function URL config, and CLI/live exports from `aws lambda list-function-url-configs`.
+
+### AWS-LAMBDA-URL-02 -- Distinguish Auth Type from Resource Policy
+
+`authorization_type = "AWS_IAM"` is not enough by itself. Collect caller identity policy evidence and Lambda resource-based policy evidence.
+
+```hcl
+# BAD: public function URL on a sensitive function
+resource "aws_lambda_function_url" "admin" {
+  function_name      = aws_lambda_function.admin.function_name
+  authorization_type = "NONE"
+}
+```
+
+### AWS-LAMBDA-URL-03 -- Scope Invoke Permissions to the Intended URL Path
+
+Check for `lambda:InvokeFunctionUrl`, principal scope, URL auth type, invoked-via-function-url condition, source ARN, and source account where supported.
+
+```hcl
+# BETTER: scoped CloudFront path with URL auth type
+resource "aws_lambda_permission" "allow_cloudfront_function_url" {
+  statement_id           = "AllowCloudFrontFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.private_api.function_name
+  principal              = "cloudfront.amazonaws.com"
+  function_url_auth_type = "AWS_IAM"
+  source_arn             = aws_cloudfront_distribution.api.arn
+}
+
+# BAD: broad invoke permission
+resource "aws_lambda_permission" "public_invoke" {
+  action        = "lambda:InvokeFunctionUrl"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "*"
+}
+```
+
+### AWS-LAMBDA-URL-04 -- Review CORS and Browser Exposure
+
+For browser-callable Function URLs, record allowed origins, methods, headers, credentials behavior, and whether cookies or sessions are involved. Treat wildcard origins plus sensitive methods as a finding unless explicitly justified as a public API.
+
+### AWS-LAMBDA-URL-05 -- Combine Invocation Exposure with Execution Role Blast Radius
+
+Review the Lambda execution role at the same time as the URL. Escalate severity when public or cross-account invocation can reach secrets, broad data stores, role assumption, infrastructure mutation, or `AdministratorAccess`.
+
+### AWS-LAMBDA-URL-06 -- Do Not Treat VPC Config as Inbound Protection
+
+Lambda VPC configuration lets function code access VPC resources. It does not make a Function URL private.
+
+```hcl
+resource "aws_lambda_function" "worker" {
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_a.id]
+    security_group_ids = [aws_security_group.worker.id]
+  }
+}
+
+resource "aws_lambda_function_url" "worker" {
+  function_name      = aws_lambda_function.worker.function_name
+  authorization_type = "NONE" # Still publicly reachable unless constrained
+}
+```
+
+### AWS-LAMBDA-URL-07 -- Map All Invocation Paths
+
+Function URLs can coexist with API Gateway, ALB, EventBridge, S3, SNS, SQS, direct invoke permissions, and cross-account triggers. Record source ARN/account constraints and alias/version scope for each invocation path.
+
+### AWS-LAMBDA-URL-08 -- Require Audit Evidence
+
+Look for CloudTrail and monitoring coverage for:
+
+- `CreateFunctionUrlConfig`
+- `UpdateFunctionUrlConfig`
+- `DeleteFunctionUrlConfig`
+- `AddPermission`
+- `RemovePermission`
+- CloudFront/WAF/API Gateway edge logs where an edge path is claimed
+- Lambda logs and data events where enabled for sensitive functions

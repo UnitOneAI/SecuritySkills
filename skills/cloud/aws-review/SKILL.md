@@ -76,6 +76,10 @@ Use Glob to locate all AWS-related infrastructure definitions.
 **/terraform/**/*.tf
 **/iam-policies/**/*.json
 **/policies/**/*.json
+**/serverless.yml
+**/serverless.yaml
+**/template.yaml
+**/samconfig.toml
 ```
 
 Also locate supporting configuration:
@@ -85,6 +89,8 @@ Also locate supporting configuration:
 **/.aws/credentials
 **/aws-config-rules/**
 **/security-hub/**
+**/lambda/**
+**/functions/**
 ```
 
 Record all discovered files. If no AWS configurations are found, report that finding and halt.
@@ -96,6 +102,29 @@ Record all discovered files. If no AWS configurations are found, report that fin
 Evaluate all AWS configurations against CIS AWS v3.0.0 Sections 1 through 5, covering Identity and Access Management, Storage, Logging, Monitoring, and Networking.
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, grep patterns, and configuration examples for all five sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
+
+---
+
+### Supplemental AWS Service Exposure Review
+
+The CIS AWS Foundations Benchmark does not cover every AWS service exposure pattern. When Lambda functions, function URLs, event sources, or resource-based Lambda policies are present, perform the following supplemental checks and report them separately from the CIS score.
+
+#### Lambda Function URL and Invocation Evidence Gates
+
+| Control ID | Review Gate | Evidence to Collect | Finding if Missing |
+|---|---|---|---|
+| **AWS-LAMBDA-URL-01** | Function URL discovery | `aws_lambda_function_url`, `AWS::Lambda::Url`, SAM/CDK/serverless function URL config, or AWS CLI export | Function URL surface is not inventoried |
+| **AWS-LAMBDA-URL-02** | Auth type and intended exposure | `authorization_type` / `AuthType`, public API justification, caller identity model, and edge path | `NONE` or unknown auth on sensitive function without compensating controls |
+| **AWS-LAMBDA-URL-03** | Resource-based invoke policy constraints | `lambda:InvokeFunctionUrl`, principal, `function_url_auth_type`, `lambda:InvokedViaFunctionUrl`, `source_arn`, and `source_account` where supported | Broad principal or invoke permission not scoped to the intended URL path |
+| **AWS-LAMBDA-URL-04** | CORS and browser exposure | Allowed origins, methods, headers, credentials, and whether cookies/session auth are used | Permissive CORS or browser callable URL without explicit risk acceptance |
+| **AWS-LAMBDA-URL-05** | Execution-role blast radius | Lambda execution role policies, secrets access, data store access, role assumption rights, and admin permissions | Public/cross-account invocation paired with overprivileged execution role |
+| **AWS-LAMBDA-URL-06** | VPC and dependency boundary | VPC config, subnet/security-group purpose, egress dependencies, private data stores, and outbound access path | VPC config is incorrectly treated as inbound protection for a function URL |
+| **AWS-LAMBDA-URL-07** | Event source and cross-account invocation | EventBridge/S3/SNS/SQS/API Gateway/ALB/function URL sources, source ARN/account conditions, and alias/version scope | Multiple invocation paths are not mapped or source conditions are absent |
+| **AWS-LAMBDA-URL-08** | Audit and monitoring | CloudTrail events for `CreateFunctionUrlConfig`, `UpdateFunctionUrlConfig`, `DeleteFunctionUrlConfig`, `AddPermission`, `RemovePermission`, edge/WAF logs, Lambda logs, and data events where enabled | URL/policy changes or sensitive invocations are not monitored |
+
+Severity should combine reachability, authentication, resource-policy scope, data sensitivity, execution-role privilege, and monitoring coverage. An unauthenticated function URL on a sensitive function with broad secrets or admin access is **Critical**. An IAM-authenticated function URL behind CloudFront/WAF with scoped `lambda:InvokeFunctionUrl`, constrained CORS, least-privilege execution role, and audit evidence may be **Informational** or **Pass** for the supplemental review.
+
+Do not treat Lambda VPC configuration as inbound network protection. VPC config controls what the function code can reach after invocation; it does not make a function URL private.
 
 ---
 
@@ -158,6 +187,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Supplemental AWS Service Findings
+
+| Control ID | Service | Resource | Status | Severity | Exposure Path | Auth / Policy Evidence | Execution Role Risk | Audit Evidence |
+|------------|---------|----------|--------|----------|---------------|------------------------|---------------------|----------------|
+| AWS-LAMBDA-URL-01..08 | Lambda Function URL | <function/alias/version> | Pass / Fail / Not Evaluable | Critical / High / Medium / Low / Informational | <Function URL / CloudFront / API Gateway / Event source> | <auth type, principal, conditions, CORS> | <least privilege / broad / unknown> | <CloudTrail, edge logs, Lambda logs> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -200,6 +235,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Assuming Lambda Function URLs are protected by VPC settings.** VPC configuration is for outbound access to VPC resources; a Function URL can still be publicly reachable unless auth and resource policies constrain invocation.
+8. **Checking only `authorization_type` for Function URLs.** `AWS_IAM` still requires caller identity and resource-based policy evidence, while `NONE` may be acceptable only with documented public API justification, CORS, abuse controls, and monitoring.
+9. **Reviewing Lambda exposure without execution-role blast radius.** Invocation reachability and execution-role permissions must be assessed together; public invocation of an admin-capable function is a materially higher risk.
 
 ---
 
@@ -225,6 +263,11 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- AWS Lambda Function URL Access Control: https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html
+- AWS Lambda Function URL Configuration: https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html
+- AWS Lambda Resource-Based Policies: https://docs.aws.amazon.com/lambda/latest/dg/access-control-resource-based.html
+- AWS Lambda VPC Configuration: https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc.html
+- AWS Lambda Event Source Mappings: https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
