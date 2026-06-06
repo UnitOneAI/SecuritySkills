@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -90,12 +90,67 @@ Categorize by:
 - **Tool:** Semgrep, CodeQL, SonarQube, Bandit, ESLint-security, etc.
 - **Rule source:** Default/managed rules, community rules, custom org rules.
 - **Integration point:** Pre-commit, PR check, scheduled scan, IDE plugin.
+- **Workspace scope:** monorepo root, package subdirectory, generated-code tree, release component, or test-only slice.
+
+#### 1.1 Workspace and Release Component Inventory
+
+Before accepting a SAST result as repository-wide coverage, build an inventory of production code that should be scanned.
+
+**Patterns to search for monorepo and release boundaries:**
+
+```
+**/package.json
+**/pnpm-workspace.yaml
+**/turbo.json
+**/nx.json
+**/lerna.json
+**/go.work
+**/go.mod
+**/Cargo.toml
+**/pyproject.toml
+**/requirements*.txt
+**/pom.xml
+**/build.gradle*
+**/Dockerfile*
+**/helm/**
+**/kustomization.yaml
+```
+
+For each deployable component, record:
+
+- Component name and path (for example `apps/web-checkout`, `services/payments-api`, `workers/auth-sync`).
+- Language/runtime and build system.
+- Release artifact or deployment target that proves the component is production-relevant.
+- SAST scanner expected for that language.
+- Whether generated, vendored, fixture, or test code dominates the path.
+
+**Workspace Completeness Gate:** Do not mark CWE or ASVS coverage as complete until every production component has a matching scan artifact or a documented, approved exclusion. A single green SAST job for one package, one language, or the repository root is not enough for a polyglot monorepo.
 
 ---
 
 ### Step 2: Rule Coverage Analysis Against CWE Top 25
 
 Map the active SAST rule set against CWE Top 25 (2024) to identify coverage gaps.
+
+#### 2.0 Scan Artifact and SARIF Completeness Gate
+
+For each SAST run, collect evidence proving what was actually analyzed:
+
+- SARIF `runs[].tool.driver.name`, `rules`, `artifacts`, `invocations`, and `automationDetails.id` / category metadata where available.
+- CodeQL language matrix, extractor logs, database creation paths, autobuild output, and analyzed commit SHA.
+- Semgrep command line, config source, `--include` / `--exclude` / `--subdir` flags, `.semgrepignore`, and scanned file counts.
+- SonarQube project key/module mapping, included/excluded sources, language plugins, and quality gate scope.
+- CI workflow path, job name, matrix values, working directory, uploaded artifact name, and branch protection status.
+
+**Required checks:**
+
+- [ ] Each production component from Step 1.1 maps to at least one SAST artifact.
+- [ ] Each language in production code has an enabled scanner or a documented non-SAST compensating control.
+- [ ] SARIF or scanner logs prove included and excluded paths; do not infer scope from a dashboard summary alone.
+- [ ] Generated/vendor/test files are separated from handwritten production LOC so they cannot inflate coverage.
+- [ ] The scan commit SHA matches the assessed code, not a stale scheduled scan or base-branch-only PR scan.
+
+**Finding classification:** A polyglot monorepo with only one language or one package scanned is **High**. A SAST dashboard that lacks path/SARIF evidence for scanned components is **Medium**. Generated or vendored code inflating pass rate without handwritten LOC proof is **Medium**.
 
 #### 2.1 CWE Top 25 Coverage Matrix
 
@@ -116,6 +171,7 @@ For each CWE, verify:
 - At least one active rule covers the weakness for each language in the codebase.
 - Rule is enabled (not suppressed in configuration).
 - Rule severity matches the CWE's risk (Top 10 CWEs should not be INFO level).
+- Rule coverage is evaluated per production component, not just per repository or aggregate dashboard.
 
 **Finding classification:** CWE Top 10 weakness with zero SAST coverage for a language in use is **High**. CWE 11-25 with no coverage is **Medium**.
 
@@ -466,6 +522,15 @@ jobs:
 | CWE-89 | SQLi | Python | 2 rules | ERROR | None |
 | CWE-78 | Cmd Injection | Python | 0 rules | N/A | GAP |
 
+### Workspace Coverage Matrix
+
+| Component | Path | Runtime | Release Target | SAST Artifact | Included Paths | Excluded Paths | Commit SHA | Coverage Status |
+|-----------|------|---------|----------------|---------------|----------------|----------------|------------|-----------------|
+| web-checkout | apps/web-checkout | TypeScript | web container | Semgrep SARIF `web-checkout` | apps/web-checkout/src | tests, generated | abc123 | Covered |
+| payments-api | services/payments-api | Go | payments image | None | None | services/** | N/A | GAP |
+
+Mark the assessment **Not Evaluable** when the reviewer cannot tie each production component to scan artifacts, SARIF categories, scanner logs, or approved exclusions. Do not collapse this matrix into a single repository-wide pass/fail result.
+
 ### CI Integration Status
 
 | Check | Status | Evidence |
@@ -536,6 +601,8 @@ jobs:
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
+6. **Treating one green monorepo scan as complete coverage.** A single CodeQL or Semgrep job can analyze only the root package, one matrix language, or one `--subdir` while dashboards still show a successful code scanning upload. Require per-component artifacts and included/excluded path evidence before marking SAST coverage complete.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -564,4 +631,5 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.0.1** -- Added workspace-scoped monorepo inventory, SARIF completeness gates, per-component coverage output, and generated/vendor LOC inflation checks.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
