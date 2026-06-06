@@ -617,6 +617,35 @@ resource "azurerm_key_vault" {
 }
 ```
 
+Passing CIS 8.6 requires evidence that the RBAC model is both enabled and least-privilege in practice. Build a Key Vault RBAC evidence matrix before marking the control as Pass.
+
+| Field | Required Evidence |
+|---|---|
+| Vault and source | Vault name, subscription, resource group, IaC path, and live export timestamp |
+| Permission model | `enable_rbac_authorization = true` and no unmanaged access-policy drift |
+| Principal | User, group, service principal, managed identity, or break-glass identity with owner |
+| Role and capability | Data-plane role, effective secret/key/certificate permissions, and whether the role can grant access or purge |
+| Scope | Vault, key, secret, certificate, resource group, subscription, or management group |
+| Justification | Business owner, change ticket, expiry, and last-reviewed date |
+| Group expansion | Nested group membership or explicit reason it is unavailable |
+| Management-plane grant risk | Owner, Contributor, User Access Administrator, and role assignment writer evidence |
+| Live-role export | Azure role assignment export proving IaC and portal state match |
+| Status | Pass, Fail, or Not Evaluable with reason code |
+
+Use these Not Evaluable codes when the evidence packet is incomplete:
+
+| Code | Reason |
+|---|---|
+| `AZ-KV-NE-01` | Live Key Vault role assignment export is missing |
+| `AZ-KV-NE-02` | Principal or group membership expansion is missing |
+| `AZ-KV-NE-03` | Management-plane grant authority and data-plane access are not separated |
+| `AZ-KV-NE-04` | RBAC migration drift between access policies, IaC, and live assignments is unresolved |
+| `AZ-KV-NE-05` | Private endpoint DNS or client-resolution evidence is missing |
+| `AZ-KV-NE-06` | Public firewall or `AzureServices` bypass exception evidence is missing |
+| `AZ-KV-NE-07` | Deployment-agent exception lacks expiry, owner, audit log, or compensating control |
+
+Fail the control when broad data-plane roles such as `Key Vault Administrator`, `Key Vault Data Access Administrator`, or secret/key officer roles are assigned to broad human groups without documented scope, owner, expiry, and review evidence.
+
 ### CIS 8.7 -- Ensure that Private Endpoints are used for Azure Key Vault
 
 Check for private endpoint connections to Key Vault:
@@ -629,6 +658,21 @@ resource "azurerm_private_endpoint" {
   }
 }
 ```
+
+Private endpoint existence is not enough. Evaluate effective private access enforcement:
+
+| Evidence | Pass Standard |
+|---|---|
+| Public access | `public_network_access_enabled = false`, or public access is enabled only with a documented, time-bound exception |
+| Firewall default | If public access remains enabled, `network_acls.default_action = "Deny"` |
+| Trusted services bypass | `bypass = "AzureServices"` is justified by a specific supported service path, not used as a blanket exception |
+| Private endpoint | `azurerm_private_endpoint` targets the Key Vault `vault` subresource |
+| Private DNS | `azurerm_private_dns_zone_group`, VNet link, or equivalent DNS evidence exists for `privatelink.vaultcore.azure.net` |
+| Client resolution | Lookup or runtime evidence from the consuming subnet/workload resolves to the private endpoint path |
+| Diagnostics | Logs show denied public attempts or successful private-link access where available |
+| Deployment path | Hosted CI/CD, break-glass, or migration exceptions have owner, expiry, audit log, and compensating controls |
+
+Fail CIS 8.7 when a private endpoint exists but the vault remains broadly public through `public_network_access_enabled = true`, `network_acls.default_action = "Allow"`, or unsupported bypass use. Mark Not Evaluable with `AZ-KV-NE-05`, `AZ-KV-NE-06`, or `AZ-KV-NE-07` when DNS, firewall exception, or deployment-path evidence is unavailable.
 
 ---
 

@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -54,6 +54,7 @@ The CIS Microsoft Azure Foundations Benchmark v2.1.0 is a consensus-driven secur
 - Entra ID (Azure AD) configuration files or policy documents
 - NSG and firewall rule definitions
 - Key Vault access policies and RBAC assignments
+- Key Vault live role assignment export, private endpoint/DNS evidence, and network ACL evidence when evaluating CIS 8.6 and 8.7
 
 ---
 
@@ -148,11 +149,18 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Pass / Fail / Not Evaluable
 - **Severity:** Critical / High / Medium / Low
 - **CIS Profile:** Level 1 / Level 2
+- **Evidence Confidence:** High / Medium / Low / Not Evaluable
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Not Evaluable Reason:** <reason code and exact evidence needed>
 - **Remediation:** <specific fix with code example>
+
+### Key Vault RBAC and Private Access Evidence
+
+| Vault | RBAC Model | Data-Plane Role Evidence | Management-Plane Grant Risk | Public Network Path | Private Endpoint | Private DNS / Client Resolution | Deployment Exception | Status |
+|-------|------------|--------------------------|-----------------------------|---------------------|------------------|---------------------------------|----------------------|--------|
 
 ### Prioritized Remediation Plan
 
@@ -199,7 +207,10 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **Overlooking `allow_nested_items_to_be_public` on storage accounts.** CIS 3.7 checks the account-level setting, not individual container access levels. The account setting must be `false` to prevent any container from being public.
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
-6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+6. **Treating Key Vault RBAC as least privilege by itself.** `enable_rbac_authorization = true` only selects the permission model. Review the data-plane role assignments, group expansion, scope, break-glass path, and live role export before passing CIS 8.6.
+7. **Treating a private endpoint resource as private access enforcement.** A Key Vault private endpoint can coexist with `public_network_access_enabled = true`, `default_action = "Allow"`, broad `AzureServices` bypass, or missing private DNS. CIS 8.7 needs the effective path, not only the resource.
+8. **Ignoring hosted CI/CD access exceptions.** Private-only vaults often trigger temporary public firewall openings for deployment agents. Require owner, expiry, audit log, and compensating control evidence before accepting the exception.
+9. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
 
@@ -224,6 +235,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
+- Azure Key Vault RBAC Guide: https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide
+- Azure Key Vault RBAC Migration: https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-migration
+- Azure Key Vault Network Security: https://learn.microsoft.com/en-us/azure/key-vault/general/network-security
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
@@ -231,4 +245,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added Key Vault RBAC/private-endpoint evidence gates, report fields, and calibration fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
