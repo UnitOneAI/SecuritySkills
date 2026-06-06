@@ -208,6 +208,51 @@ Evaluate whether the agent architecture is designed from the ground up around le
 
 ---
 
+### Step 2A -- Resource Budget Enforcement Evidence
+
+Evaluate whether resource controls are enforced across the complete agent workflow, not just declared in configuration. A `max_tokens`, timeout, or rate-limit field is insufficient if retries, tool calls, sub-agents, concurrent sessions, or provider fallbacks use separate untracked budgets.
+
+**What to look for in code and configuration:**
+
+- **Budget scope:** Are quotas enforced per tenant, user, session, agent identity, tool, workflow, and batch job? Or only per HTTP request?
+- **Shared ledger:** Do LLM calls, tool calls, browser/code execution, storage writes, external APIs, retries, and fallback providers decrement the same budget ledger?
+- **Concurrency limits:** Can the same user or agent start many sessions in parallel, each with a fresh budget?
+- **Retry accounting:** Are retry attempts, timeout retries, and exponential backoff attempts counted against the original budget?
+- **Sub-agent fan-out:** If an agent can spawn workers or delegate tasks, do child agents inherit and spend from the parent budget?
+- **Alerting and kill switch:** Are thresholds, alerts, and automatic halt behavior configured before the budget is exhausted?
+- **Fail mode:** When the budget service, quota store, or metering pipeline is unavailable, does the agent fail closed instead of proceeding unmetered?
+
+**Detection methods:** Search for budget ledgers (`budget`, `quota`, `usage`, `cost`, `meter`, `ledger`), retry paths (`retry`, `backoff`, `fallback`, `timeout`), concurrency controls (`parallel`, `concurrent`, `worker`, `spawn`, `subagent`), and fail-open behavior (`fail_open`, `best_effort`, `ignore_quota`, `skip_metering`).
+
+**Budget enforcement evidence checklist:**
+
+| Evidence Item | Desired State | Common Violation |
+|---|---|---|
+| Quota scope | Per tenant/user/session/agent/tool/workflow | Single global or per-request limit |
+| Budget ledger | All LLM and tool costs charged to one ledger | Model spend tracked, tool/API spend untracked |
+| Retry/fallback accounting | Retries and fallback providers consume remaining budget | Retry storm gets fresh quota each attempt |
+| Concurrency control | Parallel sessions share tenant/user limits | Each session receives independent full quota |
+| Delegation control | Sub-agents inherit parent budget and depth limits | Workers spawn with fresh budgets |
+| Enforcement point | Checked before action execution at tool/runtime boundary | Checked only after action completes |
+| Fail mode | Quota service unavailable means halt or degraded read-only mode | Agent proceeds unmetered |
+| Operations response | Alerts, kill switch, and owner escalation before exhaustion | Billing alert after spend already occurs |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| No cumulative session or tenant budget for autonomous agent workflows | High |
+| Retries, fallback providers, or sub-agents bypass budget accounting | High |
+| Tool and downstream API costs are unmetered while model calls are metered | High |
+| Quota service failure allows unmetered execution | High |
+| No concurrency limit across sessions for the same user or tenant | Medium |
+| Budget enforcement occurs only after tool execution completes | Medium |
+| Budget alerts exist but no automated halt or kill switch is available | Medium |
+
+**False positive to avoid:** Do not mark resource containment as pass because an agent has `max_tokens`, a request timeout, or an API gateway rate limit. Confirm the enforcement point, quota scope, cumulative ledger, fail mode, and retry/delegation accounting.
+
+---
+
 ### Step 3 -- Human-in-the-Loop Gate Placement
 
 Evaluate the design, placement, and robustness of human approval gates in the agent workflow.
@@ -515,6 +560,7 @@ Glob: **/security_architecture*
 |---|---|---|---|
 | Permission Model | [rating] | [one-line summary] | [priority] |
 | Least-Privilege Design | [rating] | [one-line summary] | [priority] |
+| Budget Enforcement | [rating] | [one-line summary] | [priority] |
 | HITL Gate Placement | [rating] | [one-line summary] | [priority] |
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
 | Audit Trail Completeness | [rating] | [one-line summary] | [priority] |
