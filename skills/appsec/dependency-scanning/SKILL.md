@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -83,6 +83,9 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 2. **Phantom dependencies**: Packages used at runtime but not declared in the manifest, relying on hoisting behavior in package managers.
 3. **Version range drift**: Loose semver ranges (e.g., `^1.0.0`) allow minor or patch updates that may introduce vulnerabilities between lockfile regenerations.
 4. **Abandoned transitive packages**: Unmaintained packages deep in the tree that no longer receive security patches.
+5. **Weak lockfile bisectability**: A lockfile may exist and contain integrity hashes, but if it is regenerated without version history or artifact binding, an incident responder cannot prove which dependency set shipped with a vulnerable build.
+6. **Provenance chain degradation**: A direct dependency may have a verified publisher and signed build provenance while its transitive dependencies are unsigned, single-maintainer, stale, or published by unverified accounts.
+7. **Context-free dependency confusion flags**: Scoped internal package names can look risky in isolation, but the risk is much lower when `.npmrc`, lockfiles, or package manager configuration prove that the scope resolves only through the expected private registry.
 
 ### Mitigation
 
@@ -90,6 +93,9 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 - Use `npm audit --omit=dev`, `pip-audit`, `govulncheck`, or `cargo audit` to scan the full resolved dependency tree.
 - Pin critical transitive dependencies using overrides/resolutions (`npm overrides`, `pip` constraints files, `go.mod replace`).
 - Evaluate dependency tree depth before adopting new packages: `npm ls --all`, `pipdeptree`, `go mod graph`.
+- Preserve lockfiles in version control and bind deployed artifacts to the exact lockfile digest used during build.
+- Record package source routing evidence (`.npmrc`, `pip.conf`, `nuget.config`, `settings.xml`, lockfile `resolved` URLs) before classifying dependency confusion risk.
+- Treat provenance as a chain: score the weakest reachable transitive dependency, not only the top-level package.
 
 ## Vulnerability Triage: EPSS + CVSS + CISA KEV
 
@@ -181,6 +187,82 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Lockfile Integrity and Bisectability
+
+Lockfile presence alone is not enough. A committed lockfile proves repeatable installs only when the reviewed artifact can be tied back to the exact lockfile content used during the build.
+
+When assessing lockfiles, record:
+
+| Field | What to Check | Risk Signal |
+|---|---|---|
+| `lockfile_present` | Required lockfile exists for the ecosystem | Missing lockfile or ignored lockfile |
+| `integrity_hash_coverage` | Lock entries include hashes or checksums where supported | Missing `integrity`, hashes, or checksum fields |
+| `lockfile_version_control` | Lockfile is committed and reviewable in history | Regenerated per build without history |
+| `artifact_lockfile_binding` | Build artifact, release, or provenance references the lockfile digest | No way to prove which dependency set shipped |
+| `dependency_pin_status` | Resolved versions are exact, not only ranges | Range-only or floating git/URL dependency |
+| `bisectability_score` | Can a past vulnerable build be reproduced from source + lockfile? | Cannot reproduce or trace dependency set |
+
+### Bisectability Rating
+
+| Rating | Criteria |
+|---|---|
+| **Strong** | Lockfile committed, integrity hashes present, artifact or provenance binds to a lockfile digest |
+| **Partial** | Lockfile committed and hashes present, but no artifact/provenance binding |
+| **Weak** | Lockfile exists but is regenerated without review history or has missing integrity evidence |
+| **Missing** | No deterministic lockfile or equivalent ecosystem pinning mechanism |
+
+## Provenance Chain Propagation
+
+Assess supply chain trust through the full dependency graph. Do not stop at direct dependencies.
+
+For each direct dependency and high-risk transitive dependency, record:
+
+| Signal | Good Evidence | Risk Evidence |
+|---|---|---|
+| Publisher verification | Verified org, 2FA, trusted registry namespace | Unknown publisher, recent owner transfer |
+| Build provenance | SLSA/in-toto/Sigstore attestation | No attestation for release artifact |
+| Maintainer health | Multiple active maintainers, recent releases | Single maintainer, stale project, sudden maintainer change |
+| Source binding | Tag/commit maps to package artifact | Package artifact cannot be tied to source |
+| Install behavior | No lifecycle scripts or scripts are documented | `preinstall`/`postinstall` with network, shell, eval, or obfuscation |
+
+### Provenance Degradation Rule
+
+If a verified direct dependency pulls a transitive dependency with weak or missing provenance, report the weakest link separately instead of inheriting the direct dependency's trust level.
+
+```yaml
+provenance_chain:
+  provenance_chain_status: degraded
+  direct_dependency: "@scope/pkg-a"
+  direct_provenance: verified_publisher_and_signed_attestation
+  transitive_dependency: "pkg-c"
+  transitive_provenance: missing_attestation_single_maintainer
+  propagated_risk: elevated
+  reason: "trust evidence degrades in reachable transitive dependency"
+```
+
+## Contextual Supply Chain Risk Scoring
+
+Use structured scoring to avoid binary false positives from single signals such as dependency depth or scoped package names.
+
+| Signal | Low Risk | Medium Risk | High Risk |
+|---|---|---|---|
+| Dependency depth | Deep but pinned, audited, verified | Deep with partial provenance | Deep plus stale/unverified/unpinned packages |
+| Registry routing | Scope-to-registry mapping proven | Mixed registries but lockfile routes correctly | `--extra-index-url`, unscoped internal names, public fallback |
+| Install scripts | None | Documented build-only scripts | Network/shell/eval/obfuscated lifecycle scripts |
+| Publisher trust | Verified publisher/org | Unknown but established | New/unknown publisher, maintainer transfer, low transparency |
+| Lockfile evidence | Strong bisectability | Partial lockfile evidence | Missing or non-reproducible dependency set |
+
+### Dependency Confusion Context Check
+
+Before reporting dependency confusion, verify the routing evidence:
+
+- npm: `.npmrc` scope mapping such as `@company:registry=...`, `package-lock.json` `resolved` host, and absence of public fallback for private scopes.
+- Python: prefer `--index-url` or a trusted proxy over `--extra-index-url`; check hash-pinned requirements where available.
+- NuGet: check `nuget.config` package source mapping.
+- Maven/Gradle: check repository filtering and dependency verification metadata.
+
+If routing proves the private package cannot resolve from a public registry, downgrade from "dependency confusion detected" to "dependency confusion pattern present, mitigated by registry routing evidence."
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -213,6 +295,30 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
 
+### Lockfile Integrity and Bisectability
+
+| Lockfile | Integrity Hash Coverage | Version Controlled | Artifact Binding | Pin Status | Bisectability |
+|---|---|---|---|---|---|
+| ... | ... | ... | ... | ... | ... |
+
+### Provenance Chain Propagation
+
+| Dependency | Relationship | Publisher Trust | Attestation | Maintainer Health | Install Behavior | Propagated Risk |
+|---|---|---|---|---|---|---|
+| ... | direct/transitive | ... | ... | ... | ... | ... |
+
+### Dependency Confusion Context
+
+| Package | Pattern | Registry Routing Evidence | Lockfile Source Evidence | Risk Before Context | Risk After Context |
+|---|---|---|---|---|---|
+| ... | ... | ... | ... | ... | ... |
+
+### Supply Chain Risk Score
+
+| Package | Depth | Registry Routing | Publisher Trust | Install Scripts | Lockfile Evidence | Score | Rationale |
+|---|---:|---|---|---|---|---:|---|
+| ... | ... | ... | ... | ... | ... | ... | ... |
+
 ### Recommendations
 
 1. [Prioritized list of remediation actions]
@@ -226,8 +332,11 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Registry routing context**: Verify whether `.npmrc`, pip config, NuGet package source mapping, Maven/Gradle repository filters, or lockfile `resolved` URLs prove safe package source routing.
+8. **Lockfile bisectability**: Assess integrity hash coverage, version-control history, artifact/provenance binding, and reproducibility of prior dependency sets.
+9. **Provenance propagation**: Trace publisher verification, attestation, maintainer health, and install behavior from direct dependencies through high-risk transitive dependencies.
+10. **Contextual risk score**: Combine depth, provenance, registry routing, lockfile evidence, and install behavior before assigning supply chain risk.
+11. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations and false-positive context.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +360,11 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [npm package-lock.json documentation](https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json)
+- [npm scopes and registries](https://docs.npmjs.com/cli/v10/using-npm/scope)
+- [pip install --extra-index-url warning](https://pip.pypa.io/en/stable/cli/pip_install/)
+- [Sigstore](https://www.sigstore.dev/)
+
+## Changelog
+
+- **1.0.1**: Added lockfile integrity and bisectability checks, provenance chain propagation, contextual dependency confusion routing evidence, and structured supply chain risk scoring.
