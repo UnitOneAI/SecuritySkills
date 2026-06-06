@@ -38,7 +38,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Reviewing AWS infrastructure-as-code before deployment
 - Assessing an existing AWS environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
-- Evaluating IAM policies, S3 bucket configurations, CloudTrail settings, VPC security groups, or RDS encryption configurations
+- Evaluating IAM policies, S3 bucket configurations, CloudTrail settings, VPC security groups, RDS encryption configurations, or ECR container registry hardening
 - Onboarding a new AWS account into a security program
 
 ---
@@ -55,6 +55,7 @@ The CIS Amazon Web Services Foundations Benchmark v3.0.0 is a consensus-driven s
 - S3 bucket policies and ACL configurations
 - VPC, security group, and NACL definitions
 - CloudTrail and CloudWatch configuration files
+- ECR repository, registry scanning, lifecycle, and repository policy configurations when container images are in scope
 
 ---
 
@@ -102,6 +103,32 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 ### Step 7: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
+
+---
+
+## Supplemental AWS Service Evidence Gates
+
+The CIS AWS Foundations Benchmark is the primary scoring baseline. The supplemental gates below should be reported separately from the 62 CIS recommendations so the CIS compliance percentage is not overstated or diluted.
+
+### Amazon ECR Container Registry Hardening
+
+When Amazon ECR repositories are present, review container registry controls because mutable or unscanned images can undermine ECS, EKS, Lambda container, and deployment-pipeline assurance even when the underlying AWS account passes CIS checks.
+
+**What to look for:**
+
+- `aws_ecr_repository` resources with `image_tag_mutability` set to `IMMUTABLE`, `IMMUTABLE_WITH_EXCLUSION`, or a documented exception for mutable development tags.
+- Repository or registry scanning evidence: `image_scanning_configuration { scan_on_push = true }`, registry-level enhanced scanning, or Amazon Inspector continuous scanning filters.
+- Repository encryption configuration and KMS key ownership for sensitive images.
+- Repository policies that avoid public or broad cross-account push/pull access.
+- Lifecycle policies that expire untagged/stale images without deleting release evidence required for rollback or incident response.
+
+**Evidence template:**
+
+| Repository | Tag mutability | Scan evidence | Encryption | Repository policy exposure | Lifecycle/rollback evidence | Status |
+|------------|----------------|---------------|------------|----------------------------|-----------------------------|--------|
+| ___ | Immutable / Mutable with exception / Mutable | Scan on push / Enhanced / Manual / Missing | AES-256 / KMS CMK / Missing | Private / Scoped cross-account / Broad | Retained release tags and cleanup policy | Pass / Gap / Not Evaluable |
+
+**Finding classification:** Mutable production repositories without a documented exception are **High**. Missing scan-on-push or enhanced scanning is **Medium**. Broad cross-account or public repository access is **High**. Missing lifecycle policy is **Low** unless it prevents rollback or incident-response evidence retention.
 
 ---
 

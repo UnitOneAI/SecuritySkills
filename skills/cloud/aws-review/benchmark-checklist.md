@@ -488,3 +488,57 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+## Supplemental -- Amazon ECR Container Registry Hardening
+
+These checks are not CIS AWS Foundations Benchmark recommendations. Report them as supplemental AWS service findings when ECR is in scope.
+
+### ECR-REG-01 -- Ensure production ECR repositories use immutable image tags
+
+Check Terraform, CloudFormation, CDK, or CLI exports for tag mutability:
+
+```hcl
+resource "aws_ecr_repository" "app" {
+  name                 = "app"
+  image_tag_mutability = "IMMUTABLE"
+}
+```
+
+Flag production repositories with `image_tag_mutability = "MUTABLE"` or omitted mutability unless there is a documented mutable-tag exception for development workflows. If `IMMUTABLE_WITH_EXCLUSION` or mutability exclusion filters are used, verify the excluded tag patterns are limited to non-release tags such as `latest-dev` or short-lived test tags.
+
+### ECR-REG-02 -- Ensure images are scanned on push or continuously scanned
+
+Check for repository-level basic scanning or registry-level enhanced scanning evidence:
+
+```hcl
+resource "aws_ecr_repository" "app" {
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_registry_scanning_configuration" "registry" {
+  scan_type = "ENHANCED"
+}
+```
+
+If repository `scan_on_push` is absent, verify registry-level enhanced scanning or Amazon Inspector coverage before marking the control as a gap. Record scan filters and whether production repositories receive continuous scanning or scan-on-push.
+
+### ECR-REG-03 -- Review repository policy exposure and encryption
+
+Check for broad principals in `aws_ecr_repository_policy`, public ECR resources, or cross-account pull/push access that lacks organization, account, or principal constraints. Verify encryption uses AWS-managed AES-256 or a customer-managed KMS key where required by the environment.
+
+```hcl
+resource "aws_ecr_repository" "app" {
+  encryption_configuration {
+    encryption_type = "KMS"
+    kms_key         = aws_kms_key.ecr.arn
+  }
+}
+```
+
+### ECR-REG-04 -- Review lifecycle and rollback evidence
+
+Check `aws_ecr_lifecycle_policy` for cleanup of stale/untagged images and verify release tags or digests required for rollback, incident response, and provenance investigations are retained for the organization's evidence period.
