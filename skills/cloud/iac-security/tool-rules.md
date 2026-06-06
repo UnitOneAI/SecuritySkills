@@ -81,6 +81,76 @@ variable "db_password" {
 
 ---
 
+## Terraform Variable and Workspace Override Evidence
+
+Review Terraform controls against the effective input chain for the target environment. Source defaults, module variables, and example tfvars can be misleading when production inputs are supplied by auto tfvars, CLI flags, CI jobs, Terraform Cloud/HCP workspace variables, variable sets, or Terragrunt.
+
+### Input Sources to Locate
+
+```
+terraform.tfvars
+terraform.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+*.tfvars
+*.tfvars.json
+terragrunt.hcl
+.github/workflows/*.yml
+.github/workflows/*.yaml
+.gitlab-ci.yml
+Jenkinsfile
+```
+
+### CLI and Environment Input Patterns
+
+```
+-var-file
+-var\s+
+TF_VAR_
+terraform\s+(plan|apply)
+terraform\s+workspace\s+select
+tfc_workspace|terraform_cloud|workspace_variables|variable_set
+inputs\s*=
+dependency\s+"
+generate\s+"
+```
+
+### Security-Sensitive Override Patterns
+
+```
+publicly_accessible\s*=\s*true
+allow_nested_items_to_be_public\s*=\s*true
+cidr_blocks\s*=\s*\["0\.0\.0\.0/0"\]
+source_ranges\s*=\s*\["0\.0\.0\.0/0"\]
+authorized_networks.*0\.0\.0\.0/0
+encrypted\s*=\s*false
+storage_encrypted\s*=\s*false
+enable_https_traffic_only\s*=\s*false
+deletion_protection\s*=\s*false
+backup_retention_period\s*=\s*0
+logging_enabled\s*=\s*false
+skip_final_snapshot\s*=\s*true
+```
+
+### Review Outcomes
+
+| Outcome | Evidence standard |
+|---|---|
+| Pass | Effective value for the reviewed environment is known and secure |
+| Fail | An override weakens exposure, encryption, logging, backup, retention, deletion protection, IAM, or secret handling |
+| Partial | Some input sources are present, but the workspace or deployment context is incomplete |
+| Not Evaluable from Source Only | Effective values depend on unavailable HCP/TFC variables, CI environment, CLI args, Terragrunt dependency outputs, plan JSON, or state |
+
+### Example Finding Patterns
+
+- `IAC-VAR-03`: CI uses `terraform plan -var-file=prod.tfvars`, but `prod.tfvars` is unavailable to the reviewer.
+- `IAC-VAR-04`: `prod.auto.tfvars` sets `allowed_cidrs = ["0.0.0.0/0"]` while `variables.tf` defaults to private ranges.
+- `IAC-VAR-05`: `admin_cidr_blocks` is populated from Terraform Cloud workspace variables with no export, plan JSON, or reviewer evidence.
+- `IAC-VAR-06`: Terragrunt `inputs` enable a public bucket or disable retention outside the Terraform module source.
+- `IAC-VAR-07`: `terraform.tfvars` commits a secret value even though the variable is marked `sensitive`.
+
+---
+
 ## Public Exposure Analysis
 
 Identify resources that are unintentionally exposed to the public internet.

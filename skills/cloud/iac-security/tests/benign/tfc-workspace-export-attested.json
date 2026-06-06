@@ -1,0 +1,17 @@
+{
+  "environment": "prod",
+  "workspace": "hcp-payments-prod",
+  "source_review": ["variables.tf", "main.tf", "terraform.lock.hcl"],
+  "workspace_variable_evidence": {
+    "source": "Terraform Cloud workspace variable export",
+    "reviewed_by": "security-engineering",
+    "reviewed_at": "2026-06-06",
+    "variables": {
+      "admin_cidr_blocks": ["10.30.0.0/16"],
+      "enable_public_bucket": false,
+      "backup_retention_period": 35
+    }
+  },
+  "missing_inputs": [],
+  "outcome": "Pass"
+}

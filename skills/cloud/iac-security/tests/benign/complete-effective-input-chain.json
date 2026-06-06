@@ -1,0 +1,26 @@
+{
+  "environment": "prod",
+  "terraform_workspace": "payments-prod",
+  "variable_sources_reviewed": [
+    "variables.tf",
+    "prod.auto.tfvars",
+    ".github/workflows/deploy.yml",
+    "terraform-plan-prod.json"
+  ],
+  "security_sensitive_inputs": {
+    "allowed_cidrs": {
+      "effective_value": ["10.20.0.0/16"],
+      "evidence": "terraform-plan-prod.json:resource_changes[aws_security_group_rule.admin].change.after.cidr_blocks"
+    },
+    "db_public": {
+      "effective_value": false,
+      "evidence": "prod.auto.tfvars:3"
+    },
+    "storage_encrypted": {
+      "effective_value": true,
+      "evidence": "terraform-plan-prod.json:resource_changes[aws_db_instance.payments].change.after.storage_encrypted"
+    }
+  },
+  "missing_inputs": [],
+  "outcome": "Pass"
+}

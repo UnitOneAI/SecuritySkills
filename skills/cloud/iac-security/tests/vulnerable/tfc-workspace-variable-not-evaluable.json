@@ -1,0 +1,12 @@
+{
+  "environment": "prod",
+  "workspace": "hcp-shared-admin-prod",
+  "source_review": ["variables.tf", "network.tf"],
+  "security_sensitive_expression": "cidr_blocks = var.admin_cidr_blocks",
+  "external_inputs": [
+    "Terraform Cloud workspace variable admin_cidr_blocks",
+    "organization variable set shared-network-admin"
+  ],
+  "available_to_reviewer": false,
+  "required_outcome": "Not Evaluable from Source Only"
+}

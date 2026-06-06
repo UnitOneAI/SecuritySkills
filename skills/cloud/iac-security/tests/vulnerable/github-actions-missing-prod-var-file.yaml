@@ -1,0 +1,13 @@
+name: terraform-prod
+on:
+  workflow_dispatch:
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Terraform plan
+        run: terraform plan -var-file=env/prod.tfvars -out=tfplan
+
+# Risk: source review has variables.tf and main.tf, but env/prod.tfvars is not
+# available. Security-sensitive values are Not Evaluable from Source Only.
