@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation), CWE-1336 (Server-Side Template Injection)
 
 ### 2.1 Controls to Verify
 
@@ -102,6 +102,17 @@ FileInputStream fis = new FileInputStream(f);
 ```
 Remediation: Canonicalize the resolved path and verify it remains within the expected base directory.
 
+**Python -- Server-Side Template Injection (CWE-1336)**
+```python
+# VULNERABLE: attacker controls template source, not only template data
+@app.post("/preview")
+def preview():
+    return render_template_string(request.form["body"])
+```
+Remediation: Render only trusted static templates and pass untrusted values as data. If user- or tenant-authored templates are required, use a restricted sandbox, helper allowlist, role restrictions, audit logging, and isolated preview execution.
+
+**SSTI Evidence Gate:** Before reporting CWE-1336, record the template engine, untrusted source, render sink, whether attacker input controls the template source/name/expression/helper/loader, sandbox configuration, helper/filter/global exposure, tenant-template workflow, and the false-positive disposition. Static trusted templates that receive user values as data are not SSTI by themselves; evaluate them under contextual output encoding/XSS unless the value is interpreted as template code.
+
 ### 2.3 Review Checklist
 
 - [ ] Every point where user input enters the system is identified.
@@ -110,6 +121,7 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+- [ ] Server-side template render sinks are checked for user-controlled template source, template name, expressions, helpers, filters, globals, custom loaders, and sandbox bypasses. Use `skills/appsec/secure-code-review/tests/ssti-template-evidence.md` for pass/fail calibration.
 
 ---
 
@@ -420,6 +432,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Evidence Gate** | Source-to-sink proof, guardrail evidence, negative test, or Not Evaluable reason |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -526,6 +539,7 @@ The final review output must be structured as follows:
 | CWE-798 | Use of Hard-coded Credentials | Step 3 |
 | CWE-918 | Server-Side Request Forgery (SSRF) | Step 8 |
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
+| CWE-1336 | Improper Neutralization of Special Elements Used in a Template Engine | Step 2 |
 
 ---
 
@@ -537,9 +551,11 @@ The final review output must be structured as follows:
 
 3. **Ignoring indirect injection sinks.** SQL injection and XSS can occur far from the point of user input. Trace data through every transformation -- database reads that reflect previously stored user input (stored XSS), or environment variables populated from untrusted sources, are common blind spots.
 
-4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
+4. **Confusing template data with template source.** Static templates that receive user values as variables are usually XSS/output-encoding questions, not SSTI. SSTI requires evidence that untrusted input controls template source, template names, expressions, helpers, filters, loaders, globals, or sandbox configuration.
 
-5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+5. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
+
+6. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
 ---
 
@@ -560,6 +576,8 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP ASVS 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
+- **CWE-1336 Template Injection:** https://cwe.mitre.org/data/definitions/1336.html
+- **OWASP WSTG Server-Side Template Injection Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-side_Template_Injection
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
