@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -61,7 +61,7 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Current state** -- Is the attack ongoing, contained, or resolved? What actions have already been taken?
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
-- [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
+- [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, active external IR retainer evidence, and activation prerequisites.
 
 ---
 
@@ -106,9 +106,53 @@ Verify that the foundational elements for incident response are in place. If gap
 | Log sources centralized and accessible (SIEM, cloud trail, EDR console) | [ ] | |
 | Legal counsel identified and reachable | [ ] | Internal or external |
 | Cyber insurance policy and carrier contact | [ ] | Notification within 24-72h typical |
-| External IR retainer (if applicable) | [ ] | |
+| External IR retainer (if applicable) | [ ] | Contract dates, SOW coverage, activation channel, approval path |
 | Regulatory notification requirements documented | [ ] | GDPR, HIPAA, state laws, SEC |
 | Evidence storage with chain-of-custody procedures | [ ] | |
+
+#### External IR Retainer Evidence Gates
+
+If the response plan depends on an external IR firm, MDR/MSSP, cyber insurance panel vendor, breach coach, or crisis communications provider, verify that the capability is currently usable before marking escalation readiness complete. A vendor name, insurance policy PDF, or stale "engage IR firm" step is not sufficient evidence.
+
+**Minimum evidence to collect:**
+
+| Evidence Gate | Required Proof | Failure Mode |
+|---|---|---|
+| Retainer status | Current contract or SOW effective dates, renewal status, remaining prepaid hours, overage approval path | Retainer expired, hours exhausted, or spend authority missing |
+| Activation channel | 24x7 hotline, portal, or named duty contact tested within the last quarter | Unverified phone tree, dead alias, or business-hours-only intake |
+| Scope-of-work coverage | Covered services mapped to incident categories: forensic imaging, malware analysis, cloud containment, legal privilege workflow, crisis communications, regulatory support | Contract covers "forensics" only while incident requires notification, counsel, or cloud response |
+| Activation prerequisites | Required approvals from insurer, MDR, procurement, legal, or executive sponsor with SEV-1 bypass criteria | Response delayed waiting for an upstream ticket or insurer authorization |
+| Production access readiness | NDA/DPA status, secure file exchange, VPN/jump access, evidence handoff process, chain-of-custody contact | Vendor can join a call but cannot receive images, logs, or regulated data |
+| Regional coverage | Data residency, language, and jurisdiction coverage for impacted systems and customers | Global incident routed to a firm without local legal or forensic authority |
+
+**What to look for:**
+
+```
+IR-RET-01: External IR retainer referenced but contract/SOW is expired or missing
+IR-RET-02: Retainer status current but 24x7 activation channel has not been tested
+IR-RET-03: SOW does not cover the incident type or required workstreams
+IR-RET-04: MDR, insurer, legal, or procurement approval blocks SEV-1 activation without bypass criteria
+IR-RET-05: Retainer hours or overage spend authority are exhausted or undefined
+IR-RET-06: Vendor access prerequisites for evidence transfer, remote access, or regulated data handling are untested
+IR-RET-07: Cyber insurance panel vendor conflicts with the internal retainer and no tie-breaker exists
+IR-RET-08: Regional or data-residency requirements are not mapped to an available IR provider
+```
+
+**False-positive guardrails:**
+
+- Do not require a standing retainer for low-risk organizations if the playbook documents internal response capacity, on-demand vendor procurement, realistic lead times, and a clear decision owner.
+- Do not fail readiness solely because a retainer is not prepaid; fail it when activation authority, SOW coverage, or contact validation is missing.
+- For privacy or regulated-data incidents, accept legal counsel as the activation coordinator only when the SOW or engagement letter covers privilege preservation and evidence handling.
+
+**Incident category to external capability matrix:**
+
+| Incident Category | Minimum External Capability to Verify |
+|---|---|
+| Ransomware or wiper | Forensic imaging, malware reverse engineering, backup validation support, crisis communications, legal privilege workflow |
+| Business email compromise | Mailbox forensics, identity log analysis, payment fraud coordination, legal and customer notification support |
+| Cloud compromise | Cloud control-plane forensics, identity containment, evidence export, tenant/subscription access prerequisites |
+| Regulated data breach | Breach coach or legal counsel, privacy notification support, secure evidence transfer, jurisdiction-specific coverage |
+| Supply chain compromise | Vendor coordination, customer communications, software integrity analysis, law enforcement or ISAC liaison |
 
 ### Phase 2: Detection and Analysis (NIST) / Identification (SANS)
 
@@ -346,6 +390,29 @@ Escalate to the next tier when any of the following conditions are met:
 | Insider threat involving executive or privileged admin | Legal counsel, HR, Board (if executive) | Immediately |
 | IR team lacks expertise for the attack type | External IR retainer, Vendor support | Upon recognition |
 
+#### Step 3.6: External Support Activation Log
+
+When an escalation decision activates an external IR retainer, MDR/MSSP, insurer panel vendor, breach coach, or crisis communications provider, document the activation path as an incident artifact. This prevents "called the vendor" from hiding authorization, SOW, or scope gaps.
+
+```
+External Support Activation Record:
+- Provider:              [IR firm | MDR | MSSP | insurer panel | breach coach | communications firm]
+- Contract/SOW ID:       [identifier or "missing"]
+- Contract Status:       [Active | Expired | Pending | Unknown]
+- Covered Workstreams:   [forensics | malware analysis | cloud containment | legal privilege | comms | regulatory]
+- Out-of-Scope Items:    [known exclusions or "none identified"]
+- Activation Trigger:    [SEV-1 ransomware | data breach | cloud compromise | other]
+- Authorization Source:  [Incident Commander | Legal | Insurer | Executive | Procurement]
+- Approval Timestamp:    [YYYY-MM-DD HH:MM UTC]
+- Provider Contacted:    [YYYY-MM-DD HH:MM UTC]
+- Provider Acknowledged: [YYYY-MM-DD HH:MM UTC or "pending"]
+- Tested Channel:        [hotline | portal | named contact | not tested]
+- Evidence Transfer:     [secure portal | encrypted storage | pending | not available]
+- Blocking Dependency:   [MDR approval | insurer ticket | DPA/NDA | access provisioning | none]
+```
+
+Treat unknown contract status, untested activation channels, missing SOW coverage, or unresolved blocking dependencies as escalation findings rather than administrative notes.
+
 ---
 
 ## 4. Findings Classification
@@ -358,6 +425,19 @@ Escalate to the next tier when any of the following conditions are met:
 | SEV-4 | Low | Security event with no confirmed compromise, minimal scope, and no business impact. | 72 hours to triage |
 | SEV-5 | Informational | False positive, policy violation, or security observation requiring documentation only. | Logged and reviewed in next cycle |
 
+### Retainer Readiness Finding Severity
+
+| Finding Pattern | Default Severity | Escalate When |
+|---|---|---|
+| `IR-RET-01` expired or missing retainer evidence | SEV-2 | SEV-1 incident depends on external forensics or breach response |
+| `IR-RET-02` untested 24x7 activation channel | SEV-3 | The organization has no internal after-hours IR coverage |
+| `IR-RET-03` SOW misses required workstreams | SEV-2 | Missing legal, crisis communications, or regulated-data handling during a confirmed breach |
+| `IR-RET-04` activation blocked by approval dependency | SEV-2 | Active attacker, ransomware, wiper, or data exfiltration requires immediate support |
+| `IR-RET-05` hours or overage authority undefined | SEV-3 | Vendor pauses work or cannot start during SEV-1/SEV-2 response |
+| `IR-RET-06` evidence transfer or access prerequisites untested | SEV-3 | Regulated data, privileged logs, or forensic images must be shared externally |
+| `IR-RET-07` insurer panel conflicts with internal retainer | SEV-3 | Insurance notification or reimbursement depends on panel vendor use |
+| `IR-RET-08` regional coverage unmapped | SEV-3 | Incident affects data subjects or systems in regulated jurisdictions |
+
 ---
 
 ## 5. Output Format
@@ -367,7 +447,7 @@ Produce the incident response report with these exact sections:
 ```markdown
 ## Incident Response Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** ir-playbook v1.0.0
+**Skill:** ir-playbook v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, SANS Incident Handler's Handbook
 **Incident Commander:** [Name or "Unassigned -- assign immediately"]
 
@@ -414,6 +494,11 @@ and recommended immediate actions. Lead with the most critical fact.]
 
 ### Escalation Decisions
 [Document any escalation triggers hit and actions taken]
+
+### External Support Activation
+| Provider | Contract Status | Covered Workstreams | Contacted | Acknowledged | Blocking Dependency |
+|---|---|---|---|---|---|
+| [IR firm / MDR / Insurer / Counsel] | [Active / Expired / Pending / Unknown] | [forensics, comms, legal, cloud, regulatory] | [timestamp] | [timestamp or Pending] | [none / approval / access / SOW gap] |
 
 ### Open Items and Next Steps
 - [ ] [Action item with owner and deadline]

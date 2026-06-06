@@ -1,0 +1,31 @@
+{
+  "incident_id": "IR-2026-081",
+  "severity": "SEV-2",
+  "category": "Regulated data breach",
+  "regions": [
+    "US",
+    "EU"
+  ],
+  "retainer": {
+    "provider": "Example Global IR",
+    "effective_from": "2026-01-01",
+    "effective_to": "2026-12-31",
+    "remaining_hours": 46,
+    "hotline_last_tested": "2026-05-20",
+    "activation_sla_minutes": 30
+  },
+  "scope": {
+    "forensic_imaging": true,
+    "cloud_log_export": true,
+    "legal_privilege_workflow": true,
+    "crisis_communications": true,
+    "regulatory_support_us": true,
+    "regulatory_support_eu": true,
+    "secure_evidence_transfer": true
+  },
+  "approval_path": {
+    "normal": "Legal opens retainer task and notifies insurer",
+    "sev1_bypass": "Incident Commander may activate provider immediately and notify insurer within 2 hours"
+  },
+  "expected_result": "No IR-RET finding because activation, scope, approval, and regional coverage are evidenced."
+}

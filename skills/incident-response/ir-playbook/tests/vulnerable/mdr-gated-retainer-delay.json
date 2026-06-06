@@ -1,0 +1,26 @@
+{
+  "incident_id": "IR-2026-044",
+  "severity": "SEV-1",
+  "category": "Cloud compromise",
+  "external_parties": {
+    "mdr_provider": "SentinelOne Vigilance",
+    "ir_retainer": "CrowdStrike Services",
+    "cyber_insurer": "Example Carrier"
+  },
+  "activation_clause": "MDR must approve and open a carrier ticket before IR retainer activation.",
+  "observed_delay_hours": 11,
+  "sev1_bypass_criteria": null,
+  "covered_workstreams": [
+    "endpoint forensics",
+    "containment advisory"
+  ],
+  "missing_workstreams": [
+    "cloud control-plane forensics",
+    "legal privilege workflow",
+    "customer communications"
+  ],
+  "expected_findings": [
+    "IR-RET-03",
+    "IR-RET-04"
+  ]
+}
