@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -93,6 +93,32 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 Produce the final report using the structure defined in the Output Format section.
 
+### Step 10: Cloud Run Ingress and Identity Evidence
+
+If Cloud Run services or jobs are present, evaluate them as supplemental
+serverless controls outside the CIS score. Cloud Run exposure depends on both
+network ingress and IAM invoker policy, so record both before classifying a
+service as public or private.
+
+For each Cloud Run service, record:
+
+| Evidence field | Required review |
+|----------------|-----------------|
+| Ingress mode | `INGRESS_TRAFFIC_ALL`, `INGRESS_TRAFFIC_INTERNAL_ONLY`, or `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` / equivalent annotation. |
+| Invoker IAM | `roles/run.invoker` bindings, especially `allUsers` or `allAuthenticatedUsers`, with intended-public justification. |
+| Service identity | User-managed runtime service account; avoid default compute service account unless least-privilege evidence exists. |
+| VPC egress | Direct VPC egress or Serverless VPC Access connector settings, egress mode, Shared VPC permissions, firewall, and Cloud NAT evidence. |
+| Image provenance | Artifact Registry image digest, vulnerability scan, Binary Authorization policy, and breakglass audit evidence where used. |
+| Edge controls | Load balancer, serverless NEG, IAP, Cloud Armor, CDN, or API gateway evidence for public paths. |
+| Audit evidence | Admin Activity/Data Access logs or deployment audit entries showing who changed ingress, IAM, image, or service identity. |
+
+**Finding classification:** Public `INGRESS_TRAFFIC_ALL` on admin/internal
+services is **High**. `roles/run.invoker` granted to `allUsers` without an
+intended-public decision is **High**. Default or broadly privileged runtime
+service identity is **High** for production. Missing image digest/provenance or
+Binary Authorization evidence is **Medium**. Missing VPC egress evidence for
+private dependencies is **Medium**.
+
 ---
 
 ## Findings Classification
@@ -137,6 +163,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 5 | Storage | X | Y | Z | nn% |
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
+
+### Cloud Run Evidence
+
+| Service | Region | Ingress | Invoker IAM | Service Identity | VPC Egress | Image Provenance | Edge Controls | Audit Evidence | Finding |
+|---------|--------|---------|-------------|------------------|------------|------------------|---------------|----------------|---------|
+| [service] | [region] | [All/Internal/Internal+LB] | [private/allUsers/other] | [service account] | [connector/direct/none] | [digest/Binauthz/scan] | [LB/IAP/Armor/N/A] | [logs] | [Pass/Finding ID] |
 
 ### Detailed Findings
 
@@ -195,6 +227,16 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
 
+7. **Treating Cloud Run ingress and IAM as one control.** A service can be
+internet-routable but still require IAM, or internal/load-balancer ingress can
+front an intended public API through edge controls. Review ingress, invoker IAM,
+service identity, and edge path together before assigning severity.
+
+8. **Missing serverless release provenance.** Cloud Run can deploy mutable image
+tags. Production reviews should bind service revisions to immutable image
+digests, vulnerability scan results, Binary Authorization policy, and breakglass
+audit evidence where applicable.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -219,10 +261,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
+- Cloud Run Ingress Controls: https://cloud.google.com/run/docs/securing/ingress
+- Cloud Run IAM Access Control: https://cloud.google.com/run/docs/securing/managing-access
+- Cloud Run Service Identity: https://cloud.google.com/run/docs/securing/service-identity
+- Cloud Run Direct VPC Egress: https://cloud.google.com/run/docs/configuring/vpc-direct-vpc
+- Cloud Run Binary Authorization: https://cloud.google.com/run/docs/securing/binary-authorization
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added Cloud Run ingress, invoker IAM, service identity, VPC egress, image provenance, Binary Authorization, edge-control, and audit evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.

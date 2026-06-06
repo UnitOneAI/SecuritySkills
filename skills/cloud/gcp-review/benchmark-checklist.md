@@ -259,6 +259,58 @@ Filter: `resource.type="gcs_bucket" AND protoPayload.methodName="storage.setIamP
 
 Filter: `protoPayload.methodName="cloudsql.instances.update" OR protoPayload.methodName="cloudsql.instances.create" OR protoPayload.methodName="cloudsql.instances.delete"`
 
+---
+
+## Cloud Run Supplemental Checklist -- Ingress and Identity
+
+These checks supplement CIS GCP when Cloud Run services or jobs are in scope.
+
+### GCP-RUN-1 -- Record Cloud Run ingress mode and public path
+
+**Terraform patterns:**
+
+```hcl
+resource "google_cloud_run_v2_service" "api" {
+  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+}
+```
+
+Flag `INGRESS_TRAFFIC_ALL` on admin, worker, or internal services unless the
+service is explicitly intended to be public and edge controls are documented.
+
+### GCP-RUN-2 -- Review invoker IAM separately from ingress
+
+**Grep patterns:**
+
+```
+roles/run.invoker
+member = "allUsers"
+member = "allAuthenticatedUsers"
+google_cloud_run_service_iam_member
+google_cloud_run_v2_service_iam_member
+```
+
+Public `roles/run.invoker` bindings require an intended-public decision,
+service owner, data classification, and compensating edge controls.
+
+### GCP-RUN-3 -- Require least-privilege service identity
+
+Cloud Run services should use a user-managed service account with only required
+roles. Missing `service_account` should be reviewed for default compute service
+account use and inherited broad permissions.
+
+### GCP-RUN-4 -- Validate private dependency egress
+
+Record Direct VPC egress or Serverless VPC Access connector settings, egress
+mode, Shared VPC permissions, firewall rules, and Cloud NAT for services that
+reach private databases, queues, or internal APIs.
+
+### GCP-RUN-5 -- Bind deployment to image provenance
+
+Production services should use immutable Artifact Registry image digests or
+release evidence binding tags to digests. Record vulnerability scan status,
+Binary Authorization policy, and any breakglass justification.
+
 **For each metric (CIS 2.4 through 2.11), also verify an alerting policy exists:**
 
 ```hcl
