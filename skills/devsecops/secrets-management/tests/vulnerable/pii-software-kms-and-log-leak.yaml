@@ -1,0 +1,27 @@
+secret_inventory:
+  customer_ssn_bundle:
+    data_classification: pii
+    storage: aws-secrets-manager
+    field_level_encryption: false
+    audit_logging: disabled
+    retention_policy: unknown
+
+  production_signing_key:
+    data_classification: high-sensitivity-key
+    storage: file-backed-vault
+    protection_level: software
+    exportable: true
+    audit_logging: disabled
+
+incident_response:
+  leaked_github_pat:
+    rotated: true
+    revoked: false
+    checked_ssh_keys: false
+    checked_oauth_grants: false
+    checked_deploy_keys: false
+    use_after_revocation_review: missing
+
+logging_controls:
+  raw_request_logging: enabled
+  secret_masking_tests: missing

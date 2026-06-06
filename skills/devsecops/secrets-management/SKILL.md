@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -159,19 +159,23 @@ xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
 eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*
 ```
 
-#### 2.2 False Positive Filtering — Distinguishing Real Secrets from Noise
+#### 2.2 False Positive Filtering -- Distinguishing Real Secrets from Noise
 
 Before flagging a detected string as a hardcoded secret, apply these verification checks:
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
-2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
+2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy -- they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
 3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
-4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
+4. **Recognize format-matched non-secrets.** High entropy alone is not enough.
+   Exclude Subresource Integrity hashes such as `sha256-*`, `sha384-*`, and
+   `sha512-*`, 40-character hex git commit SHAs, and RFC 4122 UUIDs when there
+   is no credential context or assignment name indicating secret use.
+5. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
    - Missing rotation automation (note in recommendations, not as a finding)
-   - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
-5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
+   - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) -- these belong to other skills
+6. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
 #### 2.3 Detection Tool Configuration Review
 
@@ -277,7 +281,55 @@ resource "vault_audit" "syslog" {
 
 ---
 
-#### 4.2 Rotation Automation (NIST SP 800-57, Section 5.3 -- Cryptoperiods)
+#### 4.2 Sensitive Data and KMS/HSM Protection Evidence
+
+Secrets managers sometimes store PII, regulated identifiers, payment tokens, or
+high-sensitivity cryptographic keys. Review whether the storage control matches
+the data sensitivity, not just whether a vault exists.
+
+For each secret class or key class, record:
+
+| Evidence | Required review |
+|----------|-----------------|
+| Data classification | Identify whether the stored value is a credential, encryption key, PII, cardholder data, health data, or another regulated data type. Do not print the value. |
+| Protection level | For high-sensitivity keys, record software KMS, cloud HSM-backed KMS, dedicated HSM, or unknown protection level. |
+| Key hierarchy | Confirm envelope encryption, CMK ownership, separation between data-encryption keys and key-encryption keys, and tenant/environment separation. |
+| PII controls | For regulated values in a secrets manager, require field-level encryption where applicable, restricted access, audit trails, retention policy, and deletion workflow evidence. |
+| Access audit | Vault/KMS/secret reads, writes, unwraps, decrypts, exports, rotations, and failed access attempts are logged and monitored. |
+| Exportability | High-sensitivity keys are non-exportable where the platform supports it, or export events are justified and alerted. |
+| Residency and retention | Storage region, backup retention, purge protection, and legal retention settings match the data class. |
+
+**Finding classification:** Production signing keys, encryption root keys, or
+regulated data stored without auditable KMS/HSM-backed controls are **High**.
+High-sensitivity keys stored with software-only protection when policy requires
+hardware-backed protection are **High**. Missing data classification, retention,
+or field-level encryption evidence for PII stored in a secrets manager is
+**Medium**.
+
+---
+
+#### 4.3 Secret Masking in Logs and Observability
+
+Verify that secrets remain masked after they leave the vault boundary.
+
+**What to verify:**
+
+- Application logging frameworks redact request headers, authorization tokens,
+  connection strings, webhook secrets, and secret manager responses.
+- CI/CD logs mask injected secrets and fail closed when a secret pattern appears.
+- Error reporting, APM, tracing, and SIEM pipelines apply redaction before export.
+- Structured logging allowlists safe fields instead of dumping full request,
+  response, environment, or exception objects.
+- Masking rules are tested with synthetic canary values and do not store the raw
+  test value in logs.
+
+**Finding classification:** Raw production secrets emitted to CI, application,
+APM, or SIEM logs are **Critical** if current and unrotated, otherwise **High**.
+No masking test evidence for high-risk services is **Medium**.
+
+---
+
+#### 4.4 Rotation Automation (NIST SP 800-57, Section 5.3 -- Cryptoperiods)
 
 NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key type. For authentication secrets:
 
@@ -297,6 +349,31 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 - Failed rotations trigger alerts.
 
 **Finding classification:** No rotation for secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**.
+
+---
+
+#### 4.5 Post-Exposure Invalidation and Persistent Access Review
+
+Rotation is necessary but not sufficient after a leak. Review whether the
+exposed secret created secondary persistence before it was invalidated.
+
+**What to verify after exposure:**
+
+- The original secret was revoked or disabled, not only rotated in one store.
+- Provider-side revocation lists, token sessions, refresh tokens, deploy keys,
+  OAuth grants, webhooks, SSH keys, personal access tokens, service-account keys,
+  and app passwords were reviewed for persistence created during the exposure
+  window.
+- All consumers were redeployed or reloaded, and failed authentication with the
+  old secret was confirmed.
+- Audit logs cover first seen, last seen, rotation time, revocation time,
+  affected consumers, and any use after revocation.
+- Incident notes document downstream artifacts to remove, such as newly added
+  SSH keys, cloud access keys, repository deploy keys, or unauthorized OAuth apps.
+
+**Finding classification:** Rotating a leaked privileged token without checking
+downstream persistent access is **High**. Missing revocation evidence for
+provider-side sessions or refresh tokens is **Medium**.
 
 ---
 
@@ -357,8 +434,8 @@ spec:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault; broad post-exposure persistence not reviewed; high-sensitivity keys lack required KMS/HSM-backed protection. |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection); missing PII classification, retention, or log-masking evidence. |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -388,6 +465,25 @@ spec:
 | DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
+
+### Sensitive Data and Protection Level
+
+| Secret Class | Data Classification | Storage | Protection Level | Audit Logging | Exportability | Retention / Purge | Status |
+|--------------|---------------------|---------|------------------|---------------|---------------|-------------------|--------|
+| signing key | high-sensitivity key | HSM/KMS/Vault | Hardware/Software/Unknown | Enabled/Disabled | Non-exportable/Exportable | <policy> | Pass/Fail/Not Evaluable |
+| customer token | PII/payment/health/none | <manager> | <CMK/HSM/unknown> | Enabled/Disabled | N/A | <policy> | Pass/Fail/Not Evaluable |
+
+### Post-Exposure Invalidation
+
+| Secret Type | Revoked | Rotated | Consumers Redeployed | Persistent Access Reviewed | Use After Revocation | Status |
+|-------------|---------|---------|----------------------|----------------------------|----------------------|--------|
+| GitHub PAT | Yes/No | Yes/No | Yes/No | SSH keys/OAuth/deploy keys checked | Yes/No/Unknown | Pass/Fail |
+
+### Log Masking and Observability
+
+| Surface | Masking Rule | Test Evidence | Raw Secret Exposure | Status |
+|---------|--------------|---------------|---------------------|--------|
+| app logs / CI / APM / SIEM | <rule or policy> | <synthetic canary test> | Yes/No/Unknown | Pass/Fail/Not Evaluable |
 
 ### Findings
 
@@ -442,6 +538,18 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Flagging integrity hashes and identifiers as secrets.** SRI hashes, git
+commit SHAs, and UUIDs are high entropy but are not credentials by themselves.
+Only escalate them when surrounding context shows actual secret use.
+
+6. **Assuming vault storage is enough for regulated data.** PII or
+high-sensitivity keys in a secrets manager still need classification, access
+audit, retention, purge, and KMS/HSM protection evidence.
+
+7. **Rotating leaked tokens without checking persistence.** Attackers can use a
+leaked token to create SSH keys, deploy keys, OAuth grants, API tokens, or cloud
+service-account keys. Validate those downstream artifacts during invalidation.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -461,15 +569,18 @@ This skill processes configuration files and code that may contain secret values
 - OWASP Secrets Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 - NIST SP 800-57 Part 1 Rev 5: https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final
 - NIST SP 800-57 Part 1 Rev 5 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf
+- NIST SP 800-57 Part 2 Rev 1: https://csrc.nist.gov/publications/detail/sp/800-57-part-2/rev-1/final
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
+- AWS KMS key management: https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html
 - External Secrets Operator: https://external-secrets.io/
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added format-matched non-secret exclusions, PII/sensitive-data storage gates, KMS/HSM protection-level evidence, post-exposure invalidation checks, and log-masking evidence.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
