@@ -321,6 +321,46 @@ Build or review the SoA. For each of the 93 Annex A controls, document:
 
 Exclusions are permitted only where the control is genuinely not applicable to the ISMS scope. A control cannot be excluded solely because it is difficult to implement.
 
+#### 5.1 SoA Risk Traceability Gates
+
+The SoA must be defensible as an output of Clause 6.1.3 risk treatment, not just a complete Annex A checklist. Every included control needs a risk, legal, statutory, regulatory, contractual, or business driver. Every excluded control needs a specific scope and risk-context justification that shows the exclusion does not weaken ISMS conformity.
+
+**Traceability fields for every SoA record:**
+
+| Field | Required Evidence | Finding When Missing |
+|---|---|---|
+| Driver | Linked risk ID, legal/statutory/regulatory/contractual requirement, customer obligation, or business requirement | Included control has no reason tied to risk treatment or applicable requirements |
+| Risk treatment option | Mitigate, accept, avoid, transfer, or not applicable with rationale | Control selection cannot be tied to an approved treatment decision |
+| Treatment plan link | Risk treatment plan item, project, ticket, policy, procedure, or control implementation record | Implementation status cannot be verified or tracked |
+| Control owner | Accountable owner or function responsible for the control | No one is accountable for implementation or evidence maintenance |
+| Evidence location | Policy, procedure, configuration, record, audit evidence, KPI, or repository path | Auditor cannot verify implementation or operating effectiveness |
+| Residual risk | Residual risk rating, acceptance threshold, acceptance date, and risk owner approval | Residual risk is unmanaged or accepted by the wrong party |
+| Exclusion justification | ISMS scope reason, risk context, dependency analysis, and confirmation that conformity is not weakened | Excluded control uses generic "not relevant" or "not applicable" language |
+| Approval trail | Approval by risk owner or ISMS authority with date and review cadence | SoA decisions are not governed or periodically revalidated |
+
+**Weak SoA record examples to classify:**
+
+| Pattern | Classification Guidance |
+|---|---|
+| Generic exclusion such as "not relevant" with no scope/risk explanation | Minor nonconformity; major if systemic across many controls |
+| Included control has implementation status but no linked risk or requirement driver | Minor nonconformity; major if SoA is not risk-treatment driven |
+| Control owner or evidence location missing for many applicable controls | Major nonconformity if implementation cannot be audited |
+| Residual risk acceptance missing for high-risk untreated gaps | Major nonconformity |
+| Blanket inclusion of all 93 controls with no risk-treatment linkage | Observation to minor nonconformity depending on whether risk treatment evidence exists elsewhere |
+| Complete traceable record with driver, owner, evidence, treatment, residual risk, and approval | Conforming |
+
+**Reviewer checklist:**
+
+```
+SOA-TRACE-01: Each applicable control links to a risk, requirement, or business driver
+SOA-TRACE-02: Each excluded control has scope-specific justification and conformity impact analysis
+SOA-TRACE-03: Risk treatment option and treatment plan are documented for applicable controls
+SOA-TRACE-04: Control owner and evidence location are recorded
+SOA-TRACE-05: Residual risk and risk owner acceptance are recorded where gaps remain
+SOA-TRACE-06: SoA decisions have approval date, approver, and review cadence
+SOA-TRACE-07: Weak records are classified as observation, minor nonconformity, or major nonconformity based on systemic scope
+```
+
 ---
 
 ### Step 6: Internal Audit Readiness (Clause 9.2)
@@ -409,6 +449,12 @@ Classify each finding using the following severity levels:
 - Controls applicable: [count] / 93
 - Controls excluded: [count] — [list with justification]
 - Average maturity of applicable controls: [score] / 5.0
+
+## SoA Risk Traceability
+
+| Control | Applicable | Driver / Linked Risk | Treatment Option | Treatment Plan | Owner | Evidence Location | Residual Risk / Acceptance | Approval | Traceability Status |
+|---------|------------|----------------------|------------------|----------------|-------|-------------------|----------------------------|----------|---------------------|
+| A.5.23 | [Yes/No] | [risk ID / legal / contractual / business driver] | [mitigate / accept / avoid / transfer / N/A] | [plan/ticket/policy link] | [owner] | [artifact/location] | [rating + risk owner approval] | [approver/date] | [Conforming / Weak / Not Evaluable] |
 
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
@@ -512,6 +558,8 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 4. **Neglecting the 11 new controls introduced in the 2022 revision.** Organizations transitioning from 2013 often miss that controls like A.5.7 (Threat intelligence), A.5.23 (Cloud services security), A.8.9 (Configuration management), A.8.11 (Data masking), A.8.12 (Data leakage prevention), and A.8.16 (Monitoring activities) require explicit consideration in the SoA even if determined not applicable.
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
+
+6. **Complete SoA with weak traceability.** A SoA can list all 93 controls and still fail audit scrutiny if individual applicability decisions do not link to risk treatment options, requirement drivers, owners, evidence, residual risk acceptance, and approval. Treat missing traceability as a nonconformity risk, not a formatting issue.
 
 ---
 
