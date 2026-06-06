@@ -267,11 +267,33 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```javascript
+// VULNERABLE: Upload trusts MIME type and original filename
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  if (req.file.mimetype !== 'image/png') return res.status(400).end();
+  await fs.promises.writeFile(`/var/www/uploads/${req.file.originalname}`, req.file.buffer);
+  res.json({ url: `/uploads/${req.file.originalname}` });
+});
+```
+
+```python
+# VULNERABLE: Archive extraction has no expansion, entry, or path bounds
+@app.post('/api/import')
+def import_zip():
+    archive = zipfile.ZipFile(request.files['archive'])
+    archive.extractall('/srv/imports')
+    return {'imported': len(archive.infolist())}
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
+- For upload endpoints, align gateway, framework, multipart parser, scanner, archive expansion, downstream converter, and business file-count limits.
+- Validate file type using an allowlisted extension plus content signature/parser validation. Do not trust `Content-Type`, `mimetype`, or original filename alone.
+- For archives, enforce compressed size, uncompressed size, compression ratio, entry count, nesting depth, and canonical extraction path checks.
+- Store uploaded files with server-generated names outside the web root or in isolated object storage; keep files quarantined until scanning/validation passes.
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
@@ -281,6 +303,8 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations.
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
+- [ ] File upload endpoints enforce size, count, type, signature, quarantine, and storage controls across all processing layers.
+- [ ] Archive import endpoints enforce expansion ratio, entry count, depth, and canonical path extraction limits.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.

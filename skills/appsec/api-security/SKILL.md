@@ -3,15 +3,15 @@ name: api-security
 description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, file
+  upload parser boundaries, and SSRF. Produces findings mapped to API1-API10 with remediation guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,6 +38,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **Identify upload and parser surfaces** -- Multipart endpoints, archive imports, document converters, image processors, malware scanners, object storage buckets, and download handlers.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -92,7 +93,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -201,6 +202,60 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 ---
 
+## File Upload and Multipart Parser Boundaries
+
+File upload endpoints combine API4 resource-consumption risk, API8 parser/storage misconfiguration risk, and sometimes API7/API10 downstream processing risk. Review uploads as a multi-layer flow rather than a single request-body limit.
+
+**What to look for in code and configuration:**
+
+- Multipart handlers that trust `Content-Type`, client-provided MIME type, or filename extension without validating file signatures or parsing the expected format safely.
+- Storage paths that use original filenames, user-controlled path segments, predictable object keys, or web-served directories with executable content enabled.
+- Archive import endpoints that extract ZIP/TAR files without compressed/uncompressed size ratio limits, entry count limits, depth limits, canonical path checks, and isolated extraction directories.
+- Gateway body-size limits that do not match framework multipart limits, scanner limits, downstream parser limits, object-storage limits, or business file-count limits.
+- Asynchronous malware scanning where files are accessible before quarantine release.
+- Image/document conversion pipelines that process uploaded files with privileged parsers without timeout, sandbox, memory, or output-size controls.
+
+**Detection methods using allowed tools:**
+
+```
+# Find upload handlers and multipart parsers
+Grep: "multipart|multer|busboy|formidable|IFormFile|MultipartFile|request.files|upload.single|upload.array" in **/*.{js,ts,py,cs,java,go}
+Grep: "originalname|filename|Content-Type|mimetype|getContentType|content_type" in **/*.{js,ts,py,cs,java,go}
+
+# Find archive extraction and downstream processors
+Grep: "extractall|ZipFile|tarfile|unzip|adm-zip|sharp|imagemagick|ImageMagick|libreoffice|pdf" in **/*.{js,ts,py,cs,java,go,sh}
+
+# Find upload limits, scanning, storage, and download controls
+Grep: "MaxRequestBodySize|RequestSizeLimit|fileSize|limits|quarantine|antivirus|clamav|object_storage|Content-Disposition|nosniff" in **/*.{js,ts,py,cs,java,go,yaml,yml,json}
+```
+
+**Upload evidence matrix:**
+
+| Endpoint | Upload Type | Size/Count Limits | Type Validation | Archive Extraction | Scan/Quarantine | Storage and Download Controls | Outcome |
+|---|---|---|---|---|---|---|---|
+| [path] | [multipart/archive/image/doc] | [gateway + app + parser limits] | [extension + signature + parser validation] | [ratio, entry, path, depth limits] | [sync/async, inaccessible until clean] | [server-generated name, isolated bucket, no execute, safe headers] | [Pass / Finding / Not Evaluable] |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Upload endpoint stores attacker-controlled filenames or content under a web-served/executable path while trusting `Content-Type`, extension, or original filename | High |
+| Archive extraction lacks canonical path checks, compression ratio limits, entry/depth limits, or isolated extraction workspace | High |
+| Uploaded files are accessible before required malware scan, sandbox, or quarantine decision completes | High |
+| Gateway request-size limit exists but application parser, scanner, archive expansion, or downstream converter has no matching bounds | Medium |
+| Object storage is used but bucket policy, random object keys, content-disposition, and executable-content controls are not evidenced | Medium |
+| Upload endpoint is intentionally offline/quarantined and not parsed or served, but the report lacks complete evidence | Low |
+
+**Remediation guidance:**
+
+1. Validate file type with an allowlisted extension, detected signature/magic bytes, and safe parser validation. Do not trust the multipart `Content-Type` header or original filename alone.
+2. Generate storage names server-side, strip path separators, store outside the application web root, disable execute permissions, and serve downloads with safe `Content-Disposition` and `X-Content-Type-Options: nosniff` headers.
+3. Align gateway, framework, multipart parser, scanner, archive expansion, converter, and business file-count limits. Record all limits in the review evidence.
+4. Keep files quarantined and inaccessible until malware/sandbox checks and downstream parser validations pass.
+5. For archives, cap compressed size, uncompressed size, compression ratio, entry count, nesting depth, and extraction path. Extract only into an isolated workspace after canonical path validation.
+
+---
+
 ## Common Pitfalls
 
 1. **Confusing authentication with authorization.** An API that verifies the user's identity (authentication) but does not verify the user's permission to access the specific resource or function (authorization) is vulnerable to both BOLA (API1) and BFLA (API5). These are distinct checks that must both be present.
@@ -214,6 +269,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Treating one upload limit as complete protection.** A gateway body limit does not prove that multipart parsing, archive extraction, malware scanning, conversion, object storage, and download serving are safe. Review the whole upload lifecycle.
 
 ---
 
@@ -236,6 +293,8 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP Application Security Verification Standard (ASVS) 4.0.3:** https://owasp.org/www-project-application-security-verification-standard/
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
+- **OWASP File Upload Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
+- **OWASP Input Validation Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
