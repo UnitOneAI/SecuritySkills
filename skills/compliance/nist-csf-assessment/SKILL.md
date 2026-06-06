@@ -344,7 +344,46 @@ Score each subcategory on a 0-4 scale aligned with CSF Tiers:
 | 3 | Tier 3 — Repeatable | Formally established, regularly updated, consistently applied, policy-driven |
 | 4 | Tier 4 — Adaptive | Continuous improvement based on lessons learned and predictive indicators; real-time adjustments |
 
-Determine the overall organizational Tier based on aggregated assessment across all functions.
+Use subcategory scores for implementation maturity and profile gap analysis. Do not determine the overall organizational Tier from the arithmetic average of subcategory scores.
+
+#### 4.1 Organizational Tier Evidence Gates
+
+Evaluate the organizational Tier separately from subcategory maturity. CSF Tiers describe how cybersecurity risk management is integrated into broader organizational risk management, governance, and external participation.
+
+| Tier Dimension | Evidence to Collect | Tier Inflation Risk When Missing |
+|---|---|---|
+| Risk management process | Risk appetite/tolerance, risk criteria, risk register, risk response options, review cadence, and executive approval | Strong technical controls are mistaken for Tier 3 repeatability without policy-driven risk management |
+| Integrated risk program | ERM integration, budget/resource linkage, cross-functional ownership, risk reporting, and exception governance | Cyber risk is managed by security only, not organization-wide |
+| Oversight and accountability | Board/executive reporting, KPI/KRI review, strategy adjustment records, and accountable owners | Reported Tier lacks governance approval and ongoing oversight |
+| Supply chain risk management | Supplier criticality, contractual requirements, monitoring, incident coordination, and lifecycle risk records | GOVERN weaknesses are hidden behind strong Protect/Detect scores |
+| Continuous adaptation | Lessons learned, threat intelligence, predictive indicators, automation, and real-time risk adjustments | Tier 4 is claimed without adaptive evidence |
+
+**Tier cap rules:**
+
+| Missing or Weak Evidence | Maximum Defensible Tier |
+|---|---|
+| No approved cybersecurity risk appetite or risk tolerance | Tier 2 |
+| Cybersecurity risk is not integrated into ERM or enterprise risk reporting | Tier 2 |
+| Board/executive oversight is ad hoc or undocumented | Tier 2 |
+| GOVERN evidence is mostly missing, even with strong Protect/Detect controls | Tier 2 |
+| Supply chain risk management is not established for critical suppliers | Tier 2 |
+| Practices are policy-driven but not consistently organization-wide | Tier 2 |
+| Repeatable program exists but lacks lessons-learned adaptation, predictive indicators, or continuous improvement evidence | Tier 3 |
+
+**Required Tier rationale fields:**
+
+```
+Organizational Tier Rationale:
+- Current Tier: [Tier 1 / Tier 2 / Tier 3 / Tier 4]
+- Target Tier: [Tier 1 / Tier 2 / Tier 3 / Tier 4]
+- Risk management process evidence: [artifacts]
+- ERM integration evidence: [artifacts]
+- Oversight evidence: [board/executive cadence, KPI/KRI review]
+- Supply chain risk evidence: [critical supplier program evidence]
+- External participation evidence: [ISAC, regulator, partner, or community participation]
+- Tier blockers: [missing evidence or cap rules]
+- Executive approval: [approver/date]
+```
 
 ---
 
@@ -438,6 +477,16 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
   - Justification: [evidence-based rationale]
 - **Target Tier**: [Tier N — Name]
   - Justification: [business/risk rationale]
+
+### Organizational Tier Evidence
+
+| Dimension | Current Evidence | Target Evidence | Blockers / Cap Rules | Owner | Approval |
+|-----------|------------------|-----------------|----------------------|-------|----------|
+| Risk management process | [risk appetite, risk criteria, risk register, review cadence] | [target evidence] | [missing items] | [owner] | [approver/date] |
+| Integrated risk program | [ERM integration, budget/resource linkage, exception governance] | [target evidence] | [missing items] | [owner] | [approver/date] |
+| Oversight and accountability | [board/executive reporting, KPI/KRI review, strategy updates] | [target evidence] | [missing items] | [owner] | [approver/date] |
+| Supply chain risk management | [critical suppliers, contract requirements, monitoring, incident coordination] | [target evidence] | [missing items] | [owner] | [approver/date] |
+| Continuous adaptation | [lessons learned, predictive indicators, automation, real-time risk adjustment] | [target evidence] | [missing items] | [owner] | [approver/date] |
 
 ## Function Summary
 
@@ -575,6 +624,10 @@ Tier 4 — Adaptive
 3. **Assessing subcategories in isolation without considering dependencies.** CSF functions are interdependent. Detection capabilities (DE) are meaningless without response capabilities (RS). Protection (PR) without asset identification (ID.AM) leaves gaps. The assessment must consider the maturity chain across functions, not just individual subcategory scores.
 
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
+
+---
+
+5. **Averaging subcategory scores into organizational Tier.** CSF Tiers are not maturity averages. Weak GOVERN, ERM integration, executive oversight, risk appetite, or supply chain risk evidence should cap the reported organizational Tier even when Protect, Detect, or Respond subcategory scores are high.
 
 ---
 
