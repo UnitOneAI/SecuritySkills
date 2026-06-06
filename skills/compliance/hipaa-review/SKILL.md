@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -113,7 +113,32 @@ ePHI Locations:
 - Business Associate systems: ___
 ```
 
-#### 1.2 Entity Classification
+#### 1.2 De-identification Scope Evidence
+
+Do not exclude analytics, AI, reporting, warehouse, feature-store, or logging systems from ePHI scope based only on a `deidentified`, `masked`, `anonymous`, or `tokenized` label. HHS guidance for HIPAA de-identification under 45 CFR 164.514 recognizes Expert Determination and Safe Harbor methods; the scope review must preserve evidence for the method used and for downstream re-identification risk.
+
+**De-identification evidence gates:**
+
+| ID | Evidence Gate | Requirement |
+|----|---------------|-------------|
+| `HIPAA-DEID-01` | Method evidence | Record whether the dataset relies on Expert Determination, Safe Harbor, limited data set handling, or another documented privacy basis before excluding it from ePHI scope. |
+| `HIPAA-DEID-02` | Expert determination support | For Expert Determination, record the qualified expert, date, anticipated recipient or use context, methods used, residual risk conclusion, and validity or review period. |
+| `HIPAA-DEID-03` | Safe Harbor checklist | For Safe Harbor, record removal/generalization of the 18 identifier categories and whether the covered entity has actual knowledge that remaining data could identify an individual. |
+| `HIPAA-DEID-04` | Quasi-identifier inventory | Identify indirect identifiers such as age bands, ZIP3/geography, dates or date buckets, rare diagnosis groups, device IDs, household or employer attributes, and small cohorts. |
+| `HIPAA-DEID-05` | Derived identifier handling | Treat hashes, tokens, embeddings, feature keys, row IDs, and linkage codes as potential identifiers unless derivation, salt/key custody, access controls, and re-identification separation are documented. |
+| `HIPAA-DEID-06` | Downstream lineage | Trace exports to dashboards, feature stores, model-training data, prompts, debug logs, data lakes, vendor systems, and BA/subcontractor systems that may recreate ePHI context. |
+| `HIPAA-DEID-07` | Re-identification risk review | Assess small cohort, longitudinal sequence, linkage with reasonably available external data, recipient knowledge, and join paths across datasets. |
+| `HIPAA-DEID-08` | Residual ePHI decision | If evidence is missing or incomplete, mark the system `not_evaluable_treat_as_ephi` for Security Rule scoping until privacy/legal review resolves the de-identification basis. |
+
+**De-identification evidence matrix:**
+
+| Dataset/System | Claimed Status | Method | Method Evidence | Quasi-Identifiers | Derived IDs / Linkage | Downstream Destinations | Re-ID Risk | Scope Decision |
+|----------------|----------------|--------|-----------------|-------------------|------------------------|-------------------------|------------|----------------|
+| [Name] | [deidentified / limited / unknown] | [Expert / Safe Harbor / other] | [Report/checklist/date] | [List] | [Hashes/tokens/embeddings] | [Exports/logs/vendors] | [Low/Medium/High/Unknown] | [Exclude / Include / not_evaluable_treat_as_ephi] |
+
+When the review cannot prove a valid de-identification method and cannot rule out downstream re-identification risk, keep the relevant systems in the ePHI inventory. This is a scoping control for the Security Rule review; do not present it as legal advice or as a substitute for privacy counsel.
+
+#### 1.3 Entity Classification
 
 Determine applicability:
 
@@ -430,6 +455,11 @@ Assess:
 ## ePHI Inventory Summary
 [Systems, data types, storage locations, transmission paths]
 
+## De-identification Scope Evidence
+| Dataset/System | Claimed Status | Method | Method Evidence | Quasi-Identifiers | Derived IDs / Linkage | Downstream Destinations | Re-ID Risk | Scope Decision |
+|----------------|----------------|--------|-----------------|-------------------|------------------------|-------------------------|------------|----------------|
+| [Name] | [deidentified / limited / unknown] | [Expert / Safe Harbor / other] | [Report/checklist/date] | [List] | [Hashes/tokens/embeddings] | [Exports/logs/vendors] | [Low/Medium/High/Unknown] | [Exclude / Include / not_evaluable_treat_as_ephi] |
+
 ## Safeguard Assessment
 
 ### Administrative Safeguards (164.308)
@@ -462,6 +492,9 @@ Assess:
 
 ## Risk Analysis Gap Summary
 [Specific deficiencies in the organization's risk analysis per 164.308(a)(1)(ii)(A)]
+
+## De-identification and Re-identification Gaps
+[Systems excluded from ePHI scope without method evidence, downstream lineage, or re-identification risk review]
 
 ## Remediation Roadmap
 
@@ -571,6 +604,8 @@ Policies, Procedures, and Documentation — 164.316
 
 5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
 
+6. **Trusting a deidentified label without method evidence.** Analytics, AI, warehouse, feature-store, and logging systems may still belong in the ePHI inventory when the Expert Determination or Safe Harbor basis, quasi-identifier inventory, derived identifier handling, downstream lineage, or re-identification risk is not documented.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -594,6 +629,8 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - HHS OCR HIPAA Security Rule Guidance Material (hhs.gov/hipaa/for-professionals/security/guidance)
 - HHS OCR HIPAA Audit Protocol (2016 revision)
 - NIST SP 800-66 Rev. 2 — Implementing the Health Insurance Portability and Accountability Act (HIPAA) Security Rule: A Cybersecurity Resource Guide (February 2024)
+- HHS Guidance Regarding Methods for De-identification of Protected Health Information in Accordance with the HIPAA Privacy Rule: https://www.hhs.gov/hipaa/for-professionals/privacy/special-topics/de-identification/
+- 45 CFR 164.514 — Other requirements relating to uses and disclosures of protected health information: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-E/section-164.514
 - HHS OCR Breach Portal and Resolution Agreements archive
 - HITECH Act, Section 13401-13411 — Security provisions and enforcement
 - H-ISAC (Health Information Sharing and Analysis Center) — https://h-isac.org/
