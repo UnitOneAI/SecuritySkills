@@ -74,6 +74,9 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Data flow diagram for the AI system | Architecture docs, design docs | Maps where personal data enters, persists, and exits |
 | LLM provider and terms of service | Vendor contracts, API docs, DPAs | Determines whether user data is used for provider training |
 | Data processing agreements (DPAs) | Legal/compliance documentation | Establishes legal basis for data processing |
+| Processor and subprocessor list | Vendor trust center, DPA annexes, procurement records | Identifies every party that receives AI data |
+| Storage, processing, and support-access regions | Provider docs, contracts, admin settings | Determines whether AI data leaves the expected jurisdiction |
+| Transfer mechanism evidence | DPA, SCCs, EU-US DPF certification, TIA, BCRs | Verifies GDPR Chapter V compliance for cross-border transfers |
 | Privacy policy | Public-facing policy documents | Defines commitments to users about data handling |
 | Data retention policies | Internal governance docs, code configs | Determines how long AI-processed data persists |
 | Logging configuration | Application code, infrastructure configs | Reveals what prompt/completion data is captured |
@@ -180,7 +183,53 @@ Grep: "metadata_filter|access_control|permission|authorization|tenant" in **/*.{
 
 ---
 
-### Step 3 -- Data Retention Policies
+### Step 3 -- Processor, Subprocessor, and Transfer Evidence
+
+Assess whether third-party AI data flows have enough contractual, regional, and transfer evidence to support the claimed privacy posture. Do not clear third-party LLM, vector database, eval, observability, prompt analytics, or human-review tooling based only on a DPA or "not used for training" statement.
+
+**What to look for in code, configuration, and contracts:**
+
+- AI data types sent to each external provider: prompts, completions, files, embeddings, RAG snippets, conversation logs, eval datasets, telemetry, abuse-review samples, or human-review queues.
+- Legal role for each party: controller, processor, subprocessor, joint controller, or Not Evaluable.
+- Storage region, processing region, support-access region, logging/telemetry region, and human-review region for each AI data flow.
+- Subprocessor authorization and onward-transfer terms in DPAs and vendor trust-center documentation.
+- Transfer mechanism evidence for non-EEA transfers or remote access from third countries: adequacy decision, EU-US Data Privacy Framework certification, SCC module, BCRs, derogation, or Not Evaluable.
+- Transfer Impact Assessment (TIA), supplementary measures, encryption/key-control evidence, and audit rights where SCCs or other Article 46 mechanisms are used.
+- Official EU-US DPF certification lookup evidence when relying on the framework, including covered legal entity/service and date checked.
+
+**Detection methods using allowed tools:**
+
+```
+# Find provider and vendor data-flow references
+Grep: "subprocessor|processor|controller|dpa|data.processing|transfer|scc|standard.contractual|dpia|tia" in **/*.{md,txt,yaml,yml,json}
+Grep: "region|data.region|residency|support.access|telemetry|abuse.review|human.review" in **/*.{md,txt,yaml,yml,json,env}
+
+# Find adjacent AI tooling beyond the primary LLM provider
+Grep: "vector|embedding|eval|monitoring|analytics|observability|moderation|prompt.log|trace" in **/*.{py,ts,js,yaml,yml,json,md}
+Grep: "openai|anthropic|azure.openai|bedrock|vertex.ai|cohere|mistral|pinecone|weaviate|qdrant|langsmith" in **/*.{py,ts,js,yaml,yml,json,env}
+```
+
+**Processor and subprocessor matrix:**
+
+| Entity | Role | AI data types | Purpose | Storage region | Processing/support region | Subprocessors/onward transfers | Transfer mechanism | Evidence | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| [provider] | [controller/processor/subprocessor/unknown] | [prompts, embeddings, eval rows] | [inference, logging, monitoring] | [region] | [region/access] | [list or none] | [adequacy/DPF/SCC/BCR/derogation/N/A/unknown] | [DPA, trust page, contract, admin setting] | [Pass/Gap/Not Evaluable] |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| EU personal data transferred to a third country with no transfer mechanism evidence | Critical |
+| Third-party LLM or AI tooling has no processor/subprocessor role evidence for personal data | High |
+| Subprocessors or onward transfers are not authorized or not reviewed | High |
+| EU-US DPF reliance is not verified against the official certification list and covered entity/service | High |
+| SCCs are present but no TIA or supplementary-measure evidence exists for high-risk transfers | Medium |
+| Region/residency claim does not cover support access, telemetry, abuse review, eval tooling, or human review | Medium |
+| Customer-managed encryption/key-control evidence is claimed but not mapped to the actual AI data stores | Medium |
+
+---
+
+### Step 4 -- Data Retention Policies
 
 Assess whether AI-specific data stores have appropriate retention policies, deletion mechanisms, and lifecycle management.
 
@@ -240,7 +289,7 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 
 ---
 
-### Step 4 -- Model Memorization Risk Assessment
+### Step 5 -- Model Memorization Risk Assessment
 
 Evaluate the risk that models deployed in the system have memorized and can reproduce personal data from their training corpus.
 
@@ -288,7 +337,7 @@ Grep: "dedup|deduplicate|exact_match|near_duplicate|minhash|simhash" in **/*.py
 
 ---
 
-### Step 5 -- EU AI Act Data Governance Requirements
+### Step 6 -- EU AI Act Data Governance Requirements
 
 Assess compliance with the EU AI Act's data governance requirements for AI systems deployed in or affecting EU residents.
 
@@ -338,7 +387,7 @@ Glob: **/technical_documentation*
 
 ---
 
-### Step 6 -- Consent Management for AI Training Data
+### Step 7 -- Consent Management for AI Training Data
 
 Assess whether consent mechanisms for AI training data usage are implemented, enforceable, and aligned with regulatory requirements.
 
@@ -384,8 +433,8 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 | Severity | Criteria | Response SLA |
 |---|---|---|
 | **Critical** | Personal data processed without legal basis, PHI exposed without HIPAA controls, or regulatory non-compliance with immediate enforcement risk. | Immediate -- halt processing |
-| **High** | Significant privacy risk with clear exposure path: PII in prompts without redaction, missing retention policies on PII-containing stores, or no consent mechanism for training data. | 7 days -- remediate before next release |
-| **Medium** | Moderate privacy gap requiring specific conditions: incomplete documentation, missing memorization testing, or partial consent implementation. | 30 days -- schedule remediation |
+| **High** | Significant privacy risk with clear exposure path: PII in prompts without redaction, missing retention policies on PII-containing stores, no consent mechanism for training data, or missing processor/subprocessor evidence for third-party AI tooling. | 7 days -- remediate before next release |
+| **Medium** | Moderate privacy gap requiring specific conditions: incomplete documentation, missing memorization testing, partial consent implementation, incomplete region evidence, or SCC/TIA supplementary-measure gaps. | 30 days -- schedule remediation |
 | **Low** | Minor gap with limited direct privacy risk: defense-in-depth recommendations, documentation improvements, or best practice deviations. | 90 days -- track in backlog |
 | **Informational** | Recommendations for improvement with no current privacy risk. | No SLA -- advisory |
 
@@ -408,10 +457,16 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 [Description or reference to diagram showing personal data flows through AI components:
 user input -> prompt assembly -> LLM API -> completion -> output -> logging/storage]
 
+## Processor, Subprocessor, and Transfer Matrix
+
+| Entity | Role | AI data types | Purpose | Regions | Subprocessors/onward transfers | Transfer mechanism | Evidence | Status |
+|---|---|---|---|---|---|---|---|---|
+| [provider] | [controller/processor/subprocessor/unknown] | [data types] | [purpose] | [storage/processing/support] | [list] | [adequacy/DPF/SCC/BCR/derogation/N/A/unknown] | [source] | [Pass/Gap/Not Evaluable] |
+
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | Processor/Subprocessor Transfer | Data Retention | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -429,6 +484,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 |---|---|---|---|
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
+| Processor/subprocessor and transfer evidence | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
@@ -450,7 +506,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | NIST AI RMF 1.0 | MANAGE 2.4 | Mechanisms for tracking and responding to AI privacy risks |
 | NIST AI RMF 1.0 | GOVERN 1.1 | Legal and regulatory requirements applicable to the AI system |
 | OWASP Top 10 for LLMs (2025) | LLM02 | Sensitive Information Disclosure -- model reveals training data, PII, or confidential information |
-| GDPR | Art. 5, 6, 13, 17, 22, 25, 35 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, DPIA |
+| GDPR | Art. 5, 6, 13, 17, 22, 25, 28, 35, 44-49 | Principles, legal basis, transparency, erasure, automated decisions, processor terms, privacy by design, DPIA, international transfers |
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
 
@@ -463,6 +519,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## Common Pitfalls
 
 1. **Treating the LLM API as a black box for privacy.** When user data is sent to a third-party LLM API, it crosses a trust boundary. The provider's data handling terms, retention policies, and training data practices directly impact your privacy obligations. Review the provider's DPA, data usage policy, and API configuration options (e.g., OpenAI's zero-data-retention option for eligible endpoints, Azure OpenAI's data processing commitments). Failure to configure these options means user data may be retained by the provider and potentially used for model training.
+
+   Also separate training/retention claims from processor and transfer evidence. A provider statement that data is not used for training does not prove which legal entity processes the data, which subprocessors receive it, whether support or telemetry access occurs outside the expected region, or which GDPR Chapter V mechanism applies to each transfer path.
 
 2. **Assuming embeddings are anonymous.** Vector embeddings are not anonymized representations. Research has demonstrated partial inversion of text embeddings to recover source text. Treat embeddings as personal data if the source text contains personal data. Apply the same access controls, retention policies, and deletion mechanisms to embeddings as to the source documents.
 
@@ -480,6 +538,9 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - OWASP Top 10 for LLM Applications (2025), LLM02: Sensitive Information Disclosure -- https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
 - EU AI Act, Regulation (EU) 2024/1689 -- https://eur-lex.europa.eu/eli/reg/2024/1689
 - GDPR, Regulation (EU) 2016/679 -- https://eur-lex.europa.eu/eli/reg/2016/679
+- European Commission Standard Contractual Clauses -- https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en
+- EDPB Recommendations 01/2020 on supplementary measures for transfers -- https://www.edpb.europa.eu/our-work-tools/our-documents/recommendations/recommendations-012020-measures-supplement-transfer_en
+- EU-US Data Privacy Framework official program -- https://www.dataprivacyframework.gov/
 - CCPA/CPRA, California Civil Code Sec. 1798.100-199 -- https://leginfo.legislature.ca.gov/
 - Carlini, N. et al. (2021). "Extracting Training Data from Large Language Models." USENIX Security Symposium. arXiv:2012.07805
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
