@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -114,14 +114,20 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 **API Keys and Tokens:**
 
 ```regex
-# AWS Access Key ID (starts with AKIA)
-(?:AKIA)[0-9A-Z]{16}
+# AWS Access Key ID (long-term AKIA or temporary STS ASIA)
+(?:AKIA|ASIA)[0-9A-Z]{16}
 
 # AWS Secret Access Key (40 chars, base64-like)
 (?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
 
+# AWS STS Session Token (required for temporary ASIA credentials)
+(?:aws_session_token|AWS_SESSION_TOKEN)\s*[=:]\s*[A-Za-z0-9/+=]{20,}
+
 # GitHub Personal Access Token
 (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
+
+# GitHub Fine-Grained Personal Access Token
+github_pat_[A-Za-z0-9_]{20,255}
 
 # GitLab Personal Access Token
 glpat-[A-Za-z0-9\-_]{20,}
@@ -159,13 +165,24 @@ xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
 eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*
 ```
 
-#### 2.2 False Positive Filtering — Distinguishing Real Secrets from Noise
+#### 2.2 Credential Set Validation
+
+Some secret families are safer to validate as a set rather than as independent strings. This reduces false positives from standalone identifiers and catches complete credential bundles.
+
+| Secret Family | Required Evidence | Notes |
+|---------------|-------------------|-------|
+| AWS long-term access key | `AKIA` access key ID plus matching secret access key in the same file or deployment artifact | A standalone access key ID is sensitive metadata, but the credential is complete only with the secret access key. |
+| AWS STS temporary credentials | `ASIA` access key ID plus secret access key plus `aws_session_token` | Temporary credentials still grant access during their lifetime and must be rotated or revoked if exposed. |
+| Database URL | Scheme plus username, password, and host | Do not flag passwordless localhost examples as credential exposure. |
+| Generic bearer token | Provider-specific prefix or validation context | Documentation samples and obvious examples should be excluded unless evidence suggests the value is live. |
+
+#### 2.3 False Positive Filtering — Distinguishing Real Secrets from Noise
 
 Before flagging a detected string as a hardcoded secret, apply these verification checks:
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` or `ASIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*`/`github_pat_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
@@ -173,7 +190,7 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
-#### 2.3 Detection Tool Configuration Review
+#### 2.4 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
@@ -192,7 +209,7 @@ Verify that at least one secret detection tool is configured and integrated:
 - Custom rules cover organization-specific secret formats.
 - Allowlist entries are documented with justification (false positive suppression must not create blind spots).
 
-**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+**Control-gap classification:** Missing secret detection tooling is a **High** program control gap, not a numbered secret exposure finding, unless an actual secret is present. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
 
 ---
 
@@ -236,7 +253,7 @@ Secrets removed from current files may still exist in git history. Verify:
 - If a secret was committed historically and rotated, the rotation is confirmed (not just file deletion).
 - BFG Repo Cleaner or `git filter-repo` has been used to purge high-sensitivity secrets from history when warranted.
 
-**Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is **High**.
+**Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is a **High** program control gap, not a numbered secret exposure finding by itself.
 
 ---
 
@@ -273,7 +290,7 @@ resource "vault_audit" "syslog" {
 }
 ```
 
-**Finding classification:** No centralized secrets manager (secrets in config files or environment variables only) is **High**. Secrets manager deployed but audit logging disabled is **High**.
+**Finding classification:** Actual secrets stored in config files or environment variables only, with no centralized secrets manager path, is **High**. Absence of a centralized secrets manager with no observed secrets is a program control gap. Secrets manager deployed but audit logging disabled is **High**.
 
 ---
 
@@ -356,9 +373,9 @@ spec:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **Critical** | Committed live secrets in current codebase or git history (unrotated); .env with production credentials committed. |
+| **High** | Actual secrets in config files or environment variables with no secrets manager path; long-lived static credentials for agents; secrets in CI logs; audit logging disabled on vault. |
+| **Medium** | Detection in CI only (no pre-commit); missing local scanner config where policy requires it; manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -389,7 +406,7 @@ spec:
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
 
-### Findings
+### Secret Exposure Findings
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
@@ -397,6 +414,12 @@ spec:
 - **File:** <path to config file>
 - **Description:** <what was found -- NEVER include actual secret values>
 - **Remediation:** <concrete fix>
+
+### Program Control Gaps
+
+| Control Gap | Severity | Evidence | Recommendation |
+|-------------|----------|----------|----------------|
+| Missing local scanner config | Medium/High | <paths checked> | <add scanner / confirm centralized coverage> |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -429,6 +452,15 @@ spec:
 | 5.3.5 | Authentication Keys | Cryptoperiod of 1-2 years for originator-usage; shorter for high-risk |
 | 6.1 | Key Generation | Approved RNG; sufficient key length; key uniqueness |
 | 6.2 | Key Establishment | Secure distribution; no plaintext transmission |
+
+### Provider References for Token Families
+
+| Provider | Reference | Relevance |
+|----------|-----------|-----------|
+| AWS IAM | https://docs.aws.amazon.com/IAM/latest/UserGuide/securing_access-keys.html | Distinguishes long-term access keys from temporary STS credentials and documents that temporary credentials include a session token. |
+| AWS IAM | https://docs.aws.amazon.com/us_en/IAM/latest/UserGuide/security-creds-programmatic-access.html | Documents `AKIA` long-term access keys and `ASIA` temporary access keys. |
+| GitHub | https://docs.github.com/en/code-security/secret-scanning/secret-scanning-patterns | Lists supported secret scanning patterns, including GitHub personal access tokens and token versions. |
+| GitHub | https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-detection-scope | Documents detection behavior for pattern pairs and token detection scope. |
 
 ---
 
@@ -471,5 +503,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Add AWS STS temporary credential coverage, GitHub fine-grained PAT guidance, credential-set validation, and separate secret exposure findings from program control gaps.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.

@@ -1,0 +1,18 @@
+# This workflow has no local secret scanner configured. That is a program
+# control gap to document, not a Critical secret exposure finding by itself.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm test
