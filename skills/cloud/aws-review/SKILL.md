@@ -99,6 +99,48 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Supplemental: AWS Organizations and Multi-Account Evidence
+
+CIS AWS controls are often evaluated per account, but production AWS estates
+usually rely on AWS Organizations, Control Tower, delegated administrators,
+centralized CloudTrail, AWS Config aggregators, and SCP guardrails. Do not mark
+organization-wide posture as passing from a single account export unless account
+coverage and delegated control evidence are available.
+
+```
+AWS-ORG-01: Account inventory is missing management account, delegated admins, suspended accounts, or OU membership
+AWS-ORG-02: SCP guardrails are absent, detached from production OUs, or not tested against exception accounts
+AWS-ORG-03: Organization trail does not cover all regions, all accounts, or management events
+AWS-ORG-04: AWS Config aggregator omits accounts, regions, or global resource types
+AWS-ORG-05: Security Hub / GuardDuty / IAM Access Analyzer delegated administrator coverage is incomplete
+AWS-ORG-06: Control Tower guardrail drift or unenrolled account exceptions are not reviewed
+AWS-ORG-07: Break-glass or exception account is excluded from guardrails without owner, expiry, and monitoring
+AWS-ORG-08: Cross-account role trust path bypasses intended SCP or identity-center controls
+```
+
+**Evidence requirements:**
+
+| Evidence | Required Detail | Failure Mode |
+|---|---|---|
+| Account inventory | Account ID, OU, status, owner, environment, delegated-admin roles | Accounts are omitted from posture results |
+| SCP attachment map | Policy, OU/account attachment, exception reason, last test date | Guardrail exists but does not apply |
+| Organization trail | Home region, multi-region flag, management events, log bucket, validation, KMS | CloudTrail coverage gap across accounts |
+| Config aggregator | Aggregated accounts, regions, global resources, delivery status | Config compliance misses accounts |
+| Delegated security services | Security Hub, GuardDuty, Access Analyzer, Macie, Inspector admin coverage | Security findings are account-local only |
+| Exception register | Owner, expiry, monitoring, compensating controls, review cadence | Exception accounts become permanent blind spots |
+
+**Decision guidance:**
+
+| Situation | Assessment action |
+|---|---|
+| Single account export with no Organizations inventory | Mark organization coverage Not Evaluable |
+| SCP exists but is not attached to production OU | High if it is the stated guardrail |
+| Organization trail excludes opt-in regions or management events | High for production organizations |
+| Config aggregator missing suspended or newly-created accounts | Medium; High if account contains production data |
+| Break-glass account excluded from SCP with no monitoring | High |
+
+---
+
 ### Step 7: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
@@ -145,6 +187,15 @@ Produce the final report using the structure defined in the Output Format sectio
 | 3 | Logging | X/11 | Y | Z | nn% |
 | 4 | Monitoring | X/16 | Y | Z | nn% |
 | 5 | Networking | X/6 | Y | Z | nn% |
+
+### Organization Coverage
+| Area | Coverage | Gaps |
+|------|----------|------|
+| Accounts / OUs | <count and scope> | <missing or exception accounts> |
+| SCP Guardrails | <attached/tested> | <detached, exception, or drift> |
+| Organization Trail | <regions/accounts/events> | <coverage gaps> |
+| Config Aggregator | <accounts/regions/global resources> | <delivery or scope gaps> |
+| Delegated Security Services | <services covered> | <missing delegated admins> |
 
 ### Detailed Findings
 
@@ -200,6 +251,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Treating one account as the organization.** A hardened workload account does not prove that the management account, log archive, security tooling, suspended accounts, or newly-created accounts have the same controls.
+8. **Assuming Control Tower means no drift.** Control Tower guardrails can be disabled, accounts can be unenrolled, and console/API changes can drift from landing-zone intent. Require guardrail status and drift evidence.
+9. **Ignoring delegated administrator scope.** Security Hub, GuardDuty, IAM Access Analyzer, Macie, and Inspector need delegated admin and member-account coverage evidence before findings can be considered organization-wide.
 
 ---
 
@@ -224,6 +278,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS IAM Best Practices: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
+- AWS Organizations: https://docs.aws.amazon.com/organizations/latest/userguide/
+- AWS Control Tower guardrails: https://docs.aws.amazon.com/controltower/latest/userguide/guardrails.html
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
