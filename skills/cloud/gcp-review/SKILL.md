@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -88,7 +88,48 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Supplemental IAM Review -- Workload Identity Federation
+
+Review Google Cloud Workload Identity Federation (WIF) providers and service
+account impersonation paths in addition to the CIS service-account key checks.
+Keyless deployments can still be high risk when a CI/CD provider is trusted too
+broadly.
+
+Required evidence:
+
+- Workload identity pool and provider inventory, including `issuer_uri`,
+  `allowed_audiences`, `attribute_mapping`, and `attribute_condition`.
+- For GitHub Actions OIDC, confirm conditions restrict the expected
+  `assertion.repository`, `assertion.ref`, `assertion.workflow`,
+  `assertion.environment`, and audience before production deployment access is
+  allowed.
+- Service account IAM bindings that grant `roles/iam.workloadIdentityUser` or
+  `roles/iam.serviceAccountTokenCreator`; record the exact `principalSet` or
+  `principal` member and whether it is wildcarded at pool, repository, branch,
+  tag, or environment scope.
+- Impersonation chains where a federated principal can impersonate an
+  intermediate service account that can then impersonate a privileged service
+  account.
+- Evidence of protected branches, protected tags, GitHub environments, or an
+  equivalent CI approval gate when those claims are used for production access.
+
+Finding guidance:
+
+- **High:** Production service account trusts a WIF pool wildcard such as
+  `principalSet://.../workloadIdentityPools/<pool>/*` without a provider
+  `attribute_condition` that narrows repository, ref, workflow, environment,
+  and audience.
+- **High:** GitHub OIDC subject permits `pull_request` or unprotected branch
+  subjects to impersonate deployment service accounts.
+- **Medium:** Provider maps repository/ref claims but does not enforce them in
+  `attribute_condition` or service-account IAM membership.
+- **Medium:** Review lacks enough data to determine whether WIF provider claims,
+  service account bindings, or impersonation chains are safely scoped. Mark this
+  as **Not Evaluable**, not Pass.
+
+---
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -150,6 +191,13 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Supplemental Identity Findings
+
+| Check | Status | Severity | Evidence | Remediation |
+|-------|--------|----------|----------|-------------|
+| Workload Identity Federation scope | Pass/Fail/Not Evaluable | High/Medium | Provider, condition, principalSet, service account binding | Add claim restrictions, narrow principalSet membership, or document exception |
+| Service account impersonation chain | Pass/Fail/Not Evaluable | High/Medium | Federated principal, intermediate service account, final target | Remove broad token creator grants or bind to approved CI claims |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -194,6 +242,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Treating keyless WIF as automatically safe.** Removing service account keys is good, but broad WIF providers can let untrusted repositories, pull requests, or workflows impersonate production service accounts.
 
 ---
 
@@ -216,6 +265,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Google Cloud Platform Foundation Benchmark v2.0.0: https://www.cisecurity.org/benchmark/google_cloud_computing_platform
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
+- Google Cloud Workload Identity Federation: https://cloud.google.com/iam/docs/workload-identity-federation
+- Workload Identity Federation best practices: https://cloud.google.com/iam/docs/best-practices-for-using-workload-identity-federation
+- GitHub Actions OIDC hardening guidance: https://docs.github.com/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect
+- Google Cloud service account impersonation: https://cloud.google.com/iam/docs/service-account-impersonation
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
@@ -226,3 +279,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+- **1.0.1** -- Adds supplemental Workload Identity Federation evidence gates for GitHub OIDC, attribute conditions, principalSet scope, and service-account impersonation chains.

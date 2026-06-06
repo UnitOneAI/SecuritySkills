@@ -172,6 +172,80 @@ resource "google_cloudfunctions_function" {
 }
 ```
 
+### Supplemental IAM-WIF-1 -- Workload Identity Federation Providers Are Narrowly Scoped
+
+Workload Identity Federation can remove user-managed service account keys while
+still allowing broad external impersonation. Review every
+`google_iam_workload_identity_pool_provider` and service-account IAM binding
+that grants `roles/iam.workloadIdentityUser` or
+`roles/iam.serviceAccountTokenCreator`.
+
+**High-risk patterns:**
+
+```hcl
+# BAD: Provider maps claims but does not enforce them.
+resource "google_iam_workload_identity_pool_provider" "github" {
+  workload_identity_pool_id = "ci-pool"
+  oidc { issuer_uri = "https://token.actions.githubusercontent.com" }
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+  }
+  # Missing attribute_condition.
+}
+
+# BAD: Any principal in the pool can impersonate the service account.
+resource "google_service_account_iam_member" "deploy" {
+  role   = "roles/iam.workloadIdentityUser"
+  member = "principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/ci-pool/*"
+}
+```
+
+**Evidence to require:**
+
+- `issuer_uri`, `allowed_audiences`, `attribute_mapping`, and
+  `attribute_condition` for each provider.
+- For GitHub Actions OIDC, conditions for `assertion.repository`,
+  `assertion.ref`, `assertion.workflow`, `assertion.environment`, and audience
+  where those claims determine production access.
+- Exact service account IAM member strings, including whether membership uses a
+  pool wildcard, repository attribute set, branch/tag subject, or environment
+  subject.
+- Any `roles/iam.serviceAccountTokenCreator` grants that let a federated
+  principal hop through intermediate service accounts.
+- Protected branch, tag, workflow, or GitHub environment evidence when production
+  service accounts depend on those claims.
+
+**Safer example:**
+
+```hcl
+resource "google_iam_workload_identity_pool_provider" "github" {
+  workload_identity_pool_id = "ci-pool"
+  oidc {
+    issuer_uri        = "https://token.actions.githubusercontent.com"
+    allowed_audiences = ["//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/ci-pool/providers/github"]
+  }
+  attribute_mapping = {
+    "google.subject"        = "assertion.sub"
+    "attribute.repository"  = "assertion.repository"
+    "attribute.ref"         = "assertion.ref"
+    "attribute.workflow"    = "assertion.workflow"
+    "attribute.environment" = "assertion.environment"
+  }
+  attribute_condition = "assertion.repository == 'org/app' && assertion.ref == 'refs/heads/main' && assertion.environment == 'production'"
+}
+
+resource "google_service_account_iam_member" "deploy" {
+  role   = "roles/iam.workloadIdentityUser"
+  member = "principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/ci-pool/attribute.repository/org/app"
+}
+```
+
+**Not Evaluable:** Mark WIF review as Not Evaluable when provider exports,
+service account IAM policy, CI claim restrictions, or impersonation-chain data
+are missing. Do not treat "no user-managed service account keys" as proof that
+external identity federation is safe.
+
 ---
 
 ## Section 2 -- Logging and Monitoring
