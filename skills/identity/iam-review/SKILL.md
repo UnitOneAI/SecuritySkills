@@ -199,6 +199,62 @@ IAM-PRIV-08: Resource-based policies granting public or overly broad access
 
 ---
 
+### Step 3A: External Trust and Session Attribution
+
+**Objective:** Verify that external, cross-account, and federated access paths are
+bounded by enforceable trust policy conditions and attributable session evidence.
+
+**NIST SP 800-207 Reference:** Tenet 3 — Access is granted on a per-session basis;
+Tenet 6 — Authentication and authorization are dynamic and strictly enforced
+**CIS Controls v8 Reference:** Control 6.1 — Establish an Access Granting Process;
+Control 6.7 — Centralize Access Control
+
+#### Review Checklist
+
+```
+IAM-TRUST-01: External principal is broad (account root, wildcard, org-wide) without narrow principal constraints
+IAM-TRUST-02: External ID, audience, issuer, or subject constraint is documented but not enforced in policy
+IAM-TRUST-03: Role/session assumption lacks source identity, actor attribution, or equivalent session binding
+IAM-TRUST-04: Required session tags, transitive tag keys, or workload attributes are missing or optional
+IAM-TRUST-05: Maximum session duration exceeds operational need for partner, CI/CD, or break-glass access
+IAM-TRUST-06: External access finding is archived without recording the exact trusted principal and condition set
+IAM-TRUST-07: No CloudTrail / audit-log evidence showing recent assumption source, tags, and session identity
+IAM-TRUST-08: External trust review has no expiry, evidence owner, or revalidation trigger
+```
+
+**Evidence gate:** Treat external trust as acceptable only when the trust policy
+itself enforces the expected principal and conditions. Tags, spreadsheet notes,
+runbook text, or tribal knowledge are supporting context; they do not replace
+policy-level enforcement.
+
+**Platform-specific checks:**
+
+| Platform | Check | What to verify |
+|---|---|---|
+| **AWS** | IAM role trust policy | `Principal` is scoped to the exact role/provider; `sts:ExternalId`, `sts:SourceIdentity`, `aws:PrincipalOrgID`, `aws:PrincipalArn`, session tag conditions, and `sts:TagSession` allowance are enforced where applicable |
+| **AWS** | IAM Access Analyzer external access findings | Findings are reviewed with the exact trusted principal, resource, condition keys, and review expiry recorded |
+| **AWS** | CloudTrail `AssumeRole` / `AssumeRoleWithWebIdentity` | Recent sessions include expected source identity, session tags, role session name pattern, MFA context where applicable, and no unexpected principals |
+| **Azure / Entra ID** | Workload identity federation and enterprise apps | Issuer, subject, audience, app role assignment, and tenant restrictions are enforced in configuration |
+| **Azure / Entra ID** | Sign-in and audit logs | Federated sign-ins map to the expected service principal, workload, and conditional access result |
+| **GCP** | Workload Identity Federation provider | Issuer, audience, subject, attribute mapping, and attribute conditions narrow the external principal |
+| **GCP** | IAM Policy Analyzer and audit logs | External identities have the expected binding, condition, service account impersonation path, and recent usage trail |
+
+**Severity Classification:**
+
+| Finding | Severity | Rationale |
+|---|---|---|
+| Broad external principal with admin or production data access | **Critical** | A partner, CI/CD, or federated identity compromise can directly reach high-value resources |
+| Missing external ID / subject / audience enforcement | **High** | Confused-deputy or token-substitution risk in cross-account or federated access |
+| Missing source identity or session tags | **High** | Incident response cannot attribute actions to a workload, user, ticket, or vendor path |
+| Long external session duration without revalidation | **Medium** | Stolen session credentials remain useful longer than the operational task requires |
+| External trust review without expiry | **Low** | Governance gap that allows stale partner access to persist |
+
+**Output requirement:** For every external trust finding, include the trusted
+principal, enforced and missing condition keys, observed session evidence,
+maximum session duration, evidence owner, and next review date.
+
+---
+
 ### Step 4: Service Account Hygiene
 
 **Objective:** Assess service account security posture and credential management.
@@ -406,6 +462,7 @@ For each finding, produce a row with:
 ### Findings by Category
 - Authentication (Step 2): [count]
 - Least Privilege (Step 3): [count]
+- External Trust (Step 3A): [count]
 - Service Accounts (Step 4): [count]
 - Stale Accounts (Step 5): [count]
 - JIT Access (Step 6): [count]
