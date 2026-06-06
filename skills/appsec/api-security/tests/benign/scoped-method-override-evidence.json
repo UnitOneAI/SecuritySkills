@@ -1,0 +1,17 @@
+{
+  "feature": "legacy form method override",
+  "production_enabled": true,
+  "scope": {
+    "allowed_paths": ["/legacy/forms/*"],
+    "blocked_paths": ["/api/admin/*", "/api/users/*", "/api/accounts/*"],
+    "allowed_original_method": "POST",
+    "allowed_effective_methods": ["PUT", "PATCH"]
+  },
+  "controls": {
+    "authorizes_effective_method": true,
+    "logs_original_and_effective_method": true,
+    "rejects_delete_override": true,
+    "unsupported_method_status": 405
+  },
+  "not_a_finding_rationale": "Method override is scoped to legacy non-admin form routes and authorization evaluates the effective method."
+}

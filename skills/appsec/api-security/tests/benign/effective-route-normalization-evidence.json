@@ -1,0 +1,26 @@
+{
+  "route": "/api/accounts/{id}",
+  "gateway": {
+    "methods": ["GET", "PATCH"],
+    "rewrite": "none",
+    "reject_encoded_slash": true,
+    "reject_duplicate_slash": true,
+    "reject_semicolon_parameters": true
+  },
+  "application": {
+    "effective_methods": ["GET", "PATCH"],
+    "effective_path": "/api/accounts/:id",
+    "method_override": "disabled",
+    "unsupported_method_status": 405,
+    "authorization_point": "after framework route match"
+  },
+  "evidence": {
+    "gateway_path_equals_application_path": true,
+    "openapi_methods_match_code": true,
+    "controlled_negative_cases": [
+      "DELETE /api/accounts/123 returns 405",
+      "GET /api/accounts/acme%2fadmin returns 400",
+      "GET /api//accounts/123 returns 400"
+    ]
+  }
+}

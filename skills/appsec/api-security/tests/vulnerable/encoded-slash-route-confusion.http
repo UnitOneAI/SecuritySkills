@@ -1,0 +1,9 @@
+GET /api/tenants/acme%2fadmin/users HTTP/1.1
+Host: api.example.test
+Authorization: Bearer user-token
+
+HTTP/1.1 200 OK
+X-Gateway-Route: /api/tenants/{tenant}/users
+X-App-Route: /api/tenants/acme/admin/users
+
+{"risk":"gateway authorized a tenant route while the app selected an admin users handler"}

@@ -1,0 +1,18 @@
+openapi: 3.1.0
+info:
+  title: Method Drift Example
+  version: 1.0.0
+paths:
+  /api/reports/{id}:
+    get:
+      operationId: getReport
+      responses:
+        "200":
+          description: Report returned
+x-gateway-routes:
+  - path: /api/reports/{id}
+    accepted_methods: ["GET", "POST", "DELETE"]
+    forwards_to: /internal/reports/{id}
+    authorization_policy: documented-get-only
+x-risk:
+  description: Gateway accepts POST and DELETE methods that are absent from the OpenAPI operation inventory.

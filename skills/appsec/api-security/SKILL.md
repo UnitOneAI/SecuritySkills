@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,8 +38,51 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **Capture effective method and route handling** -- Document gateway rewrites, method override support, path normalization, and whether the authorization layer evaluates the same method/path that the application executes.
 
-> **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
+> **Gate:** Do not proceed until the API style, authentication model, authorization model, endpoint inventory, and effective gateway/application method-path evidence are documented. Incomplete scope leads to missed findings.
+
+---
+
+## Step 1A: Effective Method and Route Normalization Evidence
+
+Before assigning API1/API5/API8/API9 findings, determine the method and path observed at each layer: client request, CDN or gateway, reverse proxy, service mesh, framework router, authorization middleware, and handler. The review is incomplete when it records only the documented OpenAPI path but not the effective method/path after rewrites and normalization.
+
+**Discovery patterns:**
+
+```
+# Method override and compatibility middleware
+X-HTTP-Method-Override|HTTP-Method-Override|_method|methodOverride|UseHttpMethodOverride|HiddenHttpMethodFilter
+
+# Gateway, proxy, and service-mesh route transforms
+proxy_pass|rewrite|PathPrefix|StripPrefix|ReplacePath|route_rules|request_transform|uriRegexRewrite
+
+# Framework path normalization and raw target access
+AllowEncodedSlashes|decodeURIComponent|unquote|RawTarget|OriginalPath|Request.Path|PathString|UsePathBase
+```
+
+**Evidence table to build:**
+
+| Evidence area | Required evidence | OWASP API mapping | Finding if missing |
+|---|---|---|---|
+| Effective method | Whether override headers or `_method` parameters are disabled, scoped, or authorized as the final method | API5:2023 / API8:2023 | A low-privilege `POST` can become privileged `DELETE`, `PUT`, or `PATCH` after authorization |
+| Effective path | Gateway-visible path, forwarded path, framework route, and handler name for sensitive endpoints | API1:2023 / API5:2023 / API9:2023 | Policy authorizes one route while the application executes another |
+| Normalization order | Encoded slash, duplicate slash, trailing slash, semicolon parameter, case sensitivity, and percent-decoding behavior | API1:2023 / API5:2023 | Route-level authorization can be bypassed by parser disagreement |
+| Unsupported methods | Evidence that unsupported methods are rejected with `405 Method Not Allowed` at the effective routing layer | API8:2023 | Extra verbs remain reachable outside the published contract |
+| Specification drift | OpenAPI methods/paths compared with gateway and code routes after rewrites | API9:2023 | Shadow operations exist only in code or gateway config |
+
+**False positive and Not Evaluable rules:**
+
+- Do not flag an intentional rewrite when both the rewrite table and the application handler enforce the same object/function authorization policy.
+- Treat method override as acceptable only when it is disabled in production or explicitly scoped, logged, and authorized as the effective method.
+- Mark normalization behavior `Not Evaluable` when only the OpenAPI document is available and proxy/framework configuration cannot be inspected; request a route table, gateway export, or controlled request evidence.
+- Do not report duplicate or trailing slash handling as a vulnerability unless it changes authorization, handler selection, or documented inventory.
+
+**Severity guidance:**
+
+- High: method override or route rewrite reaches privileged operations without effective-method authorization, or encoded slash/semicolon handling bypasses route policy.
+- Medium: OpenAPI inventory omits accepted methods or rewritten paths, or unsupported methods do not consistently return `405 Method Not Allowed`.
+- Low/Informational: normalization behavior is documented but lacks regression tests and no authorization bypass is shown.
 
 ---
 
@@ -92,7 +135,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** [reviewer name] -- api-security skill v1.1.0
 
 ### Summary
 
@@ -129,6 +172,12 @@ The final review output must be structured as follows:
 - **Status:** Open
 
 [Repeat for each finding]
+
+### Effective Method and Route Evidence
+
+| Route / operation | Gateway method/path | Application method/path | Override/normalization behavior | Authorization point | Result |
+|---|---|---|---|---|---|
+| [route] | [pre-rewrite method/path] | [effective method/path] | [disabled/scoped/rewrite/Not Evaluable] | [gateway/app/policy] | [pass/finding] |
 ```
 
 ---
@@ -141,11 +190,11 @@ The final review output must be structured as follows:
 | API2:2023 | Broken Authentication | CWE-287, CWE-307 | Weak or missing authentication mechanisms |
 | API3:2023 | Broken Object Property Level Authorization | CWE-213, CWE-915 | Excessive data exposure and mass assignment |
 | API4:2023 | Unrestricted Resource Consumption | CWE-770, CWE-400 | Missing rate limits, pagination caps, and resource quotas |
-| API5:2023 | Broken Function Level Authorization | CWE-285 | Missing role/permission checks on operations |
+| API5:2023 | Broken Function Level Authorization | CWE-285 | Missing role/permission checks on effective operations |
 | API6:2023 | Unrestricted Access to Sensitive Business Flows | CWE-799, CWE-837 | Automated abuse of legitimate business logic |
 | API7:2023 | Server Side Request Forgery | CWE-918 | Fetching user-supplied URLs without validation |
-| API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, XXE |
-| API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, deprecated versions, missing documentation |
+| API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, method allowlists, XXE |
+| API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, rewritten routes, method drift, missing documentation |
 | API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
 
 ---
@@ -215,6 +264,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Authorizing the pre-rewrite request instead of the effective request.** Gateways, proxies, method-override middleware, and frameworks can transform the request before the handler executes. Authorization evidence must follow the final method and route, not only the original request line.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -238,4 +289,6 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
+- **OWASP API5:2023 Broken Function Level Authorization:** https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/
+- **RFC 9110 HTTP Semantics:** https://www.rfc-editor.org/rfc/rfc9110
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final

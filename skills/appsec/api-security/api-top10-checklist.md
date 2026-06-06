@@ -316,11 +316,41 @@ const resolvers = {
 };
 ```
 
+### Effective Method and Route Bypass Patterns
+
+```http
+POST /api/v1/users/123 HTTP/1.1
+X-HTTP-Method-Override: DELETE
+Authorization: Bearer regular-user-token
+```
+
+If middleware converts this request to `DELETE` after a gateway or controller has authorized it as `POST`, the review should treat the effective method as the security decision point.
+
+```nginx
+location /api/public/ {
+    auth_request /auth/public;
+    proxy_pass http://app/internal/;
+}
+```
+
+If the gateway authorizes `/api/public/*` but the application receives `/internal/*`, the review must verify application-layer authorization on the effective route.
+
+```http
+GET /api/tenants/acme%2fadmin/users HTTP/1.1
+GET /api//admin/users HTTP/1.1
+GET /api/users;role=admin/123 HTTP/1.1
+```
+
+Encoded slash, duplicate slash, semicolon parameters, case folding, and percent-decoding order can select different handlers across proxies and frameworks. Flag this when the parser disagreement changes route policy, object scope, or handler selection.
+
 ### Remediation Guidance
 
 - Implement a centralized authorization middleware or policy engine that enforces role/permission checks consistently across all endpoints.
 - Deny by default: every endpoint should require explicit permission grants. Do not rely on "security through obscurity" of admin URL paths.
 - Enforce authorization on every HTTP method independently. A user authorized to `GET` a resource is not automatically authorized to `DELETE` it.
+- Authorize the effective method and route after method override, proxy rewrite, route prefix stripping, and framework normalization have occurred.
+- Disable method override middleware in production unless it is explicitly scoped to non-sensitive legacy routes and logged.
+- Add integration tests through the same gateway/proxy path used in production for encoded slash, duplicate slash, semicolon, trailing slash, and unsupported method cases.
 - In GraphQL, use directive-based or middleware-based authorization on mutations (`@hasRole(role: ADMIN)`).
 - Regularly audit the endpoint inventory against the authorization policy matrix to detect gaps.
 
@@ -329,6 +359,9 @@ const resolvers = {
 - [ ] All administrative and privileged endpoints enforce role-based authorization.
 - [ ] Authorization middleware is centralized and applied consistently.
 - [ ] Each HTTP method on each endpoint has an independent authorization check.
+- [ ] Method override headers and `_method` parameters are disabled, or authorized as the final effective method.
+- [ ] Gateway-visible routes, forwarded routes, and application handlers enforce the same function-level policy.
+- [ ] Encoded slash, duplicate slash, semicolon, case, and percent-decoding behavior cannot bypass route policy.
 - [ ] GraphQL mutations enforce role/permission checks in resolvers or directives.
 - [ ] The authorization policy is deny-by-default; endpoints are inaccessible unless explicitly permitted.
 
@@ -459,6 +492,8 @@ Document doc = builder.parse(request.getInputStream());
   - `Cache-Control: no-store` on sensitive responses
 - Return generic error messages in production. Log detailed errors server-side with correlation IDs.
 - Disable unnecessary HTTP methods. Return `405 Method Not Allowed` for unsupported methods.
+- Verify `405 Method Not Allowed` at the effective application route, not only at the gateway, and confirm method override cannot re-enable blocked verbs.
+- Normalize or reject ambiguous paths consistently across the gateway and framework. Prefer rejecting encoded slashes, duplicate slashes, and semicolon path parameters for sensitive routes.
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
@@ -469,6 +504,8 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] Security headers are present on all API responses.
 - [ ] Error responses in production are generic; no stack traces, SQL queries, or internal paths.
 - [ ] Only required HTTP methods are enabled per endpoint.
+- [ ] Unsupported methods return `405 Method Not Allowed` after proxy rewrites and framework normalization.
+- [ ] Path normalization rules are explicit and consistent across the gateway, service mesh, and application framework.
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
@@ -485,6 +522,8 @@ Document doc = builder.parse(request.getInputStream());
 - Multiple API versions running simultaneously (`/api/v1/`, `/api/v2/`, `/api/v3/`) where older versions lack security patches.
 - Debug or test endpoints present in production (`/api/debug/`, `/api/test/`, `/api/internal/`, `/graphql/playground`).
 - Undocumented endpoints that exist in code but are absent from the OpenAPI specification.
+- Gateway rewrite targets, stripped prefixes, or internal forwarded routes that are absent from the OpenAPI specification.
+- Methods accepted by code or middleware that are not declared for the OpenAPI operation.
 - API endpoints exposed to the public internet that should be internal-only.
 - Deprecated endpoints that remain functional after the announced retirement date.
 - Different security configurations between environments (staging allows unauthenticated access, production does not, but staging is publicly accessible).
@@ -498,6 +537,8 @@ Document doc = builder.parse(request.getInputStream());
 4. Flag any endpoint marked as deprecated that is still reachable.
 5. Check for environment-specific routes (debug, test, internal) that should not exist in production.
 6. Verify that older API versions have equivalent security controls to current versions.
+7. Compare gateway and proxy rewrite tables against application handlers after prefix stripping, percent decoding, and method override handling.
+8. Verify that every accepted method in code or middleware is declared in the OpenAPI operation or deliberately documented as internal.
 ```
 
 ### Remediation Guidance
@@ -507,6 +548,8 @@ Document doc = builder.parse(request.getInputStream());
 - Remove debug, test, and playground endpoints from production builds using build-time flags or environment checks.
 - Segment internal APIs from external APIs at the network level (separate API gateways, VPC isolation).
 - Scan for shadow APIs by comparing routing tables against documentation on every deploy.
+- Export route tables from gateway, service mesh, and application framework and diff them against the OpenAPI document during release checks.
+- Document intentional rewrites with both pre-rewrite and post-rewrite paths, owner, exposure, and authorization policy.
 
 ### Review Checklist
 
@@ -515,6 +558,7 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] No debug, test, or playground endpoints are accessible in production.
 - [ ] Internal APIs are not reachable from external networks.
 - [ ] CI/CD pipelines validate that code routes match the API specification.
+- [ ] Gateway rewrites, route prefix stripping, and accepted methods match the documented inventory.
 
 ---
 
