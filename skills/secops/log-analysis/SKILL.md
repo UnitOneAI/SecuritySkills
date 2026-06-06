@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -59,10 +59,43 @@ Before beginning analysis, gather or confirm:
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
+- [ ] **Timestamp trust basis:** For each source, identify event time, ingestion/index time, parser-selected timestamp field, source timezone, clock synchronization evidence, observed skew, and confidence before cross-source correlation.
 
 ---
 
 ## 3. Process
+
+### Step 0: Timestamp Normalization and Clock-Skew Gate
+
+Before reconstructing a timeline, prove that timestamps from different sources are comparable. Do not present a definitive sequence until the analysis records the timestamp basis for each source.
+
+**Required timestamp evidence:**
+
+| Evidence Field | Required Detail | Why It Matters |
+|----------------|-----------------|----------------|
+| Event Time | Native timestamp from the original event record (`eventTime`, Windows `TimeCreated`, Sysmon `UtcTime`, syslog timestamp, application timestamp) | Establishes when the source says the activity happened |
+| Ingestion / Index Time | Collector receive time, SIEM `_indextime`, `event.ingested`, or queue receipt time | Detects late-arriving logs and ordering errors caused by buffering |
+| Parser Timestamp Field | Field the SIEM/search platform used as canonical time (`_time`, `@timestamp`, normalized timestamp, custom mapping) | Prevents parser mistakes from silently changing event order |
+| Source Time Zone | UTC offset, local timezone, host locale, or "unknown" | Required for Windows local time, Linux syslog without timezone, and SaaS/cloud sources |
+| Clock Sync / Skew Evidence | NTP/chrony/w32time status, cloud time-sync status, EDR clock telemetry, or comparison to trusted collector time | Determines whether host events can be compared to other sources |
+| Confidence Decision | `High`, `Medium`, `Low`, or `Not Evaluable` with reason | Calibrates whether the timeline can support definitive findings |
+
+**Timestamp confidence rules:**
+
+| Condition | Timeline Confidence | Required Handling |
+|-----------|---------------------|-------------------|
+| Event time, timezone/UTC offset, parser field, ingestion time, and clock-sync evidence are all documented; observed skew is within the investigation tolerance | High | Use events in the definitive timeline and cite the timestamp basis |
+| Minor ingestion delay or bounded clock skew is documented and does not change the event ordering | Medium | Use events with confidence notes and preserve ordering caveats |
+| Timezone is inferred, year is missing, parser mapping is uncertain, or host clock skew could change event order | Low | Scope findings to lower-confidence observations; do not claim exact sequencing |
+| Event time or timezone cannot be established, parser-selected time is unknown, or source clock health is unavailable for a sequence-critical host | Not Evaluable | Exclude from definitive timeline or present a separate unsequenced evidence section |
+
+**Source-specific checks:**
+
+- **Windows/Sysmon:** Confirm whether the exported field is UTC (`UtcTime`) or local time (`TimeCreated`), record host timezone, and compare to domain controller or collector receipt time.
+- **Linux syslog/auth logs:** Add year/timezone from log source metadata or collection context; if unavailable, mark sequence-sensitive findings `Low` or `Not Evaluable`.
+- **AWS CloudTrail:** Use `eventTime` for activity time, record SIEM ingestion/index delay separately, and do not assume CloudTrail events arrive in order.
+- **Splunk:** Record both `_time` and `_indextime`; investigate cases where `_time` is parser-derived from the wrong field.
+- **Elastic:** Record `@timestamp`, `event.ingested`, and source-specific event time if distinct; note that `@timestamp` semantics can vary by integration.
 
 ### Step 1: Log Source Taxonomy
 
@@ -337,7 +370,7 @@ Produce log analysis findings in this structure:
 ```markdown
 ## Security Log Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** log-analysis v1.0.0
+**Skill:** log-analysis v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-92
 **Analyst:** [Name or AI-assisted]
 
@@ -351,6 +384,16 @@ Produce log analysis findings in this structure:
 | Systems | [Hostnames, IPs, or network segments] |
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
+
+### Timestamp Normalization and Clock-Skew Evidence
+| Source | Event Time Field | Parser Time Field | Ingestion / Index Time | Source Time Zone | Clock Sync / Skew Evidence | Confidence | Handling |
+|--------|------------------|-------------------|-------------------------|------------------|----------------------------|------------|----------|
+| [Windows Security] | [TimeCreated] | [_time/@timestamp/etc.] | [_indextime/event.ingested/etc.] | [UTC/local/offset/unknown] | [NTP/w32time/collector delta] | [High/Medium/Low/Not Evaluable] | [Use / Caveat / Exclude] |
+
+### Timeline Confidence Decision
+| Decision | Basis | Impact on Findings |
+|----------|-------|--------------------|
+| [High/Medium/Low/Not Evaluable] | [Why the timestamp evidence is or is not sufficient] | [Whether findings can claim exact ordering, bounded ordering, or only unsequenced observations] |
 
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
@@ -370,9 +413,9 @@ Produce log analysis findings in this structure:
 [Interpretation of the evidence -- why is this significant or benign?]
 
 ### Timeline
-| Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
-|-----------------|--------|-------|-------------------|------------|
-| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+| Timestamp (UTC) | Source | Event | ATT&CK Technique | Timestamp Confidence | Assessment |
+|-----------------|--------|-------|-------------------|----------------------|------------|
+| [HH:MM:SS] | [Source] | [Description] | [T-ID] | [High/Medium/Low/Not Evaluable] | [Suspicious / Benign / Confirmed malicious] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
@@ -451,6 +494,10 @@ A single Event ID can have very different meanings depending on the context. Eve
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
+### Pitfall 6: Building Exact Timelines from Untrusted Time Fields
+
+Cross-source timelines are only as reliable as their timestamp basis. Windows local time, Linux syslog entries without a year/timezone, CloudTrail delivery delay, SIEM parser mistakes, and host clock skew can all invert event order. Record event time, ingestion/index time, parser-selected time, timezone, and clock-sync evidence before claiming a precise sequence. If that evidence is missing, downgrade the confidence or mark the timeline `Not Evaluable`.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -478,3 +525,6 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+12. **AWS CloudTrail Record Contents** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference-record-contents.html
+13. **Splunk timestamp recognition** -- https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/9.4/configure-timestamps/configure-timestamp-recognition
+14. **Elastic ECS event fields** -- https://www.elastic.co/guide/en/ecs/current/ecs-event.html
