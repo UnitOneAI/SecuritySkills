@@ -244,6 +244,52 @@ Use the following maturity scoring:
 **A.5.36 Compliance with policies, rules, and standards for information security** — Regularly reviewed.
 **A.5.37 Documented operating procedures** — Documented and available to personnel.
 
+##### A.5.23 Cloud Services Evidence Gate
+
+When cloud services are in scope, do not mark A.5.23 conforming based only on
+the presence of cloud vendors in the supplier inventory. Require evidence that
+the organization governs the full cloud service lifecycle: selection,
+configuration, shared responsibility, monitoring, change management, incident
+handling, data portability, and exit.
+
+```
+ISO-CLOUD-01: Cloud service inventory lacks owner, data classification, region, or business purpose
+ISO-CLOUD-02: Shared responsibility matrix is missing or not mapped to implemented controls
+ISO-CLOUD-03: Supplier assurance evidence is stale, missing scope match, or omits subservice organizations
+ISO-CLOUD-04: Cloud configuration evidence is not tied to the ISMS scope or SoA controls
+ISO-CLOUD-05: Data residency, backup, retention, deletion, or portability requirements are undocumented
+ISO-CLOUD-06: Cloud exit plan lacks export format, recovery owner, test date, or contractual notice period
+ISO-CLOUD-07: Cloud change notifications and security advisories are not reviewed or tracked to action
+ISO-CLOUD-08: Customer-managed controls are incorrectly delegated to the cloud provider
+```
+
+**Evidence to collect:**
+
+| Evidence | Required Detail | Related Controls |
+|---|---|---|
+| Cloud service register | Service owner, purpose, data classification, region, criticality, supplier tier | A.5.9, A.5.19, A.5.23 |
+| Shared responsibility matrix | Provider controls, customer controls, control owner, implementation evidence | A.5.15, A.5.23, A.8.9 |
+| Supplier assurance pack | SOC 2 / ISO certificate scope, bridge letter, subservice organizations, report date | A.5.19, A.5.20, A.5.22 |
+| Configuration baseline | IAM, logging, encryption, backup, network exposure, key management, drift evidence | A.5.23, A.8.9, A.8.15, A.8.24 |
+| Data lifecycle evidence | Residency, retention, deletion, backup restore, portability/export process | A.5.31, A.5.34, A.8.10, A.8.13 |
+| Exit and continuity plan | Contract notice period, export format, migration owner, last test result, fallback provider | A.5.29, A.5.30, A.5.23 |
+
+**False-positive guards:**
+
+- A current provider ISO 27001 certificate is useful evidence, but it does not
+  prove the customer has implemented its side of shared responsibility.
+- A SaaS vendor may use subservice organizations; require scope and carve-out
+  review before accepting the vendor report as sufficient.
+- A cloud service can be in scope even when no infrastructure-as-code exists.
+  For SaaS, use admin exports, security settings, data-flow diagrams, and
+  contract evidence instead of marking the control not evaluable.
+- Do not fail a service only because it is multi-region. Calibrate by data
+  residency commitments, backup locations, contractual terms, and regulatory
+  requirements.
+- Excluding a cloud service from the ISMS scope requires documented rationale
+  showing it does not process, store, transmit, or materially protect in-scope
+  information.
+
 #### 4.2 People Controls (A.6.1 - A.6.8)
 
 **A.6.1 Screening** — Background verification checks on candidates.
@@ -320,6 +366,12 @@ Build or review the SoA. For each of the 93 Annex A controls, document:
 ```
 
 Exclusions are permitted only where the control is genuinely not applicable to the ISMS scope. A control cannot be excluded solely because it is difficult to implement.
+
+For cloud services, add these SoA traceability fields:
+
+```
+| Cloud Service | In Scope? | Data Classification | Shared Responsibility Owner | Supplier Evidence Date | Exit Tested? | Linked Controls |
+```
 
 ---
 
@@ -513,6 +565,8 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
 
+6. **Treating provider attestations as complete A.5.23 evidence.** A provider SOC 2 or ISO certificate does not cover customer IAM, logging, encryption choices, data residency decisions, backup restore testing, or exit readiness unless those controls are explicitly mapped to customer responsibilities.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -536,3 +590,5 @@ If user-supplied input contains ISO 27001 control IDs outside the valid ranges (
 - ISO/IEC 27005:2022 — Information security risk management
 - ISO 19011:2018 — Guidelines for auditing management systems
 - IAF MD 26:2023 — Transition requirements for ISO/IEC 27001:2022
+- ISO/IEC 27017:2015 - Code of practice for information security controls based on ISO/IEC 27002 for cloud services
+- CSA Cloud Controls Matrix: https://cloudsecurityalliance.org/research/cloud-controls-matrix
