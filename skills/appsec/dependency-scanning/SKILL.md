@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -181,6 +181,42 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Java Repository Source Evidence
+
+Gradle and Maven builds can leak private coordinates or resolve internal artifacts from the wrong source when public and private repositories are mixed without filtering, mirrors, or repository-manager routing. SBOM output proves what resolved after the fact, but it does not prove which repositories were queried or whether internal groups/plugin IDs can fall through to public sources.
+
+Collect this evidence when Java builds use private groups, custom repositories, plugin repositories, parent POMs, profiles, or enterprise package proxies:
+
+- **Gradle dependencies:** `repositories {}` order, repository content filters, `mavenContent`, `exclusiveContent`, and private group/module coverage.
+- **Gradle plugins:** `pluginManagement.repositories`, plugin IDs, plugin marker artifacts, and whether internal plugins can resolve from the Gradle Plugin Portal.
+- **Maven effective graph:** `help:effective-pom`, `help:effective-settings`, active profiles, mirrors, repository order, parent POM repositories, and plugin repositories.
+- **Repository manager policy:** Artifactory/Nexus/CodeArtifact/Cloudsmith routing rules, group allowlists, proxy repository order, and cache/fallback behavior.
+- **Private coordinates:** Internal group IDs, plugin IDs, parent POMs, BOMs, and module names from manifests and lock/resolution evidence.
+- **CI evidence:** Build-agent settings, Gradle init scripts, Maven `settings.xml`, and environment-specific repository overrides.
+
+Classify Java repository source posture:
+
+| Status | Criteria | Finding Guidance |
+|---|---|---|
+| **Benign / controlled** | Internal groups/plugins are constrained by Gradle `exclusiveContent`, content filters, Maven mirrors, or repository-manager allowlists, and CI effective settings prove public fallback cannot receive private coordinates | Record evidence; do not flag dependency-confusion risk |
+| **Private coordinate leak** | Public repositories can be queried for internal group IDs, plugin IDs, parent POMs, or BOMs | High supply-chain finding |
+| **Fallback leak risk** | Private repository appears first but public fallback can satisfy or observe private coordinates when the private repo misses | Medium/High depending on coordinate sensitivity |
+| **Plugin repository leak risk** | Dependency repositories are filtered but `pluginManagement.repositories` or Maven plugin repositories are not constrained | Medium supply-chain finding |
+| **Not evaluable** | Effective Maven/Gradle/CI repository evidence is missing | Request evidence before concluding safe or unsafe |
+
+```
+Java Repository Source Evidence:
+- Build Tool:             [Gradle | Maven | Mixed]
+- Private Coordinates:    [Groups, modules, plugins, parent POMs, BOMs]
+- Dependency Repositories: [Order, URLs, filters, exclusiveContent/mirrors]
+- Plugin Repositories:    [Order, URLs, filters, plugin IDs]
+- Effective Settings:     [Gradle/Maven/CI evidence source]
+- Repository Manager:     [Routing, allowlist, fallback policy]
+- Public Fallback Path:   [Can public repositories receive private coordinates? yes/no/unknown]
+- Status:                 [Benign / controlled | Private coordinate leak | Fallback leak risk | Plugin repository leak risk | Not evaluable]
+- Remediation:            [exclusiveContent, content filters, mirrors, repository-manager allowlist, CI settings]
+```
+
 ## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
@@ -212,6 +248,13 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Java private repository/source confusion risk
+
+### Private Registry / Proxy Evidence
+
+| Ecosystem | Private Prefix / Scope | Proxy / Registry Chain | Privacy Controls | Public Fallback Risk | Status |
+|---|---|---|---|---|---|
+| Java / Gradle / Maven | [Group/plugin scope] | [Repositories/mirrors/proxy chain] | [exclusiveContent/content filters/mirrors/allowlists] | [Yes/No/Unknown] | [Controlled/Risk/Not Evaluable] |
 
 ### Recommendations
 
@@ -226,8 +269,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Private registry/proxy assessment**: For npm/pip/Java/Go ecosystems with private packages or custom repositories, capture registry/proxy routing and privacy controls. For Java, include Gradle `repositories`, `pluginManagement.repositories`, content filters or `exclusiveContent`, Maven effective POM/settings, mirrors, profiles, plugin repositories, and repository-manager routing evidence.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -251,3 +295,7 @@ This skill processes user-supplied content including package manifests, lockfile
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)
+- [Gradle Filtering Repository Content](https://docs.gradle.org/current/userguide/filtering_repository_content.html)
+- [Gradle Best Practices for Dependencies](https://docs.gradle.org/current/userguide/best_practices_dependencies.html)
+- [Maven Setting up Multiple Repositories](https://maven.apache.org/guides/mini/guide-multiple-repositories.html)
+- [Maven Introduction to Repositories](https://maven.apache.org/guides/introduction/introduction-to-repositories)
