@@ -332,19 +332,55 @@ Assess:
 
 ---
 
-### Step 4: Maturity Scoring
+### Step 4: Subcategory Maturity Scoring
 
-Score each subcategory on a 0-4 scale aligned with CSF Tiers:
+Score each subcategory on a 0-4 maturity scale. These scores are assessment aids for current and target profiles; they are not CSF Tiers and must not be averaged mechanically into an organizational Tier.
 
-| Score | Tier Alignment | Description |
+| Score | Maturity Level | Description |
 |-------|---------------|-------------|
-| 0 | Below Tier 1 | Not implemented; no awareness or capability |
-| 1 | Tier 1 — Partial | Ad-hoc; some awareness; inconsistent or reactive practices |
-| 2 | Tier 2 — Risk Informed | Documented and approved by management; not fully consistent organization-wide |
-| 3 | Tier 3 — Repeatable | Formally established, regularly updated, consistently applied, policy-driven |
-| 4 | Tier 4 — Adaptive | Continuous improvement based on lessons learned and predictive indicators; real-time adjustments |
+| 0 | Not implemented | No awareness or capability |
+| 1 | Initial | Ad-hoc; some awareness; inconsistent or reactive practices |
+| 2 | Managed locally | Documented and approved by management; not fully consistent organization-wide |
+| 3 | Repeatable | Formally established, regularly updated, consistently applied, policy-driven |
+| 4 | Adaptive practice | Continuous improvement based on lessons learned and predictive indicators; real-time adjustments |
 
-Determine the overall organizational Tier based on aggregated assessment across all functions.
+### Step 4.1: Organizational Tier Evidence Assessment
+
+Determine the organizational Tier separately from subcategory scores. Use evidence across the three NIST tier dimensions: risk management process, integrated risk management program, and external participation. Technical maturity can inform the Tier, but weak governance evidence caps the organizational Tier.
+
+| Tier | Required Organizational Evidence | Common Cap |
+|---|---|---|
+| Tier 1 -- Partial | Risk practices are ad hoc or undocumented; limited organizational awareness | Use when evidence is mostly informal even if some technical controls are strong |
+| Tier 2 -- Risk Informed | Management-approved risk practices exist but are not organization-wide or consistently integrated | Cap here if ERM integration, oversight cadence, or cross-business implementation is partial |
+| Tier 3 -- Repeatable | Organization-wide risk management is formally established, policy-driven, regularly updated, and consistently implemented | Cap below Tier 3 if risk appetite, ownership, or board/executive oversight evidence is missing |
+| Tier 4 -- Adaptive | Practices adapt based on lessons learned, predictive indicators, external intelligence, and real-time risk management | Cap below Tier 4 without evidence of adaptive feedback loops and continuous improvement |
+
+**Tier evidence gates:**
+- Risk appetite and tolerance are approved, communicated, and used in prioritization decisions.
+- Cybersecurity risk is integrated into enterprise risk management, budget planning, and executive oversight.
+- Roles, responsibilities, and authorities are documented, understood, funded, and enforced.
+- Cybersecurity performance metrics are reviewed on a defined cadence and used to adjust strategy.
+- Supplier and third-party cybersecurity risks are prioritized, monitored, and included in incident and recovery planning.
+- Lessons learned, threat intelligence, incidents, tests, and predictive indicators drive documented program changes.
+
+**Tier cap rules:**
+- Cap at Tier 1 if risk practices are primarily ad hoc, undocumented, or dependent on individual responders.
+- Cap at Tier 2 if risk management is approved by management but not consistently implemented organization-wide.
+- Cap at Tier 2 if GOVERN evidence for risk appetite, oversight, roles, or supply chain risk management is missing or materially incomplete.
+- Cap at Tier 3 if adaptive claims lack evidence of feedback loops, external participation, predictive indicators, or real-time risk adjustment.
+- Do not assign Tier 3 or Tier 4 solely from average subcategory scores.
+
+```
+Organizational Tier Evidence:
+- Current Tier:          [Tier 1 | Tier 2 | Tier 3 | Tier 4]
+- Target Tier:           [Tier 1 | Tier 2 | Tier 3 | Tier 4]
+- Risk Management Process Evidence: [Policies, risk methodology, risk register, update cadence]
+- Integrated Program Evidence:      [ERM linkage, budget linkage, ownership, oversight reporting]
+- External Participation Evidence:  [Supplier monitoring, ISAC/community sharing, third-party coordination]
+- GOVERN Blockers:       [Missing GV evidence that caps Tier]
+- Subcategory Score Context: [How scores support but do not determine Tier]
+- Executive Approval:    [Approver/date or missing]
+```
 
 ---
 
@@ -438,6 +474,14 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
   - Justification: [evidence-based rationale]
 - **Target Tier**: [Tier N — Name]
   - Justification: [business/risk rationale]
+
+### Organizational Tier Evidence
+| Dimension | Evidence | Gaps or Blockers | Tier Impact |
+|---|---|---|---|
+| Risk Management Process | [Risk methodology, register, appetite, update cadence] | [Gaps] | [Supports/caps Tier] |
+| Integrated Risk Program | [ERM, budget, roles, oversight, policy enforcement] | [Gaps] | [Supports/caps Tier] |
+| External Participation | [Supplier monitoring, third-party coordination, information sharing] | [Gaps] | [Supports/caps Tier] |
+| Adaptive Feedback | [Lessons learned, predictive indicators, strategy updates] | [Gaps] | [Supports/caps Tier] |
 
 ## Function Summary
 
