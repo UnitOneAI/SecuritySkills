@@ -86,6 +86,80 @@ ATT&CK Technique Analysis:
 - Detection Scope:    [Sub-technique specific | Parent technique broad]
 ```
 
+### Step 1b: Platform and Logsource Compatibility Gate
+
+Before authoring the Sigma rule, prove that the target platform, telemetry, and
+backend can support the detection. Do not silently reuse the default Windows
+process-creation pattern for Linux, macOS, cloud, SaaS, or network detections.
+
+If the user did not provide platform context, state the default assumption
+explicitly:
+
+> **Assumption:** Target platform is Windows enterprise with Sysmon Event ID 1
+> and Windows Security 4688 process creation logs. Linux, macOS, cloud, SaaS,
+> and network coverage are **Not Evaluable** until telemetry is confirmed.
+
+**Compatibility matrix:**
+
+| Field | Required evidence |
+|-------|-------------------|
+| Target platform | Windows, Linux, macOS, AWS, Azure, GCP, SaaS, network, or multi-platform |
+| Required telemetry | Process, command, audit API, identity, DNS, proxy, EDR, cloud audit, or other data component |
+| Actual log source | Sysmon, Windows Security, auditd, osquery, EndpointSecurity, CloudTrail, Azure Activity, GCP Audit Logs, vendor EDR |
+| Sigma logsource | `product`, `service`, and `category`; or reason Sigma is not suitable |
+| Field mapping | Source fields mapped to Sigma/backend fields, with missing or lossy mappings called out |
+| Backend support | Splunk, Microsoft Sentinel, Elastic, Chronicle, QRadar, Sigma backend, or Not Evaluable |
+| Validation method | Atomic test, replayed event fixture, sandbox API call, conversion unit test, or negative control |
+| Platform blind spots | Events unavailable, truncated, delayed, normalized, not collected, or excluded by retention |
+
+**Platform-specific examples:**
+
+```yaml
+linux_process_execution:
+  technique: T1059.004
+  telemetry: auditd execve or EDR process events
+  sigma_logsource:
+    product: linux
+    category: process_creation
+  field_mapping:
+    process_path: exe
+    command_line: cmdline
+    user: uid / auid / username
+  validation: replay known auditd execve fixture or run approved Atomic Red Team Linux test
+
+macos_applescript_execution:
+  technique: T1059.002
+  telemetry: EndpointSecurity, osquery process_events, or unified logs
+  sigma_logsource:
+    product: macos
+    category: process_creation
+  field_mapping:
+    process_path: process_path
+    parent_process: parent_process_path
+    signing_identity: code_signature
+  validation: approved osascript execution test with benign negative controls
+
+aws_cloudtrail_control_plane:
+  technique: T1078
+  telemetry: CloudTrail management events
+  sigma_logsource:
+    product: aws
+    service: cloudtrail
+  field_mapping:
+    api_action: eventName
+    actor: userIdentity.arn
+    source_ip: sourceIPAddress
+    region: awsRegion
+  validation: replayed CloudTrail event fixture or sandbox API call
+```
+
+**Scoring guardrails:**
+
+1. If the target platform is unknown, mark non-Windows coverage as **Not Evaluable** rather than implying broad coverage from the Windows default.
+2. For Linux, macOS, cloud, SaaS, or network detections, do not use Windows field names unless the selected backend explicitly normalizes to them.
+3. For multi-platform techniques, produce either separate deployable rules or a platform matrix with deployability status for each platform.
+4. Validation must match the target platform and telemetry source. A Windows Atomic Red Team test does not prove Linux, macOS, or cloud control-plane coverage.
+
 ### Step 2: Detection Logic Design
 
 Design the detection logic before writing the rule. Consider:
@@ -376,6 +450,18 @@ Produce detection engineering deliverables in this structure:
 | Tactic(s) | [Execution (TA0002)] |
 | Data Sources | [Process Creation, Command Execution] |
 
+### Platform and Logsource Compatibility
+| Field | Value |
+|-------|-------|
+| Target Platform | [Windows / Linux / macOS / AWS / Azure / GCP / SaaS / Network / Multi-platform] |
+| Required Telemetry | [Data source and component] |
+| Actual Log Source | [Sysmon / auditd / EndpointSecurity / CloudTrail / Azure Activity / GCP Audit Logs / EDR / other] |
+| Sigma Logsource | [`product`, `service`, `category`, or Not Suitable reason] |
+| Field Mapping | [Source field -> Sigma/backend field mapping] |
+| Backend Support | [Supported / Partial / Not Evaluable] |
+| Validation Method | [Atomic test / replayed fixture / sandbox API call / conversion unit test / negative control] |
+| Platform Blind Spots | [Missing, delayed, truncated, normalized, or unavailable events] |
+
 ### Sigma Rule
 [Full Sigma YAML rule]
 
@@ -446,6 +532,10 @@ Sigma is a generic and open signature format for SIEM systems. It allows writing
 | `image_load` | `windows` | DLL/image load events (Sysmon 7) |
 | `process_creation` | `linux` | Process start events (auditd, syslog) |
 | `file_event` | `linux` | File creation/modification |
+| `process_creation` | `macos` | Process start events (EndpointSecurity, osquery, EDR) |
+| `cloudtrail` | `aws` | AWS control-plane API events |
+| `activitylogs` | `azure` | Azure control-plane activity events |
+| `audit` | `gcp` | Google Cloud audit events |
 | `firewall` | (various) | Firewall allow/deny logs |
 | `proxy` | (various) | Web proxy access logs |
 | `webserver` | (various) | Web server access/error logs |
@@ -493,6 +583,16 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
+
+### Pitfall 6: Defaulting to Windows Log Sources for Non-Windows Coverage
+
+Many examples in detection engineering start with Windows process creation
+because Sysmon and Security 4688 logs are common. That default becomes harmful
+when the target is Linux, macOS, cloud control plane, SaaS, or network telemetry.
+Always verify the target platform, actual log source, field mapping, backend
+support, and validation method before claiming coverage. If those cannot be
+confirmed, mark the platform as **Not Evaluable** and document the missing
+evidence instead of producing a Windows-shaped rule.
 
 ---
 
