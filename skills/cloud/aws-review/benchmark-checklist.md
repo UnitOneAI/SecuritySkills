@@ -215,6 +215,27 @@ Also verify account-level public access block:
 aws_s3_account_public_access_block
 ```
 
+#### S3 Object Ownership and ACL-Disabled Evidence
+
+Block Public Access reduces public ACL and policy exposure, but it does not prove ACLs are disabled or that the bucket owner owns every object. For each bucket, record S3 Object Ownership evidence alongside CIS 2.1.4.
+
+| Evidence Source | What to Verify | Pass / Follow-Up |
+|---|---|---|
+| Terraform `aws_s3_bucket_ownership_controls` | `rule.object_ownership` | `BucketOwnerEnforced` is ACL-disabled evidence |
+| CloudFormation `OwnershipControls` | `ObjectOwnership` rule | `BucketOwnerEnforced` is ACL-disabled evidence |
+| AWS CLI / inventory | `get-bucket-ownership-controls` result | Existing or imported buckets have verified ownership mode |
+| Guardrail policy | IAM/SCP condition on `s3:x-amz-object-ownership` | New buckets are required to use `BucketOwnerEnforced` |
+
+Classify ownership posture:
+
+- **Pass:** `BucketOwnerEnforced` is proven for the bucket, or account/SCP guardrails plus per-bucket evidence prove ACLs are disabled.
+- **Fail:** `ObjectWriter` is used without a documented legacy exception, ACL review, and ownership remediation plan.
+- **Fail:** `BucketOwnerPreferred` is used without bucket policy or client evidence requiring `bucket-owner-full-control` on cross-account `PutObject`.
+- **Not Evaluable:** No ownership-controls evidence is available for existing or imported buckets and new-bucket defaults cannot be proven.
+- **Benign:** Historical ACL resources are present, but `BucketOwnerEnforced` is proven and ACL PUTs are expected to fail with `AccessControlListNotSupported`.
+
+Record migration exceptions for static website hosting, legacy log delivery, and third-party upload flows that still require ACLs. Include bucket policy, Public Access Block, writer inventory, owner approval, and target migration date.
+
 ### CIS 2.2.1 -- Ensure EBS Volume Encryption is Enabled in all Regions
 
 Check for default EBS encryption:
