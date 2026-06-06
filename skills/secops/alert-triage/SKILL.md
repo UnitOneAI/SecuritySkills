@@ -104,6 +104,53 @@ Connect the alert data with surrounding context to build a picture of what happe
 | Lateral Movement (TA0008) | Collection (TA0009), Exfiltration (TA0010) -- what was the objective? |
 | Command and Control (TA0011) | All tactics -- C2 implies an active intrusion; look for the full chain |
 
+### Phase 2.5: De-duplicate and Suppression Safety Check
+
+When an alert appears repetitive, noisy, or part of a burst, determine whether
+the alerts represent duplicate notifications for the same activity, a benign
+recurring pattern, or a distributed attack that should stay escalated. Do not
+recommend suppression until correlation, ownership, and blast-radius checks are
+complete.
+
+**De-duplication checks:**
+
+```
+TRIAGE-DEDUP-01: Multiple alerts share the same rule, entity, normalized event ID, and raw event reference
+TRIAGE-DEDUP-02: Alert storm spans multiple users, hosts, tenants, or regions and should not be collapsed blindly
+TRIAGE-DEDUP-03: Duplicate grouping key omits a critical field such as user, host, process, cloud account, or tenant
+TRIAGE-DEDUP-04: Prior disposition is reused without checking whether threat context, asset criticality, or rule logic changed
+```
+
+**Suppression safety checks:**
+
+```
+TRIAGE-SUP-01: Suppression request lacks owner, expiry date, scope, and rollback path
+TRIAGE-SUP-02: Proposed filter suppresses high-value assets, privileged users, or late-stage ATT&CK tactics
+TRIAGE-SUP-03: Benign True Positive rationale lacks change ticket, asset owner confirmation, or business justification
+TRIAGE-SUP-04: False Positive rationale identifies rule/data defect but no detection-engineering follow-up ticket
+TRIAGE-SUP-05: Suppression would hide correlated alerts in the same kill-chain window
+```
+
+**Batch triage evidence:**
+
+| Evidence | Required Detail | Why it matters |
+|---|---|---|
+| Grouping key | Rule, raw event ID, user, host, process, source/destination, cloud account or tenant | Prevents unrelated alerts from being merged |
+| Cardinality | Distinct users, hosts, IPs, tenants, geographies, and time buckets | Separates duplicates from attack spread |
+| Prior dispositions | Date, analyst, rationale, rule version, asset context | Avoids reusing stale conclusions |
+| Suppression proposal | Scope, owner, expiry, rollback, compensating detection, ticket ID | Keeps tuning auditable and reversible |
+| Kill-chain coverage | Related alerts before and after the proposed suppression window | Prevents hiding multi-stage activity |
+
+**Decision guidance:**
+
+| Situation | Triage action |
+|---|---|
+| Same raw event creates multiple tool notifications | De-duplicate in the case record; retain one evidence reference |
+| Same alert fires across many hosts/users in a short window | Treat as potential campaign; raise priority until benign cause is proven |
+| Recurring authorized admin activity with ticket and owner | Classify as BTP; recommend scoped, expiring suppression |
+| Parser or rule defect creates impossible entities | Classify as FP; open detection-engineering follow-up |
+| Filter would suppress privileged users or critical assets | Do not suppress without IR or detection owner approval |
+
 ### Phase 3: Classify
 
 Assign a disposition and priority based on collected and correlated data.
@@ -223,6 +270,16 @@ Produce the triage decision as a structured report:
 | **Confidence** | [High / Medium / Low] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
 
+### De-duplication and Suppression Review
+| Field | Value |
+|-------|-------|
+| Grouping Key | [rule + entities + raw event reference] |
+| Distinct Scope | [users / hosts / tenants / IPs / regions] |
+| Prior Disposition Reused? | [No / Yes with date, analyst, rule version] |
+| Suppression Recommended? | [No / Yes with owner, expiry, scope, rollback] |
+| Suppression Risk | [Would hide critical assets, privileged users, or kill-chain coverage?] |
+| Follow-up Ticket | [Detection engineering / asset owner / change ticket] |
+
 ### Evidence Summary
 1. [Key finding 1 -- what was observed]
 2. [Key finding 2 -- corroborating or contradicting evidence]
@@ -243,6 +300,9 @@ Produce the triage decision as a structured report:
 [If disposition is BTP or FP, describe the recommended rule tuning
 to prevent recurrence -- e.g., add filter for specific parent process,
 exclude known-good IP range, adjust threshold.]
+
+Include suppression owner, expiry date, rollback plan, and detection-engineering
+ticket when recommending any rule filter, threshold change, or allowlist entry.
 ```
 
 ---
@@ -318,6 +378,21 @@ Investigating an alert in isolation without checking for activity before and aft
 ### Pitfall 5: Delaying Escalation While Seeking Perfect Information
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
+
+### Pitfall 6: Treating Alert Storms as Noise Before Checking Spread
+
+A burst of similar alerts can be tool duplication, but it can also be password
+spraying, lateral movement, malware propagation, or cloud credential abuse.
+Before closing or suppressing a batch, measure distinct users, hosts, tenants,
+source IPs, geographies, and ATT&CK stages. Raise priority if the alert storm
+crosses trust boundaries or affects privileged identities.
+
+### Pitfall 7: Creating Permanent Suppressions From One Triage Decision
+
+Suppression is a detection change, not just a case note. A tuning recommendation
+must include owner, expiry, exact scope, rollback path, and a follow-up ticket.
+Avoid broad filters that hide privileged users, critical assets, or correlated
+late-stage behavior.
 
 ---
 
