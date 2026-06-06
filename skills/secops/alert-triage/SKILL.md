@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,7 @@ Before beginning triage, gather or confirm:
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
+- [ ] **Timeline reliability:** For each correlated source, capture event time, ingestion/index time, timezone, timestamp precision, known clock offset or NTP status, and whether corrected ordering was applied.
 
 If some context is unavailable, proceed with available information and note gaps as assumptions.
 
@@ -79,6 +80,7 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
+| **Timeline metadata** | Event time, ingestion/index time, source timezone, timestamp precision, clock offset/NTP status, offline upload or delivery-delay indicators | SIEM fields such as `_time`/`_indextime`, Sentinel `TimeGenerated`/`ingestion_time()`, EDR/SaaS audit metadata |
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
 
@@ -93,6 +95,22 @@ Connect the alert data with surrounding context to build a picture of what happe
 3. **Behavioral correlation:** Does this activity match known ATT&CK technique patterns? Does it match the user's or system's normal behavior baseline?
 4. **Threat intel correlation:** Do any indicators match known threat actor infrastructure, malware campaigns, or published IOCs?
 5. **Kill chain correlation:** Where does this activity fall in the attack lifecycle? Is there evidence of preceding (reconnaissance, initial access) or subsequent (persistence, lateral movement, exfiltration) stages?
+
+#### Timeline Confidence Gate
+
+Do not treat raw timestamps from SIEM, EDR, IdP, VPN, SaaS, network, and cloud audit logs as directly comparable until the timeline evidence is normalized.
+
+| Evidence Item | Required Check | Confidence Impact |
+|---------------|----------------|-------------------|
+| **Event time vs ingestion time** | Preserve both the source event timestamp and the SIEM/index ingestion timestamp. | High latency or missing ingestion time can make sequence-dependent conclusions Medium or Low confidence. |
+| **Source clock offset** | Record known NTP status or `clock_offset_seconds` for endpoints, servers, and appliances. | Unknown or material offset makes "before/after" claims Low confidence unless corroborated by another source. |
+| **Timezone and precision** | Normalize timezone and note precision differences such as seconds, milliseconds, or minute-only SaaS logs. | Coarse precision prevents exact ordering inside the precision window. |
+| **Corrected ordering** | Apply known clock corrections before deciding whether activity preceded or followed the alert. | If correction changes event order, document both raw and corrected order. |
+| **Delayed upload/delivery** | Check for offline endpoint upload, cloud regional delivery delay, SaaS export delay, or batch forwarding. | Delayed delivery means ingestion order must not be used as event order. |
+
+If timestamp reliability is missing for a timeline-dependent conclusion, mark that conclusion **Not Evaluable** or **Low confidence**. Do not raise priority solely because events appear sequential when ordering is based only on ingestion time or unknown-offset source clocks.
+
+Validate timeline-sensitive reports against `tests/timeline-confidence-fixtures.md`, which covers clock skew, ingestion latency, SaaS timestamp precision, offline endpoint upload, and unknown clock offset cases.
 
 **ATT&CK-based correlation framework:**
 
@@ -136,6 +154,7 @@ Assign a priority level based on the combination of asset criticality, threat se
 | Threat intel match | IOCs match active campaign | No TI matches, known benign scanner |
 | Kill chain stage | Late-stage (exfiltration, impact) | Early-stage (reconnaissance) |
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
+| Timeline reliability | Corrected event order with bounded skew/latency | Unknown clock offset, batch ingestion, or inconsistent event/index order |
 | Business context | During M&A, audit, or incident response | Normal operations |
 
 ### Phase 4: Escalate
@@ -168,6 +187,7 @@ Escalation Notice:
 - Affected User:      [Username, role, privilege level]
 - ATT&CK Technique:   [Technique ID and name if mapped]
 - Key Evidence:       [Bullet list of critical findings]
+- Timeline Confidence:[High / Medium / Low / Not Evaluable -- include raw vs corrected order if relevant]
 - Recommended Action: [Containment steps, investigation scope]
 - Escalated To:       [Name/role of escalation recipient]
 - Escalated By:       [Analyst name]
@@ -194,7 +214,7 @@ Produce the triage decision as a structured report:
 ```markdown
 ## Alert Triage Report
 **Date:** [YYYY-MM-DD HH:MM UTC]
-**Skill:** alert-triage v1.0.0
+**Skill:** alert-triage v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 **Analyst:** [Name or AI-assisted]
 
@@ -233,6 +253,14 @@ Produce the triage decision as a structured report:
 - **Lateral:** [Related alerts on other hosts/users]
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
+
+### Timeline Confidence
+| Source | Event Time | Ingested/Indexed At | Clock Offset / NTP | Timezone / Precision | Correction Applied | Confidence |
+|--------|------------|---------------------|--------------------|----------------------|--------------------|------------|
+| [SIEM/EDR/IdP/VPN/etc.] | [raw event time] | [ingestion/index time] | [known offset or unknown] | [UTC/ms/sec/minute] | [none or corrected time] | [High/Medium/Low/Not Evaluable] |
+
+- **Corrected event order:** [state the normalized order, or "Not Evaluable" if skew/latency evidence is missing]
+- **Ordering caveat:** [state whether priority/disposition depends on temporal ordering]
 
 ### Recommended Actions
 - [ ] [Action 1 -- e.g., isolate host, disable account, block IP]
@@ -319,6 +347,10 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Confusing Event Order with Ingestion Order
+
+Sorting only by SIEM ingestion time or trusting endpoint timestamps without clock-offset evidence can reverse the apparent attack sequence. Before using a timeline to decide whether activity is malicious, preserve event time and ingestion/index time, normalize timezones, account for source clock skew, and mark ordering-dependent conclusions Low confidence or Not Evaluable when the evidence is missing.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -344,3 +376,6 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+10. **Azure Monitor log data ingestion time** -- https://learn.microsoft.com/en-us/azure/azure-monitor/logs/data-ingestion-time
+11. **Splunk Search Reference: time modifiers** -- https://help.splunk.com/en/splunk-enterprise/spl-search-reference/9.0/time-format-variables-and-modifiers/time-modifiers
+12. **Microsoft Defender XDR DeviceEvents schema** -- https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceevents-table
