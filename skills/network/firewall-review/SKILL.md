@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -254,6 +254,55 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 
 ---
 
+#### 2.8 Management Plane Security (NIST SP 800-41, Sections 5.2 and 5.3)
+
+Firewall administration exposure can be higher impact than an individual traffic
+rule. Review the management plane separately from application traffic rules.
+
+**What to verify:**
+
+- Management service inventory covers HTTPS/API, SSH, SNMP, serial/OOB access,
+  centralized managers, cloud firewall APIs, HA sync, DNS, NTP, and log export
+  services used by the firewall itself.
+- Management services bind only to management interfaces, OOB VRFs, VPNs, or
+  approved bastion paths; public Internet or broad production LAN exposure is
+  denied unless a documented emergency pattern exists.
+- Administration uses named accounts, MFA or SSO where supported,
+  least-privilege administrator roles, and a read-only auditor role for log
+  review. Shared daily-use superuser accounts are not acceptable.
+- Protocol hardening disables Telnet, HTTP, SNMPv1/v2c, weak TLS, and unused
+  services. SNMP uses SNMPv3 when required.
+- Administrative login, configuration, rule modification, rule disablement, and
+  commit events are forwarded to SIEM or an immutable log destination.
+- Rule-change alerting, configuration backups, backup restore testing, and clock
+  synchronization evidence are present.
+- Centralized managers and cloud firewall APIs have scoped RBAC, owner-approved
+  service accounts, bounded API token lifetimes, and per-device or per-domain
+  scope.
+- Break-glass local console accounts are documented, monitored, tested, and not
+  used for routine administration.
+
+**Management plane evidence gate:**
+
+| Evidence | Pass condition |
+|----------|----------------|
+| Service inventory | Every admin, sync, telemetry, and platform service is listed with interface, source, protocol, and owner. |
+| Exposure constraint | Management services are reachable only from approved admin networks, VPNs, bastions, OOB paths, or cloud IAM/API scopes. |
+| Admin auth/RBAC | Named accounts, MFA/SSO, least privilege, and read-only auditor access are configured where supported. |
+| Protocol hardening | Telnet/HTTP/SNMPv1/v2c and unused services are disabled; SSH/TLS/SNMPv3 settings meet current policy. |
+| Audit/change alerting | Admin logins, commits, rule modifications, disables, and failed admin attempts are forwarded and alerted. |
+| Backup and time | Config backups, restore evidence, retention, and NTP/time sync evidence are current. |
+| Manager/API scope | Panorama, FMC, FortiManager, cloud APIs, or equivalent managers have bounded RBAC and token scope. |
+
+**Finding classification:** Public Internet exposure of firewall administration
+services, shared daily-use superuser access, or missing administrative audit logs
+in production is **High**. Missing MFA/SSO, weak protocols, no rule-change
+alerting, or stale backup evidence is **Medium**. A dedicated OOB management
+network with restricted sources, logging, named admin accounts, MFA, and backups
+can pass even when HTTPS or SSH is intentionally allowed on that management path.
+
+---
+
 ### Step 3: Compile Assessment Report
 
 Produce the final report using the following structure.
@@ -317,6 +366,16 @@ Produce the final report using the following structure.
 | SMTP (25)     | Yes/No    | <mail server IPs>      |
 | HTTPS (443)   | Yes/No    | <proxy or direct>      |
 
+### Management Plane Security Status
+| Area | Status | Evidence |
+|------|--------|----------|
+| Management interfaces reviewed | Pass/Fail/Not Evaluable | <interfaces, VRFs, VPNs, OOB paths, cloud API scopes> |
+| Admin auth/RBAC | Pass/Fail/Not Evaluable | <named accounts, MFA/SSO, roles, auditor role> |
+| Protocol hardening | Pass/Fail/Not Evaluable | <SSH/TLS/SNMPv3, disabled Telnet/HTTP/SNMPv1/v2c> |
+| Admin audit and change alerts | Pass/Fail/Not Evaluable | <SIEM forwarding, rule-change alerts, failed login alerts> |
+| Configuration backup status | Pass/Fail/Not Evaluable | <backup timestamp, retention, restore test evidence> |
+| Centralized manager/API scope | Pass/Fail/Not Evaluable | <manager RBAC, API token owner, expiry, device/domain scope> |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -361,6 +420,15 @@ Produce the final report using the following structure.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
+6. **Treating management traffic as ordinary application traffic.** HTTPS or SSH
+to a dedicated OOB management interface from a narrow admin subnet can be
+legitimate. Score it through management-plane evidence instead of blanket
+flagging it as broad application access.
+
+7. **Reviewing packet logs but not administrator actions.** Deny/permit logs do
+not prove administrative control. Require separate evidence for admin login,
+commit, rule modification, disablement, backup, and failed-admin events.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -386,4 +454,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.1.0** -- Added management-plane exposure, admin RBAC, administrative audit, change-alert, centralized manager/API scope, and backup evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.

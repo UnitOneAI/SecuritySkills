@@ -1,0 +1,27 @@
+# Dedicated out-of-band management path
+interface mgmt0
+  vrf OOB-MGMT
+  address 172.20.10.10/24
+  services https ssh
+  allowed-sources 172.20.30.0/24
+  deny-sources any log
+
+admin-authentication
+  sso enabled
+  mfa required
+  local-breakglass enabled monitored
+  shared-admin disabled
+
+admin-roles
+  netsec-admin change-approved
+  auditor read-only
+
+logging
+  admin-login siem enabled
+  rule-change siem enabled alert enabled
+  failed-admin-login siem enabled alert enabled
+
+backup
+  schedule daily
+  last-restore-test 2026-05-15
+  ntp synchronized

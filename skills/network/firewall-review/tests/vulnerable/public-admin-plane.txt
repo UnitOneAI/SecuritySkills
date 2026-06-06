@@ -1,0 +1,26 @@
+# Public management exposure with unattributed administration
+interface wan0
+  address 203.0.113.10/32
+  services https ssh snmp
+  allowed-sources any
+
+admin-authentication
+  local-password enabled
+  mfa disabled
+  shared-admin enabled
+  admin-user admin superuser
+
+protocols
+  http enabled
+  snmp-version v2c
+  ssh weak-ciphers allowed
+
+logging
+  admin-login siem disabled
+  rule-change siem disabled alert disabled
+  failed-admin-login alert disabled
+
+backup
+  mode manual-only
+  last-restore-test unknown
+  ntp unsynchronized
