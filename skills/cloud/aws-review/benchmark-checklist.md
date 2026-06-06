@@ -262,6 +262,71 @@ encrypted = true
 
 ---
 
+## AWS Container Registry Extension -- ECR Evidence Gates
+
+These checks supplement the CIS Foundations benchmark when Amazon ECR
+repositories or container-image deployment evidence are in scope.
+
+### ECR-1 -- Ensure production repositories use tag immutability
+
+**What to look for:**
+
+```hcl
+resource "aws_ecr_repository" "app" {
+  image_tag_mutability = "IMMUTABLE"
+}
+```
+
+Flag production repositories with `image_tag_mutability = "MUTABLE"` unless an
+exception filter, owner, expiry, and release-control rationale are documented.
+
+### ECR-2 -- Ensure repository scanning covers pushed images
+
+**What to look for:**
+
+```hcl
+resource "aws_ecr_repository" "app" {
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+```
+
+Also inspect registry-level scanning configuration:
+
+```hcl
+resource "aws_ecr_registry_scanning_configuration" "registry" {
+  scan_type = "ENHANCED"
+}
+```
+
+### ECR-3 -- Bind scan results to immutable image digests
+
+Require evidence that the image digest deployed to ECS, EKS, Lambda, or another
+runtime was scanned after build. Tags alone are not sufficient for production
+release evidence.
+
+**Grep patterns:**
+
+```
+image_digest
+imageDigest
+sha256:
+aws_ecr_image
+aws_ecr_lifecycle_policy
+image_tag_mutability
+scan_on_push
+aws_ecr_registry_scanning_configuration
+```
+
+### ECR-4 -- Review lifecycle policy retention for rollback and forensics
+
+Lifecycle policies should remove stale images without deleting the latest fixed
+digest needed for deployment rollback, incident response, or forensic
+reconstruction.
+
+---
+
 ## Section 3 -- Logging
 
 Evaluate logging configurations against Section 3 recommendations.

@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -103,6 +103,31 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 Produce the final report using the structure defined in the Output Format section.
 
+### Step 8: AWS Container Registry Evidence Gates
+
+If the environment uses Amazon ECR, evaluate repository mutability, scanning, and
+image evidence separately from the CIS Foundations score. CIS AWS Foundations
+does not fully cover ECR supply-chain controls, but these gates materially affect
+deployment integrity and vulnerability visibility.
+
+For each ECR repository, record:
+
+| Evidence field | Required review |
+|----------------|-----------------|
+| Tag mutability | `image_tag_mutability` is `IMMUTABLE`, or mutable tags are justified for a tightly scoped non-production workflow. |
+| Exclusion filters | Any `image_tag_mutability_exclusion_filter` or equivalent exception is documented with owner, scope, and expiry. |
+| Scan on push | Repository-level `scan_on_push` or registry-level scanning rules cover the repository. |
+| Enhanced scanning | Amazon Inspector enhanced ECR scanning is enabled for production repositories, with repository filters reviewed. |
+| Scan freshness | Last image scan completed after the image digest was pushed or rebuilt. |
+| Image digest evidence | Deployments pin immutable image digests, or release evidence binds tags to digests before promotion. |
+| Lifecycle policy | Lifecycle policy retains required forensic rollback images and does not delete the latest fixed digest before deployment. |
+
+**Finding classification:** Mutable production image tags without digest-pinned
+deployment evidence are **High**. No ECR scanning on production repositories is
+**High**. Basic scan-on-push without enhanced scanning is **Medium** for
+production unless risk acceptance documents another scanner. Missing digest or
+scan-freshness evidence is **Medium**.
+
 ---
 
 ## Findings Classification
@@ -145,6 +170,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 3 | Logging | X/11 | Y | Z | nn% |
 | 4 | Monitoring | X/16 | Y | Z | nn% |
 | 5 | Networking | X/6 | Y | Z | nn% |
+
+### ECR Repository Evidence
+
+| Repository | Tag Mutability | Scan Coverage | Enhanced Scanning | Latest Digest Evidence | Scan Freshness | Lifecycle / Retention | Finding |
+|------------|----------------|---------------|-------------------|------------------------|----------------|-----------------------|---------|
+| [repo] | [Immutable/Mutable/Exception] | [On push/Registry rule/External/None] | [Enabled/Disabled/N/A] | [Digest or release evidence] | [Fresh/Stale/Unknown] | [Policy summary] | [Pass/Finding ID] |
 
 ### Detailed Findings
 
@@ -201,6 +232,15 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
 
+7. **Assuming ECR tags are immutable by convention.** Docker tags are labels, not
+content identities. Without ECR tag immutability or digest-pinned deployments, a
+previously approved `latest` or release tag can be overwritten after scanning.
+
+8. **Treating scan-on-push as complete vulnerability coverage.** Basic ECR
+scan-on-push can miss repository-wide coverage, stale images, or findings from
+enhanced Inspector scanning. Record whether the scan result is tied to the
+deployed image digest and whether the scan completed after the digest was built.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -225,10 +265,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- Amazon ECR Image Tag Mutability: https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-tag-mutability.html
+- Amazon ECR Image Scanning: https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html
+- Amazon Inspector ECR Scanning: https://docs.aws.amazon.com/inspector/latest/user/scanning-ecr.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added ECR tag immutability, repository scanning, enhanced Inspector scanning, image digest, scan freshness, and lifecycle retention evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
