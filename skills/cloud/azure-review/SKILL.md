@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -95,6 +95,32 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 Produce the final report using the structure defined in the Output Format section.
 
+### Step 12: Azure Container Registry Evidence Gates
+
+If Azure Container Registry (ACR) resources are present, evaluate registry
+authentication, network exposure, private endpoint reachability, scanning, and
+token scope as supplemental controls outside the CIS score.
+
+For each registry, record:
+
+| Evidence field | Required review |
+|----------------|-----------------|
+| Admin account | `admin_enabled = false`, or documented exception with owner, expiry, and migration plan. |
+| Public network access | `public_network_access_enabled = false` with Private Link, or public endpoint with default-deny firewall and explicit allowed IP ranges. |
+| Trusted services bypass | `network_rule_bypass_option` / trusted services access is documented for Defender, build, or import workflows. |
+| Private endpoint evidence | Private endpoint, subresource `registry`, private DNS zone/link, and build-agent or AKS reachability evidence. |
+| Identity and RBAC scope | Managed identity, service principal, or workload identity has only required `AcrPull`/`AcrPush` scope at the registry or repository boundary. |
+| Repository-scoped tokens | Scope maps list allowed actions, owner, rotation, and expiry for non-Entra clients. |
+| Defender image scanning | Defender for Containers or equivalent scanner covers the registry after network restrictions are applied. |
+| Retention and controls | Retention, quarantine, soft delete, export policy, and content trust are calibrated to workload sensitivity. |
+
+**Finding classification:** Enabled production ACR admin account is **High**.
+Public network access without firewall default-deny or private endpoint evidence
+is **High**. Broad `AcrPush`/`AcrDelete` at subscription or resource-group scope
+is **High**. Missing Defender image scanning evidence for production registries
+is **Medium**. Missing private DNS or build-agent reachability evidence for a
+private registry is **Medium**.
+
 ---
 
 ## Findings Classification
@@ -141,6 +167,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 7 | Virtual Machines | X | Y | Z | nn% |
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
+
+### Azure Container Registry Evidence
+
+| Registry | Admin Account | Network Access | Private Endpoint / DNS | Identity / RBAC | Token Scope | Scanning Coverage | Retention / Export Controls | Finding |
+|----------|---------------|----------------|------------------------|-----------------|-------------|-------------------|-----------------------------|---------|
+| [registry] | [Disabled/Enabled/Exception] | [Private/Public restricted/Public all] | [Evidence] | [AcrPull/AcrPush scope] | [Scope map/None] | [Defender/External/None] | [Policy summary] | [Pass/Finding ID] |
 
 ### Detailed Findings
 
@@ -201,6 +233,16 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
+7. **Treating ACR admin credentials as ordinary app secrets.** The ACR admin
+account is a shared registry credential. Production registries should use Entra
+identities, managed identities, service principals, workload identity, or
+repository-scoped tokens with narrow scope and rotation evidence.
+
+8. **Assuming private endpoint presence proves registry privacy.** A private
+endpoint must be paired with disabled or restricted public network access,
+private DNS, and build-agent/AKS reachability evidence. Otherwise teams may
+break scanning or still leave public pull paths available.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -225,10 +267,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
+- Azure Container Registry Authentication: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-authentication
+- Azure Container Registry Private Link: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-private-endpoints
+- Azure Container Registry Public Network Rules: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-access-selected-networks
+- Azure Container Registry Token Permissions: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-token-based-repository-permissions
+- Defender Image Scanning for ACR: https://learn.microsoft.com/en-us/azure/container-registry/scan-images-defender
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added Azure Container Registry admin account, private network, private endpoint/DNS, RBAC, repository-scoped token, Defender scanning, and retention evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.

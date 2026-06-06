@@ -266,6 +266,68 @@ resource "azurerm_storage_account" {
 }
 ```
 
+---
+
+## Azure Container Registry Supplemental Checklist
+
+These controls supplement CIS Azure when Azure Container Registry resources are
+in scope.
+
+### ACR-REG-1 -- Disable the registry admin account
+
+**Terraform pattern:**
+
+```hcl
+resource "azurerm_container_registry" "prod" {
+  admin_enabled = false
+}
+```
+
+Flag `admin_enabled = true` for production unless there is a documented
+exception with owner, expiry, and migration to Entra identity or scoped tokens.
+
+### ACR-REG-2 -- Restrict public network access or require default-deny rules
+
+**Terraform patterns:**
+
+```hcl
+resource "azurerm_container_registry" "prod" {
+  sku                           = "Premium"
+  public_network_access_enabled = false
+  network_rule_bypass_option    = "AzureServices"
+}
+```
+
+For public endpoints, require default-deny network rules and exact allowed IP
+ranges. Document trusted-services bypass when required for Defender or build
+workflows.
+
+### ACR-REG-3 -- Verify Private Link, DNS, and build-agent reachability
+
+```hcl
+resource "azurerm_private_endpoint" "acr" {
+  private_service_connection {
+    private_connection_resource_id = azurerm_container_registry.prod.id
+    subresource_names              = ["registry"]
+  }
+}
+```
+
+Require private DNS zone/link evidence and AKS, build-agent, or deployment
+runner reachability tests for private registries.
+
+### ACR-REG-4 -- Scope registry identities and repository tokens
+
+Review `AcrPull`, `AcrPush`, `AcrDelete`, scope maps, and tokens. Broad write or
+delete rights at subscription/resource-group scope should be treated as high
+risk for production registries.
+
+### ACR-REG-5 -- Preserve Defender image scanning coverage
+
+Network-restricted registries still need Defender for Containers or equivalent
+image scanning evidence. Record scan source, last successful scan time, and
+whether trusted-services access is needed after public access is disabled.
+
 ### CIS 3.12 -- Ensure Storage for Critical Data are Encrypted with Customer Managed Keys
 
 Check for CMK encryption on storage accounts containing sensitive data:
