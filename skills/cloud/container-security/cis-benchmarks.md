@@ -280,6 +280,79 @@ metadata:
 
 Or check for OPA/Gatekeeper or Kyverno policies.
 
+#### CIS 5.2 RuntimeClass / sandboxed runtime evidence gate
+
+For high-risk workloads, Restricted Pod Security Standards are necessary but may not be sufficient isolation. Identify workloads that execute untrusted user code, CI/build jobs, notebook kernels, browser automation, plugins, tenant-submitted jobs, or other multi-tenant execution, then verify whether sandboxed runtime evidence exists.
+
+**Good: workload references a verified sandboxed RuntimeClass**
+
+```yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: user-submitted-code
+  namespace: isolated-builds
+spec:
+  template:
+    spec:
+      runtimeClassName: gvisor
+      automountServiceAccountToken: false
+      containers:
+        - name: executor
+          image: ghcr.io/example/code-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+      restartPolicy: Never
+```
+
+**Fail: high-risk workload has no sandboxed runtime evidence**
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: user-submitted-code
+spec:
+  template:
+    spec:
+      containers:
+        - name: executor
+          image: ghcr.io/example/code-runner:1.0
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+      restartPolicy: Never
+```
+
+**Not Evaluable: `runtimeClassName` is referenced but handler/admission evidence is missing**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandboxed-worker
+spec:
+  template:
+    spec:
+      runtimeClassName: kata
+      containers:
+        - name: worker
+          image: ghcr.io/example/worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+```
+
+Require evidence for the matching `RuntimeClass` object, runtime handler, node/runtime support, and admission enforcement for the target namespace. If only rendered workload manifests are available, report the control as Not Evaluable instead of assuming the handler exists. Sandboxed runtimes such as gVisor, Kata Containers, or managed-provider equivalents are compensating context for high-risk workloads; they do not waive privileged mode, host namespaces, broad capabilities, or unsafe hostPath findings.
+
+**Grep patterns:** `runtimeClassName:`, `kind: RuntimeClass`, `handler:`, `ClusterPolicy`, `ConstraintTemplate`
+
 #### CIS 5.2.2 -- Minimize the admission of privileged containers
 
 **Critical check:**
@@ -649,6 +722,8 @@ securityContext:
 ## Comprehensive Security Context Evaluation
 
 For each workload (Deployment, StatefulSet, DaemonSet, Job, CronJob), evaluate the complete security context against the Restricted Pod Security Standard.
+
+For high-risk workloads, also record `runtimeClassName`, matching RuntimeClass handler evidence, node/runtime support, and admission enforcement. A workload that executes untrusted code with Restricted-compliant pod settings but no sandboxed runtime evidence should be flagged as a defense-in-depth gap, not as a Pod Security violation. A workload with `runtimeClassName` but no RuntimeClass object or admission result should be marked Not Evaluable.
 
 **Restricted PSS Requirements Checklist:**
 

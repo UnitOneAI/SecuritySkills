@@ -5,15 +5,16 @@ description: >
   Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190.
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
-  hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
+  hardening, RBAC, Pod Security Standards, sandboxed runtime evidence, network
+  policies, and secrets management. Produces a prioritized findings report with
+  remediation guidance.
 tags: [cloud, containers, kubernetes, docker]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -61,6 +62,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
+- RuntimeClass objects, runtime handler inventory, and admission policies for sandboxed runtime enforcement when available
 - Container registry configurations (if available)
 
 ---
@@ -101,9 +103,12 @@ Use Glob to locate all relevant configuration files.
 **/*-rbac.yaml
 **/*-psp.yaml
 **/*-podsecuritypolicy.yaml
+**/*runtimeclass*.yaml
+**/*kyverno*.yaml
+**/*gatekeeper*.yaml
 ```
 
-Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, and supporting configs. Record all discovered files.
+Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kustomize overlays, RuntimeClass/admission policy evidence, and supporting configs. Record all discovered files.
 
 ---
 
@@ -112,6 +117,22 @@ Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kusto
 Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
+
+---
+
+### Step 6A: Sandboxed Runtime and RuntimeClass Evidence
+
+For workloads that execute untrusted user code, CI/build jobs, notebook kernels, browser automation, plugins, tenant-submitted jobs, or other high-risk multi-tenant execution, record whether a sandboxed runtime is required and whether it is actually enforced.
+
+Do not treat `runtimeClassName` as a blanket pass. Require evidence for:
+
+- The workload's `spec.runtimeClassName` or an equivalent provider-specific sandbox setting.
+- A matching `RuntimeClass` object and handler, such as gVisor, Kata Containers, or a documented managed-provider equivalent.
+- Node/runtime support or cluster evidence showing the handler is installed and schedulable.
+- Admission evidence, such as Pod Security Admission, Kyverno, Gatekeeper, or provider policy, showing high-risk namespaces cannot silently fall back to the default runtime.
+- Exception records for privileged system workloads that cannot use a sandboxed runtime.
+
+Mark the sandboxed runtime control **Not Evaluable** when only workload templates are available and the RuntimeClass object, node/runtime support, or admission result is missing. A sandboxed runtime is compensating context for high-risk workloads; it does not waive unsafe pod settings such as privileged mode, host namespaces, broad capabilities, or writable hostPath mounts.
 
 ---
 
@@ -144,6 +165,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Frameworks: CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, NIST SP 800-190
 - Files reviewed: <N Dockerfiles, N K8s manifests, N Helm charts>
+- RuntimeClass evidence available: <yes / no / partial / not applicable>
 
 ### Executive Summary
 - Total checks evaluated: <N>
@@ -151,6 +173,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Failed: <N>
 - Critical/High findings requiring immediate attention: <N>
 - Pod Security Standard compliance: Privileged / Baseline / Restricted
+- High-risk workloads without verified sandboxed runtime evidence: <N>
 
 ### Findings by Domain
 
@@ -162,6 +185,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
+| Sandboxed Runtime Evidence | NIST 800-190 / Kubernetes RuntimeClass | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
 
 ### Detailed Findings
@@ -174,16 +198,19 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers>
 - **Resource:** <Deployment/StatefulSet name>
 - **Container:** <container name>
+- **Workload risk profile:** <standard app / untrusted-code executor / CI runner / notebook / plugin / multi-tenant job / system component>
+- **RuntimeClass evidence:** <runtimeClassName, handler, node/runtime support, admission enforcement, or Not Evaluable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration>
 - **Remediation:** <fix with code example>
 
 ### Pod Security Standards Compliance Matrix
 
-| Workload | Namespace | PSS Level | Violations |
-|----------|-----------|-----------|------------|
-| deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
-| deploy/worker | production | Privileged | privileged: true |
+| Workload | Namespace | PSS Level | Workload Risk | RuntimeClass / Handler Evidence | Violations |
+|----------|-----------|-----------|---------------|---------------------------------|------------|
+| deploy/app | production | Baseline (not Restricted) | standard app | not required | runAsRoot, no seccomp |
+| job/user-code | isolated-builds | Restricted | untrusted-code executor | gvisor / RuntimeClass verified | none |
+| deploy/worker | production | Privileged | system component | exception required | privileged: true |
 
 ### Prioritized Remediation Plan
 
@@ -195,6 +222,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Dockerfiles reviewed: <N>
 - Kubernetes workloads reviewed: <N>
 - Overall Pod Security Standard level: <Privileged / Baseline / Restricted>
+- RuntimeClass / sandboxed runtime gaps: <N>
 - Critical findings: <N>
 - High findings: <N>
 - Medium findings: <N>
@@ -232,6 +260,15 @@ Produce the final report using the structure defined in the Output Format sectio
 | Container Risks | Runtime privilege escalation, unbounded resources, writable filesystems | Non-root, capabilities, resource limits, read-only FS |
 | Host OS Risks | Shared kernel, large attack surface, unpatched hosts | Minimal host OS, regular patching, immutable infrastructure |
 
+### Kubernetes RuntimeClass Evidence Quick Reference
+
+| Evidence | Pass condition | Not Evaluable condition | Fail condition |
+|----------|----------------|-------------------------|----------------|
+| Workload `runtimeClassName` | High-risk workload references an approved sandboxed runtime class | Workload template is available but environment-specific values are not rendered | High-risk workload runs on default runtime with no documented exception |
+| RuntimeClass object | Named RuntimeClass exists and maps to an expected handler | Cluster RuntimeClass inventory is not provided | Manifest references a runtime class that cannot be verified |
+| Node/runtime support | Handler is installed, schedulable, and supported for target nodes | No node/runtime inventory or deployment result is available | RuntimeClass exists but pods fail open or fall back to default runtime |
+| Admission enforcement | Kyverno, Gatekeeper, PSA-equivalent, or provider policy enforces sandboxed runtime for selected high-risk namespaces | Policy mode or target namespace is unknown | Policy is audit-only for high-risk workloads or not scoped to the namespace |
+
 ### Pod Security Standards Quick Reference
 
 | Control | Baseline | Restricted |
@@ -257,6 +294,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **RuntimeClass names are not proof by themselves.** A workload can set `runtimeClassName: kata` or `runtimeClassName: gvisor` while the cluster lacks the RuntimeClass object, handler, node support, or admission policy needed to make the setting enforceable.
+9. **Sandboxed runtime is compensating context, not a waiver.** gVisor, Kata, or provider sandboxes do not make privileged containers, host namespaces, unsafe hostPath mounts, or broad capabilities acceptable for application workloads.
 
 ---
 
@@ -283,8 +322,11 @@ Produce the final report using the structure defined in the Output Format sectio
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
+- Kubernetes RuntimeClass: https://kubernetes.io/docs/concepts/containers/runtime-class/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- gVisor: https://gvisor.dev/docs/
+- Kata Containers: https://katacontainers.io/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
@@ -293,4 +335,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Adds RuntimeClass and sandboxed runtime evidence gates for high-risk workloads, including handler/admission proof, Not Evaluable handling, and report fields.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
