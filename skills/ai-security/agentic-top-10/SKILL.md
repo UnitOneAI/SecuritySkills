@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -211,6 +211,8 @@ When reviewing AG04, do not give a pass merely because a vector store, delete en
 | Integrity and tamper evidence | Append-only log, hash chain, Merkle proof, immutable event stream, or equivalent audit trail for memory writes and updates | Memory can be edited or replaced without a detectable audit event |
 | Poisoning detection | Review cadence, anomaly signals, reported prompt-injection markers, feedback loop checks, and owner disposition for suspicious memories | Poisoning is only addressed by manual review with no trigger, owner, or evidence trail |
 | Quarantine and removal | Quarantine state, tombstone/delete record, re-embedding plan, downstream cache invalidation, replay audit, and residual risk owner | Delete endpoint removes one vector row but leaves summaries, embeddings, caches, or replicated indexes |
+
+Implementation evidence should show that memory provenance follows the full chain from source to stored record, such as `agent -> tool(web_search) -> raw_response -> memory_entry`, rather than only recording the agent that performed the write. Retrieval evidence should prove that trust tier is enforced before semantic ranking can place memory into prompt context; a defensible pattern is `filter trust_tier >= context.required_tier`, then rank by similarity, recency, and trust score. Quarantine evidence should show that suspicious memory is excluded from retrieval immediately, preserves an audit trail, and invalidates session, embedding, prompt, and replicated-index caches instead of waiting for a periodic cleanup job.
 
 Benign user-authored personal memory can be acceptable when it is isolated per user, labeled as user-sourced, excluded from system/developer trust, and removable with evidence. It should not be credited as an AG04 mitigation if it can be promoted into higher-trust context without approval.
 
@@ -459,6 +461,8 @@ For every persistent memory store discovered in Step 1, record a memory evidence
 | Store | Write sources | Trust labels | Integrity proof | Retrieval filters | Quarantine/removal proof | Residual cache risk |
 |---|---|---|---|---|---|---|
 | [pgvector / Redis / conversation DB / scratchpad] | [user docs, tool output, agent notes, system seed] | [user/tool/agent/system, tenant, approval, TTL] | [hash chain, immutable log, checksum, audit event] | [tenant, agent, trust tier, purpose, top-k constraints] | [tombstone, quarantine, cache invalidation, replay audit] | [none / tracked owner / unresolved] |
+
+For tool-derived memories, include the provenance chain, not just the final writer. Example: `agent -> tool(api_response) -> raw payload -> sanitizer -> memory_entry`. For retrieval filters, verify trust-tier filtering happens before vector similarity ranking and cannot be bypassed by a highly similar but low-trust memory. For quarantine/removal proof, require evidence that suspect memory is excluded from retrieval immediately and that dependent summaries, embeddings, prompt caches, session context, and replica indexes are invalidated or explicitly tracked as residual risk.
 
 Rate AG04 as at least **MEDIUM** when persistent memory exists but any of write authorization, provenance/trust labels, or retrieval trust boundaries is missing. Rate it **HIGH** when untrusted content can be saved and later retrieved into privileged prompts across sessions. Rate it **CRITICAL** when poisoned memory can trigger privileged tool calls, data exfiltration, or autonomous actions without human approval.
 
