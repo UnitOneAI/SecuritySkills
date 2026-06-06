@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -187,7 +187,25 @@ ZT-DEV-07: No automated remediation for non-compliant devices
 ZT-DEV-08: IoT/OT devices not inventoried or segmented
 ZT-DEV-09: Device state changes do not trigger access re-evaluation
 ZT-DEV-10: Endpoint telemetry not fed into policy engine for risk scoring
+ZT-DEV-11: Device posture excludes non-human endpoints, VDI sessions, browser-isolated workspaces, or managed-browser clients
+ZT-DEV-12: Compliance grace periods permit continued access without bounded expiry, step-up, or quarantine
+ZT-DEV-13: Device enforcement differs by access path (VPN, ZTNA, SaaS, API, admin portal) without documented exceptions
+ZT-DEV-14: Session revocation is not triggered when EDR, MDM, certificate, or risk-state signals change
 ```
+
+#### Device Enforcement Depth Assessment
+
+For each critical access path, capture the enforcement mechanics instead of recording only whether "device compliance" exists.
+
+| Field | Evidence Required |
+|---|---|
+| **Access path** | VPN, ZTNA, SaaS, VDI, managed browser, API, privileged console, or workload-to-workload path |
+| **Device population** | Managed endpoint, BYOD, contractor device, VDI, browser-isolated workspace, non-human device, IoT/OT, or service host |
+| **Compliance inputs** | MDM posture, EDR health, certificate/attestation, OS patch level, disk encryption, jailbreak/root status, risk score |
+| **Grace period** | Duration, eligible populations, allowed resources, step-up requirements, and hard expiry |
+| **Enforcement action** | Allow, limited access, read-only access, quarantine, remediation portal, deny, or break-glass |
+| **Session revocation trigger** | Device drift, EDR isolation, certificate revocation, risk score increase, user disablement, or policy change |
+| **Remediation evidence** | Automated ticket, user notification, remediation SLA, retest timestamp, and closure approval |
 
 ---
 
@@ -343,6 +361,51 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ---
 
+### Step 7: Cross-Pillar Dependency and Maturity Floor
+
+**Objective:** Prevent inflated maturity ratings when one weak pillar creates an attack path through otherwise mature controls.
+
+#### Weakest-Pillar Floor Rule
+
+Assign each pillar a numeric maturity score: Traditional = 1, Initial = 2, Advanced = 3, Optimal = 4. The overall zero trust maturity score MUST NOT exceed the lowest pillar score by more than one level unless the assessment documents compensating controls that directly close the dependency gap.
+
+| Calculation | Rule |
+|---|---|
+| **Lowest pillar score** | Minimum score across Identity, Devices, Networks, Applications & Workloads, and Data |
+| **Raw overall score** | Average or weighted score before applying the floor |
+| **Floor-capped overall score** | `min(raw overall score, lowest pillar score + 1)` |
+| **Exception evidence** | Named compensating controls, monitored coverage, time-bound risk acceptance, and owner approval |
+
+#### Cross-Pillar Dependency Matrix
+
+For each high-value application or sensitive data flow, identify attack paths created by maturity gaps between pillars.
+
+| Dependency Pattern | Example Risk |
+|---|---|
+| Strong Identity + weak Devices | Stolen session token from unmanaged endpoint bypasses MFA strength |
+| Strong Devices + weak Networks | Compliant endpoint can still laterally move across flat network segments |
+| Strong Networks + weak Applications | Segmented app still trusts network location instead of per-request authorization |
+| Strong Applications + weak Data | ZTNA protects access path but data can be copied to unmanaged repositories |
+| Strong Data + weak Visibility | Classification exists but exfiltration signals do not feed detection or response |
+
+Record: source pillar, dependent pillar, enabled attack path, likely impact, current detection, required control, and maturity score adjustment.
+
+### Step 8: Legacy System Zero Trust Readiness
+
+**Objective:** Separate "legacy exception" from a managed zero trust migration plan.
+
+| Readiness Area | Evidence Required |
+|---|---|
+| **Modern authentication compatibility** | SAML/OIDC support, header-based auth, Kerberos constraints, service account dependencies, MFA/step-up path |
+| **Segmentation pattern** | Enclave gateway, identity-aware proxy, bastion, app proxy, service mesh, firewall rule set, or compensating isolation |
+| **Telemetry coverage** | App logs, gateway logs, admin actions, data access logs, endpoint/workload telemetry, SIEM correlation |
+| **Authorization model** | Role mapping, privileged access flow, least-privilege feasibility, break-glass controls |
+| **Migration timeline** | Owner, target pattern, interim controls, retirement or modernization date, budget dependency, risk acceptance expiry |
+
+Legacy systems without a named owner, segmentation pattern, monitoring path, and dated migration or retirement plan should cap the affected pillar at Initial maturity.
+
+---
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
@@ -366,6 +429,30 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 | Applications & Workloads | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
 | Data | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
 
+### Maturity Floor Calculation
+
+| Lowest Pillar | Raw Overall Maturity | Floor-Capped Overall Maturity | Reason |
+|---|---|---|---|
+| [pillar + score] | [score/stage] | [score/stage] | [dependency gap or exception evidence] |
+
+### Cross-Pillar Dependency Risk Matrix
+
+| Attack Path | Strong Pillar | Weak Pillar | Exploit Path | Risk | Required Fix |
+|---|---|---|---|---|---|
+| [path] | [pillar] | [pillar] | [how the gap is exploited] | [severity] | [control/evidence] |
+
+### Device Enforcement Depth
+
+| Access Path | Device Population | Grace Period | Enforcement Action | Session Revocation Trigger | Remediation Evidence |
+|---|---|---|---|---|---|
+| [path] | [population] | [duration/scope] | [allow/limit/quarantine/deny] | [trigger] | [ticket/SLA/retest] |
+
+### Legacy Zero Trust Readiness
+
+| System | Modern Auth Path | Segmentation Pattern | Telemetry Coverage | Migration / Retirement Date | Risk Owner |
+|---|---|---|---|---|---|
+| [system] | [SAML/OIDC/proxy/none] | [pattern] | [coverage] | [date] | [owner] |
+
 ### Summary Report Structure
 
 ```
@@ -386,10 +473,16 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 ### CISA ZTMM v2 Maturity Scorecard
 [Pillar-by-pillar table — see above]
 
+### Maturity Floor and Cross-Pillar Dependencies
+[Weakest-pillar floor calculation and cross-pillar attack-path matrix]
+
 ### Cross-Cutting Capabilities
 - Visibility & Analytics: [maturity]
 - Automation & Orchestration: [maturity]
 - Governance: [maturity]
+
+### Device Enforcement and Legacy Readiness
+[Device enforcement depth table and legacy system migration/readiness table]
 
 ### Findings by Severity
 - Critical: [count]
@@ -442,6 +535,8 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Averaging away a weak pillar** — a strong identity program does not offset unmanaged devices, flat networks, or unprotected data. Apply the weakest-pillar floor before executive reporting.
+9. **Counting device compliance as one control** — compliance must be tested by access path, device population, grace period, and revocation trigger.
 
 ---
 
@@ -487,4 +582,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-07 | Added weakest-pillar maturity floor, cross-pillar dependency scoring, device enforcement depth, and legacy readiness gates |
 | 1.0.0 | 2025-03-06 | Initial release |
