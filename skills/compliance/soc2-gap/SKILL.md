@@ -12,7 +12,7 @@ phase: [assess, operate]
 frameworks: [AICPA-TSC, NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -111,6 +111,39 @@ System Description Boundary:
 - Procedures: ___
 - Data: ___
 ```
+
+#### 1.4 Subservice Organization and CUEC Scope Gate
+
+Vendor SOC 2 report collection is not enough to prove SOC 2 readiness. For each critical provider, determine whether the provider is a vendor, carved-out subservice organization, or included subservice organization, then map the relied-upon controls and complementary controls back to internal owners and evidence.
+
+```
+SOC2-SUBSERVICE-01: Critical provider supports in-scope system objectives but is not classified as vendor, carved-out subservice organization, or included subservice organization
+SOC2-SUBSERVICE-02: Subservice reporting method is missing, unsupported by the system description, or inconsistent with auditor expectations
+SOC2-SUBSERVICE-03: Vendor SOC 2 report is collected but report period does not cover the audit period and bridge-letter/current assurance evidence is missing
+SOC2-SUBSERVICE-04: CUECs or complementary subservice organization controls are not extracted from the vendor report
+SOC2-SUBSERVICE-05: CUEC/CSOC is not mapped to an internal control owner, frequency, evidence artifact, and operating-effectiveness status
+SOC2-SUBSERVICE-06: Vendor report exceptions, opinion type, relevant TSC criteria, or carved-out nested subservice providers are not evaluated
+SOC2-SUBSERVICE-07: NDA-limited or unavailable SOC reports are accepted without documented alternative assurance, reviewer, review date, exceptions, and residual risk
+```
+
+**Subservice Organization Scope Matrix:**
+
+| Provider | System Dependency | Data / Function Touched | Role | Reporting Method | Report Period / Bridge | CUECs / CSOCs Extracted | Internal Control Mapping | Decision |
+|---|---|---|---|---|---|---|---|---|
+| [AWS/Okta/Stripe/etc.] | [hosting/IAM/payment/etc.] | [data/function] | Vendor / Carved-out / Included | [SOC report method] | [period and bridge evidence] | [Yes/No] | [owner/control/evidence] | Pass / Gap / Not Evaluable |
+
+**CUEC/CSOC Mapping Worksheet:**
+
+| Provider | Complementary Control | Internal Owner | Internal Control ID | Frequency | Evidence Artifact | Audit Period Coverage | Status |
+|---|---|---|---|---|---|---|---|
+| [provider] | [CUEC/CSOC text] | [owner] | [control] | [frequency] | [evidence] | [covered/gap/bridge] | Implemented / Partial / Missing |
+
+**Decision rules:**
+
+- Mark CC9.2 and system-description readiness **Provisional** when critical providers have SOC 2 reports but no carve-out/inclusive method, CUEC/CSOC extraction, or control mapping.
+- Mark **High** when a critical cloud, identity, payment, support, monitoring, or data-processing provider supports in-scope objectives and the organization cannot identify who operates the relied-upon controls.
+- Mark **Medium** when report period coverage, bridge-letter evidence, opinion/exceptions review, or nested subservice review is incomplete.
+- Mark **Not Evaluable** when the vendor report is unavailable due to NDA or access limits and no qualified alternative assurance package is documented.
 
 ---
 
@@ -339,6 +372,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - [ ] Complete business impact analysis (CC9.1)
 - [ ] Establish annual policy review cycle with documented approvals (CC5.3)
 - [ ] Conduct fraud risk assessment (CC3.3)
+- [ ] Map critical subservice organizations, CUECs, CSOCs, report periods, bridge letters, and internal control owners (CC9.2)
 - [ ] Compile evidence binder for all in-scope criteria
 - [ ] Perform self-assessment using the scoring matrix from Step 4
 - [ ] Engage SOC 2 auditor for readiness assessment (if score >= 3.0)
@@ -366,8 +400,9 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 3. **Category Summary**: Average maturity score per category with narrative assessment.
 4. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
-6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
-7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+6. **Subservice Organization and CUEC Matrix**: Provider role, reporting method, report period, bridge evidence, CUECs/CSOCs, internal control mapping, and readiness decision for critical providers.
+7. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
+8. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
 
 ## Prompt Injection Safety Notice
 
@@ -393,3 +428,10 @@ This skill processes user-supplied content including compliance documentation, p
 - The gap analysis is based on information available in the codebase and documentation. It cannot assess controls that exist only in human processes without documentation.
 - Scoring is subjective and should be validated by the organization's security leadership and, ideally, a qualified auditor.
 - This analysis uses the 2017 AICPA Trust Services Criteria (with 2022 updates). Verify with your auditor that these criteria are current for your engagement.
+
+---
+
+## Changelog
+
+- **1.0.1** -- Add subservice organization, CUEC/CSOC, report-period, bridge-letter, and complementary-control mapping evidence gates.
+- **1.0.0** -- Initial release. SOC 2 Type II readiness gap analysis across Common Criteria and selected additional criteria.

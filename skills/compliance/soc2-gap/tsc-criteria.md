@@ -327,17 +327,27 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Is there a vendor management program?
   - Are vendors assessed for security risk before onboarding?
   - Are vendor SOC 2 reports or equivalent assurance reports collected and reviewed?
+  - Are critical providers classified as vendors, carved-out subservice organizations, or included subservice organizations?
+  - Are CUECs and complementary subservice organization controls extracted from vendor SOC 2 reports and mapped to internal control owners?
+  - Do vendor report periods cover the SOC 2 observation period, or is bridge-letter/current assurance evidence available?
 - Evidence to look for:
   - Vendor management policy
   - Vendor risk assessment questionnaires (completed)
   - Vendor SOC 2 report review records
   - Vendor inventory with risk classifications
   - Contract provisions for security requirements (data processing agreements, BAAs)
+  - Subservice organization scope matrix with provider role, system dependency, data/function touched, reporting method, and control reliance
+  - CUEC/CSOC mapping worksheet with internal control owner, frequency, evidence artifact, and operating-effectiveness status
+  - Vendor report opinion, exceptions, period coverage, bridge letters, nested subservice method, relevant TSC criteria, and review sign-off
 - Common gaps:
   - No formal vendor management program
   - Vendor SOC 2 reports are not collected or reviewed
   - No vendor risk assessment performed prior to onboarding
   - Contracts lack security and data protection provisions
+  - Critical provider SOC 2 reports are collected but carve-out/inclusive method is not documented
+  - CUECs/CSOCs are not mapped to internal controls and owners
+  - Vendor report period does not overlap the audit period and no bridge letter exists
+  - Nested subservice providers, report exceptions, or qualified opinions are not evaluated
 
 ---
 
@@ -553,7 +563,7 @@ After scoring, calculate:
 | CC7.5 | DR plan; BC plan; backup configs; backup restoration test records |
 | CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; segregation of duties evidence |
 | CC9.1 | Risk treatment plans; business impact analysis; risk acceptance sign-off records |
-| CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs |
+| CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs; subservice organization scope matrix; carve-out/inclusive method; CUEC/CSOC extraction worksheet; internal owner/control/evidence mapping; report period and bridge-letter evidence; report opinion/exceptions/nested subservice review |
 | A1.1 | Capacity monitoring dashboards; auto-scaling configs; capacity planning documentation |
 | A1.2 | Backup policy with RPO/RTO; backup monitoring records; restoration test results; redundancy configs |
 | A1.3 | DR test plan; DR test execution records; DR test findings and remediation |
