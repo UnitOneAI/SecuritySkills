@@ -1,0 +1,17 @@
+scanner: multi-scanner correlation pipeline
+finding:
+  cve: CVE-2026-42424
+  asset: internal-reporting-web-01
+  scanner_score_type: CVSS-B
+  scanner_cvss_base: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+environment:
+  exposure: only reachable through managed access network
+  compensating_controls:
+    - validated IPS signature blocks the exploit path
+    - admin group restriction gates access to vulnerable function
+threat_evidence:
+  exploit_maturity: E:U
+  source: vendor advisory states no public exploit or active exploitation
+expected_tuning:
+  score_label: CVSS-BTE
+  requirement: preserve Threat and Environmental evidence instead of reporting Base severity as final

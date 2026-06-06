@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,6 +53,7 @@ Before starting, collect or confirm:
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
 - [ ] **Compliance requirements:** Whether scans must meet specific compliance mandates (PCI ASV, DISA STIG, CIS Benchmark)
 - [ ] **Multi-scanner context:** If using multiple scanners, which ones and how results are currently correlated
+- [ ] **Threat metric evidence:** For CVSS 4.0 tuning, collect exploit maturity (`E:X`, `E:A`, `E:P`, `E:U`), source type, source URL, and observation date before treating Base severity as final
 
 ---
 
@@ -216,6 +217,32 @@ Severity Override Record:
 - Approved By:         [Name, role]
 ```
 
+#### CVSS 4.0 Threat Metric and Score Provenance
+
+When scanner severity is normalized or overridden, label the score type and
+preserve the evidence used for each metric group:
+
+| Score label | Meaning | Required evidence |
+|-------------|---------|-------------------|
+| **CVSS-B** | Base metrics only | Vector source and source date, such as NVD, CNA, vendor advisory, or scanner-native vector. |
+| **CVSS-BT** | Base + Threat | Base vector plus Exploit Maturity (`E`) value, threat source, source URL, and observation date. |
+| **CVSS-BE** | Base + Environmental | Base vector plus local environmental metric evidence, asset exposure, compensating controls, and approval. |
+| **CVSS-BTE** | Base + Threat + Environmental | Base, Threat, and Environmental evidence all recorded and dated. |
+
+**Threat Metric Evidence:**
+
+| Evidence field | Required analysis |
+|----------------|-------------------|
+| Exploit Maturity | `E:X`, `E:A`, `E:P`, or `E:U` with rationale. |
+| Threat source type | CISA KEV, vendor advisory, CNA/NVD, exploit repository, threat intel, internal incident, or no credible report. |
+| Source URL / artifact | Advisory URL, KEV entry, exploit reference, internal intel ticket, or scanner evidence. |
+| Observation date | Date the threat evidence was observed or last verified. |
+| Confidence | High when confirmed by vendor/KEV/internal incident; Medium for credible PoC; Low for unverified exploit claims. |
+
+Do not let an Environmental downgrade hide active exploitation. If `E:A`
+applies, keep the active exploitation state visible even when compensating
+controls reduce the tuned CVSS-BTE score for a specific asset.
+
 ### Step 5: Cross-Scanner Result Correlation
 
 When using multiple scanners, correlate results to improve confidence and identify coverage gaps.
@@ -225,7 +252,7 @@ When using multiple scanners, correlate results to improve confidence and identi
 #### Correlation Method
 
 1. **Normalize identifiers:** Map findings across scanners using CVE ID as the primary correlation key. For findings without CVE IDs, use CWE + affected component + vulnerability description as a composite key.
-2. **Severity normalization:** Different scanners may assign different severity ratings to the same CVE. Use CVSS 4.0 Base score from NVD as the authoritative severity, not scanner-specific severity.
+2. **Severity normalization:** Different scanners may assign different severity ratings to the same CVE. Preserve vector source and score type before choosing a normalized value. Use NVD or CNA/vendor Base vectors as the starting point, then record Threat and Environmental evidence separately as CVSS-BT, CVSS-BE, or CVSS-BTE when the data is available. Do not report Base-only NVD severity as the final tuned severity if consumer-specific Threat or Environmental evidence changes the score.
 3. **Confidence scoring:** Assign confidence based on corroboration across scanners:
 
 | Confidence Level | Criteria | Action |
@@ -303,7 +330,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.0
+**Skill:** scanner-tuning v1.1.0
 **Frameworks:** CVSS 4.0, CWE
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
 
@@ -333,9 +360,15 @@ Highlight the most impactful tuning recommendations.]
 
 ### Severity Overrides
 
-| CVE ID | Asset | Original Severity | Adjusted Severity | Justification | Review Date |
+| CVE ID | Asset | Score Type | Vector Source | Vector Source Date | Original Severity | Adjusted Severity | Threat Metric Evidence | Environmental Evidence | Supplemental Context | Review Date |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [CVE-ID] | [asset] | [CVSS-B/CVSS-BT/CVSS-BE/CVSS-BTE] | [NVD/CNA/vendor/scanner] | [YYYY-MM-DD] | [severity] | [severity] | [E value + source] | [CVSS 4.0 metric adjustment] | [Automatable/Value Density/Recovery/Provider Urgency] | [date] |
+
+### Threat Metric Evidence
+
+| CVE ID | Exploit Maturity | Source Type | Source URL / Artifact | Observation Date | Confidence |
 |---|---|---|---|---|---|
-| [CVE-ID] | [asset] | [severity] | [severity] | [CVSS 4.0 metric adjustment] | [date] |
+| [CVE-ID] | [E:X/E:A/E:P/E:U] | [KEV/vendor/exploit repo/internal intel] | [URL or ticket] | [YYYY-MM-DD] | [High/Medium/Low] |
 
 ### Cross-Scanner Correlation
 [If multiple scanners are in use]
@@ -399,6 +432,12 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
+6. **Using Base-only NVD severity as final tuned severity.** CVSS 4.0 separates
+Base, Threat, Environmental, and Supplemental metric groups. Scanner tuning may
+start with an NVD or CNA Base vector, but final tuned output should label whether
+the score is CVSS-B, CVSS-BT, CVSS-BE, or CVSS-BTE and preserve the evidence
+behind Exploit Maturity and Environmental changes.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -414,6 +453,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 ## References
 
 - CVSS v4.0 Specification: https://www.first.org/cvss/v4-0/
+- CVSS v4.0 Specification Document: https://www.first.org/cvss/specification-document
+- CVSS v4.0 Implementation Guide: https://www.first.org/cvss/v4-0/cvss-v40-implementation-guide.pdf
 - CVSS v4.0 Calculator: https://www.first.org/cvss/calculator/4.0
 - CWE (MITRE): https://cwe.mitre.org/
 - CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
@@ -429,3 +470,10 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - Grype: https://github.com/anchore/grype
 - Nuclei: https://docs.projectdiscovery.io/tools/nuclei/
 - NVD (NIST): https://nvd.nist.gov/
+
+---
+
+## Changelog
+
+- **1.1.0** -- Added CVSS 4.0 Threat metric evidence, score provenance, CVSS-B/BT/BE/BTE labeling, and Supplemental context fields for scanner severity tuning.
+- **1.0.0** -- Initial release. Scanner false-positive tuning, policy configuration, authenticated scan guidance, severity overrides, cross-scanner correlation, and scheduling.
