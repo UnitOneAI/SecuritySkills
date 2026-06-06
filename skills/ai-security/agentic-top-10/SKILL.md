@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -183,6 +183,9 @@ In early 2024, researchers from UIUC demonstrated a multi-agent privilege escala
 - Shared memory spaces in multi-agent systems where any agent can write context that other agents consume.
 - RAG pipelines where the ingestion source includes user-submitted or externally-sourced documents that are embedded without content validation.
 - Agent "learning" mechanisms that update long-term memory based on interaction outcomes without human review.
+- Memory records that lack source URI, actor identity, trust tier, approval state, TTL, or integrity metadata.
+- Retrieval logic that merges user, tool, agent, and system memories without trust-tier filters or tenant/agent scoping.
+- Delete or remediation paths that remove only the primary row while leaving summaries, embeddings, caches, or replicated indexes.
 
 **Real-World Failure Mode:**
 
@@ -195,6 +198,21 @@ In 2024, researchers demonstrated a persistent memory poisoning attack against a
 3. Separate memory by trust level. User-sourced context, agent-generated context, and system-provided context must be stored and retrieved with different trust labels.
 4. Implement memory decay and review cycles. Periodically audit long-term memory for anomalous entries. Apply TTLs to user-sourced memories.
 5. In multi-agent systems, isolate memory per agent. Shared memory must be mediated by a trusted memory broker that validates writes.
+
+**Memory Integrity Evidence Checklist:**
+
+When reviewing AG04, do not give a pass merely because a vector store, delete endpoint, or "memory review" process exists. Require concrete evidence for:
+
+| Evidence area | Required proof | Fail condition |
+|---|---|---|
+| Write authorization | Which actor, agent, tool, or workflow may create or update memory; approval state for untrusted sources; deny-by-default path for tool output and user documents | Any untrusted input can be summarized and saved to long-term memory without authorization |
+| Provenance and trust labels | Source URI or event ID, author/tenant, agent identity, ingestion time, trust tier, approval state, TTL, and integrity digest stored with each memory record | Memories are ranked only by semantic similarity or recency with no source or trust metadata |
+| Retrieval boundary | Retrieval filters enforce trust tier, tenant, agent scope, purpose, and prompt context before memory enters the model context window | System, developer, user, tool, and agent-generated memories are mixed in one index without filtering |
+| Integrity and tamper evidence | Append-only log, hash chain, Merkle proof, immutable event stream, or equivalent audit trail for memory writes and updates | Memory can be edited or replaced without a detectable audit event |
+| Poisoning detection | Review cadence, anomaly signals, reported prompt-injection markers, feedback loop checks, and owner disposition for suspicious memories | Poisoning is only addressed by manual review with no trigger, owner, or evidence trail |
+| Quarantine and removal | Quarantine state, tombstone/delete record, re-embedding plan, downstream cache invalidation, replay audit, and residual risk owner | Delete endpoint removes one vector row but leaves summaries, embeddings, caches, or replicated indexes |
+
+Benign user-authored personal memory can be acceptable when it is isolated per user, labeled as user-sourced, excluded from system/developer trust, and removable with evidence. It should not be credited as an AG04 mitigation if it can be promoted into higher-trust context without approval.
 
 **Framework Mapping:**
 
@@ -434,6 +452,16 @@ Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,j
 
 For practical validation of OWASP Agentic AI risks against concrete exploits, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs that can be used alongside the theoretical framework in Step 2 to test each AG01-AG10 category against real attack scenarios.
 
+### AG04 Memory Integrity Gate
+
+For every persistent memory store discovered in Step 1, record a memory evidence table before rating AG04:
+
+| Store | Write sources | Trust labels | Integrity proof | Retrieval filters | Quarantine/removal proof | Residual cache risk |
+|---|---|---|---|---|---|---|
+| [pgvector / Redis / conversation DB / scratchpad] | [user docs, tool output, agent notes, system seed] | [user/tool/agent/system, tenant, approval, TTL] | [hash chain, immutable log, checksum, audit event] | [tenant, agent, trust tier, purpose, top-k constraints] | [tombstone, quarantine, cache invalidation, replay audit] | [none / tracked owner / unresolved] |
+
+Rate AG04 as at least **MEDIUM** when persistent memory exists but any of write authorization, provenance/trust labels, or retrieval trust boundaries is missing. Rate it **HIGH** when untrusted content can be saved and later retrieved into privileged prompts across sessions. Rate it **CRITICAL** when poisoned memory can trigger privileged tool calls, data exfiltration, or autonomous actions without human approval.
+
 ### Step 2 — Threat Assessment
 
 For each of the 10 categories, assess the system and assign a risk rating:
@@ -492,6 +520,9 @@ Structure the final report as follows:
 - Agent framework: [framework name and version]
 - Tools registered: [count and categories]
 - Memory stores: [types]
+- Persistent memory write sources: [user input / tool output / agent notes / system seed]
+- Memory trust controls: [provenance labels, approval state, integrity proof, retrieval filters]
+- Memory remediation controls: [quarantine, tombstone/delete, cache invalidation, replay audit]
 - Human approval gates: [present/absent, description]
 - Multi-agent communication: [method]
 
@@ -501,6 +532,7 @@ Structure the final report as follows:
 - **Rating:** [rating]
 - **Finding:** [description]
 - **Evidence:** [file path, code reference]
+- **Memory evidence:** [write authorization, provenance/trust labels, retrieval filters, integrity proof, quarantine/removal, residual cache risk]
 - **Impact:** [what could go wrong]
 - **Remediation:** [specific action]
 - **Priority:** [P0/P1/P2/P3]
