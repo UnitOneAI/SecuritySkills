@@ -256,6 +256,9 @@ IAM-STALE-05: Deprovisioning SLA not met (industry standard: same-day for termin
 IAM-STALE-06: No automated lifecycle management (SCIM provisioning/deprovisioning)
 IAM-STALE-07: Accounts disabled but not deleted after retention period
 IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for privileged, semi-annual for standard)
+IAM-STALE-09: IdP disabled but relying-party sessions, refresh tokens, API tokens, or mobile tokens remain valid
+IAM-STALE-10: Group or role removal does not propagate to app-local RBAC, cached claims, or entitlement tables
+IAM-STALE-11: Former owner lifecycle changes are not tied to service accounts, deploy keys, OAuth apps, OIDC trusts, or CI/CD secrets
 ```
 
 **Platform-specific checks:**
@@ -275,6 +278,29 @@ IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for pr
 | Orphaned service account with production access | **High** | No owner to monitor or respond to abuse |
 | Inactive human account > 90 days | **Medium** | Credential stuffing / takeover target |
 | Disabled but not deleted account > 180 days | **Low** | Hygiene improvement |
+
+#### Downstream Deprovisioning and Token Revocation Evidence
+
+Do not treat SCIM enablement or IdP disablement as sufficient proof of access revocation. For each termination, transfer, group removal, emergency access use, or machine-identity owner change, verify that the source lifecycle event propagated to every relying party and credential that can continue authorizing access after the IdP account changes.
+
+| Evidence Field | What to Require | Finding if Missing |
+|---|---|---|
+| **Source lifecycle event** | HRIS/IdP event type, source-of-truth ID, timestamp, actor, and affected user or owner | Lifecycle change cannot be tied to downstream evidence |
+| **IdP and provisioning evidence** | Directory status, SCIM PATCH/DELETE event, provisioning job result, and error queue status | IdP state is assumed but not proven |
+| **Relying-party account state** | App-local user active flag, disabled timestamp, last successful login, and app audit event ID | Local account may remain usable after IdP disablement |
+| **Group and role propagation** | App-local groups/roles, cached claims, entitlement table result, data warehouse grants, cloud grants, last sync, and cache TTL | Removed IdP group still grants application or data access |
+| **Session and token revocation** | Browser sessions, mobile sessions, OAuth refresh tokens, personal API tokens, CLI tokens, device tokens, and SSO sessions revoked or expired | Disabled user can continue access through residual credentials |
+| **Machine identity impact** | Owned service accounts, deploy keys, OAuth apps, OIDC trust policies, static keys, certificates, CI/CD secrets, and workload identity bindings reviewed | Departed owner leaves non-human production access behind |
+| **Exception handling** | Non-SCIM compensating control, break-glass owner, expiry, monitoring, review cadence, and post-use rotation | Exception becomes unmanaged standing access |
+| **Verification result** | Complete, partial, failed, or not evaluable; include residual access remaining and remediation deadline | Closure is based on ticket state instead of access state |
+
+Use these gates with Step 4 service account hygiene, Step 6 JIT/break-glass assessment, and Step 7 zero trust session assumptions:
+
+- If a SaaS application supports SSO but not SCIM, do not automatically raise IAM-STALE-06 when there is documented compensating evidence for account disablement, token/session revocation, and periodic reconciliation. Raise a finding when that evidence is absent, stale, or incomplete.
+- If SCIM disables the user object but app-local roles, cached groups, refresh tokens, API tokens, mobile tokens, or CLI tokens remain active, classify the deprovisioning as **partial** and report the residual access explicitly.
+- If a human owner leaves or changes teams, review associated service accounts, deploy keys, OAuth applications, OIDC trust policies, static keys, CI/CD secrets, and workload identity bindings for reassignment, revocation, or approved exception.
+- If an emergency or break-glass account is outside normal IdP automation, require owner, expiry, monitoring, last test date, and post-use credential rotation evidence before treating it as controlled.
+- If downstream evidence is unavailable, mark the result **Not Evaluable** and recommend reconciliation or application audit export collection instead of assuming access was revoked.
 
 ---
 
@@ -414,6 +440,11 @@ For each finding, produce a row with:
 ### Detailed Findings
 [Findings table — see above]
 
+### Downstream Deprovisioning Evidence
+| Lifecycle Event | IdP Evidence | Relying Party | Account State | Roles/Groups Propagated | Sessions/Tokens Revoked | Machine Identity Impact | Verification Result | Residual Access |
+|---|---|---|---|---|---|---|---|---|
+| [Termination/Transfer/Group removal/Owner change] | [Event ID, timestamp, SCIM result] | [App/cloud/service] | [Disabled/Active/Unknown] | [Yes/No/Partial] | [Yes/No/Partial/Not Evaluable] | [None/Reassigned/Revoked/Exception] | [Complete/Partial/Failed/Not Evaluable] | [Description/deadline] |
+
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
 
@@ -501,6 +532,14 @@ This skill processes user-supplied content including IAM policies, access config
 | **5.1.4** | Single-Factor OTP Device | Something you have; time-based or event-based |
 | **5.1.7** | Multi-Factor Crypto Device | Hardware token; meets AAL3 requirements |
 | **5.2.3** | Reauthentication | AAL2 requires reauth every 12 hours or 30 minutes idle; AAL3 every 12 hours or 15 minutes idle |
+
+### OAuth and SCIM Revocation References
+
+| Source | Relevant Review Use |
+|---|---|
+| **RFC 7009** | Verify relying parties revoke OAuth refresh tokens and other revocable tokens after lifecycle changes |
+| **RFC 7644** | Validate SCIM provisioning/deprovisioning outcomes, errors, and group propagation mechanics |
+| **NIST SP 800-207** | Confirm access is evaluated per session and does not persist only because an old token remains valid |
 
 ---
 
