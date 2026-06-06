@@ -243,6 +243,45 @@ Document or verify the existence of a segmentation testing process:
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
 
+#### 6.1 Segmentation Validation Evidence
+
+Do not accept a segmentation design as effective from diagrams or intended
+policies alone. Require test evidence that proves blocked paths, permitted
+paths, failover behavior, and exception scope from representative source
+locations.
+
+```
+SEG-TEST-01: Segmentation test matrix is missing source zone, destination zone, port, expected result, and actual result
+SEG-TEST-02: Test evidence only proves allowed traffic, not denied paths
+SEG-TEST-03: Exception path lacks owner, expiry, business justification, and compensating control
+SEG-TEST-04: Failover, transit gateway, peering, or service mesh bypass path was not tested
+SEG-TEST-05: Test source is not representative of real workload/user network location
+SEG-TEST-06: PCI CDE or crown-jewel boundary lacks independent validation evidence
+SEG-TEST-07: Route table or security group change was not re-tested after implementation
+SEG-TEST-08: Evidence omits packet capture, flow log, firewall log, or command output reference
+```
+
+**Required evidence fields:**
+
+| Evidence | Required Detail | Failure Mode |
+|---|---|---|
+| Test matrix | Source zone, destination zone, protocol, port, expected result, actual result | Boundary is asserted but not proven |
+| Test source | Host/pod/subnet identity, role, route table, security group, namespace | Test does not represent real traffic path |
+| Denied-path proof | Firewall deny log, flow log reject, packet capture, or command output | Blocks cannot be independently verified |
+| Allowed-path proof | Application health check, flow log accept, service dependency owner | Required business flow may be broken |
+| Exception register | Owner, expiry, business reason, compensating control, review date | Temporary bypass becomes permanent |
+| Failover evidence | HA failover test, transit route change, mesh sidecar bypass test | Backup path bypasses policy enforcement |
+
+**Validation decision guidance:**
+
+| Situation | Assessment action |
+|---|---|
+| Diagram shows segmentation but no test matrix exists | Mark as Medium or High depending on boundary criticality |
+| Denied paths are untested for CDE or crown-jewel systems | High; escalate to independent validation |
+| Exception is active without expiry or owner | High if it crosses trust boundaries; Medium otherwise |
+| Test ran from admin subnet only | Require workload/user-zone representative test sources |
+| Failover path changes route or firewall enforcement | Re-test before marking segmentation effective |
+
 ---
 
 ## Findings Classification
@@ -283,6 +322,11 @@ Document or verify the existence of a segmentation testing process:
 | DMZ         | App       | Firewall    | Restricted | Pass |
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
+
+### Segmentation Validation Evidence
+| Source Zone | Destination Zone | Protocol/Port | Expected | Actual | Evidence Reference | Last Tested | Exception |
+|-------------|------------------|---------------|----------|--------|--------------------|-------------|-----------|
+| User | Data | TCP/5432 | Deny | Deny | flow-log/reject-id | YYYY-MM-DD | None |
 
 ### Findings
 
@@ -344,6 +388,12 @@ Document or verify the existence of a segmentation testing process:
 4. **Overlooking service mesh bypass paths.** Istio and Linkerd enforce policy on mesh-enrolled workloads only. Pods that bypass the sidecar proxy (hostNetwork: true, or init container misconfiguration) are not subject to mesh policy. Verify sidecar injection is enforced.
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
+
+6. **Testing only permitted paths.** Verifying that applications still work does not prove segmentation. A valid test must also prove unauthorized paths are denied and logged from representative source zones.
+
+7. **Letting temporary exceptions become architecture.** Emergency routes, peering links, or firewall permits created for migration or incident response need owners, expiry dates, compensating controls, and re-test evidence after removal.
+
+8. **Ignoring failover and alternate routing paths.** HA firewalls, transit gateways, service mesh bypass, VPN failover, and direct connect routes can create paths that are absent from steady-state diagrams. Include failover scenarios in validation.
 
 ---
 
