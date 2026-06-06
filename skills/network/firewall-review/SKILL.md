@@ -252,6 +252,48 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 
 **Finding classification:** Unrestricted outbound egress (allow all) is **High**. Missing DNS egress restriction is **Medium**.
 
+#### 2.8 Rule Lifecycle and Change Evidence (CIS Controls 4.1, 4.4; NIST SP 800-41 Section 4.3)
+
+Firewall review should verify not only the packet-matching logic, but also
+whether each risky or temporary rule has an owner, business justification,
+approval trail, expiry, validation evidence, and rollback path. Temporary
+incident or project rules are especially likely to become permanent exposure.
+
+**Lifecycle findings:**
+
+```
+FW-LIFE-01: Rule lacks owner, business justification, ticket, or approver
+FW-LIFE-02: Temporary rule has no expiry date or expired without removal
+FW-LIFE-03: Risk acceptance is missing for broad, internet-facing, or privileged-management access
+FW-LIFE-04: Rule removal recommendation lacks dependency validation or rollback plan
+FW-LIFE-05: Emergency rule was added outside change control and not reviewed after stabilization
+FW-LIFE-06: Rule description references a decommissioned system, project, or incident
+FW-LIFE-07: Rule logging was not validated after deployment or change
+FW-LIFE-08: Cloud security group or NACL drift is detected outside infrastructure-as-code
+```
+
+**Evidence requirements:**
+
+| Evidence | Required Detail | Failure Mode |
+|---|---|---|
+| Change ticket | Requester, approver, business purpose, implementation date, affected zones | Rule cannot be tied to authorized change |
+| Rule owner | Team/person accountable for review, expiry, and rollback | Orphaned rule persists indefinitely |
+| Expiry / review date | Temporary access expiration or next review cadence | Temporary permit becomes permanent |
+| Risk acceptance | Risk owner, compensating control, approved duration, affected assets | Broad exposure remains unaccepted |
+| Dependency validation | Hit counters with baseline time, flow logs, asset owner confirmation | Legitimate traffic is broken by cleanup |
+| Rollback plan | Previous rule set, restore command/procedure, validation tests | Cleanup cannot be reversed safely |
+| Drift evidence | IaC source, deployed rule hash/export, last reconciliation | Console changes bypass review |
+
+**Decision guidance:**
+
+| Situation | Audit action |
+|---|---|
+| Temporary rule is expired but still active | High if internet-facing or privileged; Medium otherwise |
+| Any/any rule has risk acceptance but no expiry | Keep severity high; risk acceptance does not eliminate exposure |
+| Zero hit count but counter reset recently | Do not mark unused; require longer observation or flow-log evidence |
+| Emergency rule lacks post-incident review | Record `FW-LIFE-05` and require retroactive approval or removal |
+| IaC denies a flow but deployed cloud rule permits it | Treat as drift; review change path and reconcile source of truth |
+
 ---
 
 ### Step 3: Compile Assessment Report
@@ -317,6 +359,11 @@ Produce the final report using the following structure.
 | SMTP (25)     | Yes/No    | <mail server IPs>      |
 | HTTPS (443)   | Yes/No    | <proxy or direct>      |
 
+### Rule Lifecycle Review
+| Rule | Owner | Ticket | Expiry/Review Date | Risk Acceptance | Last Hit / Evidence Window | Rollback Path |
+|------|-------|--------|--------------------|-----------------|----------------------------|---------------|
+| <rule id> | <owner or missing> | <ticket> | <date or missing> | <approved/missing> | <timestamp/window> | <procedure/ref> |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -334,6 +381,7 @@ Produce the final report using the following structure.
 | 4.4 | Implement and Manage a Firewall on Servers | Inbound/outbound restriction, default deny, rule hygiene, logging |
 | 4.5 | Implement and Manage a Firewall on End-User Devices | Host-based firewall policy enforcement, default deny on endpoints |
 | 4.1 | Establish and Maintain a Secure Configuration Process | Applies to firewall configuration management and change control |
+| 4.2 | Establish and Maintain a Secure Configuration Process for Network Infrastructure | Applies to firewall and security group source-of-truth management |
 | 8.5 | Collect Detailed Audit Logs | Firewall logging requirements for denied and permitted traffic |
 
 ### NIST SP 800-41 Rev 1
@@ -360,6 +408,12 @@ Produce the final report using the following structure.
 4. **Assuming hit count of zero means the rule is unused.** Hit counters reset on firewall reload or failover. Verify the counter baseline timestamp before recommending rule removal. Cross-reference with SIEM/flow data where available.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
+
+6. **Removing rules from hit count alone.** A zero-hit rule may still support quarterly jobs, disaster recovery, or failover paths. Confirm counter reset time, flow logs, asset owner context, and rollback procedure before recommending removal.
+
+7. **Accepting risk without expiry.** A risk acceptance can justify a temporary exception, but it should not turn broad firewall exposure into a permanent control state. Require owner, compensating controls, approved duration, and a next-review date.
+
+8. **Reviewing IaC but not deployed state.** Cloud console edits, emergency CLI changes, and provider defaults can drift from Terraform, CloudFormation, or ARM. Compare source-of-truth configuration with deployed exports before declaring pass.
 
 ---
 
