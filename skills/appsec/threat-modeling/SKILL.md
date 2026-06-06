@@ -160,6 +160,8 @@ Use this checklist to identify trust boundaries that are often missed:
 - [ ] **CI/CD pipeline boundaries** — Between source control, build system, artifact registry, and deployment target
 - [ ] **Third-party SDK/library boundaries** — Between your code and vendor SDKs, open-source packages, or embedded interpreters
 
+Also check for broker-mediated event flows, sidecar/service-mesh enforcement points, and local IPC/shared-resource paths. These boundaries are common in serverless, Kubernetes, and event-driven systems even when there is no direct point-to-point network call.
+
 For each data flow crossing a trust boundary, document:
 1. Source and destination components
 2. Protocol and transport security
@@ -179,8 +181,32 @@ Every data flow in the DFD must be annotated with the following properties:
 | Encryption in transit | TLS 1.3, WireGuard, none |
 | Key management | AWS KMS, HashiCorp Vault, application-managed, N/A |
 | Failure mode | Fail-closed (deny on error) or fail-open (allow on error) |
+| Trust model | direct, mediated, sidecar, local_trust, delegated |
+| Communication type | network, event_bus, queue, ipc_socket, shared_volume, shared_memory, in_process |
+| Delegation / impersonation context | End-user token forwarded, service account only, actor token exchanged, none |
 
 Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
+
+**Mediated and non-network flow gates:**
+
+```
+TM-FLOW-01: Event-bus, queue, or serverless route modeled as direct trust without broker policy evidence
+TM-FLOW-02: Sidecar or service-mesh mTLS omitted from the DFD, causing authentication to be misclassified
+TM-FLOW-03: Shared volume, Unix socket, shared memory, or localhost IPC flow lacks isolation context
+TM-FLOW-04: In-process SDK/plugin boundary lacks sandboxing, permission, or capability model evidence
+TM-FLOW-05: Delegated end-user context is lost across service hops or replaced by broad service identity
+```
+
+**CI/CD artifact integrity gates:**
+
+```
+TM-CICD-01: CI/CD pipeline to artifact registry flow lacks artifact signing or tag immutability
+TM-CICD-02: Build provenance, SLSA level, or Sigstore/cosign attestation is missing
+TM-CICD-03: OIDC trust policy permits untrusted branches, forks, or workflow events to publish artifacts
+TM-CICD-04: Deployment target does not verify artifact signature, digest, or provenance before release
+```
+
+For CI/CD and build-boundary flows, record `artifact_integrity`, `provenance_attestation`, `slsa_level`, `signature_verification`, `tag_immutability`, `digest_pinning`, and `oidc_trust_policy_scope`.
 
 ### Step 4: Apply STRIDE per Element
 
@@ -399,6 +425,14 @@ Produce the threat register as a structured table. Each row represents one ident
 | TM-004 | Information Disclosure | API error responses include stack traces and internal service names in production | All API endpoints | T1552 — Unsecured Credentials | High | Medium | High | Implement generic error responses in production, route detailed errors to logging only | Backend Team | Open |
 | TM-005 | Denial of Service | Unbounded file upload allows resource exhaustion via large payload submission | File Upload `/api/v1/upload` | T1499.003 — Application Exhaustion Flood | High | Medium | High | Enforce max file size (10MB), implement request timeout, add rate limiting per user | Storage Team | Open |
 | TM-006 | Elevation of Privilege | IDOR vulnerability allows regular users to access other users' records by modifying resource ID | User Profile `/api/v1/users/{id}` | T1068 — Exploitation for Privilege Escalation | High | High | Critical | Implement object-level authorization checks, validate resource ownership at service layer | Backend Team | Open |
+
+For mediated, sidecar, local IPC, in-process, and CI/CD flows, append a flow annotation table:
+
+| Flow ID | Source | Destination | Trust Model | Communication Type | Boundary / Enforcer | Artifact Integrity / Delegation Evidence | Residual Threat |
+|---------|--------|-------------|-------------|--------------------|---------------------|-------------------------------------------|-----------------|
+| FLOW-001 | CI/CD pipeline | Container registry | delegated | network | OIDC trust policy + registry IAM | SLSA level, signature verification, digest pinning, tag immutability | Artifact tampering |
+| FLOW-002 | order-service | EventBridge bus | mediated | event_bus | EventBridge resource policy | producer IAM role, bus policy, DLQ failure mode | Unauthorized event injection |
+| FLOW-003 | app-container | log sidecar | local_trust | shared_volume | pod security context | volume permissions, service account boundary, log redaction | Sidecar data exposure |
 
 ## 6. Framework Reference
 
