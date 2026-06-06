@@ -392,6 +392,9 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Provenance or signatures generated during build but never verified before deployment.
+- Verification commands that omit identity constraints such as OIDC issuer, certificate identity, repository, workflow ref, builder ID, or SLSA predicate type.
+- Deployment policies that verify mutable tags instead of the immutable digest that was attested.
 
 **Grep patterns:**
 
@@ -412,9 +415,36 @@ sbom
 # Look for digest pinning in container references
 image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
+
+# Look for deployment-time attestation verification
+cosign verify --certificate-identity --certificate-oidc-issuer
+cosign verify-attestation --type slsaprovenance
+gh attestation verify --owner
+ClusterImagePolicy
+verifyImages
+cosigned
+kyverno
+gatekeeper
+connaisseur
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+##### Attestation Verification and Deployment Enforcement
+
+Treat artifact signing and provenance generation as incomplete unless the release path verifies and enforces that evidence before production deployment.
+
+**Required evidence:**
+
+- The deployed artifact is referenced by immutable digest, not only by a mutable tag.
+- Signature verification binds the artifact digest to a trusted identity, including OIDC issuer and certificate identity or equivalent private PKI subject.
+- Provenance verification checks the attestation subject digest, source repository, workflow ref or commit, builder identity, and SLSA provenance predicate type.
+- The verification runs in the release gate, deploy pipeline, or admission policy before production workloads are admitted.
+- Production policies fail closed when verification fails. Warn-only mode is acceptable for development only and must be clearly scoped.
+- Exceptions include an owner, reason, affected environment, and expiration date.
+- Multi-arch images verify the deployed manifest digest and account for per-platform attestations where the platform-specific image can differ from the manifest list.
+
+**False positive to avoid:** Do not mark CICD-SEC-9 as pass solely because the build creates an attestation with `actions/attest-build-provenance` or signs an image with `cosign sign`. If deployment later uses `repo/app:latest`, or if `cosign verify` runs without issuer and identity constraints, the control is at best Partial and may be Fail for production releases.
+
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, whether deployment verifies signatures and attestations, which identity constraints are enforced, and where the enforcement point runs.
 
 ---
 
@@ -490,6 +520,12 @@ Produce the final report using the following structure:
 - **Description:** <what was found>
 - **Remediation:** <specific fix>
 
+### Attestation Verification
+
+| Artifact | Deployed By Digest | Signature Verified | Provenance Verified | Identity Constraints | Enforcement Point | Mode | Status |
+|----------|--------------------|--------------------|---------------------|----------------------|-------------------|------|--------|
+| <image/artifact> | Yes/No/Unknown | Yes/No/Unknown | Yes/No/Unknown | <issuer, identity, repo, ref, builder> | <deploy gate/admission/release job> | Enforce/Warn/None | Pass/Partial/Fail |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** <CICD-SEC-X> -- <action item>
@@ -551,6 +587,8 @@ This skill processes user-supplied content including CI/CD configuration files, 
 - OWASP Top 10 CI/CD Security Risks: https://owasp.org/www-project-top-10-ci-cd-security-risks/
 - GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
 - Sigstore / Cosign: https://docs.sigstore.dev/
+- Cosign Signature Verification: https://docs.sigstore.dev/cosign/verifying/verify/
+- GitHub Artifact Attestations: https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
 
 ---
