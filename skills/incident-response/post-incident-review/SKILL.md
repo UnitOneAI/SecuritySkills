@@ -149,6 +149,9 @@ Root Cause: [Systemic root cause statement]
 - Stop when you reach a cause that is within the organization's control to change
 - If the chain branches (multiple contributing factors at one level), follow each branch
 - Avoid stopping at "human error" -- always ask what system condition enabled the error
+- Do not stop at a proximate fix if the same failure pattern could recur elsewhere
+- Record root cause scope: `single_instance`, `team_pattern`, `business_unit_pattern`, or `org_wide`
+- Require recurrence prevention evidence showing the remediation addresses the class of failure, not only this system
 
 #### Method 2: Fishbone (Ishikawa) Diagram
 
@@ -228,6 +231,19 @@ MTTR measures the total response duration from detection through return to norma
 | **Notification Time** | Notification - Detection | Time from detection to stakeholder/regulatory notification |
 | **Recurrence Rate** | Count of similar incidents in last 12 months | Whether root causes from prior incidents were effectively addressed |
 
+#### Blast Radius Metrics
+
+Quantify impact so remediation priority is grounded in affected scope, not only response timing.
+
+| Metric | What to Count | Notes |
+|--------|---------------|-------|
+| **Affected Systems** | Hosts, services, containers, accounts, cloud resources | Separate confirmed from suspected impact |
+| **Data Records Exposed** | Records, files, objects, messages, or secrets accessed | Include confidence level and evidence source |
+| **Business Processes Disrupted** | Customer-facing, internal, financial, or regulated workflows | Note duration and criticality |
+| **Revenue / Cost Impact** | Lost revenue, response cost, credits, legal cost | Estimate when exact amount is unavailable |
+| **Regulatory Notification** | Required / not required / under legal review | Include jurisdiction and deadline |
+| **Third-Party Impact** | Vendors, customers, processors, MSSPs affected | Include notification owner |
+
 ### Step 5: Control Failure Mapping
 
 Map the incident to specific control failures -- what should have prevented, detected, or limited the incident but did not.
@@ -250,6 +266,30 @@ Map the incident to specific control failures -- what should have prevented, det
 | **Segmentation failure** | Network segmentation did not prevent lateral movement | Review and enforce micro-segmentation; validate firewall rules; implement zero-trust architecture |
 | **Process gap** | IR playbook did not cover the incident type or was outdated | Update IR playbooks; conduct tabletop exercises; review annually |
 | **Communication failure** | Stakeholders were not notified, or notification was delayed | Formalize escalation matrix; automate notifications; test communication procedures |
+
+### Step 5b: Detection Engineering Feedback Loop
+
+Translate incident learnings into concrete detection engineering work. Document which rules, analytics, enrichment sources, and ATT&CK mappings changed because of this incident.
+
+| Field | Required Evidence |
+|---|---|
+| **New rules created** | Rule name, data source, ATT&CK technique, deployment date, owner |
+| **Existing rules tuned** | Prior logic, updated logic, false-positive or false-negative reason |
+| **Rules not updated** | Reason no update was possible or needed |
+| **Coverage map** | ATT&CK techniques used, covered, missed, and still unmonitored |
+| **Validation** | Replay, purple-team test, unit test, or detection-as-code CI result |
+
+### Step 5c: Communication and Coordination Assessment
+
+Evaluate whether internal and external coordination met incident needs and legal/regulatory deadlines.
+
+| Field | Required Evidence |
+|---|---|
+| **Escalation matrix accuracy** | Correct system owner, on-call, legal, privacy, communications, and executive contacts |
+| **Notification SLA compliance** | Time from detection/confirmation to required stakeholder or regulator notification |
+| **Cross-team handoff quality** | Handoff gaps, missing authority, duplicate work, or delayed approvals |
+| **External responder coordination** | MSSP, IR retainer, law enforcement, cloud provider, or vendor handoff timing |
+| **Template/readiness gaps** | Missing customer, regulator, legal, or executive communication templates |
 
 ### Step 6: Lessons Learned and Remediation Plan
 
@@ -342,10 +382,41 @@ root cause, and the number/priority of remediation actions identified.]
 
 **Root Cause Statement:** [1-2 sentence definitive statement of the systemic root cause]
 
+| RCA Field | Value |
+|---|---|
+| Root Cause Scope | [single_instance / team_pattern / business_unit_pattern / org_wide] |
+| Recurrence Likelihood | [Low / Medium / High] |
+| Recurrence Prevention Evidence | [How remediation prevents this class of incident, not only this instance] |
+| Similar Systems / Teams Checked | [List or "not checked"] |
+| RCA Depth Score | [1-5, where 5 = systemic cause with validated recurrence prevention] |
+
 ### Control Failure Mapping
 | Control Category | Expected Control | Status | Failure Mode | Improvement |
 |---|---|---|---|---|
 | [Preventive/Detective/Corrective] | [Control] | [Status] | [Why it failed] | [Improvement] |
+
+### Blast Radius
+| Metric | Value | Evidence / Confidence |
+|---|---|---|
+| Affected Systems | [count/list] | [source] |
+| Data Records / Secrets Exposed | [count/list] | [source] |
+| Business Processes Disrupted | [list] | [duration/impact] |
+| Revenue / Response Cost Impact | [amount/estimate] | [confidence] |
+| Regulatory Notification Required | [Yes/No/Legal Review] | [jurisdiction/deadline] |
+| Third-Party Impact | [customers/vendors/MSSP/etc.] | [owner/status] |
+
+### Detection Engineering Feedback Loop
+| Item | Change | ATT&CK Mapping | Validation | Owner | Ticket |
+|---|---|---|---|---|---|
+| [New/tuned rule] | [logic/data source change] | [TXXXX] | [replay/test/purple team] | [team] | [ID] |
+
+### Communication and Coordination Assessment
+| Area | Status | Evidence | Improvement |
+|---|---|---|---|
+| Escalation Matrix Accuracy | [Pass/Fail/Partial] | [owner/on-call/legal/comms evidence] | [action] |
+| Notification SLA Compliance | [Pass/Fail/Partial] | [timestamps and deadline] | [action] |
+| Cross-Team Handoff | [Pass/Fail/Partial] | [handoff notes] | [action] |
+| External Responder Coordination | [Pass/Fail/Partial/N/A] | [MSSP/IR/legal/vendor handoff] | [action] |
 
 ### What Went Well
 - [Strength identified during retrospective]
@@ -419,6 +490,10 @@ Documenting lessons learned and remediation actions in a PIR report that is then
 ### Pitfall 5: Waiting Too Long to Conduct the PIR
 
 NIST recommends conducting the PIR within several days of incident closure. Waiting weeks or months causes participants to forget critical details, misremember the sequence of events, and lose the emotional context that drives honest reflection. Schedule the PIR meeting before the incident is closed, ideally within 3-5 business days of recovery completion.
+
+### Pitfall 6: Fixing One Instance Instead of the Failure Pattern
+
+Changing one CMDB entry, one detection rule, or one repository policy may close the immediate action item while leaving the same pattern elsewhere. Every PIR should state whether the root cause is local, team-wide, business-unit-wide, or organization-wide, then verify similar systems before marking recurrence risk as reduced.
 
 ---
 
