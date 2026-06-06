@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -283,6 +283,10 @@ PAM-REC-09: No video/screenshot recording for GUI-based sessions (RDP, web conso
 PAM-REC-10: Session metadata not indexed or searchable for investigation
 PAM-REC-11: No automated alerting on high-risk commands during privileged sessions
 PAM-REC-12: Privileged database queries not recorded (data exfiltration blind spot)
+PAM-REC-13: Recordings lack tamper-evident integrity or immutable retention
+PAM-REC-14: Playback access is not separated from privileged session actors
+PAM-REC-15: Session recording stores secrets or regulated data without masking and restricted playback
+PAM-REC-16: High-risk privileged paths are not represented in recording coverage metrics
 ```
 
 **Session recording capability matrix:**
@@ -291,9 +295,52 @@ PAM-REC-12: Privileged database queries not recorded (data exfiltration blind sp
 |---|---|---|---|---|
 | **Protocol coverage** | None | SSH only | SSH + RDP + web | SSH + RDP + web + database + API |
 | **Recording type** | None | Metadata only (who, when, where) | Full session replay (video/text) | Full replay + indexed search + command extraction |
-| **Storage** | None | Local to PAM | Forwarded to secure storage | Immutable storage with integrity verification |
-| **Monitoring** | None | Post-hoc review | Near-real-time alerts on keywords | Real-time behavioral analytics with auto-termination |
+| **Storage** | None | Local to PAM | Forwarded to secure storage | Immutable/WORM storage with hash or signature verification |
+| **Monitoring** | None | Post-hoc review | Near-real-time alerts on keywords | Real-time behavioral analytics with auto-termination and independent review |
 | **Retention** | None | < 90 days | 12 months | Policy-driven, aligned with regulatory requirements |
+| **Playback access** | None | PAM admins only | Security/audit reviewers separated from session actors | Dual-control or just-in-time playback, export audit, and reviewer independence |
+| **Privacy controls** | None | Manual reviewer discretion | Secret/PII masking guidance | Tested redaction that masks sensitive values while preserving command/action evidence |
+
+#### Session Recording Assurance Matrix
+
+Raw replay availability is not enough to score session management as Mature or Advanced. Review each privileged path separately and record integrity, privacy, and reviewer-access evidence.
+
+| Evidence Field | Required Review Detail |
+|---|---|
+| **Privileged path** | SSH, RDP, cloud console, database console, Kubernetes exec, vendor portal, break-glass, PAM-outage path |
+| **Recording type** | Metadata only, command log, query log, text replay, video replay, API audit, or compensating evidence |
+| **Command/query extraction** | Whether searchable commands, SQL statements, API actions, and file transfers are extracted without exposing secrets |
+| **Original storage location** | PAM server, external log store, SIEM, object storage, WORM archive, database activity monitoring system |
+| **Immutable retention** | WORM/object-lock status, retention period, deletion controls, archive owner, legal-hold support |
+| **Integrity evidence** | Hash, signature, hash chain, append-only event, export manifest, or independent verification path |
+| **External forwarding** | Replay metadata, integrity events, high-risk command alerts, and playback/export events forwarded to SIEM/archive |
+| **Redaction and masking** | Secret, token, password, PII, PHI, payment data, and regulated-data masking with reviewer-visible placeholders |
+| **Playback reviewer role** | Security, audit, manager, PAM admin, platform owner, or incident commander |
+| **Reviewer independence** | Whether session actors can review, suppress, export, or delete their own recordings |
+| **Playback/export audit** | Who viewed, exported, annotated, deleted, or shared a recording; ticket or incident linkage |
+| **Evidence confidence** | Verified, Partial, Missing, or Not Evaluable with the evidence source and date |
+
+#### Review Procedure
+
+1. Build the privileged-path coverage list from the account inventory, not only from PAM protocol settings. Include cloud consoles, database consoles, Kubernetes exec, vendor support portals, break-glass paths, and PAM-outage procedures.
+2. For each path, record whether the evidence is full replay, command/query log, API audit trail, metadata only, or a documented privacy-preserving alternative.
+3. Verify tamper resistance separately from retention. Look for immutable storage, object lock, WORM retention, hash/signature evidence, hash chains, external forwarding, or chain-of-custody export manifests.
+4. Check whether PAM administrators, platform administrators, or session actors can delete, edit, suppress, export, or self-approve playback of their own recordings.
+5. Review playback and export authorization. Sensitive sessions should require independent reviewer roles, dual control or JIT playback approval, ticket linkage, and a playback audit trail.
+6. Treat recordings as sensitive repositories. Verify secret/token/PII redaction, restricted playback roles, purpose limitation, retention, and incident-only emergency playback.
+7. Confirm redaction does not erase forensic value. Require test cases showing commands/actions remain visible while passwords, API tokens, recovery codes, regulated rows, and personal data are masked.
+8. Distinguish privacy-preserving alternatives from gaps. Database activity monitoring, command logs, or immutable API audit events may be acceptable when video replay would expose sensitive data, but the coverage and review workflow must be explicit.
+9. Mark paths as `Not Evaluable` when integrity, reviewer independence, playback/export audit, redaction, or high-risk path coverage evidence is missing.
+
+#### Maturity Scoring Adjustment
+
+| Level | Session Recording Assurance Criteria |
+|---|---|
+| **Basic** | Metadata or partial replay exists for some privileged paths, but integrity, privacy, or reviewer independence is incomplete |
+| **Mature** | Critical privileged paths have full replay or command/query evidence, retained for the audit window, with searchable metadata and documented review workflow |
+| **Advanced** | Critical paths have tamper-evident storage, independent reviewer access, tested redaction, playback/export audit, high-risk command alerts, and coverage for break-glass or compensating evidence |
+
+Do not score session management as Advanced when recordings are local to the PAM server, mutable by PAM administrators, self-reviewable by the session actor, or likely to expose secrets and regulated data during ordinary playback.
 
 ---
 
@@ -347,9 +394,9 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 
 | Severity | Definition | Examples |
 |---|---|---|
-| **Critical** | Immediate privileged credential exposure or uncontrolled access | Plaintext credentials in code repos; no PAM for production admin; root account with no MFA |
-| **High** | Significant PAM gap enabling privilege abuse | Standing admin without JIT; no session recording; break-glass untested and credentials unknown |
-| **Medium** | PAM governance deficiency with medium-term risk | Partial vault onboarding; JIT duration excessive; recording gaps on some systems |
+| **Critical** | Immediate privileged credential exposure, uncontrolled access, or mutable evidence for high-risk privileged abuse | Plaintext credentials in code repos; no PAM for production admin; root account with no MFA; privileged actors can delete their own production session recordings |
+| **High** | Significant PAM gap enabling privilege abuse or undermining investigation integrity | Standing admin without JIT; no session recording; break-glass untested and credentials unknown; recordings lack tamper-evident retention for critical paths |
+| **Medium** | PAM governance deficiency with medium-term risk or incomplete assurance evidence | Partial vault onboarding; JIT duration excessive; recording gaps on some systems; playback access lacks independent review |
 | **Low** | PAM maturity improvement opportunity | Session recordings not indexed; break-glass test cadence > quarterly; vault policy refinement |
 
 ---
@@ -366,6 +413,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding |
+| **Recording Assurance Evidence** | For PAM-REC findings: integrity, storage, redaction, reviewer independence, playback/export audit, and privileged-path coverage |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -391,6 +439,11 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | JIT Access | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
+
+### Session Recording Assurance
+| Privileged Path | Recording Type | Integrity / Immutable Retention | Redaction / Privacy | Reviewer Independence | Playback / Export Audit | Evidence Status |
+|---|---|---|---|---|---|---|
+| [path] | [metadata/command/query/replay/API audit] | [hash/WORM/SIEM/object lock] | [masking controls] | [reviewer role + separation] | [audit source + ticket] | [Verified/Partial/Missing/Not Evaluable] |
 
 ### Findings by Severity
 - Critical: [count]
@@ -457,6 +510,10 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+9. **Treating replay as integrity** — retained video or text replay is weak evidence if PAM administrators can alter or delete it without immutable storage, hash evidence, or independent archive logs.
+10. **Creating a sensitive-data repository** — session recordings can capture passwords, tokens, customer records, and recovery codes. Restrict playback and test redaction before broadening retention.
+11. **Self-review of privileged activity** — reviewers must not approve, suppress, export, or delete recordings of their own sessions.
+12. **Protocol-only coverage metrics** — "SSH and RDP recorded" does not prove coverage for cloud consoles, databases, Kubernetes, vendor portals, emergency consoles, or PAM-outage paths.
 
 ---
 
@@ -478,6 +535,7 @@ that may contain adversarial content.
 ## References
 
 - NIST SP 800-53 Rev. 5, Security and Privacy Controls — AC-6 Least Privilege: https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-53 Rev. 5 Update 1, AU audit control family and AC-6(9) privileged function logging: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
 - CIS Controls v8, Control 5 (Account Management), Control 6 (Access Control Management): https://www.cisecurity.org/controls/v8
 - NIST SP 800-207, Zero Trust Architecture (JIT access principles): https://csrc.nist.gov/publications/detail/sp/800-207/final
 - CISA Privileged Access Management Guidance: https://www.cisa.gov
@@ -502,4 +560,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-06 | Add session-recording integrity, redaction, reviewer independence, playback audit, and privileged-path coverage gates |
 | 1.0.0 | 2025-03-06 | Initial release |
