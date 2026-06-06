@@ -154,6 +154,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Key Vault RBAC Evidence
+
+| Vault | Permission Model | Principal | Role | Scope | Role Capability | Justification / Owner | Last Reviewed | Migration / Drift Status |
+|-------|------------------|-----------|------|-------|-----------------|-----------------------|---------------|--------------------------|
+| <vault name> | RBAC / Access Policy / Not Evaluable | <user/group/service principal/managed identity> | <role name> | <vault/RG/subscription/MG> | <read/manage/grant/admin> | <ticket/owner/reason> | <date> | <clean/stale access policy/outside IaC/live export missing> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y.Z -- <action item>
@@ -199,7 +205,8 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **Overlooking `allow_nested_items_to_be_public` on storage accounts.** CIS 3.7 checks the account-level setting, not individual container access levels. The account setting must be `false` to prevent any container from being public.
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
-6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+6. **Key Vault RBAC is not least privilege by itself.** `enable_rbac_authorization = true` proves the permission model, not that data-plane roles are narrow. Review role assignments, scope inheritance, grant-capable roles, management-plane role grants, break-glass access, and migration drift before marking CIS 8.6 as fully evidenced.
+7. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
 
@@ -224,6 +231,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
+- Azure Key Vault RBAC Guide: https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide
+- Azure Key Vault RBAC Migration: https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-migration
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 

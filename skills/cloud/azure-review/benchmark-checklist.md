@@ -617,6 +617,27 @@ resource "azurerm_key_vault" {
 }
 ```
 
+RBAC enabled is only the permission model. Also collect Key Vault data-plane role evidence so the review does not replace access-policy sprawl with RBAC sprawl.
+
+| Evidence | What to Verify | Risk if Missing |
+|---|---|---|
+| Vault permission model | `enable_rbac_authorization = true` in IaC or live `properties.enableRbacAuthorization = true` | Cannot tell whether the vault uses Azure RBAC or legacy access policies |
+| Data-plane role assignments | `azurerm_role_assignment`, Bicep/ARM role assignments, or live `az role assignment list --scope <vault-id>` export | RBAC is enabled but principals and effective data access are unknown |
+| Role scope | Assignment scope is vault, resource group, subscription, or management group | Broad inherited assignments may grant unintended secret/key access |
+| Principal identity | User, group, service principal, managed identity, workload identity, or break-glass account | Orphaned or overly broad principals may retain sensitive access |
+| Role capability | Distinguish `Key Vault Secrets User`, `Key Vault Crypto User`, `Key Vault Certificates Officer`, `Key Vault Administrator`, `Key Vault Data Access Administrator`, and custom roles | Admin or grant-capable roles may be treated as ordinary read access |
+| Justification and owner | Business reason, data owner, grant owner, ticket/change ID, and last review date | Role assignment cannot be tied to approved need |
+| Break-glass path | Emergency account owner, MFA/PIM requirement, monitoring, expiry, and post-use review | Emergency access becomes unmanaged standing privilege |
+| Migration drift | Legacy `azurerm_key_vault_access_policy`, portal-managed access policies, stale role assignments, and assignments outside IaC | Migration from access policies to RBAC is incomplete or not evaluable |
+
+Flag these conditions:
+
+- `enable_rbac_authorization = true` with no role-assignment matrix or live role export.
+- `Key Vault Administrator` or `Key Vault Data Access Administrator` assigned to broad engineering, application, or all-user groups without justification.
+- Management-plane roles such as `Owner`, `Contributor`, or `User Access Administrator` are not reviewed alongside Key Vault data-plane roles, because they can grant or change access.
+- Access-policy resources remain after an RBAC migration without a documented migration plan and validation evidence.
+- Private endpoint claims are treated as sufficient even though role assignments still allow overbroad data-plane access.
+
 ### CIS 8.7 -- Ensure that Private Endpoints are used for Azure Key Vault
 
 Check for private endpoint connections to Key Vault:
