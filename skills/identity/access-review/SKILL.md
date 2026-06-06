@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -252,7 +252,36 @@ AR-SOD-04: SoD analysis not automated (manual review only)
 AR-SOD-05: Emergency/break-glass access bypasses SoD without post-hoc review
 AR-SOD-06: Role combinations that create SoD conflicts not flagged during provisioning
 AR-SOD-07: SoD conflicts in service accounts (single account spans multiple functions)
+AR-SOD-08: SoD conflict rule lacks owner, version, approval date, last review, or applicable scope
+AR-SOD-09: Role-name conflict is scored without proving a shared transaction path
+AR-SOD-10: Cross-system toxic combination not evaluated across procurement, ERP, banking, CI/CD, or security tooling
+AR-SOD-11: Environment, legal entity, approval limit, or workflow state makes the apparent conflict non-production or non-executable
+AR-SOD-12: Compensating control accepted without independent reviewer, sample evidence, monitoring, cadence, or expiry
+AR-SOD-13: JIT or emergency SoD exception lacks activation log, approval ticket, duration, action record, post-use review, or revocation evidence
+AR-SOD-14: Certifier, reviewer, approver, or control operator is not independent from the conflicting access
 ```
+
+**SoD evidence model:**
+
+Do not treat a role-name match as a confirmed SoD violation until the report records rule provenance and transaction-path evidence. Use the fixture cases in `skills/identity/access-review/tests/sod-transaction-path-evidence.md` to calibrate confirmed, false-positive, mitigated, and not-evaluable decisions.
+
+| Evidence area | Required fields | Review decision guidance |
+|---|---|---|
+| Conflict rule provenance | Rule ID, conflicting functions, owner, version, approval date, last reviewed date, mapped systems, business process, applicable environments, regulatory rationale | Missing owner/version/scope makes the conflict **Not Evaluable** or a governance finding under AR-SOD-08 |
+| Transaction path | Identity, direct/inherited entitlement, initiating step, approval step, release/execution step, environment, legal entity, approval limit, workflow controls, effective capability proof, last activity | Confirm High/Critical only when both sides can affect the same real transaction path |
+| Scope and false-positive guards | Sandbox/staging/production, read-only state, approval-limit-zero, disabled workflow, entity mismatch, dormant capability, compensating upstream approval | Downgrade or classify as false positive only when evidence proves the conflict cannot execute |
+| Compensating controls | Preventive/detective type, independent reviewer, review sample, test results, monitoring alert, exception owner, expiry, management approval | Do not downgrade severity for control descriptions without independent operating evidence |
+| JIT/emergency exceptions | Eligibility, activation log, approval ticket, duration, actions taken, post-use review, revocation timestamp | Eligible-only access is not standing toxic access, but activation without review remains a finding |
+| Certifier independence | Certifier identity, relationship to access owner, self-certification check, delegated reviewer accountability, conflict operator independence | Flag self-certification or same-person control operation under AR-SOD-14 |
+
+**Severity calibration for SoD findings:**
+
+| Evidence result | Classification |
+|---|---|
+| Same identity can initiate and approve/release a production financial, deployment, security-log, or privileged workflow with no independent control | **Critical** or **High** depending on business impact |
+| Cross-system transaction path is plausible but entitlement expansion, approval limit, or workflow evidence is missing | **Not Evaluable** with AR-SOD-09/10 evidence gap |
+| Conflict exists but has tested preventive workflow controls, independent detective review, monitoring, and time-bounded exception approval | Downgrade one level and track as mitigated risk |
+| One side is sandbox-only, read-only, approval-limit-zero, disabled, scoped to a different entity, or eligible-only with no activation | False positive or Low governance finding if evidence is complete |
 
 **Severity classification for SoD violations:**
 
@@ -352,6 +381,11 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 - Segregation of Duties (Step 5): [count]
 - Enforcement & Evidence (Step 6): [count]
 
+### SoD Evidence Summary
+| Conflict ID | Identity | Systems | Transaction path status | Scope/limit evidence | Compensating control evidence | JIT/emergency evidence | Certifier independence | Decision |
+|---|---|---|---|---|---|---|---|
+| [rule-id] | [user/service account] | [apps] | [confirmed / missing / false positive] | [environment, entity, limit, workflow] | [tested / missing / not applicable] | [activation reviewed / missing / not applicable] | [independent / self-certified / unknown] | [Critical / High / Medium / Low / Not Evaluable / False Positive] |
+
 ### Detailed Findings
 [Findings table]
 
@@ -400,7 +434,9 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 4. **Revocation without enforcement** — Reviews produce revocation decisions but no one executes them. Automate enforcement or track with SLA-bound tickets.
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
-7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+7. **Treating role names as transaction paths** — A role called "approver" may be sandbox-only, read-only, approval-limit-zero, disabled, or scoped to another entity. Confirm effective capability before scoring severity.
+8. **Accepting compensating controls on paper** — A weekly manager review does not reduce SoD risk unless the reviewer is independent, the exact conflict is sampled, results are retained, alerts are monitored, and exceptions expire.
+9. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
 
 ---
 
@@ -443,4 +479,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-06 | Added SoD rule provenance, transaction-path, compensating-control, JIT exception, and certifier-independence evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
