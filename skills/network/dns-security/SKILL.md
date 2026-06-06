@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -237,11 +237,38 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ---
 
-### Step 5: DNS Exfiltration and Tunneling Detection Patterns
+### Step 5: DNS Rebinding Protection Review
+
+DNS rebinding occurs when an untrusted public hostname resolves to private, loopback, link-local, unique-local, IPv4-mapped, or metadata-service addresses after an application or browser has already accepted the hostname. DNSSEC does not make this safe when the attacker controls the signed domain. Use `skills/network/dns-security/tests/dns-rebinding-edge-cases.md` to calibrate pass, fail, and Not Evaluable decisions.
+
+**What to verify:**
+
+- Resolver policy blocks, strips, sinkholes, or alerts on public-domain A/AAAA answers that point to `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `::1/128`, `fc00::/7`, `fe80::/10`, IPv4-mapped private ranges, and cloud metadata targets.
+- Split-horizon and private-domain exceptions are documented with owner, domain scope, allowed private ranges, forwarding authority, business reason, and expiry/review date.
+- Low-TTL public-to-private answer transitions are logged and forwarded to SIEM or protective DNS telemetry.
+- SSRF-prone applications re-resolve and re-check IP ranges at connect time instead of validating only the hostname before DNS resolution.
+
+**Evidence gates:**
+
+```
+DNS-REBIND-01: Public-domain private/reserved A/AAAA answers are blocked, stripped, sinkholed, or alerted
+DNS-REBIND-02: IPv6, IPv4-mapped, link-local, unique-local, loopback, and metadata ranges are included
+DNS-REBIND-03: Split-horizon/private-domain exceptions have owner, scope, allowed ranges, authority, and expiry
+DNS-REBIND-04: Low-TTL and public-to-private answer changes are logged and monitored
+DNS-REBIND-05: SSRF-prone clients perform connect-time DNS/IP range revalidation
+DNS-REBIND-06: DNSSEC is not treated as a substitute for private-address filtering
+DNS-REBIND-07: Missing resolver policy or telemetry is reported as Not Evaluable rather than Pass
+```
+
+**Finding classification:** Public domains resolving to private/reserved or metadata ranges without resolver-side protection is **High**. Global rebinding protection disabled with no scoped exception model is **High**. Missing exception owner/expiry is **Medium**. Missing low-TTL transition monitoring is **Medium**.
+
+---
+
+### Step 6: DNS Exfiltration and Tunneling Detection Patterns
 
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
-#### 5.1 Exfiltration Indicators
+#### 6.1 Exfiltration Indicators
 
 | Indicator | Normal | Suspicious | Detection Method |
 |-----------|--------|-----------|-----------------|
@@ -252,7 +279,7 @@ DNS tunneling encodes data in DNS query names or TXT record responses to create 
 | **Query volume per domain** | < 100/hr to a single domain | > 1000/hr to single obscure domain | Volumetric per-domain threshold |
 | **Response size** | < 512 bytes | TXT responses > 512 bytes, multiple TXT records | Monitor response payload sizes |
 
-#### 5.2 Tunneling Tool Signatures
+#### 6.2 Tunneling Tool Signatures
 
 Common DNS tunneling tools produce distinctive query patterns:
 
@@ -270,7 +297,7 @@ abcdef0123456789.dnscat.example.com TXT
 0001.<encoded>.d.example.com KEY
 ```
 
-#### 5.3 Detection Configuration
+#### 6.3 Detection Configuration
 
 **Where to implement detection:**
 
@@ -286,7 +313,7 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
-### Step 6: Domain Categorization and Newly Registered Domain (NRD) Blocking
+### Step 7: Domain Categorization and Newly Registered Domain (NRD) Blocking
 
 - **NRD blocking:** Domains registered within the past 30 days are disproportionately associated with phishing and malware. CIS Control 9.2 supports blocking or flagging NRDs.
 - **DGA detection:** Domain Generation Algorithms produce random-appearing domain names. Detection relies on entropy analysis and machine learning classifiers integrated into protective DNS services.
@@ -327,6 +354,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### DNS Rebinding Evidence
+
+| Resolver / Policy | Public private-answer handling | IPv6 / metadata coverage | Private-domain exceptions | Low-TTL monitoring | Client connect-time recheck | Decision |
+|---|---|---|---|---|---|---|
+| <resolver> | Block / Strip / Sinkhole / Alert / Missing | Complete / Partial / Missing | Owner + scope + expiry / Missing | Enabled / Missing | Present / Missing / N/A | Pass / Fail / Not Evaluable |
 
 ### Findings
 
@@ -384,6 +417,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Assuming DNSSEC prevents rebinding.** DNSSEC validates answer integrity, not whether an attacker-controlled public domain should be allowed to return private, link-local, loopback, or metadata addresses.
+
+6. **Disabling rebinding protection globally for split-horizon zones.** Legitimate internal zones should be modeled as scoped private-domain exceptions, not a blanket bypass for all public-domain private answers.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -408,9 +445,13 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
+- OWASP SSRF Prevention Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- Unbound `private-address` / `private-domain`: https://unbound.docs.nlnetlabs.nl/en/latest/manpages/unbound.conf.html
+- Pi-hole dnsmasq DNS-rebind warning documentation: https://docs.pi-hole.net/ftldns/dnsmasq_warn/
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added DNS rebinding protection evidence gates and fixture-backed decision guidance.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
