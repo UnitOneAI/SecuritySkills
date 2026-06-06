@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "workspace-proxy": {
+      "transport": "sse",
+      "url": "http://127.0.0.1:8787/sse",
+      "localAuthentication": false,
+      "consent": {
+        "staticCookie": "user_has_consented=true",
+        "boundToClientId": false,
+        "boundToRedirectUri": false,
+        "scopes": ["files:*", "mail:*", "admin:*"]
+      },
+      "elicitation": {
+        "mode": "form",
+        "canRequest": ["api_key", "password", "recovery_code"]
+      },
+      "ssrfControls": {
+        "blockInternalNetworks": false,
+        "blockMetadataEndpoints": false
+      }
+    }
+  }
+}

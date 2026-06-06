@@ -4,17 +4,18 @@ description: >
   Reviews AI agent architectures for security risks including permission model
   design, least-privilege enforcement, human-in-the-loop gate placement, blast
   radius containment, audit trail completeness, rollback capability, and
-  multi-agent trust boundaries. Auto-invoked when reviewing agentic AI systems
-  where LLMs invoke tools, take autonomous actions, or operate in multi-agent
-  configurations. Produces a structured architecture security assessment mapped
-  to OWASP Agentic AI threats and NIST AI RMF 1.0.
+  multi-agent trust boundaries, including MCP and external tool-server
+  boundaries. Auto-invoked when reviewing agentic systems where LLMs invoke
+  tools, take autonomous actions, or operate in multi-agent configurations.
+  Produces a structured architecture security assessment mapped to the listed
+  OWASP and NIST frameworks.
 tags: [ai-security, agents, agentic-ai, architecture]
 role: [security-engineer, architect, appsec-engineer, vciso]
 phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -78,6 +79,9 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 |---|---|---|
 | Agent architecture diagram | Design docs, README, infrastructure code | Maps trust boundaries, delegation chains, tool surface |
 | Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters |
+| External tool-server inventory | MCP client configs, server manifests, package metadata, tool annotations, lockfiles | Shows which servers can expose tools, resources, prompts, and authorization flows |
+| Tool-server authorization config | OAuth/OIDC middleware, protected-resource metadata, scope definitions, consent records | Determines whether access is bound to the correct user, client, audience, redirect URI, and scope |
+| Local tool-server launch policy | Command lines, package lockfiles, container/Wasm sandbox policy, filesystem roots, network egress grants | Reveals whether local servers can execute code or access host resources with client privileges |
 | Permission/IAM configuration | Cloud IAM, role definitions, service account configs, .env files | Reveals whether least-privilege is enforced |
 | Human approval gate implementation | Workflow code, UI code, approval service configs | Determines if HITL is architecturally sound or bypassable |
 | Agent identity and credential management | Auth middleware, secret managers, token configs | Exposes credential scope and rotation practices |
@@ -111,6 +115,7 @@ The following threat patterns warrant explicit attention during architecture rev
 - **Sequential tool attack chains:** An attacker (or a manipulated agent) may chain individually benign tool calls into an attack sequence where the combined effect is harmful. Evaluate whether the system monitors tool call sequences, not just individual invocations.
 - **Confused-deputy behavior:** An agent with legitimate tool access is tricked -- typically via indirect prompt injection -- into performing unintended actions using its own authorized capabilities. The agent acts as a confused deputy: it has valid credentials and permissions, but an attacker directs its actions. This is distinct from privilege escalation; the agent never exceeds its permissions, yet causes harm within them.
 - **Cascading failure in long-horizon workflows:** Multi-step agent workflows (planning, research, execution sequences spanning minutes to hours) are vulnerable to error accumulation. An early-stage mistake or injection can compound through subsequent steps, producing increasingly harmful outcomes that are difficult to detect until the workflow completes.
+- **External tool-server boundary confusion:** MCP and similar tool protocols let clients attach local or remote servers that expose tools, resources, prompts, elicitation, and authorization flows. Treat every connected server as a separate trust boundary, not as harmless configuration.
 
 ### Red-Team Validation Tooling
 
@@ -137,8 +142,9 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 - **Dynamic vs. static tool sets:** Can the agent's tool set change at runtime? If an orchestrator dynamically assigns tools, what governs which tools are assigned?
 - **Per-session vs. permanent tool access:** Is tool access scoped to a specific task or session, or does every invocation receive the same broad tool set regardless of the task?
 - **Cross-agent tool sharing:** Can one agent invoke another agent's tools? If so, through what authorization mechanism?
+- **External tool-server trust:** Can MCP or similar servers introduce tools, resources, prompts, scopes, elicitation requests, local process access, or network egress without explicit inventory and policy review?
 
-**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), and tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`).
+**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`), and external tool-server configuration (`mcpServers`, `tools/list`, `tools/call`, `resources/read`, `prompts/get`, `roots/list`, `sampling/createMessage`, `elicitation/create`, `stdio`, `sse`, `streamable-http`, `oauth-protected-resource`).
 
 **Permission model evaluation matrix:**
 
@@ -164,6 +170,50 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 | Tool registration allows runtime tool injection by the agent itself | High |
 | Agent credentials do not expire or rotate | Medium |
 | Tool permissions not documented or reviewed periodically | Medium |
+
+#### MCP and External Tool-Server Boundary Evidence
+
+MCP and similar tool protocols can expand an agent's effective autonomy after deployment. A client may launch local server processes with host privileges, or connect to remote servers that broker OAuth access to third-party APIs. Review these servers as separate security principals with their own inventory, provenance, authorization, consent, sandbox, and audit evidence.
+
+**Required evidence:**
+
+| Evidence Area | Secure Evidence | Finding If Missing |
+|---|---|---|
+| Server inventory | Approved server name, owner, purpose, version, transport, package/source, and allowed tools/resources | Unowned or unknown servers can silently expand the tool surface |
+| Provenance and pinning | Reviewed package/repository, pinned version, lockfile integrity, signature or checksum where available | Local launch can run unreviewed code with client privileges |
+| Transport boundary | `stdio` or authenticated IPC for local servers; authenticated remote transport with TLS and origin controls | Local HTTP/SSE endpoint can be reached by other local processes or abused through rebinding |
+| Capability declaration | Tool/resource/prompt annotations identify read/write/destructive behavior before exposure | New high-impact tools can appear mid-session without review |
+| Token audience | Remote server validates tokens issued for that server/resource and rejects wrong audience | Confused-deputy path through tokens meant for another resource |
+| Token handling | Server uses separate upstream credentials or token exchange; no raw client-token passthrough | Client token is forwarded unchanged to downstream APIs |
+| Consent binding | Consent is tied to user, client ID, redirect URI, scopes, and server identity | Static consent lets a different client reuse prior authorization |
+| Scope minimization | Initial scopes are minimal; elevation is per-tool and auditable | Omnibus scopes hide operation-level risk |
+| Elicitation mode | Sensitive authorization uses reviewed URL/domain flows; form elicitation excludes secrets and payment data | Server can request passwords, API keys, tokens, or payment fields in-band |
+| Local sandbox | Filesystem roots, environment variables, shell execution, and network egress are restricted by policy | Local server inherits broad host access |
+| Session binding | Session IDs are random, expiring, and bound to authenticated user/client context | Session ID alone authorizes tool calls or resumed events |
+| SSRF controls | OAuth discovery, redirects, and elicited URLs block internal ranges and metadata endpoints | Tool server can fetch internal services or cloud metadata |
+| Audit evidence | Logs include server ID, tool name/version, scope, consent ID, user, session, correlation ID, and result | Investigation cannot reconstruct which server acted under which authority |
+
+**Severity guidance:**
+
+| Condition | Severity |
+|---|---|
+| Local server launches unreviewed package or command with host filesystem, environment, shell, or broad network access and no sandbox | Critical |
+| Remote server accepts tokens issued for another audience/resource or forwards client tokens unchanged to downstream APIs | Critical |
+| Third-party OAuth proxy lacks per-client consent, exact redirect URI binding, or scope separation for high-impact APIs | Critical |
+| Tool server can add write/delete/admin tools after consent without policy review or user-visible capability change | High |
+| Elicitation can collect passwords, API keys, access tokens, recovery codes, or payment data through in-band form fields | High |
+| Local HTTP/SSE endpoint is reachable by other local processes without authentication, origin checks, or rebinding controls | High |
+| Server inventory exists but lacks owner, version pinning, review cadence, or provenance evidence | Medium |
+| Tool-call audit logs omit server identity, scope, consent ID, or correlation ID | Medium |
+| Read-only, pinned, owned `stdio` server has constrained roots/egress and no OAuth, but documentation is incomplete | Low |
+| Server is read-only, pinned, owned, sandboxed, audited, and has no sensitive authorization flow | Informational or no finding |
+
+**False-positive guardrails:**
+
+- Do not report every MCP server as unsafe. A read-only `stdio` server with pinned provenance, an owner, constrained roots, constrained egress, and no OAuth can be acceptable.
+- Mark `Not Applicable` when the architecture has no external tool servers and no dynamic tool-server discovery path.
+- Mark `Not Evaluable` when config references a server but package, transport, token, consent, or sandbox evidence is unavailable.
+- Treat broad scopes as acceptable only with owner, expiry, approval, operation-level audit, and a clear migration or emergency justification.
 
 ---
 
@@ -492,13 +542,19 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+## MCP and External Tool-Server Evidence
+
+| Server | Transport | Owner | Provenance | Tools/Resources | Auth Audience | Consent/Scopes | Sandbox | Audit | Outcome |
+|---|---|---|---|---|---|---|---|---|---|
+| [server] | [stdio / local HTTP / remote] | [owner] | [package/version/lockfile] | [read/write/destructive] | [audience evidence] | [consent ID and scopes] | [roots/egress/env/shell limits] | [fields present] | [Pass / Finding / Not Evaluable] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
 
 ## Findings
 
 ### Finding [N]: [Title]
-- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
+- **Review Area:** [Permission Model | External Tool Server Boundary | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP Agentic AI Category:** [AG01-AG10 or N/A]
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -514,6 +570,7 @@ Glob: **/security_architecture*
 | Review Area | Rating | Key Finding | Priority |
 |---|---|---|---|
 | Permission Model | [rating] | [one-line summary] | [priority] |
+| External Tool Server Boundary | [rating] | [one-line summary] | [priority] |
 | Least-Privilege Design | [rating] | [one-line summary] | [priority] |
 | HITL Gate Placement | [rating] | [one-line summary] | [priority] |
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
@@ -569,6 +626,8 @@ Glob: **/security_architecture*
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
 
+6. **Treating tool servers as passive configuration.** Adding a server can add new actions, new resources, new prompts, new OAuth flows, and new local process privileges. Review server inventory, provenance, transport, token audience, consent, scopes, sandbox, and audit evidence before trusting the expanded tool surface.
+
 ---
 
 ## References
@@ -587,3 +646,8 @@ Glob: **/security_architecture*
 12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
 13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
 14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
+15. Model Context Protocol -- Security Best Practices -- https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices
+16. Model Context Protocol -- Authorization -- https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
+17. Model Context Protocol -- Tools -- https://modelcontextprotocol.io/specification/2025-06-18/server/tools
+18. Model Context Protocol -- Elicitation -- https://modelcontextprotocol.io/specification/draft/client/elicitation
+19. Model Context Protocol Blog -- Tool Annotations as Risk Vocabulary -- https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/

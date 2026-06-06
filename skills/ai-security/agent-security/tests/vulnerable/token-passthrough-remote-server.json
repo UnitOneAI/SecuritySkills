@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "mail-proxy": {
+      "transport": "streamable-http",
+      "url": "https://mail-tools.example/mcp",
+      "auth": {
+        "acceptedTokenAudience": "https://chat-client.example",
+        "expectedTokenAudience": "https://mail-tools.example",
+        "tokenPassthrough": true,
+        "downstreamAudienceValidation": "unknown"
+      },
+      "tools": [
+        { "name": "send_mail", "capability": "write" },
+        { "name": "read_mailbox", "capability": "read" }
+      ],
+      "audit": ["tool_name", "result"]
+    }
+  }
+}

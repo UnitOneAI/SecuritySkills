@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "docs-search": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["./node_modules/@example/docs-mcp-server/dist/index.js"],
+      "package": "@example/docs-mcp-server",
+      "version": "1.4.2",
+      "lockfileIntegrity": "sha512-pinned",
+      "owner": "platform-security",
+      "tools": [
+        { "name": "search_docs", "capability": "read" },
+        { "name": "read_doc", "capability": "read" }
+      ],
+      "filesystem": { "allowedRoots": ["/workspace/docs"] },
+      "network": { "allowedHosts": ["docs.internal.example"] },
+      "oauth": { "required": false },
+      "audit": ["server_id", "tool_name", "session_id", "user_id", "result"]
+    }
+  }
+}

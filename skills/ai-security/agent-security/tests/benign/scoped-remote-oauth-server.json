@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "calendar-reader": {
+      "transport": "streamable-http",
+      "url": "https://calendar-tools.example/mcp",
+      "owner": "product-security",
+      "auth": {
+        "tokenAudience": "https://calendar-tools.example",
+        "resourceMetadataValidated": true,
+        "tokenPassthrough": false,
+        "redirectUriExactMatch": true
+      },
+      "consent": {
+        "boundToClientId": true,
+        "boundToUser": true,
+        "scopes": ["calendar.readonly"],
+        "expiresAt": "2026-07-01"
+      },
+      "tools": [
+        { "name": "list_events", "capability": "read" }
+      ],
+      "audit": ["server_id", "tool_name", "scope", "consent_id", "user_id", "correlation_id"]
+    }
+  }
+}
