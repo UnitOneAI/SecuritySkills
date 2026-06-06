@@ -401,7 +401,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [PCI-DSS-v4.0]
+    frameworks: [PCI-DSS-v4.0, PCI-DSS-v4.0.1]
     difficulty: advanced
     time_estimate: "90-180min"
     file: skills/compliance/pci-dss-review/SKILL.md
