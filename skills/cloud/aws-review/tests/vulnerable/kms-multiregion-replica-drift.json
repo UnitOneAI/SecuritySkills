@@ -1,0 +1,21 @@
+{
+  "name": "kms-multiregion-replica-drift",
+  "keyFamily": {
+    "primary": "arn:aws:kms:us-east-1:111122223333:key/primary-example",
+    "replica": "arn:aws:kms:us-west-2:111122223333:key/replica-example",
+    "dataClass": "disaster-recovery-secrets"
+  },
+  "policyComparison": {
+    "primaryAllowsExternalAccount": false,
+    "replicaAllowsExternalAccount": true,
+    "primaryHasViaService": true,
+    "replicaHasViaService": false,
+    "rotationConsistent": false,
+    "deletionWindowConsistent": false
+  },
+  "expectedReviewFinding": {
+    "supplementalId": "AWS-KMS-EFF-6",
+    "severity": "Medium",
+    "evidence": "Replica key policy and lifecycle controls drift from the primary key, weakening disaster-recovery access boundaries."
+  }
+}

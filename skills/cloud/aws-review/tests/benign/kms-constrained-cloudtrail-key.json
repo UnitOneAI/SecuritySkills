@@ -1,0 +1,29 @@
+{
+  "name": "kms-constrained-cloudtrail-key",
+  "key": {
+    "alias": "alias/cloudtrail-logs",
+    "account": "111122223333",
+    "region": "us-east-1",
+    "dataClass": "security-audit-logs"
+  },
+  "keyPolicyStatement": {
+    "effect": "Allow",
+    "principal": "arn:aws:iam::111122223333:role/cloudtrail-writer",
+    "actions": [
+      "kms:Decrypt",
+      "kms:GenerateDataKey"
+    ],
+    "resource": "*",
+    "conditions": {
+      "kms:ViaService": "cloudtrail.us-east-1.amazonaws.com",
+      "kms:CallerAccount": "111122223333",
+      "kms:EncryptionContext:aws:cloudtrail:arn": "arn:aws:cloudtrail:*:111122223333:trail/*"
+    }
+  },
+  "monitoring": {
+    "createGrantAlarm": true,
+    "failedDecryptAlarm": true,
+    "disableOrDeletionAlarm": true
+  },
+  "expectedReviewOutcome": "Pass: Resource wildcard is acceptable because effective access is constrained by principal, service, caller account, encryption context, and monitoring."
+}

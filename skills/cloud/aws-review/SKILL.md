@@ -5,15 +5,16 @@ description: >
   Foundations Benchmark v3.0.0. Auto-invoked when reviewing AWS infrastructure,
   IAM policies, S3 configurations, CloudTrail settings, VPC security groups, or
   RDS encryption. Walks through all five benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
+  recommendation, adds supplemental KMS effective-access evidence where
+  encryption claims depend on customer-managed keys, and produces a prioritized
+  findings report with remediation guidance mapped to specific CIS control IDs.
 tags: [cloud, aws, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -27,7 +28,7 @@ argument-hint: "[target-file-or-directory]"
 
 This skill performs a structured security assessment of AWS environments against the **CIS Amazon Web Services Foundations Benchmark v3.0.0**. The benchmark is organized into five sections covering identity management, storage, logging, monitoring, and networking. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, CloudFormation, CDK), AWS CLI output, or configuration files available in the repository.
 
-The CIS AWS Foundations Benchmark v3.0.0 contains 62 recommendations across five domains. This skill evaluates each applicable control against the codebase and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
+The CIS AWS Foundations Benchmark v3.0.0 contains 62 recommendations across five domains. This skill evaluates each applicable control against the codebase and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps. When sensitive-data protection depends on AWS KMS, encryption being enabled is not enough; reviewers must also inspect effective key access through key policies, IAM delegation, grants, service constraints, encryption context, external key stores, replicas, and monitoring.
 
 ---
 
@@ -76,6 +77,9 @@ Use Glob to locate all AWS-related infrastructure definitions.
 **/terraform/**/*.tf
 **/iam-policies/**/*.json
 **/policies/**/*.json
+**/kms/**/*.json
+**/kms/**/*.yaml
+**/kms/**/*.tf
 ```
 
 Also locate supporting configuration:
@@ -85,6 +89,8 @@ Also locate supporting configuration:
 **/.aws/credentials
 **/aws-config-rules/**
 **/security-hub/**
+**/cloudtrail/**
+**/cloudwatch/**
 ```
 
 Record all discovered files. If no AWS configurations are found, report that finding and halt.
@@ -99,7 +105,57 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: KMS Effective-Access Evidence Review
+
+Perform this supplemental step when the environment uses KMS customer-managed keys, key policies, grants, external key stores, multi-Region keys, or encryption claims for S3, EBS, RDS, EFS, DynamoDB, CloudTrail, Secrets Manager, or application data. Keep these findings separate from the CIS score unless they directly support a CIS control such as CloudTrail KMS encryption or CMK rotation.
+
+**Discovery patterns:**
+
+```
+aws_kms_key
+aws_kms_external_key
+aws_kms_replica_key
+aws_kms_grant
+aws_kms_alias
+kms:CreateGrant
+kms:Decrypt
+kms:GenerateDataKey
+kms:ViaService
+kms:CallerAccount
+kms:EncryptionContext
+```
+
+For each sensitive key or key family, record:
+
+- Key ARN, alias, owning account, region, data classification, and workload.
+- Effective key policy principals, administrative actions, cryptographic actions, explicit denies, and whether IAM delegation is enabled.
+- IAM identity policies that can use the key or delegate access through `kms:CreateGrant`.
+- Grant inventory, including grantee principal, retiring principal, operations, constraints, creation time, expiry or review evidence, and revocation evidence.
+- Service constraints such as `kms:ViaService`, `kms:CallerAccount`, `aws:SourceArn`, and `aws:SourceAccount`.
+- Encryption context requirements for shared keys, multi-tenant workloads, or mixed data classes.
+- CloudTrail and CloudWatch monitoring for `CreateGrant`, `RetireGrant`, `RevokeGrant`, failed decrypts, unexpected principals, external-account use, key disablement, and scheduled deletion.
+- External key store evidence: proxy health, connectivity, key material availability, break-glass path, fallback decision, and rotation expectations.
+- Multi-Region evidence: primary/replica inventory, replica policy drift, rotation state, deletion windows, and failover procedure.
+
+**Evaluation gates:**
+
+- Do not flag `Resource: "*"` in a key policy by itself. Key policies often use `*` because the policy is attached to a single key. Score the effective access path: principal scope, actions, conditions, IAM delegation, grants, and account boundaries.
+- Treat `kms:CreateGrant` as delegation-sensitive. Require least-privilege operations, constraints, retiring principal, monitoring, and stale-grant review.
+- Check both key policy and IAM identity policies. A restrictive key policy can still be risky when it delegates permission management broadly to IAM or account root.
+- Require `kms:ViaService` and caller/source-account constraints when access is intended only through services such as S3, EBS, RDS, CloudTrail, or Secrets Manager.
+- Require encryption context constraints when one key protects multiple tenants, applications, environments, or data classes.
+- Mark KMS evidence `Not Evaluable` when only wrapper module inputs, Terraform variables, or high-level `encrypted = true` booleans are available.
+
+**Severity guidance:**
+
+- Critical or High: broad decrypt/data-key access to sensitive data, unconstrained `kms:CreateGrant`, external-account key use without caller/source constraints, stale decrypt grants, or missing XKS failover evidence for critical workloads.
+- Medium: missing grant lifecycle evidence, missing CloudTrail detection for grant/decrypt anomalies, broad service role access without `kms:ViaService`, incomplete encryption-context constraints, or replica policy drift.
+- Low: effective access is constrained, but inventory, documentation, or stale-grant review evidence is incomplete.
+- Informational: KMS is not in scope and no sensitive encryption claim depends on customer-managed key access.
+
+---
+
+### Step 8: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -114,6 +170,10 @@ Produce the final report using the structure defined in the Output Format sectio
 | **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, password policy below requirements, no VPC flow logs |
 | **Low** | Hardening recommendation or defense-in-depth measure | Missing Macie classification, no hardware MFA on root (when virtual MFA exists), missing access analyzer in non-primary regions |
 | **Informational** | Best practice observation, no direct security impact | Naming conventions, tag hygiene, documentation gaps |
+
+### KMS Severity Addendum
+
+When KMS is in scope, severity is based on effective key access, not encryption enablement alone. A key policy with `Resource: "*"` can be safe when attached to one key and constrained by principals/actions/conditions. A key that appears narrow can still be High risk when IAM delegation, grants, cross-account principals, missing service constraints, or operational key-store controls are broad or unmonitored.
 
 ---
 
@@ -158,6 +218,23 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### KMS Effective-Access Evidence
+
+| Key / Alias | Account / Region | Workload / Data Class | Key Policy Scope | IAM Delegation | Grant Scope | Service / Context Constraints | XKS / Replica Evidence | Monitoring | Status |
+|-------------|------------------|-----------------------|------------------|----------------|-------------|-------------------------------|------------------------|------------|--------|
+| <key-id-or-alias> | <account/region> | <workload/data> | <summary> | <summary> | <summary> | <summary> | <summary> | <summary> | Pass / Fail / Not Evaluable |
+
+#### [KMS] <Finding Title>
+- **Status:** Pass / Fail / Not Evaluable
+- **Severity:** Critical / High / Medium / Low / Informational
+- **Key:** <key ARN, alias, account, and region>
+- **File:** <path to relevant policy, IaC, export, or monitoring rule>
+- **Line(s):** <line numbers if applicable>
+- **Description:** <what was found>
+- **Evidence:** <policy, IAM, grant, CloudTrail, XKS, or replica details>
+- **Effective access:** <principals, grant path, service constraints, encryption context, and cross-account scope>
+- **Remediation:** <specific policy, grant, monitoring, XKS, or replica-drift fix>
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -200,6 +277,10 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Misreading KMS key-policy resources.** `Resource: "*"` in a key policy is common because the policy is attached to one key. Review principals, actions, conditions, grants, and IAM delegation before flagging it.
+8. **Missing KMS grants.** `kms:CreateGrant` can delegate decrypt or data-key access outside the obvious IAM path. Check constraints, retiring principals, monitoring, and stale grant cleanup.
+9. **Ignoring service and encryption-context constraints.** Workload access through AWS services should usually be constrained with `kms:ViaService`, caller/source account conditions, and encryption context where shared keys are used.
+10. **Treating XKS and multi-Region keys as ordinary keys.** External key stores and replicas need health, failover, break-glass, policy-drift, and deletion-window evidence.
 
 ---
 
@@ -225,10 +306,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- AWS KMS Key Policies: https://docs.aws.amazon.com/kms/latest/developerguide/key-policies.html
+- AWS KMS Grants: https://docs.aws.amazon.com/kms/latest/developerguide/grants.html
+- AWS KMS Condition Keys: https://docs.aws.amazon.com/kms/latest/developerguide/conditions-kms.html
+- AWS KMS External Key Stores: https://docs.aws.amazon.com/kms/latest/developerguide/keystore-external.html
+- AWS KMS Multi-Region Keys: https://docs.aws.amazon.com/kms/latest/developerguide/multi-region-keys-overview.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added supplemental KMS effective-access evidence gates for key policies, IAM delegation, grants, service and encryption-context constraints, CloudTrail monitoring, external key stores, and multi-Region replica drift.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).

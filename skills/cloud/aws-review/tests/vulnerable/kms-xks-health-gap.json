@@ -1,0 +1,22 @@
+{
+  "name": "kms-xks-health-gap",
+  "key": {
+    "alias": "alias/payment-xks-key",
+    "account": "111122223333",
+    "region": "us-east-1",
+    "dataClass": "payment-records",
+    "keyStoreType": "EXTERNAL_KEY_STORE"
+  },
+  "xksEvidence": {
+    "proxyHealthAlarm": false,
+    "connectivityRunbook": null,
+    "breakGlassApproval": null,
+    "fallbackDecision": "unknown",
+    "lastFailoverExerciseDays": null
+  },
+  "expectedReviewFinding": {
+    "supplementalId": "AWS-KMS-EFF-6",
+    "severity": "High",
+    "evidence": "Critical payment workload depends on XKS, but proxy health, connectivity, break-glass, fallback, and failover evidence are missing."
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "kms-unconstrained-create-grant",
+  "key": {
+    "alias": "alias/customer-pii",
+    "account": "111122223333",
+    "region": "us-east-1",
+    "dataClass": "regulated-customer-data"
+  },
+  "keyPolicyStatement": {
+    "effect": "Allow",
+    "principal": "arn:aws:iam::111122223333:role/app-admin",
+    "actions": [
+      "kms:CreateGrant",
+      "kms:Decrypt",
+      "kms:GenerateDataKey"
+    ],
+    "resource": "*",
+    "conditions": {}
+  },
+  "grantEvidence": {
+    "retiringPrincipal": null,
+    "operationsConstrained": false,
+    "staleGrantReviewDays": null,
+    "cloudTrailCreateGrantAlarm": false
+  },
+  "expectedReviewFinding": {
+    "supplementalId": "AWS-KMS-EFF-2",
+    "severity": "High",
+    "evidence": "Role can create grants and decrypt regulated data without constraints, retiring principal, stale-grant review, or CreateGrant monitoring."
+  }
+}

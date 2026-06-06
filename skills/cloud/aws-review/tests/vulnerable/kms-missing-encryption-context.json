@@ -1,0 +1,29 @@
+{
+  "name": "kms-missing-encryption-context",
+  "key": {
+    "alias": "alias/shared-app-key",
+    "account": "111122223333",
+    "region": "us-west-2",
+    "dataClass": "multi-tenant-application-data"
+  },
+  "usage": {
+    "tenants": [
+      "tenant-a",
+      "tenant-b"
+    ],
+    "applications": [
+      "billing",
+      "support-export"
+    ],
+    "encryptionContextRequired": false
+  },
+  "conditions": {
+    "kms:ViaService": "s3.us-west-2.amazonaws.com",
+    "kms:CallerAccount": "111122223333"
+  },
+  "expectedReviewFinding": {
+    "supplementalId": "AWS-KMS-EFF-4",
+    "severity": "Medium",
+    "evidence": "Shared multi-tenant key lacks encryption-context constraints for tenant, application, environment, or data class."
+  }
+}

@@ -325,6 +325,49 @@ resource "aws_kms_key" {
 }
 ```
 
+### Supplemental AWS-KMS-EFF -- Effective Access Evidence
+
+These checks are not additional CIS benchmark controls and should not change the CIS score denominator. Use them when a CIS storage/logging/encryption pass depends on customer-managed KMS keys or when the review scope includes sensitive data protected by KMS.
+
+| Supplemental ID | Evidence | Pass Criteria | Finding Criteria |
+|---|---|---|---|
+| AWS-KMS-EFF-1 | Key policy and IAM delegation | Key policy principals/actions are scoped; IAM delegation is intentional and constrained | Broad decrypt/admin access, broad account-root delegation without conditions, or cross-account principals without caller/source constraints |
+| AWS-KMS-EFF-2 | Grants and `kms:CreateGrant` | Grants have constrained operations, retiring principal, creation/review evidence, and CloudTrail monitoring | Unconstrained grant creation, stale decrypt/data-key grants, missing retiring principal, or no stale-grant review |
+| AWS-KMS-EFF-3 | Service constraints | Intended service use is constrained with `kms:ViaService`, `kms:CallerAccount`, `aws:SourceArn`, or `aws:SourceAccount` where applicable | Workload/service roles can use keys outside the intended service or account path |
+| AWS-KMS-EFF-4 | Encryption context | Shared or multi-tenant keys require `kms:EncryptionContext` conditions for tenant, app, environment, or data class | Same key protects mixed tenants/apps/data classes without context constraints |
+| AWS-KMS-EFF-5 | Monitoring | CloudTrail/CloudWatch evidence covers `CreateGrant`, `RetireGrant`, `RevokeGrant`, failed decrypts, unexpected principals, disablement, and deletion | Grant/decrypt anomalies or key lifecycle events are not monitored |
+| AWS-KMS-EFF-6 | XKS and replica operations | XKS health, connectivity, break-glass, failover, replica policy drift, rotation, and deletion windows are documented | XKS outage/fallback gaps, replica policy drift, missing failover evidence, or unreviewed deletion windows |
+
+**Benign example: key policy uses `Resource: "*"` but effective access is constrained**
+
+```json
+{
+  "Action": ["kms:Decrypt", "kms:GenerateDataKey"],
+  "Resource": "*",
+  "Principal": {"AWS": "arn:aws:iam::111122223333:role/cloudtrail-writer"},
+  "Condition": {
+    "StringEquals": {
+      "kms:ViaService": "cloudtrail.us-east-1.amazonaws.com",
+      "kms:CallerAccount": "111122223333"
+    },
+    "StringLike": {
+      "kms:EncryptionContext:aws:cloudtrail:arn": "arn:aws:cloudtrail:*:111122223333:trail/*"
+    }
+  }
+}
+```
+
+**Vulnerable example: broad grant delegation**
+
+```json
+{
+  "Action": ["kms:CreateGrant", "kms:Decrypt", "kms:GenerateDataKey*"],
+  "Resource": "*",
+  "Principal": {"AWS": "arn:aws:iam::111122223333:role/app-admin"},
+  "Condition": {}
+}
+```
+
 ### CIS 3.9 -- Ensure VPC flow logging is enabled in all VPCs
 
 Check for `aws_flow_log` resources:
