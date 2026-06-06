@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -244,6 +244,34 @@ List known sources of false positives and recommended tuning actions.
 
 **Tuning recommendation:** Add parent process exclusions for validated automation tools after confirming their encoded command usage is benign. Document each exclusion with a ticket reference.
 
+#### Tuning and Suppression Governance
+
+Treat detection filters, allowlists, and suppression rules as security-relevant code. A suppression can reduce alert fatigue, but an overbroad or stale suppression can remove the only working detection for an ATT&CK technique. Every tuning change must preserve the detection goal, have an accountable owner, and include regression evidence.
+
+**Suppression governance matrix:**
+
+| Field | Required Evidence | Review Question |
+|-------|-------------------|-----------------|
+| Suppression identifier | Rule ID, filter name, pull request, ticket, and SIEM object ID | Can this exact exception be found and removed later? |
+| Scope | User, host, parent process, command fragment, signer, hash, IP range, cloud account, or time window | Is the exception as narrow as the benign behavior allows? |
+| Owner and approver | Service owner plus detection/security approver | Who accepts the residual detection gap? |
+| Expiry or review date | Expiration timestamp or scheduled review cadence | Will the exception be revisited before it becomes permanent drift? |
+| Benign evidence | Sample events, business process, deployment tool, or maintenance activity | Does the evidence prove this is expected behavior? |
+| Negative regression test | Known malicious or atomic sample still fires after the filter | Did tuning preserve adversary coverage? |
+| Telemetry fallback | Adjacent rule, lower-severity log, or compensating control | What still detects abuse inside the suppressed scope? |
+| Metrics impact | Fire-rate change, TP/FP ratio, coverage score, and affected ATT&CK mappings | Did the exception materially reduce detection coverage? |
+
+**What to verify before accepting a suppression:**
+
+- [ ] The filter uses the narrowest stable fields available; avoid broad `contains` filters on usernames, parent paths, or command substrings when signer, hash, host group, service account, or exact path evidence exists.
+- [ ] The exception has an owner, approval record, business reason, expiry or review date, and linked ticket.
+- [ ] The rule keeps at least one true-positive fixture or Atomic Red Team event that still fires after the filter is applied.
+- [ ] The ADS document records blind spots introduced by the suppression and any compensating detection.
+- [ ] The heatmap or coverage record marks the affected technique as reduced coverage when suppression materially removes procedure examples.
+- [ ] High-risk suppressions for privileged users, domain controllers, identity providers, production cloud accounts, security tooling, or broad network ranges require security approval and shorter review cadence.
+
+**Finding classification:** Overbroad suppression that can hide the target technique is **P1/Critical** when the technique is actively exploited or no compensating rule exists. Suppression without owner, expiry, approval, or regression evidence is **P2/High**. Missing metrics impact or heatmap adjustment is **P3/Medium**. Minor documentation drift on a narrow, validated suppression is **P4/Low**.
+
 #### Priority
 Define the alert priority and its justification.
 
@@ -352,8 +380,8 @@ detections/
 | Severity | Label | Definition | SLA |
 |----------|-------|------------|-----|
 | P1 | Critical | Detection gap for an actively exploited technique targeting the organization's industry. No compensating detection exists. | Create and deploy detection within 24 hours |
-| P2 | High | Detection gap for a technique with known procedure examples and available log sources. Threat intelligence indicates active use by relevant threat groups. | Create and deploy detection within 7 days |
-| P3 | Medium | Detection gap for a technique with available log sources but lower threat intelligence relevance. Coverage improvement opportunity. | Create and deploy detection within 30 days |
+| P2 | High | Detection gap for a technique with known procedure examples and available log sources. Threat intelligence indicates active use by relevant threat groups, or suppression lacks owner/expiry/regression evidence. | Create and deploy detection or fix suppression within 7 days |
+| P3 | Medium | Detection gap for a technique with available log sources but lower threat intelligence relevance. Coverage improvement opportunity, or suppression lacks metrics/coverage impact evidence. | Create and deploy detection or tune governance within 30 days |
 | P4 | Low | Detection exists but has not been validated or tuned. Coverage is theoretical only. | Validate and tune within 90 days |
 
 ---
@@ -394,6 +422,11 @@ Produce detection engineering deliverables in this structure:
 - **Converted Query:** [KQL/SPL/EQL equivalent if requested]
 - **Estimated False Positive Rate:** [Low / Medium / High]
 - **Tuning Recommendations:** [Specific filter additions]
+
+### Tuning and Suppression Governance
+| Suppression ID | Scope | Owner | Approval | Expiry/Review | Benign Evidence | TP Regression | Compensating Detection | Coverage Impact |
+|----------------|-------|-------|----------|---------------|-----------------|---------------|------------------------|-----------------|
+| [filter_sccm_encoded] | [ParentImage ccmexec.exe + signer Microsoft] | [Endpoint team] | [SEC-123] | [2026-09-30] | [sample event] | [Atomic T1059.001 still fires] | [EDR script block alert] | [No change / reduced / gap] |
 ```
 
 ---
@@ -482,15 +515,19 @@ Creating a detection rule by pattern-matching on a single indicator (e.g., a spe
 
 Deploying a detection rule without enumerating and testing against known false positive sources leads to alert fatigue. A rule that generates hundreds of false positives per day will be ignored or disabled, providing zero security value. Always enumerate legitimate use cases, build filters for known-good patterns, and monitor the false positive rate during an initial tuning period with the rule in "test" or "informational" status.
 
-### Pitfall 3: Creating Detections Without Validation Testing
+### Pitfall 3: Treating Suppressions as Harmless Noise Reduction
+
+Suppression rules are detection logic. A broad allowlist such as "ignore encoded PowerShell from any admin host" can create a blind spot larger than the original false-positive problem. Require owner, scope, expiry, approval, benign samples, and true-positive regression tests for every suppression.
+
+### Pitfall 4: Creating Detections Without Validation Testing
 
 A detection rule that has never been tested against a known-true-positive event provides only theoretical coverage. Use Atomic Red Team (https://github.com/redcanaryco/atomic-red-team), Caldera, or manual technique execution in a test environment to confirm the rule fires on the expected activity. Move rules from "experimental" to "stable" status only after successful validation.
 
-### Pitfall 4: Ignoring Detection Rule Lifecycle Management
+### Pitfall 5: Ignoring Detection Rule Lifecycle Management
 
 Detection rules are not write-once artifacts. Log sources change, environments evolve, adversary techniques mutate, and SIEM platforms update their query syntax. Rules that are not periodically reviewed become stale, accumulate false positives, or silently stop working. Implement a review cadence (quarterly minimum) and track rule health metrics (fire count, TP/FP ratio, last triggered date).
 
-### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
+### Pitfall 6: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
@@ -522,3 +559,12 @@ This skill processes user-supplied content that may include log samples, detecti
 10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
 11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
 12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+13. **Sigma Correlations and Rules Guide** -- https://sigmahq.io/docs/meta/correlations.html
+14. **ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Added detection tuning and suppression governance gates covering owner, scope, expiry/review, approval, benign evidence, true-positive regression tests, compensating detections, and coverage impact.
+- **1.0.0** -- Initial release. Sigma rule authoring, Palantir ADS documentation, MITRE ATT&CK v16 coverage mapping, detection-as-code workflow, and coverage heatmap methodology.
