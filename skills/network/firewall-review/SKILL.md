@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -254,7 +254,59 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 
 ---
 
-### Step 3: Compile Assessment Report
+### Step 3: Rule Evidence Matrix and Confidence
+
+Before assigning severity, build a normalized evidence matrix for material rules. This prevents speculative findings when the available evidence is a mix of IaC, exported firewall configuration, firewall-manager output, runtime counters, flow logs, tickets, and design documentation.
+
+#### 3.1 Evidence Confidence Levels
+
+| Confidence | Evidence Standard |
+|---|---|
+| **High** | Source-controlled configuration or exported device policy plus expanded objects, NAT/security-policy context, and current runtime/log evidence |
+| **Medium** | Exported configuration or IaC plus partial runtime evidence or documented owner/ticket context |
+| **Low** | Design document, screenshot, stale export, or narrative evidence only |
+| **Not Evaluable** | Required policy or runtime evidence is unavailable |
+
+Use Not Evaluable reason codes instead of silently omitting gaps:
+
+| Code | Reason |
+|---|---|
+| `FW-NE-01` | Object groups, address groups, service groups, dynamic tags, or FQDN objects were not expanded |
+| `FW-NE-02` | Runtime counters, last-hit data, or counter reset/failover baseline were unavailable |
+| `FW-NE-03` | NAT, route, or security policy evaluation stage was unavailable |
+| `FW-NE-04` | IPv6 policy was missing or not exported |
+| `FW-NE-05` | Egress path, proxy path, or DNS resolver path could not be confirmed |
+| `FW-NE-06` | Firewall export age or source-of-truth freshness could not be verified |
+| `FW-NE-07` | Rule owner, business justification, expiration, or change-ticket evidence was missing |
+| `FW-NE-08` | Log destination, SIEM ingestion, or rule-level logging evidence was missing |
+
+#### 3.2 Rule Evidence Matrix
+
+| Field | Required Evidence |
+|---|---|
+| Rule ID / position | Rule number, priority, chain position, or policy order |
+| Action and direction | Allow/deny/log action plus ingress, egress, east-west, management-plane, or endpoint direction |
+| Zones and interfaces | Source and destination zone/interface where supported |
+| Source and destination | Raw object name plus expanded IPs, CIDRs, tags, users, workloads, or FQDN resolution timestamp |
+| Service | Protocol, port range, application ID, or service group with expansion status |
+| Owner and ticket | Business owner, change ticket, expiration date, and temporary-access marker |
+| Hit count / last used | Hit count, last-hit timestamp, and counter reset/failover baseline |
+| Logging | Rule-level logging setting, log destination, and SIEM/flow-log proof |
+| NAT / related policy | Pre-NAT/post-NAT context, route dependency, paired NAT rule, or related security policy |
+| Evidence source | IaC path, exported config, firewall manager export, runtime command, flow log, SIEM query, or design document |
+| Confidence | High, Medium, Low, or Not Evaluable |
+| Not Evaluable reason | `FW-NE-*` code and exact evidence needed |
+
+Evidence-driven rules:
+
+- Do not mark a rule unused from hit count alone unless the counter baseline is older than the review window and no failover/reset event invalidates the data.
+- Do not downgrade an any/any rule solely because the object name looks narrow; expand the object group or mark `FW-NE-01`.
+- Do not declare default-deny complete until inbound, outbound, IPv6, and relevant cloud/provider implicit defaults are evaluated or marked Not Evaluable.
+- Do not claim logging coverage from a rule flag alone; confirm log destination or SIEM/flow ingestion when available.
+
+---
+
+### Step 4: Compile Assessment Report
 
 Produce the final report using the following structure.
 
@@ -294,17 +346,24 @@ Produce the final report using the following structure.
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
 - **Control Reference:** CIS 4.4 / NIST SP 800-41 Section X.X
+- **Evidence Confidence:** High / Medium / Low / Not Evaluable
 - **File:** <path to config file>
 - **Rule(s):** <rule number(s) or line(s)>
 - **Description:** <what was found>
 - **Evidence:** <specific rule text or configuration snippet>
+- **Not Evaluable Reason:** <FW-NE code, if applicable>
 - **Remediation:** <concrete fix with example>
 
+### Rule Evidence Matrix
+| Rule ID | Action | Direction | Source | Destination | Service | Owner/Ticket | Hit Count / Last Used | Logging | NAT / Related Policy | Evidence Source | Confidence | Not Evaluable Reason |
+|---------|--------|-----------|--------|-------------|---------|--------------|-----------------------|---------|----------------------|-----------------|------------|----------------------|
+
 ### Default Deny Status
-| Direction | Status | Evidence |
-|-----------|--------|----------|
-| Inbound   | Pass/Fail | <rule reference> |
-| Outbound  | Pass/Fail | <rule reference> |
+| Direction | Status | Evidence | Confidence | Not Evaluable Reason |
+|-----------|--------|----------|------------|----------------------|
+| Inbound   | Pass/Fail/Not Evaluable | <rule reference> | <level> | <FW-NE code> |
+| Outbound  | Pass/Fail/Not Evaluable | <rule reference> | <level> | <FW-NE code> |
+| IPv6      | Pass/Fail/Not Evaluable | <rule reference> | <level> | <FW-NE code> |
 
 ### Shadowed Rules Summary
 | Shadowed Rule | Position | Shadowing Rule | Position | Impact |
@@ -361,6 +420,12 @@ Produce the final report using the following structure.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
+6. **Treating object names as evidence.** Object groups, address groups, service groups, user groups, FQDN objects, and dynamic tags must be expanded before severity is assigned. Friendly names can hide broad CIDRs, stale hosts, or mixed environments.
+
+7. **Ignoring NAT and route stage.** A security policy may protect pre-NAT addresses while the effective exposure exists after translation or routing. Record the NAT stage and related policy before declaring a rule safe.
+
+8. **Using stale exports as source of truth.** Firewall manager exports, screenshots, and ticket attachments can be outdated. Record export time, source, and confidence; mark `FW-NE-06` when freshness cannot be verified.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -386,4 +451,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.0.1** -- Added evidence confidence levels, Not Evaluable reason codes, rule evidence matrix fields, and calibration fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
