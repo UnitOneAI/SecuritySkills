@@ -12,7 +12,7 @@ phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -313,6 +313,41 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Do not store raw source text in vector metadata unless access controls are equivalent to the source document's classification.
 - Monitor vector store access patterns for anomalous query volumes or bulk extraction attempts.
 
+#### LLM08 Retrieval Authorization Evidence Gate
+
+Do not pass RAG authorization based only on a tenant filter in the first vector query or collection-level vector database ACLs. Prove that authorization survives every step that can add, reorder, cache, stitch, summarize, or stream retrieved context.
+
+```
+LLM08-RA-01: Pre-query authorization scope lacks tenant, user, group, role, document, chunk, or permission-version filters
+LLM08-RA-02: Returned chunks are not rechecked against current document/chunk ACL before prompt assembly
+LLM08-RA-03: Retrieval cache key omits tenant, user/group, permission version, collection, embedding model, or source ACL hash
+LLM08-RA-04: Reranker, hybrid search, graph expansion, or chunk stitching drops source authorization metadata
+LLM08-RA-05: Public/shared documents lack explicit immutable classification and source ownership evidence
+LLM08-RA-06: Group membership, document sharing, deletion, reclassification, or legal hold changes do not invalidate caches/indexes/context stores
+LLM08-RA-07: Chunk-level ACLs or redaction boundaries are required but only document-level ACLs are checked
+LLM08-RA-08: Post-retrieval authorization evidence is unavailable; retrieval authorization must be Not Evaluable
+```
+
+**Required evidence matrix:**
+
+| Evidence Area | Required Detail | Risk if Missing |
+|---|---|---|
+| Request identity | Authenticated tenant, user, groups, roles, entitlements, session, and permission version used for retrieval | Review cannot prove the query used the caller's current authorization |
+| Pre-query filters | Vector, keyword, graph, and hybrid-search filters for tenant, source collection, document ACL, chunk ACL, classification, and permission version | Initial retrieval can include unauthorized candidates |
+| Post-retrieval validation | ACL check after vector/keyword retrieval, after reranking/aggregation, and immediately before prompt assembly or streaming | Cached or transformed chunks can bypass the original filter |
+| Cache scope | Cache key includes tenant, user or permission scope, groups hash, query hash, collection, embedding model/version, source ACL hash, and permission version | One user's authorized context can be reused for another user or tenant |
+| Reranker/hybrid metadata | Reranker, BM25, graph expansion, and chunk stitching preserve document ID, chunk ID, tenant, ACL hash, source URI, classification, and permission version | Authorization metadata can disappear before the final prompt |
+| Public content exception | Public/shared classification, immutable source metadata, owner, approval date, and proof that no tenant-private content is mixed in | Shared collections can be mistaken for public access |
+| Invalidation | Events for group changes, document ACL updates, deletions, reclassification, legal holds, source reindex, embedding model changes, and permission-version bumps | Stale permissions can keep exposing previously authorized content |
+
+**Decision rules:**
+
+- Mark retrieval authorization **High** when unauthorized tenant/user/document/chunk content can reach prompt assembly, responses, tools, or downstream summaries.
+- Mark shared caches **High** when keyed only by query text, embedding hash, or normalized prompt without permission scope and permission version.
+- Mark reranker/hybrid-search metadata loss **High** when final context cannot be traced back to source ACLs before prompt assembly.
+- Mark public/shared content **Medium** unless explicit public classification and immutable source metadata are documented; raise to **High** if mixed with tenant-private content.
+- Mark retrieval authorization **Not Evaluable** when reviewers only have the initial vector query filter or collection ACLs and lack post-retrieval, cache, reranker, and prompt-assembly evidence.
+
 **CWE Mapping:** CWE-284 (Improper Access Control), CWE-311 (Missing Encryption of Sensitive Data)
 
 ---
@@ -435,6 +470,12 @@ Structure the findings report as follows:
 |----|---------------|----------|----------|--------|
 | FINDING-001 | LLM0X:2025 | High | P1 | Open |
 
+## RAG Retrieval Authorization
+
+| Pipeline | Identity Scope | Pre-query Filter | Post-retrieval ACL Checkpoints | Cache Scope | Reranker/Hybrid Metadata | Permission Invalidation | Decision |
+|----------|----------------|------------------|--------------------------------|-------------|--------------------------|-------------------------|----------|
+| [pipeline name] | [tenant/user/groups/permission version] | [tenant/user/group/doc/chunk/classification] | [after retrieval/after rerank/before prompt] | [tenant/user/groups/permission/source ACL/model] | [doc/chunk/tenant/ACL metadata preserved] | [group/doc/delete/reclassify/reindex events] | [Pass/Fail/Partial/Not Evaluable] |
+
 ## Recommendations
 
 [Prioritized list of remediation actions]
@@ -507,3 +548,9 @@ When performing a review using this skill:
 - LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
 - LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
 - LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+
+---
+
+## Changelog
+
+- **1.0.1** -- Add LLM08 retrieval authorization evidence gates for post-retrieval ACL validation, cache scoping, reranker metadata, public content exceptions, and permission invalidation.
