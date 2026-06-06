@@ -267,11 +267,33 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```javascript
+// VULNERABLE: Multipart upload has no file count, part count, or stream timeout
+const upload = multer({ storage: multer.memoryStorage() });
+app.post('/api/import', upload.any(), async (req, res) => {
+  for (const file of req.files) {
+    await processUpload(file.buffer);
+  }
+  res.json({ imported: req.files.length });
+});
+```
+
+```python
+# VULNERABLE: Archive extraction has no size, entry count, depth, or path bounds
+@app.post('/api/import')
+def import_zip():
+    archive = zipfile.ZipFile(request.files['archive'])
+    archive.extractall('/srv/imports')
+    return {'imported': len(archive.infolist())}
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
+- For upload endpoints, enforce request body size, per-file size, file count, multipart part count, per-user upload rate, stream timeout, and storage quota before expensive parsing, scanning, conversion, or persistence.
+- For archive imports, enforce compressed/uncompressed size ratio, total extracted size, entry count, nesting depth, symlink/device entry rejection, and extraction timeouts before processing any entry.
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
@@ -281,6 +303,9 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations.
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
+- [ ] Upload endpoints enforce per-file size, file count, multipart part count, stream timeout, and storage quota limits.
+- [ ] Archive extraction enforces size ratio, total extracted size, entry count, nesting depth, safe entry types, and extraction time limits.
+- [ ] Gateway, framework parser, scanner/quarantine, storage, and downstream processor limits are consistent.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
@@ -450,6 +475,18 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+```javascript
+// VULNERABLE: Trusts Content-Type and writes attacker-controlled filenames under web root
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  if (req.file.mimetype !== 'image/png') {
+    return res.status(400).end();
+  }
+  const output = `/var/www/uploads/${req.file.originalname}`;
+  await fs.promises.writeFile(output, req.file.buffer);
+  res.json({ url: `/uploads/${req.file.originalname}` });
+});
+```
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
@@ -462,6 +499,24 @@ Document doc = builder.parse(request.getInputStream());
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
+- Treat upload metadata as untrusted: validate content signatures/magic numbers, use extension allowlists only as secondary evidence, generate server-side object keys, and never use original filenames as filesystem paths.
+- Store uploaded files outside the application web root or in private object storage. Serve downloads through an authorization-checked handler with safe `Content-Disposition`, explicit `Content-Type`, and `X-Content-Type-Options: nosniff`.
+- Keep asynchronously scanned files quarantined and inaccessible until the scan succeeds. Fail closed on scanner errors or timeouts.
+- For archive extraction, canonicalize each output path and verify it remains inside an isolated workspace before writing. Reject absolute paths, `..` traversal, symlinks, device entries, and overwrite attempts.
+
+### File Upload and Parser Boundary Checks
+
+Use this cross-layer checklist for `multipart/form-data`, raw file uploads, GraphQL uploads, archive imports, image/document conversion inputs, and signed upload callbacks:
+
+| Area | Evidence to Require | Common Gap |
+|---|---|---|
+| **Parser limits** | Gateway and application parser body size, per-file size, file count, part count, and timeout settings | Gateway limit exists, but application parser buffers unlimited parts |
+| **Type validation** | Magic-number/content-signature checks plus extension allowlist | `Content-Type` or filename extension trusted alone |
+| **Filename handling** | Server-generated key, sanitized display name, no overwrite behavior | `originalname` used in filesystem path or public URL |
+| **Storage isolation** | Private bucket, non-executable filesystem, no direct app-origin serving | Uploaded active content served from `/uploads` |
+| **Quarantine/scanning** | File inaccessible until malware scan/conversion succeeds; fail-closed error handling | Async scan starts after file is already downloadable |
+| **Archive safety** | Ratio, extracted size, entry count, depth, canonical path, and safe entry-type checks | `extractall` or equivalent with untrusted archives |
+| **Downstream processors** | Image/document converter, OCR, AV, or import worker limits match API limits | Scanner checks first part only, but business logic processes all parts |
 
 ### Review Checklist
 
@@ -472,6 +527,11 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
+- [ ] File upload endpoints do not trust `Content-Type`, extension, or original filename as security evidence.
+- [ ] Uploaded files are stored outside the app web root or in private object storage and served through authorization-checked download handlers.
+- [ ] Asynchronous malware scanning or conversion keeps files quarantined until success and fails closed on scanner errors.
+- [ ] Archive extraction uses canonical path checks, safe entry-type filtering, isolated workspaces, and overwrite protection.
+- [ ] Safe download headers prevent active content sniffing or inline execution where not explicitly required.
 
 ---
 

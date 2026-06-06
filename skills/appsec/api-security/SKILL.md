@@ -3,15 +3,16 @@ name: api-security
 description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
-tags: [appsec, api, rest, graphql]
+  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, file
+  upload parser boundaries, and SSRF. Produces findings mapped to API1-API10
+  with remediation guidance.
+tags: [appsec, api, rest, graphql, file-upload]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -21,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, file upload endpoints, archive import flows, and API gateway configurations.
 
 ---
 
@@ -37,9 +38,10 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+7. **Catalog upload and parser boundaries** -- Identify endpoints that accept `multipart/form-data`, raw file bodies, GraphQL uploads, archives, import bundles, image/document conversion inputs, or signed upload callbacks. Record maximum body size, file count, content-signature validation, archive extraction behavior, quarantine/scanning, storage location, download path, and downstream processors.
+8. **Identify downstream dependencies** -- Third-party APIs, internal microservices, scanners, conversion workers, object storage, or webhooks that the API consumes.
 
-> **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
+> **Gate:** Do not proceed until the API style, authentication model, authorization model, endpoint inventory, and any upload/parser boundaries are documented. Incomplete scope leads to missed findings.
 
 ---
 
@@ -48,6 +50,36 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+---
+
+## File Upload and Multipart Parser Boundary Gate
+
+File upload endpoints are API surfaces even when the application later hands the file to object storage, an antivirus scanner, a document converter, or an offline import job. Treat upload evidence as a cross-layer gate that usually maps to API4:2023 (resource consumption) and API8:2023 (security misconfiguration), with API9:2023 inventory impact when upload routes are undocumented.
+
+### Required Evidence
+
+For each upload, import, or archive endpoint, record:
+
+| Evidence Area | Required Questions |
+|---|---|
+| **Endpoint and parser** | Which route accepts the file? Which framework parser, gateway, proxy, or GraphQL upload middleware parses it? Are gateway and application limits consistent? |
+| **Size, count, and rate limits** | Are request size, per-file size, file count, part count, stream timeout, per-user rate, and storage quota enforced before expensive processing? |
+| **Type validation** | Is the user-controlled `Content-Type` header treated as advisory only? Are extension allowlists paired with magic-number or content-signature validation? |
+| **Filename and path handling** | Are object keys or filenames server-generated? Are original filenames sanitized, never used as filesystem paths, and excluded from overwrite decisions? |
+| **Storage and download controls** | Are uploaded files stored outside the app web root or in private object storage? Are downloads served with safe `Content-Disposition`, `Content-Type`, and `X-Content-Type-Options: nosniff` headers? |
+| **Quarantine and scanning** | If malware scanning is asynchronous, is the file inaccessible until scan completion? Are scan failures fail-closed and logged? |
+| **Archive extraction** | Are compressed/uncompressed size ratio, total extracted size, entry count, nesting depth, symlink/device entries, and canonical output paths bounded before extraction? |
+| **Downstream processors** | Are image resizers, document converters, OCR jobs, import workers, and AV scanners covered by the same limits and isolation assumptions? |
+
+### Classification Guidance
+
+- **High:** Unauthenticated or broadly authenticated upload stores attacker-controlled filenames or active content under a web-served path; trusts `Content-Type` or extension alone; or extracts archives without size, path, and entry controls.
+- **Medium:** Controls exist at one layer, but gateway, application parser, scanner/quarantine, storage, or downstream processor limits are inconsistent or not evidenced.
+- **Low:** Secure controls appear present, but report evidence is incomplete, stale, or missing one non-critical field.
+- **Informational:** Uploads are encrypted, quarantined, not parsed, not served, and routed to a documented offline workflow with bounded storage and access controls.
+
+Do not fail every upload endpoint by default. A benign upload flow with bounded size/count, content-signature validation, server-generated object keys, quarantine-before-release, private storage, and safe download headers should be classified as controlled or informational rather than vulnerable.
 
 ---
 
@@ -92,7 +124,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.1.0
 
 ### Summary
 
@@ -111,6 +143,12 @@ The final review output must be structured as follows:
 
 **Total Findings:** [count]
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
+
+### Upload / Parser Boundary Evidence
+
+| Endpoint | Parser Layer(s) | Size/Count Limits | Type Validation | Archive Controls | Quarantine/Scanning | Storage/Download Controls | Status |
+|---|---|---|---|---|---|---|---|
+| [path] | [gateway/app/scanner/storage] | [configured/missing] | [signature + allowlist] | [ratio/path/depth] | [quarantine-before-release] | [private + safe headers] | [Verified/Gap/Not Evaluable] |
 
 ### Findings
 
@@ -215,6 +253,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Treating upload controls as a single checkbox.** A gateway body limit does not prove the application parser, scanner, storage layer, archive extractor, or downstream converter enforces compatible limits. Record each layer before classifying an upload flow as secure.
+
+8. **Trusting user-supplied file metadata.** `Content-Type`, filename extension, and original filename are attacker-controlled hints. They must not replace content-signature validation, server-generated names, isolated storage, or safe download headers.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -237,5 +279,7 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **OWASP File Upload Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
+- **OWASP Input Validation Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
