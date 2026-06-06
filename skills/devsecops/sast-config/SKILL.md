@@ -91,6 +91,20 @@ Categorize by:
 - **Rule source:** Default/managed rules, community rules, custom org rules.
 - **Integration point:** Pre-commit, PR check, scheduled scan, IDE plugin.
 
+For monorepos, also build a workspace coverage inventory before scoring rule maturity:
+
+| Field | Evidence to Collect |
+|-------|---------------------|
+| **Component / package** | Deployable service, app, worker, library, or build target name |
+| **Language / ecosystem** | JavaScript/TypeScript, Go, Python, Java, C#, C/C++, etc. |
+| **Production path(s)** | Included source directories and release artifact mapping |
+| **Scanner / job** | Semgrep, CodeQL, SonarQube, language-specific linter, or custom analyzer |
+| **Last scanned commit** | Commit SHA from CI logs, SARIF `run` metadata, or scanner dashboard |
+| **Paths included/excluded** | `paths`, `paths-ignore`, `--subdir`, `.semgrepignore`, CodeQL config |
+| **LOC extracted/scanned** | Handwritten LOC or build-target coverage, excluding generated/vendor code |
+
+**Finding classification:** A polyglot monorepo with a single-language or single-subdirectory scan that is reported as full-repo coverage is **High**. Missing workspace inventory for production components is **Medium**.
+
 ---
 
 ### Step 2: Rule Coverage Analysis Against CWE Top 25
@@ -116,8 +130,26 @@ For each CWE, verify:
 - At least one active rule covers the weakness for each language in the codebase.
 - Rule is enabled (not suppressed in configuration).
 - Rule severity matches the CWE's risk (Top 10 CWEs should not be INFO level).
+- Coverage is proven per deployable component, not only at the repository or default-language level.
+- SARIF categories, CodeQL databases, Semgrep project tags, or scanner dashboards identify the scanned paths and languages.
+- Generated/vendor code does not inflate coverage metrics for handwritten production code.
 
 **Finding classification:** CWE Top 10 weakness with zero SAST coverage for a language in use is **High**. CWE 11-25 with no coverage is **Medium**.
+
+#### 2.2 Workspace and SARIF Completeness Gates
+
+```
+SAST-COV-01: Production component has no mapped SAST job or SARIF/run artifact
+SAST-COV-02: Polyglot repository reports coverage for only one language or root package
+SAST-COV-03: `paths-ignore`, `--subdir`, or project filters exclude production paths
+SAST-COV-04: Generated/vendor code dominates scanned LOC and masks handwritten coverage gaps
+SAST-COV-05: CodeQL autobuild succeeds but nested modules or release targets are not extracted
+SAST-COV-06: SARIF upload lacks category/path metadata to distinguish per-component scans
+SAST-COV-07: Fork or PR workflow scans the base branch only, not the submitted delta
+SAST-COV-08: Baseline/suppression files hide findings without package-level review evidence
+```
+
+Require a component-to-scan-artifact matrix before accepting global CWE coverage. For each component, capture scanner name, language, scan command/config path, included/excluded paths, SARIF category or dashboard project, last successful commit, extracted LOC, generated/vendor LOC, and handwritten LOC scanned.
 
 ---
 
@@ -260,6 +292,9 @@ query-filters:
 - Custom query directory exists for org-specific patterns.
 - `paths-ignore` does not exclude production source code.
 - `query-filters` exclusions have documented justification.
+- `language` matrix includes every production language in the workspace inventory.
+- CodeQL database creation logs prove nested modules and deployable build targets were extracted.
+- SARIF upload categories distinguish package/component scans instead of overwriting them as one global result.
 
 #### 4.2 CodeQL Custom Query Structure
 
@@ -430,8 +465,11 @@ jobs:
 - SAST container/action is pinned to a specific version (not `latest`).
 - Results are uploaded to a central dashboard (Semgrep App, GitHub Security tab, SonarQube).
 - Scan time is under 10 minutes for PR checks (developer experience matters).
+- Monorepo jobs scan all production packages or explicitly list accepted gaps with owner and expiry.
+- PR scans prove delta coverage for changed packages and do not rely only on `pull_request_target` base-branch analysis.
+- Scheduled full scans emit per-component SARIF or dashboard projects so stale package scans can be detected.
 
-**Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**.
+**Finding classification:** No SAST in CI pipeline is **Critical**. SAST runs but is not a required status check is **High**. No scheduled full-repo scan is **Medium**. SAST action unpinned is **Medium**. A monorepo CI job that passes while excluding production packages is **High** until package-level coverage is proven.
 
 ---
 
@@ -440,8 +478,8 @@ jobs:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No SAST tooling deployed; CWE Top 5 weaknesses with zero rule coverage for languages in active use. |
-| **High** | SAST not a required CI check; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
-| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
+| **High** | SAST not a required CI check; CWE Top 10 coverage gap; production package excluded from monorepo scan; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
+| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; no component-to-scan matrix; FP rate > 30%. |
 | **Low** | Rule naming convention inconsistencies; missing metadata on custom rules; suboptimal scan performance; cosmetic configuration issues. |
 
 ---
@@ -466,6 +504,14 @@ jobs:
 | CWE-89 | SQLi | Python | 2 rules | ERROR | None |
 | CWE-78 | Cmd Injection | Python | 0 rules | N/A | GAP |
 
+### Workspace Coverage Matrix
+
+| Component | Language | Production Paths | Scanner / Job | Last Scanned Commit | SARIF Category / Project | Included / Excluded Paths | Handwritten LOC Scanned | Gap |
+|-----------|----------|------------------|---------------|---------------------|--------------------------|---------------------------|-------------------------|-----|
+| payments-api | Go | services/payments/** | CodeQL | <sha> | codeql-go-payments | includes services/payments; excludes vendor | 12,400 | None |
+| web-checkout | TypeScript | apps/checkout/** | Semgrep | <sha> | semgrep-web-checkout | subdir apps/checkout | 8,200 | None |
+| auth-worker | Python | workers/auth/** | None | N/A | N/A | N/A | 0 | GAP |
+
 ### CI Integration Status
 
 | Check | Status | Evidence |
@@ -474,6 +520,8 @@ jobs:
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+| Per-component SARIF / dashboard project | Yes/No | <SARIF category, project tag, or scanner project> |
+| Monorepo path coverage proven | Yes/No | <component-to-scan matrix and CI logs> |
 
 ### Findings
 
