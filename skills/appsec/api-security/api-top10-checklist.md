@@ -80,6 +80,46 @@ const resolvers = {
 };
 ```
 
+### gRPC Vulnerable Patterns
+
+```proto
+// VULNERABLE: Tenant-scoped object identifier is accepted by the RPC.
+service InvoiceService {
+  rpc GetInvoice(GetInvoiceRequest) returns (Invoice);
+}
+
+message GetInvoiceRequest {
+  string invoice_id = 1;
+}
+```
+
+```go
+// VULNERABLE: Caller is authenticated, but invoice ownership is not verified.
+func (s *InvoiceServer) GetInvoice(ctx context.Context, req *pb.GetInvoiceRequest) (*pb.Invoice, error) {
+    if auth.FromContext(ctx) == nil {
+        return nil, status.Error(codes.Unauthenticated, "login required")
+    }
+    return s.store.GetInvoice(ctx, req.InvoiceId)
+}
+```
+
+Remediation:
+
+```go
+// SECURE: Object lookup is scoped to the caller's tenant and subject.
+func (s *InvoiceServer) GetInvoice(ctx context.Context, req *pb.GetInvoiceRequest) (*pb.Invoice, error) {
+    caller := auth.FromContext(ctx)
+    if caller == nil {
+        return nil, status.Error(codes.Unauthenticated, "login required")
+    }
+    invoice, err := s.store.GetInvoiceForTenant(ctx, caller.TenantID, req.InvoiceId)
+    if err != nil || invoice.OwnerID != caller.Subject {
+        return nil, status.Error(codes.NotFound, "not found")
+    }
+    return invoice, nil
+}
+```
+
 ### BOLA vs BFLA Distinction
 
 BOLA and BFLA (API5:2023) are frequently confused. The distinction is critical for accurate findings:
@@ -101,6 +141,7 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] gRPC methods that accept object identifiers enforce tenant, ownership, or relationship checks before returning data.
 
 ---
 
@@ -149,6 +190,17 @@ paths:
           in: query  # Should be in header
 ```
 
+```go
+// VULNERABLE: gRPC metadata is present but token claims are not validated.
+func authInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+    md, _ := metadata.FromIncomingContext(ctx)
+    if len(md.Get("authorization")) == 0 {
+        return nil, status.Error(codes.Unauthenticated, "missing token")
+    }
+    return handler(ctx, req)
+}
+```
+
 ### Remediation Guidance
 
 - Enforce rate limiting on all authentication endpoints (e.g., 5 attempts per minute per IP/account).
@@ -157,6 +209,7 @@ paths:
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
 - Authenticate service-to-service calls with mTLS or signed tokens, not network-based trust.
+- For gRPC, validate auth metadata claims for signature, issuer, audience, expiration, tenant, and service identity before adding caller context.
 
 ### Review Checklist
 
@@ -166,6 +219,7 @@ paths:
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
+- [ ] gRPC metadata credentials are validated before request handlers execute.
 
 ---
 
@@ -267,12 +321,26 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```proto
+// VULNERABLE: Streaming methods have no documented message, duration, or rate limits.
+service ReportService {
+  rpc Upload(stream ReportChunk) returns (UploadResult);
+  rpc Search(SearchRequest) returns (stream SearchResult);
+}
+```
+
+```go
+// VULNERABLE: Server has no max receive size, deadline enforcement, or stream limit.
+grpc.NewServer()
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
+- For gRPC: enforce deadlines, maximum receive/send message sizes, stream duration, per-peer concurrency, and message rate limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
 
@@ -282,6 +350,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] gRPC unary and streaming methods enforce deadlines, message sizes, stream duration, and per-peer concurrency limits.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 
@@ -316,12 +385,29 @@ const resolvers = {
 };
 ```
 
+```proto
+// VULNERABLE: Privileged RPC exists, but role requirements are not documented or enforced.
+service AdminService {
+  rpc RotateSigningKey(RotateSigningKeyRequest) returns (RotateSigningKeyResponse);
+}
+```
+
+```go
+func (s *AdminServer) RotateSigningKey(ctx context.Context, req *pb.RotateSigningKeyRequest) (*pb.RotateSigningKeyResponse, error) {
+    if auth.FromContext(ctx) == nil {
+        return nil, status.Error(codes.Unauthenticated, "login required")
+    }
+    return s.keys.Rotate(ctx, req.KeyId)
+}
+```
+
 ### Remediation Guidance
 
 - Implement a centralized authorization middleware or policy engine that enforces role/permission checks consistently across all endpoints.
 - Deny by default: every endpoint should require explicit permission grants. Do not rely on "security through obscurity" of admin URL paths.
 - Enforce authorization on every HTTP method independently. A user authorized to `GET` a resource is not automatically authorized to `DELETE` it.
 - In GraphQL, use directive-based or middleware-based authorization on mutations (`@hasRole(role: ADMIN)`).
+- In gRPC, enforce role and permission checks in unary and stream interceptors or at the start of every privileged method.
 - Regularly audit the endpoint inventory against the authorization policy matrix to detect gaps.
 
 ### Review Checklist
@@ -330,6 +416,7 @@ const resolvers = {
 - [ ] Authorization middleware is centralized and applied consistently.
 - [ ] Each HTTP method on each endpoint has an independent authorization check.
 - [ ] GraphQL mutations enforce role/permission checks in resolvers or directives.
+- [ ] gRPC privileged methods enforce role or permission checks beyond caller authentication.
 - [ ] The authorization policy is deny-by-default; endpoints are inaccessible unless explicitly permitted.
 
 ---
