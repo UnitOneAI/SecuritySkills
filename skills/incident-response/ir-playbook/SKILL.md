@@ -280,7 +280,7 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 |---|---|---|
 | Backup immutability | Offline/WORM/object-lock status, backup account separation, last successful immutable copy | Pass / Gap / Not Evaluable |
 | Backup malware scan | AV/EDR/YARA scan of backup image or restored staging copy | Pass / Gap / Not Evaluable |
-| Restore test | Staged restore, hash/config comparison, boot/app smoke test | Pass / Gap / Not Evaluable |
+| Restore test | Isolated sandbox canary restore, hash/config comparison, boot/app smoke test, no production network access | Pass / Gap / Not Evaluable |
 | Backup age and blast radius | Last known-good timestamp, systems covered, replication status, excluded assets | Pass / Gap / Not Evaluable |
 | Re-wipe loop prevention | Persistence scan, scheduled task/GPO/startup review, backup-agent trust review | Pass / Gap / Not Evaluable |
 
@@ -339,6 +339,8 @@ Next Update: [Scheduled time for next update]
 Incident Commander: [Name and contact]
 Distribution: [Need-to-know recipients; avoid compromised channels]
 ```
+
+Privilege labels should be directed by counsel, tied to legal advice or work-product preparation, and paired with a named counsel owner and restricted distribution list. Do not over-label routine operational updates as privileged; track privileged and non-privileged communications separately.
 
 **Legal/Regulatory Notification:**
 
@@ -551,6 +553,10 @@ Wiper recovery can fail when backup images, startup scripts, GPOs, scheduled job
 ### Pitfall 8: Treating Deepfake BEC as Ordinary Phishing
 
 Synthetic voice/video incidents require payment or access freezes, out-of-band verification, preservation of media artifacts and call metadata, and finance/fraud escalation. Standard phishing triage can miss the business-process control failure.
+
+### Pitfall 9: Over-Labeling Every Message as Privileged
+
+Privilege handling protects legal advice and counsel-directed work product, but blanket labels on all incident messages can reduce credibility and confuse operations. For SEV-1 incidents, separate privileged legal analysis from operational coordination, record the counsel owner, and restrict distribution to need-to-know recipients.
 
 ---
 
