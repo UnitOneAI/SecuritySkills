@@ -176,17 +176,46 @@ IAM-PRIV-07: Cross-account access without external ID or condition keys
 IAM-PRIV-08: Resource-based policies granting public or overly broad access
 ```
 
+#### Entitlement Evidence and Analyzer Corroboration
+
+Use cloud-native analyzers as evidence sources, but do not treat their output as
+the final authorization decision. Analyzer findings must be reconciled against
+business ownership, workload behavior, exception approvals, and recent activity
+windows before recommending removal or privilege reduction.
+
+```
+IAM-PRIV-09: External access analyzer findings are not triaged to an owner
+IAM-PRIV-10: Unused-permission recommendations are accepted without workload evidence
+IAM-PRIV-11: Access exceptions do not include approver, expiry date, and compensating control
+IAM-PRIV-12: Cross-account / cross-tenant grants lack external ID, audience, or condition constraints
+IAM-PRIV-13: Permission reduction plan has no rollback owner or break-glass path
+IAM-PRIV-14: Findings are based on stale telemetry outside the review window
+```
+
+**Evidence requirements:**
+
+| Evidence Source | Required Checks | Failure Mode |
+|---|---|---|
+| Access analyzer findings | Finding ID, affected principal/resource, external principal, last analyzed timestamp, owner disposition | External access remains unowned or unreviewed |
+| Unused access recommendations | Observation period, last-used timestamp, business owner sign-off, planned removal date | Legitimate rare-use permissions are removed without validation |
+| Policy simulation / dry run | Representative action set, target resources, denied actions reviewed by owner | Remediation breaks production workloads |
+| Exception register | Approver, expiry, compensating control, review cadence | Permanent exceptions become undocumented standing access |
+| Recent audit logs | Human/API activity within review window, service account call patterns | Stale telemetry misclassifies active access as unused |
+
 **Platform-specific checks:**
 
 | Platform | Check | What to look for |
 |---|---|---|
-| **AWS** | IAM Access Analyzer, IAM policy simulator | External access findings, unused access, policy validation |
+| **AWS** | IAM Access Analyzer, IAM policy simulator | External access findings, unused access, policy validation, last analyzed timestamp |
 | **AWS** | SCPs (Service Control Policies) | Missing guardrails at organization level |
 | **AWS** | `aws iam get-account-authorization-details` | Full policy enumeration, inline vs. managed policies |
+| **AWS** | CloudTrail, IAM last accessed details | Recent activity window before permission removal |
 | **Azure / Entra ID** | PIM (Privileged Identity Management) role assignments | Permanent vs. eligible assignments, activation requirements |
 | **Azure / Entra ID** | Azure RBAC, custom role definitions | Overly broad custom roles, wildcard actions |
+| **Azure / Entra ID** | Access reviews, sign-in logs, workload identity federation | Owner decisions, guest/service principal activity, federated credential conditions |
 | **GCP** | IAM Recommender, Policy Analyzer | Excess permissions, recommended removals |
 | **GCP** | Organization-level IAM bindings | Primitive roles (Owner, Editor) at org/folder level |
+| **GCP** | Audit logs, service account insights, workload identity pools | Activity window, impersonation graph, audience/provider restrictions |
 
 **Severity Classification:**
 
@@ -194,6 +223,8 @@ IAM-PRIV-08: Resource-based policies granting public or overly broad access
 |---|---|---|
 | Wildcard admin (`*:*`) on production | **Critical** | Full environment compromise potential |
 | Standing admin without JIT | **High** | Persistent lateral movement target |
+| External access analyzer finding with no owner or expiry | **High** | Unbounded third-party access path |
+| Unused-permission cleanup without simulation or rollback | **Medium** | High chance of production outage or compensating shadow access |
 | Unused permissions > 90 days | **Medium** | Attack surface reduction opportunity |
 | Direct policy attachment | **Low** | Governance improvement, not direct risk |
 
@@ -380,6 +411,9 @@ For each finding, produce a row with:
 | **Framework Ref** | NIST SP 800-63B section, NIST SP 800-207 tenet, or CIS Control ID |
 | **Affected Scope** | Accounts, roles, policies, or platforms impacted |
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
+| **Evidence Freshness** | Timestamp or observation window for analyzer output, last-used data, and logs |
+| **Owner / Exception** | Business owner, exception approval, expiry date, or "none" |
+| **Rollback Path** | Named rollback or break-glass path for privilege reduction findings |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -446,6 +480,15 @@ For each finding, produce a row with:
 | `cloud/azure-review.md` | Azure/Entra ID-specific security configuration |
 | `cloud/gcp-review.md` | GCP-specific IAM and organization policy review |
 | `compliance/soc2-gap.md` | Mapping IAM findings to SOC 2 Trust Services Criteria (CC6.1-CC6.3) |
+
+## References
+
+- AWS IAM Access Analyzer: https://docs.aws.amazon.com/IAM/latest/UserGuide/what-is-access-analyzer.html
+- AWS last accessed information: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_access-advisor.html
+- Microsoft workload identity federation: https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation
+- Microsoft Entra access reviews: https://learn.microsoft.com/en-us/entra/id-governance/access-reviews-overview
+- Google Cloud role recommendations: https://docs.cloud.google.com/policy-intelligence/docs/role-recommendations-overview
+- Google Cloud Policy Analyzer: https://cloud.google.com/policy-intelligence/docs/analyze-iam-policies
 
 ---
 
