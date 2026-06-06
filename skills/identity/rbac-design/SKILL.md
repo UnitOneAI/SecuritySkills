@@ -336,6 +336,53 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 
 ---
 
+### Step 7: Migration Simulation and Regression Evidence
+
+**Objective:** Validate that a redesigned RBAC/ABAC model preserves required
+business access, removes excess access, enforces constraints, and can be rolled
+back safely before production cutover.
+
+Role redesigns fail when they are treated as documentation exercises instead of
+authorization migrations. Require simulation evidence against current
+assignments, historical access requests, and SoD constraints before approving a
+new model.
+
+**Migration validation checklist:**
+
+```
+RBAC-MIG-01: No before/after access diff for users, roles, permissions, and resources
+RBAC-MIG-02: Simulation does not replay representative historical access requests
+RBAC-MIG-03: SoD and cardinality constraints are not regression-tested after role changes
+RBAC-MIG-04: Break-glass, service account, and machine identity access are not included
+RBAC-MIG-05: ABAC attribute changes are not tested for missing, stale, or conflicting values
+RBAC-MIG-06: Migration plan lacks pilot cohort, rollback path, and owner sign-off
+RBAC-MIG-07: Removed permissions are not mapped to business owner approval or compensating access
+RBAC-MIG-08: Policy evaluation logs are unavailable for post-cutover verification
+```
+
+**Evidence requirements:**
+
+| Evidence | Required Detail | Failure Mode |
+|---|---|---|
+| Before/after access diff | User, role, permission, resource, grant source, added/removed/unchanged | Hidden privilege gain or business access loss |
+| Historical replay | Sample window, request count, permit/deny deltas, false deny review | New model breaks known workflows |
+| Constraint regression | SSoD/DSoD pairs, cardinality limits, prerequisite roles, violations | Conflicting roles survive redesign |
+| Exception inventory | Break-glass, service accounts, machine identities, temporary access | Special identities bypass model |
+| Attribute test set | Missing/stale/conflicting subject, resource, action, environment attributes | ABAC policies fail open or deny valid access |
+| Cutover plan | Pilot cohort, approval owner, rollback trigger, monitoring window | Migration cannot be reversed safely |
+
+**Decision guidance:**
+
+| Situation | Design action |
+|---|---|
+| New model adds access without explicit owner approval | Treat as High until approved or removed |
+| Historical replay shows false denies for critical workflows | Do not cut over; revise roles or ABAC conditions |
+| SoD violations remain but are exception-based | Require owner, expiry, compensating control, and review cadence |
+| ABAC attribute source is non-authoritative | Reduce confidence and add PIP assurance work |
+| Policy logs cannot explain permit/deny decisions | Add auditability requirement before production adoption |
+
+---
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
@@ -359,6 +406,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Framework Ref** | NIST RBAC model level or NIST SP 800-162 section |
 | **Current State** | What exists today |
 | **Recommended State** | Target design |
+| **Migration Evidence** | Before/after diff, replay results, SoD regression, rollback readiness |
 | **Remediation** | Steps to implement the design change |
 | **Effort** | Low / Medium / High |
 
@@ -388,6 +436,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
 - Role Mining (Step 6): [count]
+- Migration Validation (Step 7): [count]
 
 ### Detailed Findings
 [Findings table]
@@ -397,6 +446,11 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 
 ### Remediation Roadmap
 [Phased implementation plan]
+
+### Migration Validation Plan
+| Phase | Scope | Evidence | Exit Criteria | Rollback |
+|-------|-------|----------|---------------|----------|
+| Pilot | <users/apps> | <diff/replay/logs> | <success criteria> | <rollback trigger/procedure> |
 ```
 
 ---
@@ -436,6 +490,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Skipping migration simulation** - a clean target model can still break production or silently add privilege. Replay historical access, test SoD constraints, include service accounts, and retain rollback evidence before cutover.
+9. **Testing ABAC only with happy-path attributes** - missing, stale, or conflicting attributes are common. Test failure modes and ensure the policy engine denies safely with auditable decision logs.
 
 ---
 
