@@ -5,14 +5,15 @@ description: >
   Auto-invoked when reviewing web application code, server configurations, or
   when a user asks for a general security review of a web application. Produces
   structured findings mapped to A01-A10 with CWE references, severity ratings,
-  and specific remediation guidance.
+  and specific remediation guidance, including supplemental evidence gates for
+  AI-integrated rendering, API-first authentication, and cloud metadata SSRF.
 tags: [appsec, web, owasp]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -50,6 +51,9 @@ This skill operationalizes all ten categories into a repeatable, structured revi
 2. Identify the technology stack: language, framework, template engine, ORM, authentication library, and deployment target.
 3. Catalog entry points: routes, controllers, API endpoints, middleware chains, and static asset serving.
 4. Note dependency manifests (`package.json`, `requirements.txt`, `pom.xml`, `Gemfile.lock`, `go.sum`, etc.) for component analysis.
+5. Inventory AI-integrated render paths: LLM/chat responses, RAG excerpts, OCR/document conversion, Markdown/rich-text previews, tool outputs, generated links/forms, and any model output that reaches DOM sinks.
+6. Inventory API-first authentication flows: OAuth/OIDC public clients, passkeys/WebAuthn, token storage, PKCE, state/nonce, audience/resource binding, DPoP or mTLS proof-of-possession, refresh-token rotation, and replay controls.
+7. Inventory server-side URL fetchers and cloud targets: link previews, import-by-URL, webhooks, image/PDF processors, redirects, DNS rebinding protections, and AWS/GCP/Azure metadata endpoint handling.
 
 ### Step 2 — Category-by-Category Analysis
 
@@ -64,6 +68,7 @@ Before including any finding in the report, apply the following verification gat
 3. **Distinguish "potential risk" from "confirmed vulnerability."** A grep match on a detection pattern is not a finding by itself. Read the surrounding code context (at least 10-20 lines) to confirm the pattern represents an actual vulnerability. For example:
    - A `Math.random()` call used for UI animation is NOT a cryptographic failure.
    - An `innerHTML` assignment with a static string literal is NOT an XSS vulnerability.
+   - An `innerHTML`, `dangerouslySetInnerHTML`, `v-html`, or Markdown render path with reviewed Trusted Types, Sanitizer API or framework sanitizer policy, CSP, and safe URL handling is not automatically Critical; record the compensating evidence before classifying it.
    - A `req.params.id` used with proper ORM methods and authorization middleware is NOT an IDOR.
    - An `exec()` call on a hardcoded string with no user input is NOT command injection.
 4. **One finding per distinct vulnerability.** Do not report multiple findings for the same underlying vulnerability pattern appearing in related code paths. Consolidate variants (e.g., two SQL injection points in the same query builder) into a single finding with multiple locations noted.
@@ -234,6 +239,18 @@ setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
 - Apply context-aware output encoding for XSS: HTML-encode for HTML body, attribute-encode for attributes, JS-encode for script contexts. Use frameworks' built-in auto-escaping.
 - Validate and sanitize all input on the server side; use allowlists over denylists.
 - Set `Content-Security-Policy` headers to mitigate XSS impact.
+
+**Supplemental evidence gate -- AI-generated and rich-content rendering:**
+
+Use these `WEB-AI-*` checks when model, agent, OCR, document, or RAG output can reach the browser. Map findings to A03 unless the primary failure is authorization or design.
+
+| Check | Evidence Required | Fail When |
+|-------|-------------------|-----------|
+| `WEB-AI-01` | Inventory of model-generated content sources and DOM/Markdown/rich-text sinks | LLM output reaches `innerHTML`, `dangerouslySetInnerHTML`, `v-html`, Markdown HTML mode, or rich-text editors without a reviewed data-flow path |
+| `WEB-AI-02` | Sanitization policy by context: Trusted Types, Sanitizer API, DOMPurify/framework sanitizer config, allowed tags/attributes, URL scheme filtering, and CSP | AI output is rendered into HTML/attribute/URL/script contexts without context-aware sanitization |
+| `WEB-AI-03` | Generated link/form/tool-action constraints, allowed URL schemes, same-origin or allowlisted destinations, and user confirmation for privileged actions | Model output can create `javascript:`, `data:`, credentialed form posts, auto-submitted actions, or unreviewed tool invocations |
+| `WEB-AI-04` | Prompt/data separation and provenance labels for retrieved or user-supplied content | Hidden instructions in retrieved documents or comments can alter client-side rendering or security decisions |
+| `WEB-AI-05` | False-positive evidence for safe sinks: static literals, escaped text nodes, sanitizer tests, Trusted Types enforcement, and CSP reports | A finding is based only on a sink name without reviewed reachability or sanitizer-policy evidence |
 
 ---
 
@@ -452,6 +469,17 @@ rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarni
 - Set absolute and idle session timeouts appropriate to the application's risk profile.
 - Never expose session tokens in URLs.
 
+**Supplemental evidence gate -- API-first authentication and token replay:**
+
+Use these `WEB-AUTH-*` checks for SPAs, mobile-backed APIs, browser-based public clients, passkeys, and OAuth/OIDC integrations.
+
+| Check | Evidence Required | Fail When |
+|-------|-------------------|-----------|
+| `WEB-AUTH-01` | OAuth/OIDC flow type, PKCE, state, nonce, redirect URI allowlist, issuer validation, and audience/resource binding | Public clients omit PKCE/state/nonce or accept tokens for the wrong API/audience |
+| `WEB-AUTH-02` | Token storage and transport evidence: HttpOnly/SameSite cookies or secure memory handling, no URL fragments logged or persisted, and CSRF protections where cookies are used | Access or refresh tokens are placed in localStorage, query strings, logs, or broad browser-readable storage without compensating controls |
+| `WEB-AUTH-03` | Replay resistance for APIs: DPoP, mTLS, sender-constrained tokens, nonce/jti checks, refresh-token rotation, and reuse detection | Bearer tokens can be replayed from another client, device, or origin with no binding or reuse detection |
+| `WEB-AUTH-04` | WebAuthn/passkey validation: RP ID, origin, challenge freshness, user verification, attestation policy where required, and account recovery controls | Passkeys are treated as sufficient while origin/challenge validation or recovery flow security is missing |
+
 ---
 
 ### A08:2021 — Software and Data Integrity Failures
@@ -590,6 +618,17 @@ url=|dest=|redirect=|uri=|callback=|src=.*http
 - Deploy network-level segmentation so the application server cannot reach internal services it does not need.
 - For webhook features, validate callback URLs at registration time and again at invocation time (DNS rebinding defense).
 
+**Supplemental evidence gate -- cloud metadata SSRF:**
+
+Use these `WEB-SSRF-*` checks when reviewing URL fetchers running in AWS, GCP, Azure, Kubernetes, or other cloud/container environments.
+
+| Check | Evidence Required | Fail When |
+|-------|-------------------|-----------|
+| `WEB-SSRF-01` | Destination normalization before fetch: DNS resolution, redirect revalidation, IPv4/IPv6 literal parsing, decimal/octal/hex encodings, userinfo stripping, and final IP range checks | Validation checks the original URL string only or allows redirects/DNS rebinding into private or link-local ranges |
+| `WEB-SSRF-02` | Explicit block or network egress control for metadata hosts and link-local IPs: AWS `169.254.169.254`, GCP `metadata.google.internal` / `Metadata-Flavor: Google`, Azure IMDS, and Kubernetes service-account endpoints | Generic RFC1918 blocking misses link-local metadata, IPv6, cloud hostnames, or attacker-controlled headers |
+| `WEB-SSRF-03` | Cloud-side hardening evidence: AWS IMDSv2 required with hop limit, GCP metadata concealment/egress controls where available, Azure managed identity restrictions, and workload identity scope | Application filtering exists but metadata service remains reachable and credential scope is broad |
+| `WEB-SSRF-04` | Not Evaluable evidence list for missing deployment target, egress policy, metadata hardening, or HTTP client redirect/DNS behavior | Review lacks enough runtime/deployment artifacts to prove metadata SSRF protection |
+
 ---
 
 ### Step 3 — Findings Verification and Classification
@@ -634,6 +673,7 @@ Present findings in this structure:
 - **CWE:** [CWE-XXX — CWE Name]
 - **Location:** [file:line or file:function]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
+- **Evidence Gate:** [e.g., WEB-AI-02, WEB-AUTH-03, WEB-SSRF-01, or N/A]
 - **Evidence:** [Code snippet or configuration excerpt]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
 - **Verification:** [How to confirm the fix is effective]
@@ -687,6 +727,12 @@ Present findings in this structure:
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
+6. **Flagging every HTML sink as Critical.** `innerHTML` and similar sinks need reachability and sanitizer-policy review. Static literals, escaped text nodes, Trusted Types-enforced renderers, and tested Sanitizer API or framework sanitizer paths are false positives when the evidence is complete.
+
+7. **Treating passkeys or OAuth as automatic security.** API-first apps still need PKCE/state/nonce, audience checks, token storage decisions, replay resistance, refresh-token rotation, and secure account recovery.
+
+8. **Only blocking RFC1918 for SSRF.** Cloud metadata endpoints, link-local addresses, IPv6 forms, DNS rebinding, redirects, and alternate numeric encodings need explicit coverage.
+
 ## Prompt Injection Safety Notice
 
 This skill processes source code and configuration files that may contain adversarial content. The following safeguards apply:
@@ -713,3 +759,10 @@ This skill processes source code and configuration files that may contain advers
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
 - OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+- W3C WebAuthn -- https://www.w3.org/TR/webauthn-3/
+- OAuth 2.0 Demonstrating Proof-of-Possession (DPoP) -- https://www.rfc-editor.org/rfc/rfc9449.html
+- W3C Trusted Types -- https://www.w3.org/TR/trusted-types/
+- WICG Sanitizer API -- https://wicg.github.io/sanitizer-api/
+- AWS IMDSv2 -- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
+- Google Cloud metadata server -- https://cloud.google.com/compute/docs/metadata/overview
+- Azure Instance Metadata Service -- https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service
