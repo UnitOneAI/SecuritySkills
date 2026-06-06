@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -153,6 +153,63 @@ IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-
 | **Azure / Entra ID** | Conditional Access policies, Security Defaults | MFA gaps in conditional access, legacy auth protocols allowed |
 | **Azure / Entra ID** | Authentication methods policy | Phishing-resistant methods (FIDO2, Windows Hello) adoption rate |
 | **GCP** | Organization Policy constraints, 2-Step Verification enforcement | MFA not enforced at org level, allowed authentication methods |
+
+### Step 2.5: Authentication Recovery and Exception Path Review
+
+**Objective:** Verify that MFA and assurance claims cover the full account lifecycle, not only the normal sign-in prompt.
+
+**NIST SP 800-63B Reference:** Authenticator binding, account recovery, reauthentication, and verifier impersonation resistance
+**NIST SP 800-207 Reference:** Tenets 3 and 6 -- per-session access and dynamic authentication/authorization enforcement
+**CIS Controls v8 Reference:** Controls 5.4, 6.3, 6.4, 6.5, and 6.6
+
+Normal login MFA is not enough if a weaker path can reset the password, re-enroll MFA, register a trusted device, refresh tokens, grant admin consent, or use an exception group. Review every path that can restore, bypass, or extend access after the primary authenticator is unavailable or compromised.
+
+#### Recovery and Exception Path Matrix
+
+| Path | Required Evidence | Finding IDs |
+|---|---|---|
+| **Normal sign-in** | MFA enforcement policy, included users/groups, excluded users/groups, assurance level, phishing-resistant method coverage, conditional-access result logs | IAM-AUTH-01 to IAM-AUTH-05 |
+| **Password reset / account recovery** | Identity proofing method, second-factor requirement, helpdesk script, approval record, reset audit logs, post-reset session/token revocation | IAM-AUTH-11, IAM-AUTH-12 |
+| **MFA enrollment / re-enrollment** | Enrollment policy, allowed methods, new-device quarantine, admin/helpdesk approval, audit logs, notification to user/security team | IAM-AUTH-13, IAM-AUTH-14 |
+| **Device registration / trusted device join** | Device compliance requirement, join restrictions, excluded groups, device trust source, stale/unknown device handling | IAM-AUTH-15 |
+| **Privileged role activation** | PIM/JIT policy, MFA-at-activation, approver, justification, duration, emergency activation path, alerting | IAM-AUTH-16 |
+| **Legacy protocols and app passwords** | Basic auth/legacy protocol inventory, app password status, POP/IMAP/SMTP/EWS/OAuth exception evidence, block policy logs | IAM-AUTH-17 |
+| **Session and refresh-token renewal** | Session lifetime, continuous access evaluation, refresh-token revocation test, risk-change reauth, remembered-device duration | IAM-AUTH-18 |
+| **Admin consent and OAuth grants** | Consent workflow, app-risk review, publisher verification, tenant-wide grant audit, delegated/admin consent separation | IAM-AUTH-19 |
+| **Break-glass / emergency accounts** | Count, scope, excluded policies, compensating controls, hardware credential custody, monitoring, last test date, rotation record | IAM-AUTH-20 |
+| **External IdP / guest / vendor paths** | Federation assurance, home-tenant MFA evidence, guest access policy, cross-tenant trust settings, vendor recovery process | IAM-AUTH-21 |
+
+#### Additional Finding IDs
+
+```
+IAM-AUTH-11: Password reset can bypass MFA or lacks independent identity proofing
+IAM-AUTH-12: Helpdesk recovery lacks approval, recording, callback, or post-reset token revocation
+IAM-AUTH-13: MFA re-enrollment can be initiated with only password/session access
+IAM-AUTH-14: New authenticator/device enrollment lacks quarantine, notification, or risk review
+IAM-AUTH-15: Device join/trusted-device exceptions bypass MFA without compliance evidence
+IAM-AUTH-16: Privileged activation path has weaker assurance than normal admin sign-in
+IAM-AUTH-17: Legacy protocols, app passwords, or OAuth exceptions bypass enforced MFA
+IAM-AUTH-18: Session/refresh-token lifetime allows access to persist after risk or recovery events
+IAM-AUTH-19: Admin consent workflow allows tenant-wide OAuth grants without security review
+IAM-AUTH-20: Break-glass accounts lack monitoring, compensating controls, or periodic test evidence
+IAM-AUTH-21: Guest/vendor/federated IdP recovery path has lower assurance than local policy
+```
+
+```
+Authentication Path Record:
+- Path:                 [Normal sign-in | Password reset | MFA re-enrollment | Device join | Privileged activation | Legacy protocol | Session/token | Admin consent | Break-glass | External IdP]
+- Population:           [Users/groups/roles/apps affected]
+- Assurance Level:      [AAL1 | AAL2 | AAL3 | Unknown]
+- Policy Owner:         [Team/person responsible]
+- Exceptions:           [None | users/groups/apps/locations/devices]
+- Evidence:             [Policy IDs, logs, approval records, test results]
+- Last Tested:          [YYYY-MM-DD or Not tested]
+- Logging/Alerting:     [Signals generated and monitored]
+- Compensating Controls: [Controls that reduce accepted exception risk]
+- Finding:              [Pass | Gap | Not Evaluable, with finding ID]
+```
+
+Do not mark MFA coverage as complete unless the normal sign-in path and every recovery or exception path have matching or compensating assurance. If evidence is missing for a recovery path, classify that path as `Not Evaluable` and avoid broad "MFA enforced" conclusions.
 
 ---
 
@@ -380,6 +437,7 @@ For each finding, produce a row with:
 | **Framework Ref** | NIST SP 800-63B section, NIST SP 800-207 tenet, or CIS Control ID |
 | **Affected Scope** | Accounts, roles, policies, or platforms impacted |
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
+| **Recovery/Exception Path** | Relevant authentication path when the finding involves reset, re-enrollment, device, token, consent, break-glass, or external IdP access |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -405,6 +463,7 @@ For each finding, produce a row with:
 
 ### Findings by Category
 - Authentication (Step 2): [count]
+- Recovery/Exception Paths (Step 2.5): [count]
 - Least Privilege (Step 3): [count]
 - Service Accounts (Step 4): [count]
 - Stale Accounts (Step 5): [count]
@@ -508,4 +567,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-06 | Added authentication recovery and MFA exception path evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
