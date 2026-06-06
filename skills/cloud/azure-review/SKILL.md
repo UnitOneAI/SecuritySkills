@@ -3,10 +3,11 @@ name: azure-review
 description: >
   Performs an Azure security posture review against the CIS Microsoft Azure
   Foundations Benchmark v2.1.0. Auto-invoked when reviewing Azure infrastructure,
-  Entra ID configurations, NSG rules, Defender for Cloud settings, or Key Vault
-  access policies. Walks through all nine benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
+  Entra ID configurations, NSG rules, Defender for Cloud settings, Key Vault
+  access policies, or Azure Container Registry hardening. Walks through all
+  nine benchmark sections, evaluates each recommendation, and produces a
+  prioritized findings report with remediation guidance mapped to specific CIS
+  control IDs, plus supplemental evidence gates for service-specific risks.
 tags: [cloud, azure, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
@@ -25,7 +26,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security assessment of Azure environments against the **CIS Microsoft Azure Foundations Benchmark v2.1.0**. The benchmark is organized into nine sections covering identity management, security center, storage, database services, logging and monitoring, networking, virtual machines, Key Vault, and App Service. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Bicep, ARM templates), Azure CLI output, or configuration files available in the repository.
+This skill performs a structured security assessment of Azure environments against the **CIS Microsoft Azure Foundations Benchmark v2.1.0**. The benchmark is organized into nine sections covering identity management, security center, storage, database services, logging and monitoring, networking, virtual machines, Key Vault, and App Service. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Bicep, ARM templates), Azure CLI output, or configuration files available in the repository. The skill also records supplemental Azure service evidence, such as Azure Container Registry identity, network, and image-scanning posture, without counting those observations toward the CIS section score.
 
 The CIS Azure Foundations Benchmark v2.1.0 provides prescriptive guidance across nine domains. This skill evaluates each applicable control and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
@@ -39,6 +40,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Assessing an existing Azure environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
 - Evaluating Entra ID configurations, NSG rules, Defender for Cloud, Storage account security, or Key Vault access policies
+- Reviewing Azure Container Registry configurations for admin-account, public-network, private endpoint, RBAC, and image-scanning evidence
 - Onboarding a new Azure subscription into a security program
 
 ---
@@ -54,6 +56,7 @@ The CIS Microsoft Azure Foundations Benchmark v2.1.0 is a consensus-driven secur
 - Entra ID (Azure AD) configuration files or policy documents
 - NSG and firewall rule definitions
 - Key Vault access policies and RBAC assignments
+- Azure Container Registry definitions, private endpoint resources, repository-scoped tokens, role assignments, and Defender for Cloud plan evidence when registry workloads are in scope
 
 ---
 
@@ -91,7 +94,30 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
-### Step 11: Compile Assessment Report
+### Step 11: Supplemental Azure Service Evidence
+
+If the reviewed repository contains Azure Container Registry resources or live
+ACR exports, evaluate the supplemental gates in
+[benchmark-checklist.md](benchmark-checklist.md). These checks capture
+service-specific risks not represented directly in CIS Azure Foundations v2.1.0.
+
+Do not include supplemental ACR gates in the CIS pass/fail denominator. Report
+them in a separate "Supplemental Azure Service Findings" section and link each
+finding to the affected registry, identity, network rule, private endpoint,
+repository token, or Defender for Cloud configuration.
+
+Record at least:
+
+- Registry SKU and environment criticality
+- Admin account state and any documented exception
+- Public network access mode, firewall default action, private endpoint status, and trusted-services bypass setting
+- Registry pull/push identities, RBAC role scope, managed identity usage, service principal usage, and repository-scoped tokens
+- Defender for Containers or registry vulnerability-assessment coverage, including network-restricted registry prerequisites
+- Retention, quarantine, soft-delete, or export controls when configured
+
+---
+
+### Step 12: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -106,6 +132,14 @@ Produce the final report using the structure defined in the Output Format sectio
 | **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2 |
 | **Low** | Hardening recommendation or defense-in-depth measure | HTTP/2 not enabled, FTP not fully disabled, missing CMK on non-sensitive storage |
 | **Informational** | Best practice observation, no direct security impact | Naming conventions, tag policies, documentation gaps |
+
+For supplemental ACR findings, public production registry access combined with
+an enabled admin account or missing pull/push identity evidence is typically
+High. A public registry with explicit firewall allowlists, disabled admin
+account, and documented business justification is usually Medium or Low
+depending on data sensitivity. Missing retention or scanning evidence is usually
+Medium unless the registry stores regulated or internet-facing production
+images.
 
 ---
 
@@ -152,6 +186,20 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Remediation:** <specific fix with code example>
+
+### Supplemental Azure Service Findings
+
+#### [ACR-REG-X] <Recommendation Title>
+- **Status:** Pass / Fail / Not Evaluable
+- **Severity:** High / Medium / Low / Informational
+- **Service:** Azure Container Registry
+- **Registry:** <registry name or resource id>
+- **File:** <path to relevant config>
+- **Line(s):** <line numbers if applicable>
+- **Description:** <what was found>
+- **Evidence:** <admin account, network, private endpoint, identity, token, scanning, or retention evidence>
+- **CIS impact:** Supplemental; not included in CIS Azure v2.1.0 score
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -225,10 +273,15 @@ Produce the final report using the structure defined in the Output Format sectio
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
+- Azure Container Registry Authentication: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-authentication
+- Azure Container Registry Private Link: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-private-endpoints
+- Azure Container Registry Public Network Rules: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-access-selected-networks
+- Microsoft Defender image scanning for registries: https://learn.microsoft.com/en-us/azure/container-registry/scan-images-defender
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added supplemental Azure Container Registry evidence gates for admin-account, public-network, private endpoint, identity/RBAC, repository-token, image-scanning, and retention posture.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.

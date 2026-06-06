@@ -704,3 +704,209 @@ resource "azurerm_linux_web_app" {
   }
 }
 ```
+
+---
+
+## Supplemental -- Azure Container Registry Hardening
+
+These checks are not CIS Microsoft Azure Foundations Benchmark v2.1.0 controls.
+Use them when Azure Container Registry (ACR) resources are present so the review
+captures service-specific identity, network, and image assurance risks. Report
+them separately from the CIS section scores.
+
+### ACR-REG-01 -- Ensure local admin account is disabled
+
+The ACR admin account is disabled by default and has full push/pull access to
+the registry. It is mainly intended for individual testing or narrow Azure
+service integration cases. For production registries, flag an enabled admin
+account unless there is a documented exception, compensating credential
+rotation, and migration plan to Microsoft Entra identities.
+
+```hcl
+resource "azurerm_container_registry" "prod" {
+  name                = "prodacr"
+  resource_group_name = azurerm_resource_group.prod.name
+  location            = azurerm_resource_group.prod.location
+  sku                 = "Premium"
+  admin_enabled       = false
+}
+```
+
+**Fail patterns:**
+
+- `admin_enabled = true` on `azurerm_container_registry` without a scoped exception.
+- ARM/Bicep `properties.adminUserEnabled: true` for production or shared registries.
+- Scripts using `az acr credential show` or static registry username/password values as the default deployment path.
+
+**Severity guidance:**
+
+- High when a production registry has admin enabled and stores deployable application images.
+- Medium when admin is enabled only for a time-bound migration or non-production registry.
+- Informational when admin is disabled and identities are documented.
+
+### ACR-REG-02 -- Restrict public network access and verify private endpoint or firewall evidence
+
+ACR accepts public network connections by default. Production registries should
+either disable public network access and use Private Link, or restrict the public
+endpoint with explicit IP allowlists and a default deny posture. Private Link is
+available for the Premium SKU and requires matching DNS and client network
+evidence.
+
+```hcl
+resource "azurerm_container_registry" "prod" {
+  name                          = "prodacr"
+  resource_group_name           = azurerm_resource_group.prod.name
+  location                      = azurerm_resource_group.prod.location
+  sku                           = "Premium"
+  admin_enabled                 = false
+  public_network_access_enabled = false
+  network_rule_bypass_option    = "AzureServices"
+}
+
+resource "azurerm_private_endpoint" "acr" {
+  name                = "prod-acr-pe"
+  resource_group_name = azurerm_resource_group.prod.name
+  location            = azurerm_resource_group.prod.location
+  subnet_id           = azurerm_subnet.private_endpoints.id
+
+  private_service_connection {
+    name                           = "prod-acr"
+    is_manual_connection           = false
+    private_connection_resource_id = azurerm_container_registry.prod.id
+    subresource_names              = ["registry"]
+  }
+}
+```
+
+For registries that must keep a public endpoint, require the firewall default
+action and allowed ranges:
+
+```hcl
+resource "azurerm_container_registry" "partner" {
+  name                          = "partneracr"
+  resource_group_name           = azurerm_resource_group.prod.name
+  location                      = azurerm_resource_group.prod.location
+  sku                           = "Premium"
+  public_network_access_enabled = true
+
+  network_rule_set {
+    default_action = "Deny"
+
+    ip_rule {
+      action   = "Allow"
+      ip_range = "203.0.113.0/24"
+    }
+  }
+}
+```
+
+**Fail patterns:**
+
+- `public_network_access_enabled = true` with no `network_rule_set` and no business justification.
+- `network_rule_set.default_action = "Allow"` for a production registry.
+- Private endpoint exists but DNS, subnet, or client build-agent reachability is not documented.
+- Trusted-services bypass is enabled but Defender/build-service use cases are not documented.
+
+**Severity guidance:**
+
+- High when a production registry is public to all networks and hosts sensitive or deployable images.
+- Medium when public access is restricted but the allowed ranges, private endpoint DNS, or build-agent reachability evidence is incomplete.
+- Low when private endpoint or firewall posture is strong but exception documentation is missing.
+
+### ACR-REG-03 -- Review RBAC, managed identities, service principals, and repository-scoped tokens
+
+Prefer Microsoft Entra-based authentication for users, managed identities, and
+service principals. Repository-scoped tokens can be appropriate for
+non-Entra-integrated clients, but the review must verify scope maps, expiration,
+and whether tokens grant only the required repository actions.
+
+```hcl
+resource "azurerm_user_assigned_identity" "aks_pull" {
+  name                = "aks-acr-pull"
+  resource_group_name = azurerm_resource_group.prod.name
+  location            = azurerm_resource_group.prod.location
+}
+
+resource "azurerm_role_assignment" "aks_can_pull_acr" {
+  scope                = azurerm_container_registry.prod.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.aks_pull.principal_id
+}
+```
+
+Check for repository-scoped token resources or CLI exports:
+
+```hcl
+resource "azurerm_container_registry_scope_map" "partner_read" {
+  name                    = "partner-read"
+  container_registry_name = azurerm_container_registry.partner.name
+  resource_group_name     = azurerm_resource_group.prod.name
+  actions                 = ["repositories/partner/content/read"]
+}
+
+resource "azurerm_container_registry_token" "partner_read" {
+  name                    = "partner-read"
+  container_registry_name = azurerm_container_registry.partner.name
+  resource_group_name     = azurerm_resource_group.prod.name
+  scope_map_id            = azurerm_container_registry_scope_map.partner_read.id
+}
+```
+
+**Fail patterns:**
+
+- `AcrPush`, `Owner`, or `Contributor` assigned at subscription/resource-group scope when registry scope is sufficient.
+- CI/CD service principals reusing broad registry credentials across environments.
+- Repository-scoped tokens granting wildcard write/delete actions without expiration, owner, and rotation evidence.
+- Workloads pulling with admin credentials instead of managed identity, AKS integration, service principal, or scoped token.
+
+**Severity guidance:**
+
+- High when deploy pipelines or runtime workloads use broad admin credentials or high-privilege role assignments.
+- Medium when Entra identities are used but role scope is broader than required.
+- Low when least privilege is mostly correct but token ownership or rotation evidence is incomplete.
+
+### ACR-REG-04 -- Verify vulnerability scanning, retention, quarantine, and export controls
+
+Defender for Containers can provide registry image vulnerability assessment, but
+network-restricted registries may need trusted-services bypass or additional
+configuration for scanning to function. The review should tie scanning evidence
+to the registry and record whether untagged manifest retention, quarantine, soft
+delete, or export controls are configured for the workload's risk level.
+
+```hcl
+resource "azurerm_security_center_subscription_pricing" "containers" {
+  tier          = "Standard"
+  resource_type = "Containers"
+}
+
+resource "azurerm_container_registry" "prod" {
+  name                       = "prodacr"
+  resource_group_name        = azurerm_resource_group.prod.name
+  location                   = azurerm_resource_group.prod.location
+  sku                        = "Premium"
+  quarantine_policy_enabled  = true
+  retention_policy_in_days   = 30
+  network_rule_bypass_option = "AzureServices"
+}
+```
+
+**Evidence to collect:**
+
+- Defender for Containers pricing tier and registry image scanning coverage.
+- Scan results or policy exports that prove production images are assessed before deployment.
+- Whether network restrictions still allow required Microsoft Defender access.
+- Retention period for untagged manifests and rollback requirements.
+- Quarantine, soft-delete, or export controls where available and appropriate.
+
+**Fail patterns:**
+
+- Defender for Containers is absent or not tied to registry scanning evidence.
+- Private endpoint or public access restrictions block scanning and no exception is documented.
+- Production registries have no retention/rollback policy for untagged manifests or image promotion workflows.
+- Image export is allowed from sensitive registries without data-loss-prevention rationale.
+
+**Severity guidance:**
+
+- High when unscanned production images deploy directly to internet-facing workloads or regulated environments.
+- Medium when scanning exists but network-restricted registry prerequisites or scan-result evidence is incomplete.
+- Low when scanning and network posture are sound but retention/quarantine evidence is missing.
