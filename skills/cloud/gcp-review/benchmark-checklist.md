@@ -773,3 +773,245 @@ resource "google_bigquery_dataset" {
 ### CIS 7.3 -- Ensure that a Default Customer-Managed Encryption Key (CMEK) Is Specified for All BigQuery Datasets
 
 Verify `default_encryption_configuration` is set on all datasets.
+
+---
+
+## Supplemental -- Cloud Run Service Hardening
+
+These checks are not CIS Google Cloud Platform Foundation Benchmark v2.0.0
+controls. Use them when Cloud Run services or jobs are present so the review
+captures serverless ingress, identity, egress, image provenance, and audit risks.
+Report them separately from the CIS section scores.
+
+### GCP-RUN-01 -- Verify ingress mode and public request path
+
+Cloud Run ingress controls whether requests can reach the service from the
+internet, internal networks, or Cloud Load Balancing paths. Public APIs can be
+valid, but the review must distinguish direct public `run.app` reachability from
+traffic forced through an external Application Load Balancer with Identity-Aware
+Proxy, Cloud Armor, CDN, or other edge controls.
+
+```hcl
+resource "google_cloud_run_v2_service" "internal_api" {
+  name     = "internal-api"
+  location = "us-central1"
+  ingress  = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+
+  template {
+    service_account = google_service_account.internal_api.email
+
+    containers {
+      image = "us-docker.pkg.dev/example/prod/internal-api@sha256:abc123"
+    }
+  }
+}
+```
+
+For public APIs that must use an external load balancer, require explicit
+evidence for the intended path:
+
+```hcl
+resource "google_cloud_run_v2_service" "public_api" {
+  name     = "public-api"
+  location = "us-central1"
+  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+
+  template {
+    service_account = google_service_account.public_api.email
+
+    containers {
+      image = "us-docker.pkg.dev/example/prod/public-api@sha256:def456"
+    }
+  }
+}
+```
+
+**Fail patterns:**
+
+- `ingress = "INGRESS_TRAFFIC_ALL"` on sensitive or administrative services without a public API justification.
+- Knative YAML or annotations setting `run.googleapis.com/ingress: "all"` without edge-control evidence.
+- Public `run.app` URL enabled when the design expects all internet traffic to pass through a load balancer, IAP, API Gateway, or Cloud Armor.
+- No evidence showing whether custom domains, load balancers, or serverless NEGs are in the request path.
+
+**Severity guidance:**
+
+- High when an internal, administrative, or sensitive service allows direct internet ingress.
+- Medium when a public service has intended internet exposure but lacks documented edge controls or path evidence.
+- Low when ingress is restricted but documentation for allowed sources is incomplete.
+
+### GCP-RUN-02 -- Verify invoker IAM and public access decisions
+
+Cloud Run uses IAM to control who can invoke services and jobs. Public access is
+typically granted by assigning `roles/run.invoker` to `allUsers`. That can be
+correct for unauthenticated public APIs, but it should be explicit, justified,
+and separated from internal service-to-service invoker grants.
+
+```hcl
+resource "google_cloud_run_v2_service_iam_member" "frontend_can_call_api" {
+  project  = google_cloud_run_v2_service.internal_api.project
+  location = google_cloud_run_v2_service.internal_api.location
+  name     = google_cloud_run_v2_service.internal_api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.frontend.email}"
+}
+```
+
+**Fail patterns:**
+
+- `member = "allUsers"` or `member = "allAuthenticatedUsers"` on non-public Cloud Run services.
+- Project-level `roles/run.invoker` grants that unintentionally allow invocation of multiple services or jobs.
+- Public invoker access combined with `INGRESS_TRAFFIC_ALL` and no authentication, authorization, or abuse-control evidence.
+- Missing conditional IAM evidence when invocation should be limited by host, path, or principal context.
+
+**Severity guidance:**
+
+- Critical when an administrative or data-modifying service is public and unauthenticated.
+- High when sensitive services grant public invoker or project-wide invoker access.
+- Medium when public access is intended but rate limiting, auth, or edge-control evidence is incomplete.
+- Informational when public access is intentional and fully documented.
+
+### GCP-RUN-03 -- Use least-privilege service identity and avoid default service account drift
+
+Cloud Run runs as a service identity. Google recommends user-managed service
+accounts with only the permissions needed by the workload. If no service account
+is specified, Cloud Run can use the Compute Engine default service account,
+which may have broad project permissions in older projects.
+
+```hcl
+resource "google_service_account" "checkout_api" {
+  account_id   = "checkout-api"
+  display_name = "Checkout API runtime"
+}
+
+resource "google_project_iam_member" "checkout_can_read_secret" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.checkout_api.email}"
+}
+
+resource "google_cloud_run_v2_service" "checkout_api" {
+  name     = "checkout-api"
+  location = "us-central1"
+
+  template {
+    service_account = google_service_account.checkout_api.email
+
+    containers {
+      image = "us-docker.pkg.dev/example/prod/checkout-api@sha256:abc123"
+    }
+  }
+}
+```
+
+**Fail patterns:**
+
+- No `service_account` configured in `template`, causing default service account use.
+- Runtime service account has `roles/editor`, `roles/owner`, broad storage/admin roles, or cross-environment access.
+- `GOOGLE_APPLICATION_CREDENTIALS` points to a key file in Cloud Run env vars, Secret Manager mounts, or container images instead of using service identity.
+- Deployers receive `iam.serviceAccountUser` or `iam.serviceAccountTokenCreator` at project scope when service-account scope is sufficient.
+
+**Severity guidance:**
+
+- High when a public or internet-facing service runs as a default or broadly privileged service account.
+- Medium when a user-managed service account exists but IAM scope is broader than the workload needs.
+- Low when least privilege is mostly correct but ownership, review cadence, or policy-simulator evidence is missing.
+
+### GCP-RUN-04 -- Review VPC egress, Shared VPC permissions, and private dependency access
+
+Cloud Run can use Direct VPC egress or Serverless VPC Access connectors to reach
+private resources. Reviewers should record whether outbound traffic is limited
+to private ranges or all traffic, whether Shared VPC permissions are in place,
+and whether firewall rules, NAT, and Private Google Access align with the data
+flow.
+
+```hcl
+resource "google_cloud_run_v2_service" "worker" {
+  name     = "worker"
+  location = "us-central1"
+
+  template {
+    service_account = google_service_account.worker.email
+
+    vpc_access {
+      network_interfaces {
+        network    = google_compute_network.app.id
+        subnetwork = google_compute_subnetwork.serverless.id
+        tags       = ["cloud-run-worker"]
+      }
+      egress = "PRIVATE_RANGES_ONLY"
+    }
+
+    containers {
+      image = "us-docker.pkg.dev/example/prod/worker@sha256:fed789"
+    }
+  }
+}
+```
+
+Connector-based configurations should include both connector and egress mode:
+
+```yaml
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/ingress: internal
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/vpc-access-connector: projects/example/locations/us-central1/connectors/prod
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+```
+
+**Fail patterns:**
+
+- Service reaches private databases, internal APIs, or restricted Google APIs with no Direct VPC egress or connector evidence.
+- `egress = "ALL_TRAFFIC"` or `run.googleapis.com/vpc-access-egress: all-traffic` without Cloud NAT, firewall, and destination-allowlist evidence.
+- Shared VPC is configured but the Cloud Run service agent lacks subnet-level `roles/compute.networkUser` or equivalent custom permissions.
+- Firewall rules allow broad egress from connector ranges or Direct VPC subnets without workload-specific tags or destination constraints.
+
+**Severity guidance:**
+
+- High when sensitive private dependencies are reachable over public paths or broad egress permits data exfiltration.
+- Medium when VPC egress exists but route, NAT, firewall, or Shared VPC permission evidence is incomplete.
+- Low when egress is restricted and only documentation or flow-log evidence is missing.
+
+### GCP-RUN-05 -- Enforce trusted image deployment and audit breakglass
+
+Cloud Run can use Binary Authorization to require trusted container images at
+deployment time. For production services, tie image references to immutable
+digests, Artifact Registry provenance, vulnerability scanning, and documented
+breakglass approvals.
+
+```hcl
+resource "google_cloud_run_v2_service" "payments" {
+  name     = "payments"
+  location = "us-central1"
+
+  binary_authorization {
+    use_default = true
+  }
+
+  template {
+    service_account = google_service_account.payments.email
+
+    containers {
+      image = "us-docker.pkg.dev/example/prod/payments@sha256:012345"
+    }
+  }
+}
+```
+
+**Fail patterns:**
+
+- Production Cloud Run service uses mutable image tags such as `:latest` with no digest pinning or promotion evidence.
+- No Binary Authorization, Artifact Registry scanning, or provenance evidence for sensitive services.
+- Binary Authorization breakglass is used without approval, justification, expiration, and audit log evidence.
+- Deployment pipeline can change image, service account, ingress, or IAM policy without review.
+
+**Severity guidance:**
+
+- High when production services deploy mutable or untrusted images directly to internet-facing workloads.
+- Medium when image provenance exists but Binary Authorization, scanning, or breakglass evidence is incomplete.
+- Low when controls exist but release evidence is not linked to the service in the report.

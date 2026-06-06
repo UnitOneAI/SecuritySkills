@@ -3,10 +3,11 @@ name: gcp-review
 description: >
   Performs a GCP security posture review against the CIS Google Cloud Platform
   Foundation Benchmark v2.0.0. Auto-invoked when reviewing GCP infrastructure,
-  IAM bindings, VPC firewall rules, Cloud Audit Logs, or GCS bucket security.
-  Walks through all seven benchmark sections, evaluates each recommendation,
-  and produces a prioritized findings report with remediation guidance mapped
-  to specific CIS control IDs.
+  IAM bindings, VPC firewall rules, Cloud Audit Logs, GCS bucket security, or
+  Cloud Run service posture. Walks through all seven benchmark sections,
+  evaluates each recommendation, and produces a prioritized findings report with
+  remediation guidance mapped to specific CIS control IDs, plus supplemental
+  evidence gates for service-specific risks.
 tags: [cloud, gcp, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
@@ -25,7 +26,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security assessment of Google Cloud Platform environments against the **CIS Google Cloud Platform Foundation Benchmark v2.0.0**. The benchmark is organized into seven sections covering identity and access management, logging and monitoring, networking, virtual machines, storage, Cloud SQL, and BigQuery. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Deployment Manager), gcloud CLI output, or configuration files available in the repository.
+This skill performs a structured security assessment of Google Cloud Platform environments against the **CIS Google Cloud Platform Foundation Benchmark v2.0.0**. The benchmark is organized into seven sections covering identity and access management, logging and monitoring, networking, virtual machines, storage, Cloud SQL, and BigQuery. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Deployment Manager), gcloud CLI output, or configuration files available in the repository. The skill also records supplemental service evidence, such as Cloud Run ingress, invoker IAM, service identity, VPC egress, and Binary Authorization posture, without counting those observations toward the CIS section score.
 
 The CIS GCP Foundation Benchmark v2.0.0 provides prescriptive guidance for hardening GCP projects and organizations. This skill evaluates each applicable control and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
@@ -39,6 +40,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Assessing an existing GCP environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
 - Evaluating IAM bindings, org policies, VPC firewall rules, Cloud Audit Logs, or GCS bucket configurations
+- Reviewing Cloud Run services for public invoker exposure, ingress restrictions, least-privilege service identity, VPC egress, and trusted image deployment controls
 - Onboarding a new GCP project or organization into a security program
 
 ---
@@ -54,6 +56,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - IAM policy bindings and org policy definitions
 - VPC and firewall rule definitions
 - Cloud Audit Logs configuration
+- Cloud Run service definitions, service/job IAM policies, service accounts, VPC connector or Direct VPC egress settings, Binary Authorization policies, and Cloud Audit Logs when serverless workloads are in scope
 
 ---
 
@@ -88,7 +91,33 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Supplemental GCP Service Evidence
+
+If the reviewed repository contains Cloud Run services, jobs, Terraform
+`google_cloud_run_v2_service` resources, Knative service YAML, or gcloud exports,
+evaluate the supplemental Cloud Run gates in
+[benchmark-checklist.md](benchmark-checklist.md). These checks capture
+serverless-specific risks that are not represented directly in CIS GCP
+Foundation Benchmark v2.0.0.
+
+Do not include supplemental Cloud Run gates in the CIS pass/fail denominator.
+Report them in a separate "Supplemental GCP Service Findings" section and link
+each finding to the affected service, job, IAM binding, service identity, VPC
+egress setting, Binary Authorization policy, or audit log source.
+
+Record at least:
+
+- Cloud Run resource type, region, environment, and data sensitivity
+- Ingress setting, default `run.app` exposure, custom domain or load balancer path, and whether IAP or Cloud Armor is part of the public path
+- Invoker IAM bindings, including `allUsers`, `allAuthenticatedUsers`, project-level `roles/run.invoker`, and conditional bindings
+- Runtime service account, default service account use, service-account role scope, and `GOOGLE_APPLICATION_CREDENTIALS` secrets or key files
+- Direct VPC egress or Serverless VPC Access connector configuration, egress mode, Shared VPC permissions, and firewall evidence
+- Binary Authorization, image digest pinning/provenance, and breakglass evidence
+- Admin activity and data access audit logs for service changes, IAM policy changes, invocations where available, and deployment breakglass events
+
+---
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -104,6 +133,13 @@ Produce the final report using the structure defined in the Output Format sectio
 | **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, Shielded VM not enabled, uniform bucket access not set |
 | **Low** | Hardening recommendation or defense-in-depth measure | OS Login not enabled, serial port access not explicitly disabled, BigQuery tables without CMEK |
 | **Informational** | Best practice observation, no direct security impact | Default network still exists (non-production), naming conventions, documentation gaps |
+
+For supplemental Cloud Run findings, public unauthenticated access combined with
+`INGRESS_TRAFFIC_ALL`, default service account usage, broad project-level roles,
+or missing deployment provenance is typically High. A public API behind an
+external Application Load Balancer with IAP or Cloud Armor, explicit `allUsers`
+justification, least-privilege service identity, and audit evidence is usually
+Medium or Low depending on data sensitivity.
 
 ---
 
@@ -148,6 +184,20 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Remediation:** <specific fix with code example>
+
+### Supplemental GCP Service Findings
+
+#### [GCP-RUN-X] <Recommendation Title>
+- **Status:** Pass / Fail / Not Evaluable
+- **Severity:** Critical / High / Medium / Low / Informational
+- **Service:** Cloud Run
+- **Resource:** <service/job name, region, or resource id>
+- **File:** <path to relevant config>
+- **Line(s):** <line numbers if applicable>
+- **Description:** <what was found>
+- **Evidence:** <ingress, invoker IAM, service identity, VPC egress, Binary Authorization, image, or audit evidence>
+- **CIS impact:** Supplemental; not included in CIS GCP v2.0.0 score
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -219,10 +269,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
+- Cloud Run ingress controls: https://cloud.google.com/run/docs/securing/ingress
+- Cloud Run IAM access control: https://cloud.google.com/run/docs/securing/managing-access
+- Cloud Run service identity: https://cloud.google.com/run/docs/securing/service-identity
+- Cloud Run Direct VPC egress: https://cloud.google.com/run/docs/configuring/vpc-direct-vpc
+- Cloud Run Binary Authorization: https://cloud.google.com/run/docs/securing/binary-authorization
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added supplemental Cloud Run evidence gates for ingress, invoker IAM, service identity, VPC egress, Binary Authorization, image provenance, and audit posture.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
