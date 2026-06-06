@@ -92,6 +92,7 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Cross-Site Prompt Injection (XSPI) and Multi-Agent flows** — In multi-agent systems where Agent A is compromised or processes untrusted content, it can send poisoned contexts or instruction-laden parameters to Agent B. This can lead to cascade exploitation across the agent network, even if Agent B has no direct user-facing or external-fetching channels.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
@@ -151,6 +152,16 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 - Are those constraints enforced only through prompt instructions or also through output validation?
 - Does the application handle edge cases where the model might produce disallowed content?
 
+### 4.6 Multimodal Injection
+
+Multimodal LLMs (which process images, video, and audio alongside text) are vulnerable to injections embedded in non-text media. For example, an attacker can embed low-contrast text (e.g., white text on a white background) in an image, or embed high-frequency adversarial noise in an audio file that transcribes to system-overriding instructions, bypassing text-only validation and regex blocklists.
+
+**What to evaluate:**
+- Does the model accept image, video, or audio inputs?
+- Are multimodal inputs processed by the LLM before sanitization, or is there an optical character recognition (OCR) or speech-to-text (STT) parsing layer with safety constraints?
+- Is there validation of file parameters, pixel contrast, or audio metadata before being parsed?
+- Does the system prompt or guardrail layer specifically restrict instruction extraction from multimodal payloads?
+
 ---
 
 ## Step 5: Defense Evaluation
@@ -202,6 +213,16 @@ Evaluate which of the following mitigations are implemented and how effectively.
   - **AgentDojo** -- Evaluates agent robustness against injection attacks across diverse tool-use scenarios with realistic adversarial content.
   - **fabraix/playground** (https://github.com/fabraix/playground) -- Open-source library of AI agent exploit PoCs that can serve as a test harness for validating direct and indirect injection defenses against published attack patterns.
 
+### 5.8 LLM Gateway / AI Firewall
+
+Relying solely on system prompt instructions or simple code filters is insufficient. Production architectures require dedicated LLM Gateways or Firewalls (e.g., NeMo Guardrails, Lakera Guard, PromptArmor, Llama Guard) acting as a discrete security proxy layer before user input reaches the LLM and after the LLM generates output.
+
+**What to evaluate:**
+- Is there a dedicated LLM Gateway/Firewall proxy between the application code and the LLM API?
+- Does this gateway independently analyze inputs for known jailbreaks, prompt injection patterns, and multimodal payloads?
+- Does the gateway validate model outputs for leaking secrets, system prompt keywords, or PII before forwarding them to downstream tools or clients?
+- Are gateway policies kept separate from application logic to ensure centralized enforcement and auditing?
+
 ---
 
 ## Step 6: Report Findings
@@ -237,7 +258,7 @@ Each finding should be assigned a severity based on potential impact:
 ### Findings
 
 #### Finding [N]: [Title]
-- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking]
+- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking | Multimodal Injection]
 - Vector: [Direct | Indirect]
 - Severity: [Critical | High | Medium | Low | Informational]
 - Location: [file path and line numbers, or architectural component]
@@ -275,6 +296,8 @@ Each finding should be assigned a severity based on potential impact:
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
 
+6. **Neglecting multimodal injection vectors in visual or audio files.** Securing the text-input channels does not protect applications that accept files like PDFs, images, or audio clips. Attackers can hide prompt injection instructions in image layers (e.g., white-on-white text) or high-frequency audio, which are parsed as direct instructions by multimodal models. Ensure any visual or audio input is treated as untrusted data and parsed through specialized pre-processing or gated by an AI firewall/gateway.
+
 ---
 
 ## References
@@ -286,3 +309,5 @@ Each finding should be assigned a severity based on potential impact:
 - Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
 - Yin, X. et al. "PISmith: RL-Optimized Adaptive Black-Box Prompt Injection Attacks" (2026) -- arXiv:2603.13026
 - fabraix/playground — Open-source AI agent exploit library for testing injection defenses — https://github.com/fabraix/playground
+- NVIDIA NeMo Guardrails toolkit — https://github.com/NVIDIA/NeMo-Guardrails
+- Meta Llama Guard safety model — https://huggingface.co/meta-llama/Llama-Guard-7b
