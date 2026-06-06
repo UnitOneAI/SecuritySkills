@@ -256,6 +256,34 @@ Risk Exception Request:
 - Status:                 [Pending | Approved | Denied | Expired]
 ```
 
+#### Deferred Vulnerability Revalidation Gates
+
+An approved exception remains conditional. Revalidate deferred vulnerabilities before the scheduled review date whenever threat intelligence, remediation availability, asset context, or compensating control evidence changes.
+
+| Revalidation Trigger | Required Gate | Resulting Action |
+|---|---|---|
+| **Vendor patch or advisory released** | Confirm whether the original "patch unavailable" justification still applies; record advisory URL, fixed version, and release date | Set a new remediation deadline or revoke the exception |
+| **CISA KEV listing or BOD deadline added** | Re-run SSVC with exploitation status updated and compare the deadline to the exception expiration | Escalate to P0/P1 handling and schedule emergency or expedited remediation |
+| **EPSS surge or high-percentile crossing** | Compare current, 7-day, and 30-day EPSS values against the approved exception rationale | Shorten the deadline, increase monitoring, or require new approval |
+| **Public exploit or active exploitation observed** | Validate exploit maturity, affected configuration reachability, and detection coverage | Re-triage using SSVC and retest compensating controls |
+| **Asset exposure changes** | Check whether the asset became internet-facing, externally reachable, or connected to a higher-risk network segment | Invalidate assumptions tied to prior exposure and require renewed risk acceptance |
+| **Business criticality or data classification changes** | Reassess mission prevalence, data sensitivity, and service dependency | Raise SLA tier when impact assumptions are no longer valid |
+| **Compensating control drift or bypass** | Retest WAF/IPS rules, segmentation, disabled features, allowlists, and EDR detections against the current exploit path | Remove SLA extension until control effectiveness is verified again |
+| **Scanner or authenticated evidence changes** | Confirm whether the vulnerable component, version, package path, or reachable feature changed | Update scope, affected assets, and remediation owner |
+
+For every active exception, track these fields:
+
+- **Last revalidation date:** Most recent trigger review date.
+- **Next revalidation date:** Scheduled review date, no later than the exception expiration.
+- **Triggers checked:** Vendor advisory, KEV, EPSS, public exploit, active exploitation, exposure, criticality, and control drift.
+- **Data sources:** Scanner run, vendor advisory, CISA KEV feed, EPSS API, threat intel, CMDB, change ticket, and control test evidence.
+- **Trigger result:** No change, deadline shortened, exception revoked, control retest required, patch now available, or not evaluable.
+- **SSVC/SLA change:** Prior and updated SSVC decision, SLA tier, and remediation deadline.
+- **Compensating control retest:** Test date, method, result, and evidence link for each control supporting the exception.
+- **Owner and approver:** Person accountable for remediation plus the approval authority for continued acceptance.
+
+Revoke or reopen an exception when the original justification is no longer true. Examples: a vendor patch is now available after an "unavailable patch" exception, a CVE appears in KEV, EPSS surges materially, exploitation becomes active, the asset becomes internet-facing, or a compensating control can no longer be verified. If evidence is missing, classify the exception as **Not Evaluable** and route it for human review instead of continuing the deferral by default.
+
 ---
 
 ## Findings Classification
@@ -327,6 +355,13 @@ findings requiring immediate action.]
 |---|---|---|---|---|---|
 | [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] |
 
+### Deferred Vulnerability Revalidation
+[List exception records that were revalidated because threat, patch, asset, or control conditions changed]
+
+| Exception ID | CVE ID(s) | Last Revalidation | Triggers Checked | Trigger Result | SSVC/SLA Change | Compensating Control Retest | Next Revalidation | Action |
+|---|---|---|---|---|---|---|---|---|
+| [EXC-ID] | [CVE-IDs] | [YYYY-MM-DD] | [Vendor/KEV/EPSS/Exploit/Exposure/Control] | [Result] | [Prior -> Updated] | [Pass/Fail/Not Tested] | [YYYY-MM-DD] | [Continue/Shorten/Revoke/Patch/Review] |
+
 ### Recommendations
 1. [Highest-priority actionable recommendation]
 2. [Second priority recommendation]
@@ -373,6 +408,8 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+
+6. **Letting exceptions wait for a fixed review date after conditions change.** A future review date does not keep a deferral valid when a patch becomes available, KEV/EPSS/exploit signals change, asset exposure expands, or compensating controls drift. Trigger-based revalidation must reopen the decision immediately.
 
 ---
 
