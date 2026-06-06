@@ -15,7 +15,7 @@ BOLA occurs when an API endpoint accepts an object identifier from the client an
 
 - Endpoints that accept resource IDs in the URL path, query parameters, or request body.
 - Authorization logic that checks only whether the user is authenticated, not whether they own or have access to the specific object.
-- Sequential or predictable resource identifiers (auto-increment integers) that enable enumeration.
+- Sequential or predictable resource identifiers (auto-increment integers) that enable enumeration when ownership or relationship checks are missing.
 - Batch or list endpoints that return objects without filtering by the caller's permissions.
 
 ### REST Vulnerable Patterns
@@ -99,7 +99,7 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Every endpoint that accepts a resource identifier enforces ownership or relationship-based access control.
 - [ ] Authorization checks happen at the data access layer, not only at the controller/route layer.
 - [ ] Batch/list endpoints filter results by the caller's permissions.
-- [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
+- [ ] Predictable identifiers are not reported as BOLA unless an object-level authorization bypass is present; otherwise they are hardening observations.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
 
 ---
@@ -119,6 +119,8 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 - Missing or weak token rotation -- refresh tokens that never expire or are not rotated on use.
 - Password reset or account recovery flows that leak tokens or allow enumeration.
 - Micro-service-to-service communication without authentication (implicit trust based on network location).
+- gRPC services or methods that rely on private networking but have no unary or stream authentication interceptor.
+- JWT/OAuth token confusion: accepting ID tokens where access tokens are required, accepting tokens from the wrong tenant/environment, or trusting `jku`/`x5u` headers without allowlisting.
 
 ### Vulnerable Patterns
 
@@ -157,6 +159,8 @@ paths:
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
 - Authenticate service-to-service calls with mTLS or signed tokens, not network-based trust.
+- For gRPC, enforce authentication in both unary and stream interceptors and verify caller identity before dispatching service methods.
+- Validate OAuth/JWT issuer, audience, authorized party/client, tenant/realm, token type, key source, algorithm, and JWKS cache failure behavior.
 
 ### Review Checklist
 
@@ -166,6 +170,8 @@ paths:
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
+- [ ] gRPC unary and stream methods have authentication interceptors or equivalent service-mesh identity enforcement.
+- [ ] OAuth/JWT validation rejects wrong token type, wrong tenant/environment, untrusted `jku`/`x5u`, and fail-open JWKS behavior.
 
 ---
 
@@ -267,12 +273,20 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```go
+// VULNERABLE: gRPC server has no message size or deadline enforcement
+s := grpc.NewServer()
+pb.RegisterExportServiceServer(s, &exportServer{})
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
 - Enforce maximum pagination size (e.g., `limit` capped at 100). Default to a reasonable page size (e.g., 20).
 - Set maximum request body sizes (`express.json({ limit: '1mb' })`).
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
+- For gRPC: enforce maximum receive/send message sizes, stream concurrency limits, server-side deadlines/timeouts, and cancellation handling.
+- Treat gateway-enforced limits as valid evidence only when the gateway cannot be bypassed and its route mapping covers the reviewed API operations.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
 
@@ -282,6 +296,8 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] gRPC methods have message-size, stream, deadline, and cancellation limits.
+- [ ] Gateway, service-mesh, and application limits are aligned; missing local middleware is not a confirmed finding when gateway evidence proves coverage.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 
@@ -316,12 +332,21 @@ const resolvers = {
 };
 ```
 
+```javascript
+// VULNERABLE: gRPC method has no method-level authorization
+function deleteUser(call, callback) {
+  users.delete(call.request.userId);
+  callback(null, { deleted: true });
+}
+```
+
 ### Remediation Guidance
 
 - Implement a centralized authorization middleware or policy engine that enforces role/permission checks consistently across all endpoints.
 - Deny by default: every endpoint should require explicit permission grants. Do not rely on "security through obscurity" of admin URL paths.
 - Enforce authorization on every HTTP method independently. A user authorized to `GET` a resource is not automatically authorized to `DELETE` it.
 - In GraphQL, use directive-based or middleware-based authorization on mutations (`@hasRole(role: ADMIN)`).
+- In gRPC, enforce method-level authorization in unary and stream interceptors before dispatching handlers.
 - Regularly audit the endpoint inventory against the authorization policy matrix to detect gaps.
 
 ### Review Checklist
@@ -330,6 +355,7 @@ const resolvers = {
 - [ ] Authorization middleware is centralized and applied consistently.
 - [ ] Each HTTP method on each endpoint has an independent authorization check.
 - [ ] GraphQL mutations enforce role/permission checks in resolvers or directives.
+- [ ] gRPC service methods enforce method-level roles, scopes, and object relationships before side effects.
 - [ ] The authorization policy is deny-by-default; endpoints are inaccessible unless explicitly permitted.
 
 ---
@@ -544,11 +570,22 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```javascript
+// VULNERABLE: Webhook updates state before authenticating the event
+app.post('/webhooks/payment', express.json(), async (req, res) => {
+  await markInvoicePaid(req.body.invoice_id);
+  res.sendStatus(204);
+});
+```
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
 - Always enforce TLS certificate validation on outbound connections. Never set `verify=False` or `rejectUnauthorized: false` in production.
 - Validate response schemas from upstream APIs using a schema validator (JSON Schema, Pydantic, Zod).
+- Verify webhook signatures or mTLS before parsing side effects. Preserve the raw request body when the provider signature covers exact bytes.
+- Enforce webhook timestamp freshness and durable event ID deduplication before state changes.
+- Treat provider IP allowlists as supplemental evidence, not a replacement for event authenticity.
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
@@ -558,5 +595,7 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Data from all upstream APIs is validated and sanitized before use in queries, rendering, or commands.
 - [ ] TLS certificate validation is enabled on all outbound API calls.
 - [ ] Response schemas from third-party APIs are validated before processing.
+- [ ] Webhook receivers verify signatures/mTLS, timestamp freshness, and event ID deduplication before side effects.
+- [ ] Raw request body handling preserves provider signature semantics.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
