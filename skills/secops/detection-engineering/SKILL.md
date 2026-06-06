@@ -259,6 +259,20 @@ Describe how to test that this detection works correctly.
 3. **Filter validation:** If SCCM is in use, verify that SCCM client operations do not trigger the alert.
 4. **ATT&CK technique coverage:** Validate with atomic red team test `T1059.001` (https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1059.001/T1059.001.md).
 
+**Validation evidence matrix:**
+
+Before assigning a coverage level above Theoretical, include a compact matrix with the actual evidence used to validate the rule:
+
+| Evidence Type | Required Evidence | Expected Result |
+|---------------|-------------------|-----------------|
+| True positive | Known-bad or Atomic Red Team sample that exercises the technique | Rule fires with expected fields populated |
+| Benign near-match | Benign command or event that resembles the suspicious pattern | Rule does not fire, or fires as documented benign true positive |
+| Malicious near-filter | Suspicious sample that passes through every broad allowlist/filter boundary | Rule still fires; tuning does not hide attacker use of trusted tooling |
+| Telemetry absent | Sample host or log stream missing a required field such as command line, script block, or parent process | Coverage remains Theoretical or Not Evaluable for that scope |
+| Backend conversion | Converted query for each target SIEM plus one smoke-test event per backend | Converted query preserves Sigma logic, field mappings, and modifiers |
+
+If required telemetry is missing, truncated, sampled, or not mapped into the SIEM, explicitly mark the detection as Not Evaluable or Theoretical for that environment. Use `logsource.definition` or the ADS assumptions section to document onboarding requirements for non-default fields such as command-line arguments, script-block logs, or EDR-specific process metadata.
+
 #### Response
 Define the analyst response procedure when this alert fires.
 
@@ -282,6 +296,8 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | **Tested** | Light Green | Rule has been validated with synthetic test data (e.g., Atomic Red Team) |
 | **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
 | **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
+
+Do not promote a rule above Theoretical unless the required telemetry exists in the target environment and the validation evidence matrix is complete for the intended SIEM backend. Do not promote from Tested to Operational unless the deployed rule has production alert evidence, disposition history, and documented tuning.
 
 **Heatmap construction process:**
 
@@ -388,6 +404,8 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+| Telemetry Evidence | [Required fields present, retention, host coverage, truncation limits] |
+| Backend Conversion Evidence | [KQL/SPL/EQL conversion tested with sample event, unsupported modifiers noted] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -485,6 +503,8 @@ Deploying a detection rule without enumerating and testing against known false p
 ### Pitfall 3: Creating Detections Without Validation Testing
 
 A detection rule that has never been tested against a known-true-positive event provides only theoretical coverage. Use Atomic Red Team (https://github.com/redcanaryco/atomic-red-team), Caldera, or manual technique execution in a test environment to confirm the rule fires on the expected activity. Move rules from "experimental" to "stable" status only after successful validation.
+
+Positive validation alone is not enough to claim operational coverage. Also test benign near-matches, malicious samples that sit close to broad allowlist filters, telemetry-missing cases, and the converted query for each target backend. Otherwise a rule can look correct in Sigma while the deployed KQL/SPL/EQL query fails because a modifier, field mapping, or parser pipeline is unsupported.
 
 ### Pitfall 4: Ignoring Detection Rule Lifecycle Management
 
