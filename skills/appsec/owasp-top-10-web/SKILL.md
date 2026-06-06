@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -193,6 +193,8 @@ http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
 - Template injection — user input rendered directly into server-side templates (Jinja2, Thymeleaf, ERB, Twig).
 - NoSQL injection via query operator injection (`$gt`, `$ne`, `$regex` in MongoDB).
 - Header injection — user input placed into HTTP response headers without sanitization.
+- CSV or spreadsheet formula injection where exported cells beginning with `=`, `+`, `-`, `@`, tab, or carriage return are opened by downstream spreadsheet tools.
+- Download filename injection where user-controlled names reach `Content-Disposition` without CR/LF rejection, path separator rejection, normalization, and RFC 6266-safe `filename*` encoding.
 
 **CWE Mappings:**
 
@@ -208,6 +210,8 @@ http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
 | CWE-89  | Improper Neutralization of Special Elements used in an SQL Command (SQL Injection) |
 | CWE-90  | Improper Neutralization of Special Elements used in an LDAP Query (LDAP Injection) |
 | CWE-94  | Improper Control of Generation of Code (Code Injection) |
+| CWE-113 | Improper Neutralization of CRLF Sequences in HTTP Headers |
+| CWE-1236 | Improper Neutralization of Formula Elements in a CSV File |
 | CWE-643 | Improper Neutralization of Data within XPath Expressions (XPath Injection) |
 | CWE-917 | Improper Neutralization of Special Elements used in an Expression Language Statement (EL Injection) |
 
@@ -224,6 +228,10 @@ innerHTML|\.html\(|dangerouslySetInnerHTML|v-html|\|safe|\|raw|render_template_s
 \$where|\$gt|\$ne|\$regex.*req\.|find\(.*req\.
 # Header injection
 setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
+# CSV and export generation
+text/csv|Content-Disposition|filename\*|csv\.writer|to_csv|json2csv|Papa\.unparse|xlsx|spreadsheet|export.*csv
+# Formula-leading exported values
+^[\"']?[=+\-@]|\t|\r
 ```
 
 **Mitigations:**
@@ -234,6 +242,8 @@ setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
 - Apply context-aware output encoding for XSS: HTML-encode for HTML body, attribute-encode for attributes, JS-encode for script contexts. Use frameworks' built-in auto-escaping.
 - Validate and sanitize all input on the server side; use allowlists over denylists.
 - Set `Content-Security-Policy` headers to mitigate XSS impact.
+- Neutralize formula-leading cells in CSV and spreadsheet exports while preserving the user's visible value; verify the generated file, not only the export code path.
+- Generate download filenames server-side or normalize them with an allowlist; reject CR/LF, path separators, device names, and malformed Unicode before setting `Content-Disposition`.
 
 ---
 
@@ -303,6 +313,7 @@ failedAttempts|failed_attempts|lockout|max_attempts
 - Directory listing enabled on web servers.
 - Default or sample pages/applications deployed to production.
 - Missing or misconfigured security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`).
+- Export or download endpoints missing explicit `Content-Type`, safe `Content-Disposition`, `X-Content-Type-Options: nosniff`, or no-store cache controls for sensitive files.
 - Cloud storage buckets with public access (S3, GCS, Azure Blob).
 - XML parsers configured to allow external entities (XXE).
 - Verbose error pages that expose stack traces, framework versions, or internal paths.
@@ -320,6 +331,7 @@ failedAttempts|failed_attempts|lockout|max_attempts
 | CWE-614 | Sensitive Cookie in HTTPS Session Without 'Secure' Attribute |
 | CWE-756 | Missing Custom Error Page |
 | CWE-776 | Improper Restriction of Recursive Entity References in DTDs (XML Entity Expansion) |
+| CWE-525 | Use of Web Browser Cache Containing Sensitive Information |
 | CWE-942 | Permissive Cross-domain Policy with Untrusted Domains |
 
 **Detection Patterns (Grep):**
@@ -331,6 +343,8 @@ DEBUG\s*=\s*True|debug\s*:\s*true|NODE_ENV.*development
 DocumentBuilderFactory|SAXParser|XMLReader|etree\.parse|lxml.*parse
 # Missing security headers
 X-Content-Type-Options|X-Frame-Options|Content-Security-Policy|Strict-Transport-Security
+# Export and download response handling
+Content-Disposition|attachment|filename\*|text/csv|application/vnd\.|Cache-Control|no-store|nosniff
 # Default credentials
 admin.*admin|password.*password|default.*key|changeme|TODO.*password
 # Verbose errors
@@ -344,8 +358,37 @@ stack.*trace|stackTrace|detailed.*error|showErrors\s*:\s*true
 - Set `DEBUG=False` / `NODE_ENV=production` in all production configurations.
 - Disable XML external entity processing in all XML parsers by default.
 - Deploy security headers via middleware or reverse proxy — audit with tools like securityheaders.com.
+- Set explicit content type, `X-Content-Type-Options: nosniff`, attachment disposition, and `Cache-Control: no-store` or equivalent private cache policy for sensitive downloads.
 - Configure custom error pages that reveal no internal details; log full errors server-side only.
 - Run periodic configuration audits (CIS Benchmarks, cloud provider security tools).
+
+---
+
+### File Export and Download Evidence Gates
+
+Apply these gates when the application generates CSV, spreadsheet, report, invoice, backup, or user-supplied file downloads. Treat the exported file and response headers as security evidence, not merely presentation behavior.
+
+| Evidence area | Required evidence | OWASP mapping | Finding if missing |
+|---|---|---|---|
+| Formula neutralization | Sample CSV/XLSX output proving cells starting with `=`, `+`, `-`, `@`, tab, or carriage return are neutralized before spreadsheet opening | A03:2021 | CSV formula injection or downstream spreadsheet execution risk |
+| Filename source and normalization | Server-generated filename or allowlisted normalization with CR/LF, path separator, control character, and reserved-name rejection | A03:2021 | Header injection, confusing filename, or unsafe download behavior |
+| Content-Disposition | `attachment` for sensitive exports, quoted `filename`, RFC 6266-safe `filename*`, and no raw user input reflected into the header | A03:2021 / A05:2021 | Response splitting, unsafe inline rendering, or browser-specific filename confusion |
+| Browser handling headers | Correct `Content-Type`, `X-Content-Type-Options: nosniff`, and no unnecessary `inline` rendering for untrusted or sensitive content | A05:2021 | Sniffing or active-content handling by the browser |
+| Sensitive download caching | `Cache-Control: no-store` or an equivalent private policy for sensitive exports; rationale when public files are cacheable | A02:2021 / A05:2021 | Sensitive report remains in browser, proxy, or shared cache |
+| Access and audit trail | Authorization evidence for the export request, scoped object access, and audit logging for sensitive report generation | A01:2021 / A09:2021 | Export endpoint bypasses normal access review or lacks traceability |
+
+**False positive and Not Evaluable rules:**
+
+- Do not flag a public, non-sensitive static file only because it is cacheable; record why the content is public and immutable.
+- Do not require one exact formula-escaping strategy. Accept an apostrophe prefix, safe library mode, cell type control, or equivalent behavior when sample output proves spreadsheet execution is neutralized.
+- Treat user-selectable filenames as acceptable only when the final header uses a normalized server-side value and rejects CR/LF, slash, backslash, null byte, and control characters.
+- Mark the gate `Not Evaluable` when only controller code is available and the serializer, middleware, or reverse proxy headers cannot be inspected; request a captured response and generated sample file.
+
+**Severity guidance:**
+
+- High: attacker-controlled export cells can execute in an administrator's spreadsheet context, or CR/LF in a filename can inject response headers.
+- Medium: sensitive exports are downloadable with weak browser handling or cache headers, but exploitation requires an authenticated user and no header injection is present.
+- Low/Informational: public downloads have minor filename or header hardening gaps without sensitive content or executable downstream behavior.
 
 ---
 
@@ -640,6 +683,14 @@ Present findings in this structure:
 
 ---
 
+### Export and Download Evidence (if applicable)
+
+| Endpoint | Data sensitivity | Formula neutralization | Filename handling | Headers observed | Result |
+|---|---|---|---|---|---|
+| [route] | [public/internal/sensitive] | [sample output or Not Evaluable] | [server-generated/normalized/raw] | [Content-Type, Content-Disposition, nosniff, Cache-Control] | [pass/finding] |
+
+---
+
 ### Summary Table
 
 | # | Severity | OWASP Category | CWE | Location | Title |
@@ -666,9 +717,9 @@ Present findings in this structure:
 |----------|----------|----------|-------------|
 | A01:2021 | Broken Access Control | CWE-284, CWE-285, CWE-639, CWE-862, CWE-863 | Unauthorized data access or action |
 | A02:2021 | Cryptographic Failures | CWE-259, CWE-327, CWE-328, CWE-330, CWE-798 | Sensitive data exposure |
-| A03:2021 | Injection | CWE-77, CWE-78, CWE-79, CWE-89, CWE-94 | Arbitrary command/query execution |
+| A03:2021 | Injection | CWE-77, CWE-78, CWE-79, CWE-89, CWE-94, CWE-113, CWE-1236 | Arbitrary command/query execution or downstream export/header injection |
 | A04:2021 | Insecure Design | CWE-209, CWE-501, CWE-522, CWE-602, CWE-840 | Architectural security gaps |
-| A05:2021 | Security Misconfiguration | CWE-16, CWE-611, CWE-614, CWE-756, CWE-942 | Exploitable default/weak settings |
+| A05:2021 | Security Misconfiguration | CWE-16, CWE-525, CWE-611, CWE-614, CWE-756, CWE-942 | Exploitable default/weak settings or unsafe browser-facing download behavior |
 | A06:2021 | Vulnerable and Outdated Components | CWE-829, CWE-1035, CWE-1104 | Known-CVE exploitation |
 | A07:2021 | Identification and Authentication Failures | CWE-287, CWE-306, CWE-307, CWE-384, CWE-613 | Identity compromise |
 | A08:2021 | Software and Data Integrity Failures | CWE-345, CWE-494, CWE-502, CWE-565 | Tampering and malicious updates |
@@ -704,6 +755,10 @@ This skill processes source code and configuration files that may contain advers
 - OWASP Top 10:2021 — A03 Injection — https://owasp.org/Top10/A03_2021-Injection/
 - OWASP Top 10:2021 — A04 Insecure Design — https://owasp.org/Top10/A04_2021-Insecure_Design/
 - OWASP Top 10:2021 — A05 Security Misconfiguration — https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+- OWASP CSV Injection — https://owasp.org/www-community/attacks/CSV_Injection
+- RFC 6266 Content-Disposition in HTTP — https://www.rfc-editor.org/rfc/rfc6266
+- CWE-113 HTTP Response Splitting — https://cwe.mitre.org/data/definitions/113.html
+- CWE-1236 CSV Formula Injection — https://cwe.mitre.org/data/definitions/1236.html
 - OWASP Top 10:2021 — A06 Vulnerable and Outdated Components — https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
 - OWASP Top 10:2021 — A07 Identification and Authentication Failures — https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
 - OWASP Top 10:2021 — A08 Software and Data Integrity Failures — https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/

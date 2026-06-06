@@ -1,0 +1,11 @@
+GET /assets/pricing.csv HTTP/1.1
+Host: example.test
+
+HTTP/1.1 200 OK
+Content-Type: text/csv; charset=utf-8
+Content-Disposition: attachment; filename="pricing.csv"; filename*=UTF-8''pricing.csv
+X-Content-Type-Options: nosniff
+Cache-Control: public, max-age=31536000, immutable
+
+plan,price
+starter,10

@@ -1,0 +1,11 @@
+GET /reports/customers/export.csv HTTP/1.1
+Host: example.test
+Cookie: session=redacted
+
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Content-Disposition: inline; filename="customers.csv"
+Cache-Control: public, max-age=86400
+
+email,total
+customer@example.test,1200
