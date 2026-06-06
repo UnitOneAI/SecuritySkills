@@ -95,6 +95,63 @@ resource "azuread_directory_role_assignment" { ... }
 
 #### CIS 1.3.3 -- Ensure that 'Restrict access to Microsoft Entra admin center' is set to 'Yes'
 
+### CIS 1.4 -- Effective Privileged Access and PIM Evidence
+
+Use this supplemental review whenever role assignments, Entra role eligibility, managed identities, service principals, or Key Vault administrators are in scope. It reduces false positives from low-impact assignments and catches privilege that is only visible through effective access, inherited scopes, or PIM activation policy.
+
+#### CIS 1.4.1 -- Managed identity assignments are reviewed by role, scope, and data-plane impact
+
+Inspect Terraform, Bicep, ARM, Azure CLI exports, or Entra exports for managed-identity role assignments:
+
+```hcl
+resource "azurerm_role_assignment" "mi_kv_admin" {
+  scope                = azurerm_key_vault.prod.id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = azurerm_user_assigned_identity.app.principal_id
+}
+```
+
+Flag high-impact assignments when a system-assigned or user-assigned managed identity receives Owner, Contributor, User Access Administrator, Key Vault Administrator, Key Vault Secrets Officer, Storage Blob Data Owner, or equivalent custom role without a documented business purpose, narrow scope, monitoring, and rotation/owner evidence.
+
+Do not flag a managed identity solely because it has a role assignment. Record role name, role definition ID, effective scope, inherited source, principal type, and whether the role is control-plane or data-plane. A Reader assignment at a narrow scope is lower risk than an administrative data-plane role at a production vault or subscription.
+
+#### CIS 1.4.2 -- User-assigned managed identities have attachability constraints
+
+User-assigned managed identities can be attached to new compute resources after the original review. Check who can attach the identity and where it can be used:
+
+- VM, VMSS, App Service, Function, Container Apps, AKS, automation, or federated workload paths that can use the identity
+- operators with `Managed Identity Operator`, Contributor, or equivalent rights over the identity or compute
+- resource-group/subscription boundaries for attachable compute
+- Azure Policy or deployment controls restricting identity attachment
+
+If attachability is unknown, report Not Evaluable instead of assuming the identity is limited to the currently reviewed workload.
+
+#### CIS 1.4.3 -- Privileged role eligibility has PIM activation evidence
+
+When an export shows eligible assignment for privileged roles, require evidence for:
+
+- MFA on activation
+- approval requirement and approver role
+- maximum activation duration
+- justification or ticket requirement
+- notification/alerting on activation
+- activation history and audit logs
+- assignment expiration or access review cadence
+
+Eligibility without activation policy evidence should be Not Evaluable or Medium, depending on the role impact. Permanent privileged assignment without PIM controls should be High or Critical for production, tenant-wide, subscription Owner, User Access Administrator, Privileged Role Administrator, or Key Vault Administrator access.
+
+#### CIS 1.4.4 -- Inherited role assignments are traced to their source scope
+
+Subscription-local IaC may miss management-group or tenant-level assignments. When privileged access appears inherited or cannot be reconciled against local files, record the missing evidence:
+
+- management group, subscription, resource group, or resource source scope
+- role assignment ID and role definition ID
+- principal object ID and display name
+- whether the assignment is permanent, eligible, or time-bound
+- source export used, such as `az role assignment list --include-inherited`
+
+Do not mark the role safe merely because it is absent from Terraform or Bicep.
+
 ---
 
 ## Section 2 -- Microsoft Defender for Cloud
@@ -616,6 +673,15 @@ resource "azurerm_key_vault" {
   enable_rbac_authorization = true  # Preferred over access policies
 }
 ```
+
+For RBAC-mode vaults, inspect Azure role assignments for administrators and data-plane operators. Flag broad Key Vault Administrator, Key Vault Secrets Officer, Key Vault Crypto Officer, Owner, Contributor, or User Access Administrator assignments when scope, PIM activation, and business justification are missing.
+
+For access-policy-mode vaults, inspect `azurerm_key_vault_access_policy` or ARM access policy entries. Record who can get/list/set/delete/purge keys, secrets, and certificates, and whether policy updates are restricted to a narrow admin group.
+
+Remediation must match the authorization mode:
+
+- RBAC mode: reduce role scope, replace broad built-in roles with custom least-privilege roles, add PIM eligibility/activation controls for privileged operators, and monitor role assignment changes.
+- Access-policy mode: remove unnecessary key/secret/certificate permissions, separate read/write/admin policies, restrict who can edit vault policies, and consider RBAC migration only after confirming operational impact.
 
 ### CIS 8.7 -- Ensure that Private Endpoints are used for Azure Key Vault
 

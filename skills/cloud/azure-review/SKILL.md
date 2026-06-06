@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -91,7 +91,32 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
-### Step 11: Compile Assessment Report
+### Step 11: Managed Identity and PIM Effective Access Review
+
+Evaluate Azure identity posture beyond static role assignment presence. Managed identities, service principals, inherited scopes, and Privileged Identity Management (PIM) eligibility can create effective access that is not obvious from subscription-local IaC.
+
+For every discovered `azurerm_role_assignment`, Bicep `Microsoft.Authorization/roleAssignments`, ARM role assignment, Key Vault access policy, or Entra/PIM export, record:
+
+- principal type: user, group, service principal, system-assigned managed identity, or user-assigned managed identity
+- role name or role definition ID, including whether it is control-plane or data-plane
+- effective scope, including management-group, subscription, resource-group, resource, and inherited assignments
+- whether the role is permanent, eligible through PIM, time-bound, or unknown
+- activation controls for privileged roles: MFA, approval, justification, duration, ticket/change reference, and alerting
+- activation/audit evidence: recent activation logs, assignment change logs, and reviewer/approver identity
+- workload identity constraints: which compute resources can attach a user-assigned identity and whether federated credentials can assume the workload path
+- Key Vault authorization mode: RBAC vs access policy, because remediation and evidence differ between the two modes
+
+Treat a low-impact Reader assignment at a narrow scope differently from Owner, User Access Administrator, Privileged Role Administrator, Key Vault Administrator, Key Vault Secrets Officer, Storage Blob Data Owner, or other high-impact roles. If the effective assignment scope, inherited role source, PIM activation policy, or data-plane privilege cannot be proven from the reviewed material, report **Not Evaluable** rather than assuming either safe or unsafe posture.
+
+Recommended finding codes for this review layer:
+
+- `AZ-ID-01` -- Managed identity has high-impact control-plane or data-plane role without scope justification.
+- `AZ-ID-02` -- Privileged role eligibility lacks PIM activation evidence, MFA, approval, duration, or justification.
+- `AZ-ID-03` -- Inherited role assignment source or effective scope is not evidenced.
+- `AZ-ID-04` -- User-assigned managed identity can be attached by broad operators or unconstrained compute resources.
+- `AZ-KV-01` -- Key Vault RBAC/access-policy evidence does not identify who can administer keys, secrets, and role assignments.
+
+### Step 12: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -103,9 +128,16 @@ Produce the final report using the structure defined in the Output Format sectio
 |----------|-----------|----------|
 | **Critical** | Immediate risk of data breach or unauthorized access | NSGs open to 0.0.0.0/0 on RDP/SSH, SQL databases publicly accessible, Defender for Cloud disabled |
 | **High** | Significant security gap that materially weakens posture | Missing MFA enforcement, storage accounts with public access, Key Vault without purge protection |
-| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2 |
+| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2, privileged eligibility without activation evidence |
 | **Low** | Hardening recommendation or defense-in-depth measure | HTTP/2 not enabled, FTP not fully disabled, missing CMK on non-sensitive storage |
 | **Informational** | Best practice observation, no direct security impact | Naming conventions, tag policies, documentation gaps |
+
+Escalate managed-identity and PIM findings based on effective impact:
+
+- **Critical:** permanent Owner/User Access Administrator/Privileged Role Administrator or Key Vault Administrator on production scope with no PIM, approval, or monitoring evidence.
+- **High:** workload managed identity has high-impact data-plane access, broad attachability, or privileged federated credential path without constraints.
+- **Medium:** privileged eligibility exists, but activation logs, duration, approval, or justification evidence is missing.
+- **Not Evaluable:** role assignment, inherited scope, or activation policy evidence is unavailable from IaC/export data.
 
 ---
 
@@ -141,6 +173,14 @@ Produce the final report using the structure defined in the Output Format sectio
 | 7 | Virtual Machines | X | Y | Z | nn% |
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
+
+### Managed Identity and PIM Evidence
+
+| Principal | Principal Type | Role | Effective Scope | Access Type | Evidence Reviewed | Status |
+|-----------|----------------|------|-----------------|-------------|-------------------|--------|
+| <name/id> | Managed Identity / Service Principal / User / Group | <role> | <scope including inherited source> | Permanent / PIM Eligible / Time-bound / Unknown | <IaC, Azure CLI, Entra/PIM export, audit logs> | Pass / Fail / Not Evaluable |
+
+Record whether privileged roles have MFA-on-activation, approval, maximum duration, justification, alerting, and activation/audit logs. For Key Vault, record whether the vault uses RBAC or access-policy mode and identify who can administer keys/secrets and who can grant access.
 
 ### Detailed Findings
 
@@ -200,6 +240,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Role assignment presence is not enough.** A managed identity with Reader at resource-group scope is not equivalent to Owner, User Access Administrator, Key Vault Administrator, or data-plane owner roles. Evaluate effective role, scope, inheritance, and workload attachability.
+8. **PIM eligibility is not the same as safe access.** Privileged eligibility needs activation evidence: MFA, approval, duration, justification, alerting, and audit logs. If only eligibility is visible, mark activation safety as Not Evaluable.
+9. **Key Vault RBAC and access-policy modes require different evidence.** RBAC mode depends on Azure role assignments; access-policy mode depends on vault-local policies. Do not recommend generic role removal without identifying the active authorization mode and who can grant access.
 
 ---
 
@@ -224,6 +267,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
+- Microsoft Entra Privileged Identity Management: https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/pim-configure
+- Azure managed identities: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
@@ -231,4 +276,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added managed identity effective-access, PIM activation, inherited-scope, and Key Vault authorization-mode evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
