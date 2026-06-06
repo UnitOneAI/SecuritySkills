@@ -10,10 +10,10 @@ description: >
 tags: [incident-response, ir, playbook]
 role: [soc-analyst, security-engineer, vciso]
 phase: [respond, recover]
-frameworks: [NIST-SP-800-61r2, SANS-IH]
+frameworks: [NIST-SP-800-61r2, SANS-IH, SEC-Item-1.05]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -61,6 +61,9 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Current state** -- Is the attack ongoing, contained, or resolved? What actions have already been taken?
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
+- [ ] **Materiality evidence** -- Functional, financial, operational, legal/regulatory, customer, and reputational impact data needed for a public-company materiality determination.
+- [ ] **Cloud identity/session scope** -- SaaS sessions, OAuth grants, refresh tokens, service accounts, access keys, role sessions, and API credentials that could continue exfiltration after host isolation.
+- [ ] **Deepfake / synthetic social engineering indicators** -- Voice, video, chat, or synthetic identity evidence; requested payment/access action; and out-of-band verification status.
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
 
 ---
@@ -127,6 +130,7 @@ Classify the incident using the NIST SP 800-61 taxonomy:
 | **Supply Chain Compromise** | Compromise via trusted third-party software or service | Malicious update, compromised dependency, vendor breach |
 | **Web Application Attack** | Exploitation of web application vulnerabilities | SQL injection, XSS, SSRF, API abuse |
 | **Social Engineering** | Manipulation of personnel to gain access or information | Phishing, BEC, vishing, pretexting |
+| **Synthetic Social Engineering** | AI-generated or manipulated voice, video, chat, or identity artifact used to induce payment, access, or trust decisions | Deepfake audio BEC, fake executive video call, synthetic vendor identity |
 
 #### Step 2.2: Severity Determination
 
@@ -168,6 +172,32 @@ Assign severity based on the combination of functional impact, information impac
 | **SEV-3 (Medium)** | Low functional impact OR information impact with regular recovery | IR team investigates during business hours; management notification within 24 hours |
 | **SEV-4 (Low)** | None/minimal functional impact; no information impact; regular recovery | Documented and monitored; addressed in normal operations |
 
+#### Step 2.2b: Materiality and Privilege Evidence Gate
+
+For public-company, regulated, customer-impacting, or board-level incidents, gather a materiality package early. The SEC 4-business-day disclosure clock starts after materiality is determined, so the playbook should help counsel and executives make a documented determination rather than letting the issue drift.
+
+```
+IR-MAT-01: Potentially material incident lacks functional, financial, operational, legal/regulatory, customer, or reputational impact evidence
+IR-MAT-02: SEC Item 1.05 clock owner, determination timestamp, or Form 8-K decision status is missing where public-company materiality may apply
+IR-MAT-03: Internal executive notification lacks legal privilege / work-product handling guidance for SEV-1 or counsel-led incidents
+IR-MAT-04: Cloud/SaaS exfiltration is routed only to network containment and omits token, session, OAuth grant, service-account, or API-key containment
+IR-MAT-05: Wiper recovery proceeds without immutable-backup integrity, malware scan, restore-test, or backup age evidence
+IR-MAT-06: Social engineering classification misses synthetic identity, deepfake audio/video, or out-of-band verification evidence
+IR-MAT-07: Missing materiality, cloud-token, backup-integrity, deepfake, or privilege evidence is not marked Not Evaluable
+```
+
+**Materiality checklist:**
+
+| Evidence Area | Questions | Decision Evidence |
+|---|---|---|
+| Functional impact | Are critical operations, production, revenue systems, or safety processes degraded? | Services affected, downtime, recovery estimate |
+| Financial impact | Are revenue, costs, ransom/extortion, insurance, market, or contractual penalties material? | Finance estimate, loss range, assumptions |
+| Legal/regulatory impact | Are SEC, GDPR, HIPAA, PCI, sector, or contractual notices triggered? | Counsel decision, notification deadline matrix |
+| Customer/reputational impact | Are customers, partners, public services, or market confidence affected? | Customer count, communications plan, media risk |
+| Governance decision | Who owns materiality, when was it evaluated, and what is the decision? | Timestamp, participants, decision, next review |
+
+Mark the materiality decision **Not Evaluable** when impact evidence is incomplete or counsel/executive decision ownership is missing.
+
 #### Step 2.3: Indicator Analysis
 
 For each IOC, document and cross-reference:
@@ -198,6 +228,7 @@ START: Is the attack actively ongoing?
   |             |
   |             +-- YES --> IMMEDIATE CONTAINMENT
   |             |           - Network isolation (disable switchport / security group)
+  |             |           - Revoke cloud/SaaS sessions, OAuth grants, API keys, and service-account credentials if valid tokens are involved
   |             |           - Block egress to C2 IPs/domains at firewall
   |             |           - Capture memory before power-off if possible
   |             |           - Notify legal (potential breach notification trigger)
@@ -230,6 +261,8 @@ START: Is the attack actively ongoing?
                           - Rebuild from known-good baseline
 ```
 
+**Cloud/SaaS exfiltration containment rule:** If the attacker is using valid cloud, SaaS, OAuth, API, or service-account credentials, network isolation of the endpoint is not sufficient. Containment must include token/session revocation, OAuth grant removal, service-account key or role-session review, downstream app checks, and sign-in/API log validation.
+
 #### Step 3.1b: Wiper / Destructive Malware Response Track
 
 Wiper malware destroys data irrecoverably (unlike ransomware which preserves encrypted data for ransom). This demands a fundamentally different response posture.
@@ -240,6 +273,16 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 2. **Preemptively shut down unaffected systems** if propagation vector is unknown. A wiper that has not triggered is stopped by cold shutdown.
 3. **Verify backup integrity** -- Wipers target Volume Shadow Copies, backup agents, and NAS/SAN. Confirm offline/immutable backups exist before recovery planning.
 4. **Preserve one affected system** (powered off, disk intact) for forensics and attribution.
+
+**Cold shutdown and recovery integrity gate:**
+
+| Gate | Required Evidence | Decision |
+|---|---|---|
+| Backup immutability | Offline/WORM/object-lock status, backup account separation, last successful immutable copy | Pass / Gap / Not Evaluable |
+| Backup malware scan | AV/EDR/YARA scan of backup image or restored staging copy | Pass / Gap / Not Evaluable |
+| Restore test | Staged restore, hash/config comparison, boot/app smoke test | Pass / Gap / Not Evaluable |
+| Backup age and blast radius | Last known-good timestamp, systems covered, replication status, excluded assets | Pass / Gap / Not Evaluable |
+| Re-wipe loop prevention | Persistence scan, scheduled task/GPO/startup review, backup-agent trust review | Pass / Gap / Not Evaluable |
 
 **Key differences from ransomware:**
 
@@ -281,6 +324,7 @@ Use the appropriate communication template based on the audience.
 **Internal Executive Notification (SEV-1/SEV-2):**
 
 ```
+Privilege Handling: Attorney-Client Privilege / Attorney Work Product where directed by counsel
 Subject: [SEVERITY] Security Incident - [Category] - [Incident ID]
 
 Status: [Active | Contained | Eradicated | Recovered]
@@ -293,6 +337,7 @@ Data Impact: [Type and estimated volume of data affected, if applicable]
 Current Actions: [What the IR team is doing now]
 Next Update: [Scheduled time for next update]
 Incident Commander: [Name and contact]
+Distribution: [Need-to-know recipients; avoid compromised channels]
 ```
 
 **Legal/Regulatory Notification:**
@@ -343,6 +388,8 @@ Escalate to the next tier when any of the following conditions are met:
 | Incident duration exceeds 4 hours without containment | IR lead escalates to management for resource allocation | At 4-hour mark |
 | Evidence of supply chain compromise affecting customers | Legal, Customer communications, Executive leadership | Within 2 hours |
 | Regulatory notification deadline approaching | Legal counsel, Compliance team | 24 hours before deadline |
+| Potential SEC materiality determination needed | Legal counsel, CFO/Finance, Disclosure Committee, Executive leadership | Immediately; track 4-business-day clock after materiality determination |
+| Deepfake/BEC or synthetic executive/vendor identity suspected | Legal, Finance, Fraud, Executive sponsor, Communications | Immediately; freeze payment/access action pending out-of-band verification |
 | Insider threat involving executive or privileged admin | Legal counsel, HR, Board (if executive) | Immediately |
 | IR team lacks expertise for the attack type | External IR retainer, Vendor support | Upon recognition |
 
@@ -367,7 +414,7 @@ Produce the incident response report with these exact sections:
 ```markdown
 ## Incident Response Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** ir-playbook v1.0.0
+**Skill:** ir-playbook v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, SANS Incident Handler's Handbook
 **Incident Commander:** [Name or "Unassigned -- assign immediately"]
 
@@ -386,6 +433,16 @@ and recommended immediate actions. Lead with the most critical fact.]
 | Recoverability | [Regular / Supplemented / Extended / Not Recoverable] |
 | Status | [Detected / Analyzing / Contained / Eradicated / Recovered / Closed] |
 
+### Materiality and Privilege Handling
+| Field | Value |
+|---|---|
+| Potentially Material | [Yes / No / Not Evaluable] |
+| Materiality Owner | [Legal / Disclosure Committee / Executive / Missing] |
+| Determination Timestamp | [timestamp / Pending / N/A] |
+| SEC 4-Business-Day Clock | [Not started / Started / N/A / Not Evaluable] |
+| Privilege Handling | [Counsel-led / Work product / Standard / Missing] |
+| Evidence Gaps | [functional/financial/legal/customer/reputation gaps] |
+
 ### Timeline
 | Timestamp (UTC) | Event | Source |
 |---|---|---|
@@ -400,6 +457,21 @@ and recommended immediate actions. Lead with the most critical fact.]
 | Action | Status | Timestamp | Performed By |
 |---|---|---|---|
 | [Action taken] | [Complete / In Progress / Planned] | [timestamp] | [responder] |
+
+### Cloud Identity and Exfiltration Controls
+| Principal / Token / App | Risk | Containment Action | Evidence | Decision |
+|---|---|---|---|---|
+| [principal/token/app] | [refresh token/OAuth/API/service account] | [revoked/rotated/throttled] | [log/timestamp] | [Pass/Gap/Not Evaluable] |
+
+### Wiper Backup Integrity Gate
+| Backup / Restore Asset | Immutable | Malware Scan | Restore Test | Last Known Good | Decision |
+|---|---|---|---|---|---|
+| [backup set] | [yes/no/missing] | [pass/fail/missing] | [pass/fail/missing] | [timestamp] | [Pass/Gap/Not Evaluable] |
+
+### Synthetic Social Engineering Verification
+| Artifact | Requested Action | Out-of-Band Verification | Payment/Access Freeze | Decision |
+|---|---|---|---|---|
+| [voice/video/chat/email] | [payment/access/data] | [verified/failed/missing] | [yes/no] | [Pass/Gap/Not Evaluable] |
 
 ### Eradication and Recovery
 - **Root Cause:** [Description of initial access vector and exploitation path]
@@ -468,6 +540,18 @@ Reconnecting systems to the network before thoroughly removing all persistence m
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
 
+### Pitfall 6: Isolating a Host While Cloud Tokens Keep Working
+
+Endpoint or subnet isolation does not revoke SaaS sessions, OAuth grants, API keys, cloud role sessions, or service-account credentials that the attacker already copied. Cloud-native exfiltration needs identity containment in parallel with network actions.
+
+### Pitfall 7: Restoring Backups into a Wiper Loop
+
+Wiper recovery can fail when backup images, startup scripts, GPOs, scheduled jobs, or backup agents were poisoned before the destructive payload triggered. Verify backup integrity and scan restored staging systems before production recovery.
+
+### Pitfall 8: Treating Deepfake BEC as Ordinary Phishing
+
+Synthetic voice/video incidents require payment or access freezes, out-of-band verification, preservation of media artifacts and call metadata, and finance/fraud escalation. Standard phishing triage can miss the business-process control failure.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -491,9 +575,22 @@ This skill processes incident data that may include attacker-controlled content 
 5. **NIST Cybersecurity Framework (CSF) -- Respond Function** -- https://www.nist.gov/cyberframework
 6. **GDPR Article 33** -- Notification of a personal data breach to the supervisory authority -- https://gdpr-info.eu/art-33-gdpr/
 7. **HIPAA Breach Notification Rule** -- 45 CFR 164.400-414 -- https://www.hhs.gov/hipaa/for-professionals/breach-notification/
-8. **SEC Cybersecurity Incident Disclosure (Item 1.05 Form 8-K)** -- https://www.sec.gov/rules/final/2023/33-11216.pdf
+8. **SEC Cybersecurity Incident Disclosure (Item 1.05 Form 8-K)** -- https://www.sec.gov/newsroom/press-releases/2023-139
 9. **FBI Internet Crime Complaint Center (IC3)** -- https://www.ic3.gov/
 10. **FIRST CSIRT Framework** -- https://www.first.org/education/csirt
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
 13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+14. **SEC Final Rule 33-11216 -- Cybersecurity Risk Management, Strategy, Governance, and Incident Disclosure** -- https://www.sec.gov/newsroom/press-releases/2023-139
+15. **Microsoft Entra revoke user sign-in sessions** -- https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.users.actions/revoke-mgusersigninsession
+16. **CISA Secure by Demand Guide: deepfake and synthetic media risks** -- https://www.cisa.gov/resources-tools/resources/secure-demand-guide
+17. **NIST AI RMF 1.0** -- https://www.nist.gov/itl/ai-risk-management-framework
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.2 | 2026-06-06 | Add SEC materiality, cloud-token containment, wiper backup integrity, synthetic social engineering, and legal privilege evidence gates. |
+| 1.0.1 | Initial | Add destructive malware response track. |
