@@ -62,6 +62,7 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Encryption key feasibility** -- Recovery key, escrow record, KMS grant, or live-session unlock path proven before promising disk imaging.
 
 ---
 
@@ -221,6 +222,24 @@ ls -latr /tmp /var/tmp /dev/shm
 
 Create a forensically sound disk image -- a bit-for-bit copy that preserves all data including deleted files, slack space, and unallocated areas.
 
+#### 4a: Encryption Feasibility Gate
+
+Before scheduling powered-off imaging, prove whether the target volume can be unlocked independently of the compromised user session. Treat "available in IT portal" or "managed by cloud KMS" as a claim, not evidence.
+
+```
+FVE-ESCROW-01: Recovery key ID, escrow location, accessor role, and retrieval timestamp not documented
+FVE-ESCROW-02: BitLocker/FileVault/LUKS protector has no recoverable institutional escrow path
+FVE-ESCROW-03: Recovery key depends on the compromised user's personal account or disabled identity
+FVE-ESCROW-04: TPM-only, Secure Enclave, or network-unlock configuration makes powered-off imaging infeasible
+FVE-ESCROW-05: Test unlock or decrypt was not performed before declaring disk imaging feasible
+FVE-ESCROW-06: Cloud snapshot exists but KMS/key policy does not allow the forensic role to decrypt or copy it
+FVE-ESCROW-07: Key version, grant, or rotation state is not bound to the evidence collection timestamp
+```
+
+**Required feasibility fields:** `encryption_type`, `protector_type`, `recovery_key_id`, `escrow_system`, `escrow_accessor_role`, `retrieval_timestamp_utc`, `test_unlock_result`, `live_session_required`, `kms_key_id`, `kms_grant_or_policy_evidence`, and `fallback_collection_path`.
+
+If escrow or KMS decryptability cannot be proven, branch to live memory capture, live logical collection, cloud log export, or snapshot-copy authorization before shutdown. Do not power off a device solely to image it when TPM-only, FileVault-without-escrow, LUKS network-unlock, or user-only key custody would make the volume unreadable.
+
 **Forensic imaging principles:**
 - Always write to a SEPARATE destination drive -- never write to the evidence drive
 - Use write blockers (hardware or software) when connecting evidence drives
@@ -338,6 +357,8 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- For encrypted snapshots, document KMS key ID, key version where available, forensic role permissions, decrypt/copy test result, copied snapshot ID, and snapshot hash or provider integrity proof before marking disk evidence complete
+- If the incident containment plan rotates or disables keys, bind the evidence collection time to the key policy/grant state so later decrypt failures are explainable
 
 ---
 
@@ -350,6 +371,8 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 | P2 | Medium | Evidence of suspicious activity requiring further analysis. Investigation value probable. | Targeted acquisition (specific logs, memory). Prioritize within 24 hours. |
 | P3 | Low | Supplementary evidence that may support investigation but is not primary. | Log preservation. Disk imaging if convenient. |
 | P4 | Informational | Contextual information (network topology, configuration baselines) supporting analysis. | Document and preserve digitally. |
+
+Escalate encryption feasibility blockers to P1 when a primary evidence source is at risk of becoming inaccessible after shutdown, key rotation, account disablement, or cloud containment. Treat a missing recovery key or KMS decrypt path as an evidence gap, not as a completed disk collection step.
 
 ---
 
@@ -393,6 +416,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Evidence ID | Acquisition Hash | Verification Hash | Match |
 |---|---|---|---|
 | EVD-0001 | [hash] | [hash] | [YES/NO] |
+
+### Encryption Feasibility
+| Source System / Volume | Encryption Type | Recovery Key / KMS Evidence | Test Unlock / Decrypt Result | Live Session Required | Fallback Collection Path |
+|---|---|---|---|---|---|
+| [hostname C:] | [BitLocker/FileVault/LUKS/KMS] | [key ID, escrow system, accessor role, timestamp] | [PASS/FAIL/NOT TESTED] | [Yes/No] | [memory + logical collection / snapshot grant / evidence gap] |
 
 ### Evidence Gaps
 [List any evidence that could not be collected and the reason]
@@ -460,6 +488,10 @@ Applying traditional forensic methods to cloud environments without adaptation l
 ### Pitfall 5: Overwriting Evidence with Collection Activity
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
+
+### Pitfall 6: Assuming Encrypted Disks Are Imageable
+
+Encryption status is not just metadata. If a BitLocker recovery password, FileVault institutional recovery key, LUKS passphrase/escrow, or cloud KMS decrypt grant is missing, powering off or isolating the system can make disk evidence inaccessible. Verify escrow and perform a documented unlock/decrypt test before shutdown; otherwise preserve memory, live logical artifacts, logs, and cloud control-plane evidence first.
 
 ---
 
