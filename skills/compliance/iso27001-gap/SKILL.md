@@ -316,10 +316,51 @@ Use the following maturity scoring:
 Build or review the SoA. For each of the 93 Annex A controls, document:
 
 ```
-| Control ID | Control Title | Applicable? | Justification (if excluded) | Implementation Status | Maturity Score | Gap Description |
+| Control ID | Control Title | Applicable? | Driver | Linked Risk/Requirement | Treatment Option | Owner | Evidence Location | Residual Risk Acceptance | Implementation Status | Maturity Score | Gap Description |
 ```
 
 Exclusions are permitted only where the control is genuinely not applicable to the ISMS scope. A control cannot be excluded solely because it is difficult to implement.
+
+#### 5.1 SoA Traceability Gates
+
+Every SoA record must be traceable to the risk treatment process in Clause 6.1.3. A complete SoA is not merely a list of Annex A controls; it is the audit trail showing why each control is included or excluded and how the decision supports the ISMS.
+
+| Gate | Requirement | Certification Risk |
+|---|---|---|
+| Inclusion Driver | Included controls identify risk, legal, statutory, regulatory, contractual, or business drivers | Weak driver evidence makes control selection look arbitrary |
+| Linked Risk or Requirement | Each included control links to risk register ID, obligation ID, or business requirement | Missing linkage weakens Clause 6.1.3 risk treatment evidence |
+| Exclusion Justification | Excluded controls explain why the control is outside scope and why exclusion does not affect ISMS conformity | Generic exclusions are likely audit findings |
+| Treatment Option | Mitigate, accept, avoid, or transfer decision is recorded | Missing treatment option breaks risk treatment traceability |
+| Control Owner | Accountable owner is named for implementation and evidence maintenance | Ownerless controls are difficult to maintain and audit |
+| Evidence Location | Evidence repository, policy, configuration export, ticket, or GRC link is recorded | Implementation status cannot be verified |
+| Residual Risk Acceptance | Residual risk is accepted by the risk owner when applicable | Unaccepted residual risk can become a nonconformity |
+
+#### 5.2 SoA Record Template
+
+```
+Statement of Applicability Record:
+- Control ID:                 [A.5.x/A.6.x/A.7.x/A.8.x]
+- Control Title:              [ISO 27001:2022 Annex A title]
+- Applicable:                 [Yes/No]
+- Decision Driver:            [Risk | Legal | Regulatory | Contractual | Business | Scope exclusion]
+- Linked Risk/Requirement ID: [Risk ID / obligation ID / contract clause / N/A]
+- Applicability Rationale:    [Why included or why genuinely excluded]
+- Risk Treatment Option:      [Mitigate | Accept | Avoid | Transfer | N/A if excluded]
+- Treatment Plan Link:        [Plan/ticket/GRC record or N/A]
+- Control Owner:              [Name/team]
+- Evidence Location:          [Evidence binder/GRC path/repository/config export]
+- Implementation Status:      [Not Implemented | Partial | Implemented | Measured]
+- Residual Risk:              [Description or N/A]
+- Residual Risk Acceptance:   [Risk owner/date or N/A]
+- Last Reviewed:              [YYYY-MM-DD]
+```
+
+#### 5.3 SoA Traceability Findings
+
+- Classify as a **major nonconformity** when SoA decisions are not traceable to the risk treatment process across many controls or entire Annex A themes.
+- Classify as a **major nonconformity** when Annex A controls are blanket-included or blanket-excluded without risk, scope, or requirement rationale.
+- Classify as a **minor nonconformity** when isolated controls have weak owner, evidence, or residual risk acceptance fields but the overall SoA process is traceable.
+- Treat "not applicable", "not relevant", or "too difficult" as insufficient exclusion justification unless supported by scope and risk rationale.
 
 ---
 
@@ -409,6 +450,11 @@ Classify each finding using the following severity levels:
 - Controls applicable: [count] / 93
 - Controls excluded: [count] — [list with justification]
 - Average maturity of applicable controls: [score] / 5.0
+
+### SoA Traceability Summary
+| Control | Driver | Linked Risk/Requirement | Treatment Option | Owner | Evidence | Residual Risk Acceptance | Traceability Status |
+|---------|--------|-------------------------|------------------|-------|----------|--------------------------|---------------------|
+| A.5.1 | [Risk/Legal/Contractual/etc.] | [ID] | [Mitigate/Accept/Avoid/Transfer] | [Owner] | [Location] | [Owner/date/N/A] | [Complete/Partial/Missing] |
 
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
