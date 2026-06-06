@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.4"
+version: "1.0.5"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -656,6 +656,7 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.5** -- Add regulated-data, KMS/HSM protection-level, log-masking, and post-exposure invalidation calibration fixtures.
 - **1.0.4** -- Add canary/honeytoken classification, live-validation safety checks, agent credential exposure models, brokered credential and capability-handle gates, and broker audit/egress evidence.
 - **1.0.3** -- Add HSM/KMS protection-level gates, regulated-data overlap checks, post-incident secondary-access invalidation, and secret masking controls for logs/observability.
 - **1.0.2** -- Add public-by-design key classification, modern provider prefixes, Kubernetes/base64 decode-and-rescan guidance, non-secret high-entropy filters, and detect-secrets baseline audit checks.
