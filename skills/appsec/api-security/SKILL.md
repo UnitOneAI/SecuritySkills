@@ -4,14 +4,15 @@ description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
   GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  SSRF, CORS, and Private Network Access configuration. Produces findings mapped
+  to API1-API10 with remediation guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -66,6 +67,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
+| **Configuration Evidence** | CORS, security-header, TLS, gateway, or parser evidence when the finding is API8 |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -92,7 +94,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** [reviewer name] -- api-security skill v1.1.0
 
 ### Summary
 
@@ -111,6 +113,14 @@ The final review output must be structured as follows:
 
 **Total Findings:** [count]
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
+
+### API8 CORS and PNA Evidence
+
+Include this table when API8 findings or false-positive decisions depend on CORS, browser origins, or Private Network Access.
+
+| Endpoint | Credentials Allowed | Origin Decision | `null` / Opaque Origin Policy | `Vary: Origin` | Preflight Method/Header Policy | PNA Decision | Private Resource Impact | Outcome |
+|---|---|---|---|---|---|---|---|---|
+| [path] | [yes/no] | [exact allowlist/reflection/public read-only] | [rejected/justified/not applicable] | [present/missing/not applicable] | [per-endpoint/broad/missing] | [allowed/rejected/not applicable] | [internal admin/resource/public only] | [Pass/Finding/Not Evaluable] |
 
 ### Findings
 
@@ -144,7 +154,7 @@ The final review output must be structured as follows:
 | API5:2023 | Broken Function Level Authorization | CWE-285 | Missing role/permission checks on operations |
 | API6:2023 | Unrestricted Access to Sensitive Business Flows | CWE-799, CWE-837 | Automated abuse of legitimate business logic |
 | API7:2023 | Server Side Request Forgery | CWE-918 | Fetching user-supplied URLs without validation |
-| API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, XXE |
+| API8:2023 | Security Misconfiguration | CWE-16, CWE-611, CWE-942, CWE-346 | CORS/PNA, headers, TLS, error handling, XXE |
 | API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, deprecated versions, missing documentation |
 | API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
 

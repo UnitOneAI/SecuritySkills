@@ -432,6 +432,46 @@ CORS(app, origins="*", supports_credentials=True)  # Allows any origin with cred
 ```
 
 ```javascript
+// VULNERABLE: Reflects any Origin value into a credentialed CORS response
+app.use((req, res, next) => {
+  const origin = req.get("Origin");
+  if (origin) {
+    res.set("Access-Control-Allow-Origin", origin);
+    res.set("Access-Control-Allow-Credentials", "true");
+  }
+  next();
+});
+```
+
+```http
+# VULNERABLE: Credentialed API trusts null/opaque origins
+GET /api/account/export HTTP/1.1
+Host: api.example.test
+Origin: null
+Cookie: session=example
+
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: null
+Access-Control-Allow-Credentials: true
+Content-Type: application/json
+```
+
+```http
+# VULNERABLE: PNA preflight permits a public origin to reach a private endpoint
+OPTIONS /admin/export HTTP/1.1
+Host: api.example.test
+Origin: https://attacker.example
+Access-Control-Request-Method: POST
+Access-Control-Request-Private-Network: true
+
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://attacker.example
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Private-Network: true
+Access-Control-Allow-Methods: GET, POST, DELETE
+```
+
+```javascript
 // VULNERABLE: Verbose error messages in production
 app.use((err, req, res, next) => {
   res.status(500).json({
@@ -450,9 +490,37 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+### CORS and Private Network Access Evidence Gates
+
+Review CORS and PNA as browser-enforced access decisions, not as a single header presence check. Exact dynamic allowlists can be safe; arbitrary reflection, credentialed `null` origins, cache-unsafe dynamic responses, and broad PNA grants are findings.
+
+| Evidence gate | Pass evidence | Finding evidence |
+|---|---|---|
+| Origin matching | Exact origin matching by scheme, host, and port against an environment-scoped allowlist | Regex/suffix match allows attacker-controlled subdomains, or any `Origin` is reflected |
+| Credential mode | Credentials are only allowed for trusted origins that need them | `Access-Control-Allow-Credentials: true` with wildcard, reflected, `null`, or opaque origins |
+| `null` and opaque origins | Rejected by default, or documented low-risk public-only use with separate CSRF/session controls | `Origin: null`, `file://`, sandboxed documents, or opaque origins receive credentialed responses |
+| Cache safety | `Vary: Origin` is present whenever CORS output depends on the request origin | Shared caches can reuse one origin's allow decision for another origin |
+| Preflight method/header policy | Allowed methods and headers are restricted per endpoint | Broad method/header grants expose admin, export, or write operations unnecessarily |
+| Private Network Access | `Access-Control-Allow-Private-Network: true` is limited to trusted origins and private-resource endpoints with documented need | Public or attacker-controlled origins can request private-network resources |
+| Public-only false positive guardrail | Endpoint is unauthenticated, read-only, non-sensitive, and does not set credentials | Public API is treated as high severity solely because it allows read-only CORS |
+| Not Evaluable handling | Missing deployed headers, gateway policy, or browser-observed response is recorded as Not Evaluable | Static code assumptions are used to downgrade CORS/PNA risk |
+
+Severity guidance:
+
+- Critical or High: credentialed arbitrary-origin reflection exposes account, payment, admin, token, or regulated data.
+- High: `Origin: null` or opaque origins receive credentialed sensitive responses.
+- High: PNA grants allow untrusted public origins to reach admin or private-network resources.
+- Medium: missing `Vary: Origin`, broad preflight methods/headers, or weak regex allowlists affect authenticated but lower-sensitivity endpoints.
+- Low or Informational: public, unauthenticated, read-only APIs with no credentials and no private-resource path may allow broad CORS when documented.
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
+- Match exact scheme, host, and port. Avoid broad regex or suffix matches such as `.example.com` unless tenant ownership and subdomain takeover risk are separately controlled.
+- Reject `Origin: null`, `file://`, sandboxed document, and opaque origins unless the endpoint is public-only and the exception is documented.
+- Return `Vary: Origin` whenever CORS responses differ by origin.
+- Restrict preflight `Access-Control-Request-Method` and `Access-Control-Request-Headers` per endpoint.
+- For PNA, only return `Access-Control-Allow-Private-Network: true` for trusted origins that are explicitly allowed to reach private-network resources.
 - Set security response headers on all API responses:
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
   - `X-Content-Type-Options: nosniff`
@@ -466,6 +534,12 @@ Document doc = builder.parse(request.getInputStream());
 ### Review Checklist
 
 - [ ] CORS is configured with an explicit origin allowlist; wildcard is not used with credentials.
+- [ ] Dynamic CORS logic uses exact-origin matching and does not reflect arbitrary `Origin` values.
+- [ ] `null`, `file://`, sandboxed, and opaque origins are rejected or explicitly justified for public-only endpoints.
+- [ ] CORS responses that vary by origin include `Vary: Origin`.
+- [ ] Preflight methods and headers are restricted per endpoint.
+- [ ] PNA preflights are reviewed; `Access-Control-Allow-Private-Network: true` is limited to trusted origins and documented private-resource endpoints.
+- [ ] Public-only CORS exceptions are documented with no credentials, no sensitive data, and no private-network path.
 - [ ] Security headers are present on all API responses.
 - [ ] Error responses in production are generic; no stack traces, SQL queries, or internal paths.
 - [ ] Only required HTTP methods are enabled per endpoint.

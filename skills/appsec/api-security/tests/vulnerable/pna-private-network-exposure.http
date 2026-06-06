@@ -1,0 +1,16 @@
+OPTIONS /admin/export HTTP/1.1
+Host: api.example.test
+Origin: https://attacker.example
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: authorization,content-type
+Access-Control-Request-Private-Network: true
+
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://attacker.example
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, POST, DELETE
+Access-Control-Allow-Headers: authorization,content-type,x-admin-action
+Access-Control-Allow-Private-Network: true
+
+# Finding evidence: untrusted public origin is allowed to preflight a private
+# admin endpoint with broad methods, broad headers, credentials, and PNA enabled.

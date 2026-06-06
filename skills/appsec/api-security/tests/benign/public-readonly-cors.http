@@ -1,0 +1,14 @@
+GET /api/catalog/items HTTP/1.1
+Host: api.example.test
+Origin: https://docs.example.test
+
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET
+Content-Type: application/json
+Cache-Control: public, max-age=300
+
+{"items":[]}
+
+# Benign evidence: public, unauthenticated, read-only endpoint with no cookies,
+# no credentials, no private-resource path, and no sensitive response data.
