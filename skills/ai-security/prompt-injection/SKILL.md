@@ -98,6 +98,20 @@ For each external content source identified in Step 1, determine whether an adve
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
 - Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
 
+**Hidden content extraction evidence gates:**
+
+When reviewing external content pipelines, verify what text is extracted, retained, transformed, or dropped before it reaches the model context.
+
+- **HTML:** Check whether comments, hidden CSS (`display:none`, `visibility:hidden`, zero-size/off-screen text), script/template tags, alt text, title attributes, ARIA labels, OpenGraph metadata, and canonical/link targets are retained or labeled separately.
+- **Markdown:** Check whether image URLs, link targets, reference definitions, HTML blocks, front matter, footnotes, and fenced code blocks are preserved as data without becoming instructions or exfiltration channels.
+- **PDF and office documents:** Check whether annotations, comments, tracked changes, speaker notes, embedded objects, OCR layers, document properties, and invisible/white text are extracted into prompts.
+- **Email and messaging:** Check whether quoted replies, forwarded headers, signatures, hidden HTML parts, attachments, and calendar metadata are processed as untrusted external content.
+- **Tool and API responses:** Check whether response headers, error messages, pagination metadata, debug fields, and third-party-provided descriptions are inserted into the prompt.
+- **Sanitization proof:** Require deterministic preprocessing evidence, such as loader configuration, field-level provenance, removed-field counts, and test fixtures. A prompt instruction telling the model to ignore hidden instructions is not sanitization.
+- **Context labeling:** Retained metadata must be labeled by origin and trust level. Do not merge hidden metadata into visible body text without attribution.
+
+**False positive to avoid:** Do not mark indirect injection controls as present solely because retrieved content is wrapped in delimiters or because a sanitizer is configured. Confirm the loader's actual behavior for hidden, metadata, non-visible, and link-target content.
+
 ---
 
 ## Step 4: Test Categories
@@ -233,6 +247,11 @@ Each finding should be assigned a severity based on potential impact:
 
 ### Interaction Surface Map
 [Table from Step 1]
+
+### External Content Extraction Review
+| Source Type | Loader | Hidden Fields Extracted | Sanitization Evidence | Provenance Labels | Residual Risk |
+|-------------|--------|-------------------------|-----------------------|-------------------|---------------|
+| [HTML/PDF/Markdown/Email/API] | [loader name] | [comments/metadata/links/etc.] | [config/test/log] | [field-level labels] | [Low/Medium/High] |
 
 ### Findings
 
