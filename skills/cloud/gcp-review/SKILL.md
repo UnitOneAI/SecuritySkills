@@ -88,6 +88,49 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Supplemental: VPC Service Controls and Data Exfiltration Perimeters
+
+CIS GCP controls cover many project-level hardening checks, but regulated or
+sensitive GCP environments also need evidence that managed services cannot be
+used as cross-project data exfiltration paths. Review VPC Service Controls
+(VPC-SC), Access Context Manager, and perimeter ingress/egress policies when
+GCS, BigQuery, Cloud Storage transfer, Pub/Sub, Dataflow, Vertex AI, or other
+managed services process sensitive data.
+
+```
+GCP-VPCSC-01: Sensitive projects are not assigned to a service perimeter
+GCP-VPCSC-02: Perimeter omits restricted services used by in-scope data stores
+GCP-VPCSC-03: Ingress/egress policies allow broad project, principal, or service access
+GCP-VPCSC-04: Access levels rely only on IP ranges without device, identity, or workforce context
+GCP-VPCSC-05: Dry-run mode violations are not reviewed before enforcing or modifying perimeters
+GCP-VPCSC-06: Bridge perimeter connects environments with different data classification or trust level
+GCP-VPCSC-07: Perimeter changes lack owner, business justification, rollback, and audit-log evidence
+GCP-VPCSC-08: Cross-project service account or workload identity path bypasses perimeter intent
+```
+
+**Evidence requirements:**
+
+| Evidence | Required Detail | Failure Mode |
+|---|---|---|
+| Perimeter inventory | Perimeter name, mode, protected projects, restricted services, data classification | Sensitive services remain outside perimeter |
+| Access levels | Identity, device, IP, region, workforce, and exception criteria | Access rules are broader than intended |
+| Ingress/egress policies | Source, destination, principal, service, method, project, justification | Cross-project exfiltration path remains open |
+| Dry-run analysis | Violation logs, false-positive disposition, owner approval, enforcement date | Enforcement breaks workloads or misses bypasses |
+| Audit logs | `VpcServiceControlAuditMetadata`, denied/allowed events, change author | No proof of perimeter effectiveness |
+| Change record | Owner, ticket, rollback, affected services, review date | Perimeter exception becomes unmanaged |
+
+**Decision guidance:**
+
+| Situation | Assessment action |
+|---|---|
+| BigQuery/GCS sensitive data exists with no service perimeter | High; Critical if public or cross-org principals also exist |
+| Egress policy permits `*` project or all principals | High; require scoped destination and principal justification |
+| Bridge perimeter connects prod and dev projects | High unless data classification and access controls match |
+| Dry-run violations are ignored for more than one review cycle | Medium; High for regulated data paths |
+| Perimeter only covers network IP but not workload identity | Medium or High depending on service account privilege |
+
+---
+
 ### Step 9: Compile Assessment Report
 
 
@@ -179,6 +222,14 @@ Produce the final report using the structure defined in the Output Format sectio
 | 6 | Cloud SQL | MySQL/PostgreSQL/SQL Server database flags, SSL enforcement, authorized networks, public IP, automated backups |
 | 7 | BigQuery | Public dataset access, CMEK encryption for tables and datasets |
 
+### Supplemental GCP Controls
+
+| Area | Key Focus |
+|------|-----------|
+| VPC Service Controls | Service perimeters, bridge perimeters, restricted services, ingress/egress rules |
+| Access Context Manager | Access levels, identity/device/IP conditions, dry-run policy validation |
+| Data exfiltration paths | Cross-project service accounts, workload identity, BigQuery/GCS/Pub/Sub/Dataflow paths |
+
 ### CIS Profile Levels
 
 - **Level 1** -- Practical security settings that can be implemented with minimal impact on business functionality.
@@ -194,6 +245,10 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+
+7. **Treating VPC firewall rules as sufficient for managed services.** GCS, BigQuery, Pub/Sub, Dataflow, and similar services are not fully governed by VM-centric firewall rules. Use VPC Service Controls and scoped ingress/egress policies for sensitive managed-service data paths.
+
+8. **Skipping VPC-SC dry-run evidence.** Enforcing a perimeter without reviewing dry-run violations can break legitimate workloads; ignoring dry-run logs can also leave cross-project exfiltration paths unresolved. Require owner disposition for violations before enforcement.
 
 ---
 
@@ -218,6 +273,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
+- Google Cloud VPC Service Controls: https://cloud.google.com/vpc-service-controls/docs
+- Google Cloud Access Context Manager: https://cloud.google.com/access-context-manager/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
