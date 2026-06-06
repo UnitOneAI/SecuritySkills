@@ -609,6 +609,15 @@ resource "azurerm_key_vault" {
 }
 ```
 
+Supplemental effective-recovery evidence:
+
+| Check | Evidence to require | Fail or Not Evaluable condition |
+|---|---|---|
+| AZ-KV-REC-01 retention source | Terraform/Bicep/ARM plus CLI or inventory evidence for imported/existing vaults | IaC omits live retention state for an existing vault |
+| AZ-KV-REC-02 retention duration | `soft_delete_retention_days`, recovery policy, data classification, and exception rationale | Production or high-value vault has minimal retention without approved exception |
+| AZ-KV-REC-03 purge protection | `purge_protection_enabled = true` or live inventory proof, plus rollout impact note because the setting is irreversible | Purge protection is disabled for production/customer-managed-key vaults |
+| AZ-KV-REC-04 recovery operations | Evidence that delete, recover, purge, and restore permissions are separated and monitored | Same principal can delete and purge without alerting or approval |
+
 ### CIS 8.6 -- Enable Role Based Access Control for Azure Key Vault
 
 ```hcl
@@ -629,6 +638,18 @@ resource "azurerm_private_endpoint" {
   }
 }
 ```
+
+Supplemental private-access evidence:
+
+| Check | Evidence to require | Fail or Not Evaluable condition |
+|---|---|---|
+| AZ-KV-NET-01 public access state | `public_network_access_enabled`, firewall `default_action`, IP/VNet rules, and trusted-service bypass | Private endpoint exists but public network access remains broadly enabled |
+| AZ-KV-NET-02 exception scope | Named trusted-service or public-network exception, owner, expiry, data path, and compensating control | Exception is broad, ownerless, or unbounded |
+| AZ-KV-NET-03 private endpoint approval | `private_service_connection` target, subresource `vault`, connection state, subscription/VNet, and approval evidence | Endpoint is pending, rejected, points to the wrong vault, or missing |
+| AZ-KV-NET-04 private DNS | `privatelink.vaultcore.azure.net` zone, zone group, VNet links, and resolver/client lookup evidence | Clients can still resolve the public Key Vault endpoint |
+| AZ-KV-NET-05 client path | Workload subnet, route, DNS resolver, firewall/proxy path, and live inventory source | IaC shows a private endpoint but no evidence clients actually use it |
+
+Keep these supplemental checks out of the CIS score denominator when evidence is unavailable; record them as Key Vault evidence gaps or Not Evaluable findings.
 
 ---
 

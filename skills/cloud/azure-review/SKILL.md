@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -154,6 +154,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Key Vault Effective Evidence
+
+For Section 8 findings, include a Key Vault evidence table before scoring recovery or private-access controls. Use `skills/cloud/azure-review/tests/key-vault-recovery-private-access.md` to calibrate pass, fail, and not-evaluable decisions.
+
+| Vault | Evidence source | Soft-delete retention | Purge protection | Public network access | Firewall/trusted services | Private endpoint state | Private DNS/client path | Decision |
+|---|---|---|---|---|---|---|---|---|
+| [name] | [Terraform / Bicep / ARM / CLI / inventory] | [days / missing] | [enabled / disabled / justified exception] | [disabled / selected networks / enabled] | [default action, bypass, exceptions] | [approved / pending / missing] | [zone link, VNet link, client route] | [Pass / Fail / Not Evaluable] |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y.Z -- <action item>
@@ -199,7 +207,8 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **Overlooking `allow_nested_items_to_be_public` on storage accounts.** CIS 3.7 checks the account-level setting, not individual container access levels. The account setting must be `false` to prevent any container from being public.
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
-6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+6. **Private endpoint presence is not private-only access.** Confirm `public_network_access_enabled`, firewall default action, trusted-service exceptions, private endpoint approval, `privatelink.vaultcore.azure.net` DNS linkage, and client path evidence before passing CIS 8.7.
+7. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
 
@@ -231,4 +240,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added Key Vault effective recovery and private-access evidence table with fixture-backed decision guidance.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
