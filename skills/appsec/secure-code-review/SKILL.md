@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -214,13 +214,109 @@ http.HandleFunc("/transfer", func(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Require POST with a validated CSRF token. Use a CSRF middleware library (e.g., `gorilla/csrf`).
 
-### 4.3 Review Checklist
+### 4.3 Endpoint Classification
 
-- [ ] Every API endpoint and data-access path enforces authorization server-side.
+Before reporting missing authorization, classify each endpoint or resolver by intended access model. Missing user-session authentication is a finding only when the endpoint category requires it.
+
+| Endpoint Type | Expected Control | Examples | Review Notes |
+|---|---|---|---|
+| Public-safe discovery | No user auth required; no secrets or user data; safe cache/content headers | `/.well-known/jwks.json`, OpenID discovery, `robots.txt`, `sitemap.xml`, public health page | Verify response contains only intentionally public data and has appropriate cache/content type controls |
+| Signed machine callback | Provider signature, timestamp/replay control, raw body verification, idempotency | Stripe, GitHub, Slack, Twilio, payment processor webhooks | Do not require end-user session auth; verify message integrity before parsing or processing |
+| Authenticated user route | Authenticated session/token plus object-level authorization | `/api/orders/{id}`, profile update, file download | Require ownership, tenant, or relationship check on every resource identifier |
+| Privileged/admin route | Strong auth, role/policy check, audit log, often MFA or step-up auth | user deletion, billing override, export-all, impersonation | Treat missing authorization as High/Critical depending on impact |
+| Internal-only route | Network/service identity plus defense-in-depth authorization where sensitive | service-to-service callbacks, admin health, queue consumers | Verify the network boundary is real and clients cannot spoof trusted headers |
+
+Public endpoints still need review for accidental secret exposure, rate limiting, content type, cache headers, and abuse impact. Signed callbacks still need authentication, but the authentication mechanism is message integrity rather than an end-user cookie or bearer token.
+
+### 4.4 Signed Callback / Webhook Review
+
+```typescript
+// VULNERABLE: JSON parsing runs before signature verification; no replay or idempotency check.
+app.post("/webhooks/payment", express.json(), async (req, res) => {
+  await markInvoicePaid(req.body.invoice_id);
+  res.sendStatus(204);
+});
+```
+
+```typescript
+// SECURE: raw body is verified before processing the provider event.
+app.post(
+  "/webhooks/payment",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const signature = req.header("payment-signature");
+    const event = verifyProviderEvent(req.body, signature, {
+      toleranceSeconds: 300,
+      secret: process.env.PAYMENT_WEBHOOK_SECRET!,
+    });
+
+    await processOnce(event.id, () => handlePaymentEvent(event));
+    res.sendStatus(204);
+  }
+);
+```
+
+Signed callback checks:
+
+- [ ] Raw request body is preserved until after provider signature verification.
+- [ ] Signature verification includes timestamp freshness or nonce/replay protection.
+- [ ] Event IDs are processed idempotently to prevent replayed state changes.
+- [ ] The accepted event types and source/provider account are allowlisted.
+- [ ] Webhook secrets are stored in a secret manager or environment, never in code.
+- [ ] Failed verification returns before parsing, business logic, or state changes.
+
+### 4.5 GraphQL Authorization and Query Safety
+
+GraphQL applications often expose one HTTP route, but authorization decisions happen inside resolvers and field helpers. Do not treat authentication middleware on `/graphql` as proof that object-level authorization is enforced.
+
+```typescript
+// VULNERABLE: authenticated user can request any invoice by ID.
+const resolvers = {
+  Query: {
+    invoice: async (_parent, args, ctx) => {
+      requireUser(ctx);
+      return db.invoice.findUnique({ where: { id: args.id } });
+    },
+  },
+};
+```
+
+```typescript
+const resolvers = {
+  Query: {
+    invoice: async (_parent, args, ctx) => {
+      const user = requireUser(ctx);
+      return db.invoice.findFirst({
+        where: {
+          id: args.id,
+          account: { members: { some: { userId: user.id } } },
+        },
+      });
+    },
+  },
+};
+```
+
+GraphQL checks:
+
+- [ ] Query and mutation resolvers enforce ownership, tenant, or relationship checks for every user-controlled ID.
+- [ ] Nested fields and data loaders do not bypass top-level authorization or leak cross-tenant data.
+- [ ] List fields enforce pagination and server-side maximum page sizes.
+- [ ] Query depth, complexity, batching, aliases, and execution timeout are bounded.
+- [ ] Introspection is disabled or restricted in production unless the schema is intentionally public.
+- [ ] Resolver errors do not leak stack traces, database errors, or authorization policy details.
+- [ ] Subscriptions enforce auth at connection time and revalidate sensitive channel or tenant membership.
+
+### 4.6 Review Checklist
+
+- [ ] Every non-public endpoint and data-access path enforces authorization server-side.
+- [ ] Public-safe endpoints are explicitly classified and verified not to expose secrets or user data.
+- [ ] Signed machine callbacks verify provider signatures over the raw body before state changes.
 - [ ] Object references (IDs) cannot be tampered with to access other users' data.
 - [ ] State-changing operations use anti-CSRF tokens or SameSite cookies.
 - [ ] Role/permission checks are centralized, not scattered across handlers.
 - [ ] Deny-by-default: all routes are denied unless explicitly permitted.
+- [ ] GraphQL resolvers enforce object/field authorization and query cost controls.
 
 ---
 
@@ -422,6 +518,7 @@ Each finding produced by this review must include the following fields:
 | **Evidence** | Relevant code snippet demonstrating the issue |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
+| **Endpoint Classification** | Public-safe, Signed Callback, Authenticated User, Privileged/Admin, Internal-only, or N/A |
 
 ### Severity Definitions
 
@@ -541,6 +638,10 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Calling every unauthenticated endpoint vulnerable.** Public discovery endpoints and signed provider callbacks can be valid designs. Classify the endpoint first, then verify the right control for that class: safe public data, provider signature, user auth plus ownership, privileged policy, or internal service boundary.
+
+7. **Checking only the `/graphql` route.** GraphQL authorization lives in resolvers, field helpers, data loaders, subscriptions, and pagination logic. A protected HTTP route can still expose IDOR, nested data leakage, or denial of service through expensive query shapes.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -563,3 +664,6 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+- **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- **Stripe Webhook Signature Verification:** https://docs.stripe.com/webhooks/signature
+- **GitHub Webhook Signature Verification:** https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
