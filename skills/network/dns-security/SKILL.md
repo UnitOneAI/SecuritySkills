@@ -6,14 +6,14 @@ description: >
   -- Use DNS Filtering Services). Auto-invoked when reviewing DNS configurations,
   DNSSEC deployment, or investigating DNS-based exfiltration and tunneling
   indicators. Produces a DNS security assessment covering DNSSEC validation,
-  protective DNS, and exfiltration detection patterns.
-tags: [network, dns, dnssec, exfiltration]
+  certificate issuance controls, protective DNS, and exfiltration detection patterns.
+tags: [network, dns, dnssec, acme, exfiltration]
 role: [security-engineer]
 phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DNS Security Review
 
-A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, certificate issuance controls, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
 
 ---
 
@@ -37,12 +37,13 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Compliance audits requiring NIST SP 800-81 alignment.
 - Protective DNS service evaluation or deployment planning.
 - Incident response when DNS tunneling is suspected.
+- Certificate issuance control review covering CAA, ACME DNS-01, DNS API scope, and dangling DNS records.
 
 ---
 
 ## Context
 
-DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2 Section 2 identifies three primary DNS threat categories: DNS cache poisoning, DNS-based denial of service, and unauthorized zone data modification. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
+DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2 Section 2 identifies three primary DNS threat categories: DNS cache poisoning, DNS-based denial of service, and unauthorized zone data modification. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. DNS also controls public certificate issuance through CAA records and ACME DNS-01 challenge paths. Mis-scoped DNS API tokens, stale challenge delegations, and dangling DNS records can allow unauthorized certificate issuance even when resolver and DNSSEC controls look healthy. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
 
 ---
 
@@ -70,6 +71,11 @@ Use Glob and Grep to locate DNS server configurations, resolver settings, and re
 **/*.tf           # Terraform (aws_route53_zone, google_dns_managed_zone, azurerm_dns_zone)
 **/dns*
 **/route53*
+**/acme*
+**/certbot*
+**/lego*
+**/_acme-challenge*
+**/caa*
 
 # CoreDNS (Kubernetes)
 **/Corefile
@@ -84,6 +90,7 @@ Use Glob and Grep to locate DNS server configurations, resolver settings, and re
 # Application-level DNS settings
 **/dnsconfig*
 **/unbound*
+**/.well-known/acme-challenge*
 ```
 
 Categorize discovered configurations:
@@ -91,6 +98,7 @@ Categorize discovered configurations:
 - **Recursive resolvers:** Unbound, BIND (recursion enabled), CoreDNS, systemd-resolved.
 - **Protective DNS / filtering:** RPZ, Pi-hole, Cisco Umbrella, Cloudflare Gateway, Quad9.
 - **Client settings:** resolv.conf, DHCP-distributed resolver addresses.
+- **Certificate issuance controls:** CAA records, ACME clients, DNS-01 challenge records, DNS API credentials.
 
 ---
 
@@ -237,11 +245,97 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ---
 
-### Step 5: DNS Exfiltration and Tunneling Detection Patterns
+### Step 5: Certificate Issuance and DNS Control Plane Review
+
+Review whether DNS records and DNS automation can permit unauthorized certificate issuance, especially through CAA gaps, stale ACME DNS-01 challenge records, and claimable dangling records.
+
+#### 5.1 CAA Policy Review
+
+For every production domain and high-value subdomain, verify effective CAA policy at the FQDN and parent zones:
+
+- **Allowed CAs are explicit:** `CAA 0 issue` records list only approved certificate authorities.
+- **Wildcard issuance is controlled:** `CAA 0 issuewild` is present when wildcard certificates are used or intentionally denied with `issuewild ";"`.
+- **Incident reporting is configured:** `CAA 0 iodef` directs violation reports to a monitored mailbox or endpoint.
+- **Account binding is considered:** When supported by the CA, account parameters restrict issuance to known ACME accounts.
+- **Delegation behavior is understood:** CAA is evaluated at the requested FQDN and parent chain, not by scanning every unrelated record in a zone.
+
+**Patterns to check in zone files and IaC:**
+
+```
+# CAA records
+CAA
+issue
+issuewild
+iodef
+accounturi
+validationmethods
+
+# Common Terraform and DNS provider resources
+aws_route53_record
+cloudflare_record
+google_dns_record_set
+azurerm_dns_caa_record
+```
+
+**Finding classification:** No CAA policy for production public domains is **Medium** by default and **High** when wildcard issuance, delegated DNS administration, or multiple automation owners are present. Broad CA authorization without `issuewild` or monitored `iodef` is **Medium**.
+
+#### 5.2 ACME DNS-01 Challenge Control
+
+ACME DNS-01 enables certificate issuance by proving control of a `_acme-challenge` TXT record. Review the challenge path, not just the final certificate.
+
+- **Challenge records are ephemeral:** Static `_acme-challenge` TXT records are removed after issuance unless the CA workflow explicitly requires persistence.
+- **DNS-01 CNAME delegation is scoped:** `_acme-challenge.example.com` may delegate to a dedicated validation zone, but that zone must not allow broad changes to production DNS.
+- **DNS API tokens are least privilege:** Tokens used by certbot, lego, acme.sh, cert-manager, ExternalDNS, or CI/CD can update only required challenge records or dedicated validation zones.
+- **Automation owners are identifiable:** ACME client configuration points to a documented owner, renewal schedule, and emergency rotation path.
+- **Secrets are protected:** DNS provider tokens are stored in a secret manager or Kubernetes Secret with restricted RBAC, not committed to repositories or broad CI variables.
+
+**Patterns to check:**
+
+```
+_acme-challenge
+certbot
+acme.sh
+lego
+cert-manager
+dns01
+dns-01
+external-dns
+CLOUDFLARE_API_TOKEN
+AWS_ACCESS_KEY_ID
+GOOGLE_APPLICATION_CREDENTIALS
+```
+
+**Finding classification:** Broad DNS API tokens that can modify an entire production zone from certificate automation are **High**. Persistent unknown `_acme-challenge` records, undocumented ACME owners, or missing renewal ownership are **Medium**. Exposed DNS provider secrets are **Critical**.
+
+#### 5.3 Dangling DNS and Certificate Takeover Evidence
+
+Find records that point to resources outside the reviewed environment and verify whether the target is still owned.
+
+- **Dangling CNAMEs:** Records pointing to deprovisioned SaaS, CDN, object storage, cloud app, or hosting targets.
+- **Dangling NS delegations:** Subdomain delegations to nameservers or hosted zones no longer controlled by the organization.
+- **Stale MX, SRV, and TXT records:** Third-party verification records that imply ownership of inactive services.
+- **Cloud aliases:** Route53 alias, Azure Traffic Manager, Front Door, CloudFront, S3 website, GitHub Pages, Vercel, Netlify, Heroku, and similar targets must be verified against live provider ownership.
+- **Certificate impact:** Determine whether the dangling record can be used with HTTP-01, TLS-ALPN-01, or DNS-01 to obtain a publicly trusted certificate.
+
+**Finding classification:** A claimable dangling record for a production or authentication-related hostname is **Critical** when it can support service takeover or certificate issuance. Dangling records for low-risk non-production names are **Medium** to **High** depending on reachability and data exposure.
+
+#### 5.4 Certificate Transparency Monitoring
+
+Verify monitoring for unexpected certificates:
+
+- CT logs are monitored for organization-owned domains and high-value subdomains.
+- Alerts include wildcard certificates, unknown issuers, new SAN entries, and high-risk subdomains.
+- The response playbook includes CA revocation, DNS rollback, token rotation, and incident escalation.
+
+**Finding classification:** No CT monitoring for internet-facing production domains is **Medium** and becomes **High** for domains used in authentication, payments, customer portals, or privileged administration.
+
+---
+
+### Step 6: DNS Exfiltration and Tunneling Detection Patterns
 
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
-#### 5.1 Exfiltration Indicators
+#### 6.1 Exfiltration Indicators
 
 | Indicator | Normal | Suspicious | Detection Method |
 |-----------|--------|-----------|-----------------|
@@ -252,7 +346,7 @@ DNS tunneling encodes data in DNS query names or TXT record responses to create 
 | **Query volume per domain** | < 100/hr to a single domain | > 1000/hr to single obscure domain | Volumetric per-domain threshold |
 | **Response size** | < 512 bytes | TXT responses > 512 bytes, multiple TXT records | Monitor response payload sizes |
 
-#### 5.2 Tunneling Tool Signatures
+#### 6.2 Tunneling Tool Signatures
 
 Common DNS tunneling tools produce distinctive query patterns:
 
@@ -270,7 +364,7 @@ abcdef0123456789.dnscat.example.com TXT
 0001.<encoded>.d.example.com KEY
 ```
 
-#### 5.3 Detection Configuration
+#### 6.3 Detection Configuration
 
 **Where to implement detection:**
 
@@ -286,7 +380,7 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
-### Step 6: Domain Categorization and Newly Registered Domain (NRD) Blocking
+### Step 7: Domain Categorization and Newly Registered Domain (NRD) Blocking
 
 - **NRD blocking:** Domains registered within the past 30 days are disproportionately associated with phishing and malware. CIS Control 9.2 supports blocking or flagging NRDs.
 - **DGA detection:** Domain Generation Algorithms produce random-appearing domain names. Detection relies on entropy analysis and machine learning classifiers integrated into protective DNS services.
@@ -298,10 +392,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
-| **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; exposed DNS provider secrets; claimable dangling production or authentication hostname that can support takeover or certificate issuance. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; broad DNS API tokens for certificate automation; claimable dangling high-value DNS records; no CT monitoring for authentication or payment domains. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; no CAA policy for production domains; stale `_acme-challenge` records; undocumented ACME owners; no CT monitoring for public production domains. |
+| **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues; incomplete certificate issuance ownership notes. |
 
 ---
 
@@ -327,6 +421,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### Certificate Issuance Control
+
+| Domain | Effective CAA | issue | issuewild | iodef | ACME Owner | DNS-01 Scope | Dangling DNS Risk | CT Monitoring | Status |
+|--------|---------------|-------|-----------|-------|------------|--------------|-------------------|---------------|--------|
+| example.com | Present/Missing | CA list | Deny/Allow/Missing | Yes/No | Team/tool | Record/zone/global | None/Review/Claimable | Yes/No | Pass/Fail |
 
 ### Findings
 
@@ -384,6 +484,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Treating DNS-01 CNAME delegation as unsafe by default.** Delegating `_acme-challenge` to a dedicated validation zone can reduce blast radius when ownership, scope, and token permissions are constrained. The finding should focus on control evidence, not delegation alone.
+
+6. **Assuming CAA replaces Certificate Transparency monitoring.** CAA limits which certificate authorities should issue certificates, but CT monitoring is still needed to detect unexpected issuance, misconfigured CA accounts, or takeover paths.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -406,6 +510,10 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
+- RFC 8555 -- Automatic Certificate Management Environment (ACME): https://www.rfc-editor.org/rfc/rfc8555
+- RFC 8659 -- DNS Certification Authority Authorization (CAA) Resource Record: https://www.rfc-editor.org/rfc/rfc8659
+- Let's Encrypt CAA: https://letsencrypt.org/docs/caa/
+- Let's Encrypt Challenge Types: https://letsencrypt.org/docs/challenge-types/
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
 
@@ -413,4 +521,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.1.0** -- Add certificate issuance control review for CAA, ACME DNS-01, DNS API token scope, dangling DNS records, and Certificate Transparency monitoring.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
