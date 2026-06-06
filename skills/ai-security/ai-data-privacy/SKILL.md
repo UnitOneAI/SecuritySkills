@@ -240,6 +240,60 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 
 ---
 
+### Step 3A -- Deletion Propagation Evidence
+
+Assess whether deletion, erasure, consent withdrawal, and retention expiry propagate from primary records into AI-specific derived stores. A DSAR endpoint or primary database delete is incomplete if embeddings, vector indexes, prompt logs, training snapshots, model artifacts, analytics exports, or backups can still retain or retrieve the personal data.
+
+**What to look for in code and configuration:**
+
+- **Source-to-derived mapping:** Can the system map a data subject, source document, or conversation ID to all derived chunks, embeddings, prompts, completions, training examples, evaluation examples, analytics exports, and backups?
+- **Vector store deletion:** When source content is deleted or access is revoked, are vector rows, chunk text, metadata filters, replicas, and retrieval caches tombstoned or physically removed?
+- **Training data snapshots:** Does deletion or consent withdrawal mark existing fine-tuning datasets, model checkpoints, adapters, and evaluation sets for exclusion, retraining, unlearning, or documented risk acceptance?
+- **Provider retention:** Are third-party LLM, embedding, logging, and analytics provider retention settings documented, including zero-data-retention or no-training configurations where applicable?
+- **Backup and archive handling:** Do backups, object-store versions, warehouse exports, and BI extracts have aligned retention, deletion windows, and legal-hold handling?
+- **Proof of propagation:** Does the DSAR workflow produce evidence that each downstream store was deleted, tombstoned, expired, or placed under a documented legal hold?
+
+**Detection methods using allowed tools:**
+
+```
+# Find deletion and DSAR workflow code
+Grep: "dsar|delete_request|erasure|right_to_delete|forget|consent_withdraw" in **/*.{py,ts,js,yaml,yml,json,md}
+Grep: "delete|tombstone|purge|reindex|invalidate|remove_embedding" in **/*.{py,ts,js,yaml,yml,json}
+
+# Find AI-derived stores that need propagation
+Grep: "embedding|vector|chunk|retrieval_cache|prompt_log|completion_log|fine_tune|checkpoint|dataset_snapshot" in **/*.{py,ts,js,yaml,yml,json,md}
+Grep: "backup|snapshot|archive|warehouse|analytics|export|legal_hold" in **/*.{py,sh,yaml,yml,json,toml,md}
+```
+
+**Deletion propagation evidence checklist:**
+
+| Store Type | Required Evidence | Common Violation |
+|---|---|---|
+| Source documents | Source IDs linked to data subject and retention basis | Document deleted without derived-store mapping |
+| Embeddings/vector indexes | Chunk IDs, vector IDs, metadata filters, replicas, and cache invalidation status | Source deleted but embeddings remain searchable |
+| Prompt/completion logs | Redaction, deletion, or retention exemption with access controls | Full prompts retained in observability tools |
+| Training snapshots | Dataset version, affected records, retraining/unlearning decision, and exclusion proof | Opted-out data remains in fine-tuning snapshot |
+| Model artifacts | Memorization risk assessment or retrain/unlearn decision when training data is removed | Model treated as unrelated to deletion request |
+| Analytics exports | Warehouse/table/export deletion status and retention window | BI exports outlive primary deletion |
+| Backups/archives | Restoration guardrails, deletion-on-restore process, legal-hold scope and expiry | Backup retention silently extends personal data retention |
+| Third-party providers | DPA, retention configuration, no-training setting, deletion confirmation | Provider retention assumed but not evidenced |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| DSAR or deletion workflow cannot map primary data to AI-derived embeddings, logs, or training snapshots | High |
+| Source deletion does not delete or tombstone vector store chunks and embeddings | High |
+| Consent withdrawal does not affect existing fine-tuning datasets or model artifact decisions | High |
+| Third-party LLM or embedding provider retention settings are undocumented | High |
+| Backup restore can resurrect deleted AI data without reapplying deletion ledger | Medium |
+| Analytics exports retain PII beyond primary retention without justification | Medium |
+| Legal holds lack scope, authority, and expiration metadata | Medium |
+
+**False positive to avoid:** Do not mark deletion compliance as pass because the primary application record can be deleted. Confirm propagation evidence for every AI-derived store and document residual risk where physical deletion is delayed, legally blocked, or technically infeasible.
+
+---
+
 ### Step 4 -- Model Memorization Risk Assessment
 
 Evaluate the risk that models deployed in the system have memorized and can reproduce personal data from their training corpus.
@@ -408,10 +462,16 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 [Description or reference to diagram showing personal data flows through AI components:
 user input -> prompt assembly -> LLM API -> completion -> output -> logging/storage]
 
+## Deletion Propagation Evidence
+
+| Data Subject / Source | Derived Stores | Embeddings Deleted | Logs Redacted/Deleted | Training Snapshot Action | Provider Retention Evidence | Backup / Legal Hold Status | Residual Risk |
+|---|---|---|---|---|---|---|---|
+| [subject/source ID] | [vector/logs/datasets/etc.] | [Yes/No/N/A] | [Yes/No/N/A] | [exclude/retrain/unlearn/accept] | [DPA/config/confirmation] | [status/expiry] | [Low/Medium/High] |
+
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Deletion Propagation | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -430,6 +490,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
+| Deletion propagation | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
