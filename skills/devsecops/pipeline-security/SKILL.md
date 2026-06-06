@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -49,6 +49,7 @@ The assessment produces a formal report containing a SLSA build level determinat
 - Access to CI/CD configuration files (e.g., `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, `cloudbuild.yaml`).
 - Access to repository settings context (branch protection rules, environment configurations).
 - Read access to dependency manifests and lock files for supply-chain analysis.
+- Read access to cloud-side OIDC/workload identity trust policies or federated credential definitions when pipelines request cloud credentials.
 
 ---
 
@@ -189,6 +190,7 @@ environment:
 - Shared service accounts across environments.
 - Missing `CODEOWNERS` file or broad ownership patterns.
 - Workflows that do not pin the `GITHUB_TOKEN` to minimum required permissions.
+- OIDC or workload identity federation configured without verifying cloud-side issuer, audience, subject, repository/ref/environment, and reusable-workflow claim restrictions.
 
 **Specific patterns in GitHub Actions:**
 
@@ -208,6 +210,30 @@ permissions:
 ```
 
 **Finding format:** Report the effective permission model, whether least-privilege is enforced, and whether identity controls (CODEOWNERS, required reviewers) are in place.
+
+**OIDC trust-policy evidence gate (CICD-SEC-2 / CICD-SEC-6):**
+
+When a workflow uses OIDC or workload identity federation, do not treat `id-token: write` or the absence of static secrets as sufficient evidence. Review the CI token request and the cloud-side trust policy together.
+
+| Evidence Field | Required Detail |
+|----------------|-----------------|
+| Token Issuer | Expected issuer, such as `https://token.actions.githubusercontent.com`, and provider/account where it is registered |
+| Workflow Permission | Whether `id-token: write` is scoped to only jobs that need cloud credentials |
+| Audience | Expected `aud` value and whether the trust policy checks it |
+| Subject Pattern | Exact allowed `sub` value or bounded pattern; flag broad values such as `repo:org/repo:*` |
+| Repository / Organization | Repository, immutable repository ID where available, owner, and organization conditions that prevent tokens from sibling, renamed, or untrusted repos |
+| Ref / Environment | Branch, tag, protected environment, or deployment environment restrictions for production credentials |
+| Reusable Workflow Claims | `job_workflow_ref` or equivalent restriction when reusable workflows can mint credentials |
+| Provider Policy | AWS role trust policy, Azure federated credential, Google Workload Identity Federation provider/attribute condition, or other cloud trust configuration |
+| Fork / Pull Request Reachability | Whether untrusted forks, pull requests, tags, or reusable workflows can satisfy the claims |
+| Decision | `Pass`, `Fail`, `Partial`, or `Not Evaluable` with the reason and credential blast radius |
+
+**Provider-specific checks:**
+
+- **AWS IAM:** Require `token.actions.githubusercontent.com:aud` and bounded `token.actions.githubusercontent.com:sub` conditions, plus immutable repository ID conditions where supported by the provider/action path. Flag wildcard subjects such as `repo:org/repo:*` for production roles unless a separate environment or branch condition prevents unintended access.
+- **Microsoft Entra / Azure:** Verify issuer, subject, and audience in each federated identity credential exactly match the external token. Treat mismatched or overly broad subjects as failing evidence even if the workflow uses OIDC.
+- **Google Cloud Workload Identity Federation:** Because GitHub uses a shared issuer, require attribute mapping and attribute conditions that restrict organization, repository, ref/environment, and workflow context before granting production service account access.
+- **Reusable workflows:** If `workflow_call` or shared deployment workflows can request OIDC tokens, require `job_workflow_ref` or an equivalent provider-side claim restriction so arbitrary caller workflows cannot mint production credentials.
 
 ---
 
@@ -328,6 +354,8 @@ runs-on: self-hosted  # Shared runners are a risk
 ```
 
 **Finding format:** Report credential types in use (long-lived vs. short-lived), whether OIDC/workload identity is used where available, and any secrets exposed in logs or command arguments.
+
+For OIDC findings, include both workflow-side evidence and cloud-side trust-policy evidence. If the cloud trust policy is unavailable, mark the OIDC control `Not Evaluable` rather than passing it from workflow YAML alone.
 
 ---
 
@@ -490,6 +518,12 @@ Produce the final report using the following structure:
 - **Description:** <what was found>
 - **Remediation:** <specific fix>
 
+### OIDC / Workload Identity Trust Evidence
+
+| Workflow / Job | Cloud Provider | Issuer | Audience | Subject / Claims | Repository / Owner Binding | Ref / Environment Restrictions | Reusable Workflow Restriction | Fork / PR Reachability | Decision |
+|----------------|----------------|--------|----------|------------------|----------------------------|-------------------------------|------------------------------|------------------------|----------|
+| <file:job> | <AWS/Azure/GCP/Other> | <issuer> | <aud claim and policy check> | <sub/repo/ref/environment claims> | <repository, owner, immutable ID if available> | <branch/tag/environment policy> | <job_workflow_ref or N/A> | <reachable/not reachable/not evaluable> | <Pass/Fail/Partial/Not Evaluable> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** <CICD-SEC-X> -- <action item>
@@ -529,6 +563,7 @@ The final deliverable is a structured assessment report as shown in Step 4 above
 - If no CI/CD configuration files are found, report this as the primary finding and recommend establishing a pipeline configuration.
 - If configurations use a platform not covered by this skill (e.g., a niche CI system), document what was found and note which controls could not be fully evaluated.
 - If file access is denied, record the file path and note the control as "Not Evaluable -- Access Denied."
+- If a workflow uses OIDC but the cloud provider trust policy is unavailable, report "Not Evaluable -- Missing Cloud Trust Policy" for the OIDC trust evidence rather than assuming short-lived credentials are safe.
 
 ---
 
@@ -550,6 +585,11 @@ This skill processes user-supplied content including CI/CD configuration files, 
 - SLSA Build Track: https://slsa.dev/spec/v1.0/levels#build-track
 - OWASP Top 10 CI/CD Security Risks: https://owasp.org/www-project-top-10-ci-cd-security-risks/
 - GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+- GitHub OpenID Connect Security Hardening: https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect
+- GitHub OIDC with AWS: https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws
+- AWS IAM OIDC condition keys for GitHub: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_iam-condition-keys.html
+- Microsoft Entra workload identity federation: https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation
+- Google Cloud Workload Identity Federation deployment pipelines: https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines
 - Sigstore / Cosign: https://docs.sigstore.dev/
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
 
@@ -558,3 +598,4 @@ This skill processes user-supplied content including CI/CD configuration files, 
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
+- **1.0.1** -- Adds OIDC/workload identity trust-policy claim evidence gates for CI cloud credential federation.
