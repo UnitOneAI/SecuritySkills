@@ -488,3 +488,205 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+## Supplemental -- AWS Lambda Function URL and Invocation Hardening
+
+These checks are not CIS Amazon Web Services Foundations Benchmark v3.0.0
+controls. Use them when Lambda functions, function URLs, API Gateway/Lambda
+integrations, or event source mappings are present so the review captures
+serverless-specific exposure, identity, and audit risks. Report them separately
+from the CIS section scores.
+
+### AWS-LAMBDA-01 -- Verify Lambda function URL auth type and public path
+
+Lambda function URLs can expose a dedicated HTTPS endpoint for a function. The
+`NONE` auth type does not require SigV4-signed requests, so reviewers must treat
+it as a public path unless a separate edge layer and resource-based policy prove
+otherwise. The `AWS_IAM` auth type requires IAM authorization, but the report
+should still record which principals can invoke the URL and whether the function
+is also exposed through API Gateway, CloudFront, ALB, or other paths.
+
+```hcl
+resource "aws_lambda_function_url" "private_api" {
+  function_name      = aws_lambda_function.private_api.function_name
+  authorization_type = "AWS_IAM"
+
+  cors {
+    allow_origins = ["https://app.example.com"]
+    allow_methods = ["POST"]
+    allow_headers = ["authorization", "content-type", "x-amz-date"]
+  }
+}
+```
+
+**Fail patterns:**
+
+- `authorization_type = "NONE"` on sensitive, administrative, or state-changing functions without explicit public API justification.
+- CloudFormation `AWS::Lambda::Url` with `AuthType: NONE` and broad CORS origins/methods.
+- Function URL is public while the design assumes API Gateway, CloudFront, WAF, or ALB is the only ingress path.
+- Function URL exists on `$LATEST` or an unqualified function when production traffic should use a version or alias.
+
+**Severity guidance:**
+
+- Critical when an unauthenticated function URL can perform privileged, data-changing, or sensitive-data-returning operations.
+- High when public exposure is likely unintended or bypasses API Gateway/edge controls.
+- Medium when public exposure is intentional but CORS, rate limiting, abuse controls, or edge-path evidence is incomplete.
+- Informational when public access is intentional and fully documented.
+
+### AWS-LAMBDA-02 -- Review resource-based invoke policy and URL-specific conditions
+
+Function URL access is enforced through Lambda resource-based policies and,
+for `AWS_IAM`, caller identity policies. Reviewers should verify the principal,
+action, source conditions, and URL-specific condition keys instead of treating
+function-level invoke permissions as equivalent to function URL permissions.
+
+```hcl
+resource "aws_lambda_permission" "allow_cloudfront_function_url" {
+  statement_id           = "AllowCloudFrontFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.private_api.function_name
+  principal              = "cloudfront.amazonaws.com"
+  function_url_auth_type = "AWS_IAM"
+  source_arn             = aws_cloudfront_distribution.api.arn
+}
+
+resource "aws_lambda_permission" "allow_url_invoke_function" {
+  statement_id              = "AllowInvokeOnlyViaFunctionUrl"
+  action                    = "lambda:InvokeFunction"
+  function_name             = aws_lambda_function.private_api.function_name
+  principal                 = "cloudfront.amazonaws.com"
+  source_arn                = aws_cloudfront_distribution.api.arn
+  invoked_via_function_url  = true
+}
+```
+
+**Fail patterns:**
+
+- `principal = "*"` or public principals on `lambda:InvokeFunctionUrl` without a public API exception.
+- `lambda:InvokeFunction` granted broadly without `lambda:InvokedViaFunctionUrl = true` when only URL invocation is intended.
+- Missing `function_url_auth_type` or equivalent `lambda:FunctionUrlAuthType` condition when policy should apply only to one URL auth mode.
+- API Gateway, EventBridge, S3, SNS, or cross-account principals have no `source_arn` or `source_account` condition where AWS supports them.
+
+**Severity guidance:**
+
+- High when broad resource-based policy grants create unintended public or cross-account invocation.
+- Medium when the principal is correct but URL-specific or source conditions are missing.
+- Low when the policy is narrow but the report lacks evidence tying it to the intended URL or alias.
+
+### AWS-LAMBDA-03 -- Verify execution-role least privilege and credential handling
+
+Lambda functions run with an execution role. The review must distinguish who can
+invoke the function from what the function can do after invocation. Public or
+cross-account invocation becomes much riskier when the execution role can read
+secrets, assume roles, modify infrastructure, or access broad data stores.
+
+```hcl
+resource "aws_iam_role" "orders_function" {
+  name = "orders-function"
+  assume_role_policy = data.aws_iam_policy_document.lambda_trust.json
+}
+
+resource "aws_iam_role_policy" "orders_function" {
+  role = aws_iam_role.orders_function.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+      Resource = aws_dynamodb_table.orders.arn
+    }]
+  })
+}
+
+resource "aws_lambda_function" "orders" {
+  function_name = "orders"
+  role          = aws_iam_role.orders_function.arn
+  filename      = "orders.zip"
+}
+```
+
+**Fail patterns:**
+
+- Execution role uses `AdministratorAccess`, `PowerUserAccess`, `*:*`, broad `iam:PassRole`, or unconstrained `sts:AssumeRole`.
+- One execution role is reused across unrelated functions, stages, or tenants.
+- Static AWS keys are stored in environment variables or package artifacts instead of using the execution role.
+- Environment variables contain secrets without Secrets Manager, SSM Parameter Store, KMS, or rotation evidence.
+
+**Severity guidance:**
+
+- Critical when a public or cross-account-invoked function has account-admin or privilege-escalation permissions.
+- High when execution role scope is much broader than the function's documented data path.
+- Medium when least privilege is mostly present but role sharing, rotation, or policy-simulator evidence is missing.
+
+### AWS-LAMBDA-04 -- Review VPC access, dependency egress, and event-source boundaries
+
+Configuring a Lambda function for VPC access lets code reach resources in
+private subnets, but it does not make a function URL private or protect inbound
+invocation. Reviewers should record the outbound path to private dependencies,
+security groups, subnet selection, NAT/VPC endpoint use, and event source
+boundaries for queues, streams, event buses, and cross-account triggers.
+
+```hcl
+resource "aws_lambda_function" "worker" {
+  function_name = "worker"
+  role          = aws_iam_role.worker.arn
+  filename      = "worker.zip"
+
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+    security_group_ids = [aws_security_group.lambda_worker.id]
+  }
+}
+
+resource "aws_lambda_event_source_mapping" "orders_queue" {
+  event_source_arn = aws_sqs_queue.orders.arn
+  function_name    = aws_lambda_function.worker.arn
+  enabled          = true
+  batch_size       = 10
+}
+```
+
+**Fail patterns:**
+
+- Review treats VPC configuration as inbound protection for a public function URL.
+- Function accesses RDS, OpenSearch, Redis, internal APIs, or private endpoints with no VPC config, endpoint, NAT, or egress evidence.
+- Lambda security group allows broad outbound traffic when a narrower dependency path is known.
+- Cross-account event source mappings or EventBridge targets lack source-account/source-ARN/resource-policy evidence.
+- No DLQ, failure destination, retry, or poison-message handling evidence for high-impact asynchronous processing.
+
+**Severity guidance:**
+
+- High when a public function can reach sensitive private dependencies and egress/resource policies are not constrained.
+- Medium when private dependency access exists but subnet, security group, endpoint, or retry/DLQ evidence is incomplete.
+- Low when architecture is sound but the report lacks flow-log or dependency mapping evidence.
+
+### AWS-LAMBDA-05 -- Verify audit, monitoring, and policy-change coverage
+
+CloudTrail management events record Lambda configuration and policy changes.
+For high-risk public or cross-account functions, also request evidence for
+Lambda data events where enabled, API Gateway/CloudFront/WAF logs when those
+services form the public path, CloudWatch alarms, and alerts for resource-based
+policy or function URL changes.
+
+**Evidence to collect:**
+
+- CloudTrail management events for `CreateFunctionUrlConfig`, `UpdateFunctionUrlConfig`, `DeleteFunctionUrlConfig`, `AddPermission`, and `RemovePermission`.
+- Lambda data event selectors for sensitive functions where invocation-level audit is required.
+- API Gateway, CloudFront, ALB, or WAF logs when they are the intended public path.
+- CloudWatch alarms for error rates, throttles, asynchronous failures, DLQ depth, and unexpected policy or URL changes.
+- Breakglass records for temporary public access, broad principals, disabled authorizers, or emergency deployments.
+
+**Fail patterns:**
+
+- Function URL or resource-based policy changes are not covered by CloudTrail metric filters or alerting.
+- Public function lacks request logs, WAF/API Gateway/CloudFront logs, or application-level audit evidence.
+- Sensitive asynchronous workflows have no alarm on DLQ/dead-letter destination growth or repeated failures.
+- Temporary public access exceptions have no owner, expiration, or closure evidence.
+
+**Severity guidance:**
+
+- High when public or sensitive functions have no usable audit trail for invocation path and policy changes.
+- Medium when logging exists but cannot distinguish function URL traffic from other invocation paths.
+- Low when logs and alerts exist but evidence retention or ownership is incomplete.

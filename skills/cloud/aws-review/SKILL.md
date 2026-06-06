@@ -3,10 +3,11 @@ name: aws-review
 description: >
   Performs an AWS security posture review against the CIS Amazon Web Services
   Foundations Benchmark v3.0.0. Auto-invoked when reviewing AWS infrastructure,
-  IAM policies, S3 configurations, CloudTrail settings, VPC security groups, or
-  RDS encryption. Walks through all five benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
+  IAM policies, S3 configurations, CloudTrail settings, VPC security groups,
+  RDS encryption, or Lambda function URL exposure. Walks through all five
+  benchmark sections, evaluates each recommendation, and produces a prioritized
+  findings report with remediation guidance mapped to specific CIS control IDs,
+  plus supplemental evidence gates for service-specific risks.
 tags: [cloud, aws, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
@@ -25,7 +26,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security assessment of AWS environments against the **CIS Amazon Web Services Foundations Benchmark v3.0.0**. The benchmark is organized into five sections covering identity management, storage, logging, monitoring, and networking. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, CloudFormation, CDK), AWS CLI output, or configuration files available in the repository.
+This skill performs a structured security assessment of AWS environments against the **CIS Amazon Web Services Foundations Benchmark v3.0.0**. The benchmark is organized into five sections covering identity management, storage, logging, monitoring, and networking. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, CloudFormation, CDK), AWS CLI output, or configuration files available in the repository. The skill also records supplemental AWS service evidence, such as Lambda function URL authentication, resource-based invoke policy, execution role, VPC access, event-source, and audit posture, without counting those observations toward the CIS section score.
 
 The CIS AWS Foundations Benchmark v3.0.0 contains 62 recommendations across five domains. This skill evaluates each applicable control against the codebase and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
@@ -39,6 +40,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Assessing an existing AWS environment's security posture against CIS benchmarks
 - Preparing for a CIS benchmark audit or compliance assessment
 - Evaluating IAM policies, S3 bucket configurations, CloudTrail settings, VPC security groups, or RDS encryption configurations
+- Reviewing Lambda function URLs, public invoke paths, execution roles, VPC access, event source mappings, and CloudTrail evidence for serverless workloads
 - Onboarding a new AWS account into a security program
 
 ---
@@ -55,6 +57,7 @@ The CIS Amazon Web Services Foundations Benchmark v3.0.0 is a consensus-driven s
 - S3 bucket policies and ACL configurations
 - VPC, security group, and NACL definitions
 - CloudTrail and CloudWatch configuration files
+- Lambda function definitions, function URLs, resource-based policies, execution roles, VPC config, event source mappings, API Gateway integrations, and CloudTrail data events when serverless workloads are in scope
 
 ---
 
@@ -99,7 +102,35 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Supplemental AWS Service Evidence
+
+If the reviewed repository contains Lambda functions, function URLs,
+CloudFormation `AWS::Lambda::Url` resources, Terraform
+`aws_lambda_function_url` resources, API Gateway/Lambda integrations, or live
+Lambda exports, evaluate the supplemental Lambda gates in
+[benchmark-checklist.md](benchmark-checklist.md). These checks capture
+serverless-specific risks that are not represented directly in CIS AWS
+Foundations Benchmark v3.0.0.
+
+Do not include supplemental Lambda gates in the CIS pass/fail denominator.
+Report them in a separate "Supplemental AWS Service Findings" section and link
+each finding to the affected function, function URL, resource-based policy,
+execution role, VPC config, event source, API Gateway integration, or audit log
+source.
+
+Record at least:
+
+- Function name, alias/version, environment, data sensitivity, and runtime owner
+- Function URL auth type, CORS posture, public path, and whether requests are restricted to IAM-signed callers, CloudFront, API Gateway, WAF, or explicit principals
+- Resource-based policy statements for `lambda:InvokeFunctionUrl`, `lambda:InvokeFunction`, `lambda:InvokedViaFunctionUrl`, principals, source ARN/account conditions, and URL auth type conditions
+- Execution role permissions, managed policies, inline policies, and whether the role is shared across functions or environments
+- VPC subnet/security group configuration, NAT or VPC endpoint path for dependencies, and whether VPC config is being misinterpreted as an inbound protection for function URLs
+- Event source mappings, asynchronous destinations, dead-letter queues, and cross-account/event-bus invocation evidence where relevant
+- CloudTrail management events, Lambda data events when enabled, API Gateway/CloudFront/WAF logs, and breakglass or policy-change alerts
+
+---
+
+### Step 8: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -114,6 +145,14 @@ Produce the final report using the structure defined in the Output Format sectio
 | **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, password policy below requirements, no VPC flow logs |
 | **Low** | Hardening recommendation or defense-in-depth measure | Missing Macie classification, no hardware MFA on root (when virtual MFA exists), missing access analyzer in non-primary regions |
 | **Informational** | Best practice observation, no direct security impact | Naming conventions, tag hygiene, documentation gaps |
+
+For supplemental Lambda findings, unauthenticated function URLs that expose
+sensitive or state-changing functions are typically Critical or High. IAM-auth
+function URLs with broad principals, missing `InvokedViaFunctionUrl` scoping,
+or no edge/audit evidence are usually Medium or High depending on data
+sensitivity. Missing execution-role least privilege, DLQ/destination evidence,
+or VPC egress evidence is usually Medium unless it creates a clear account
+compromise or data-exfiltration path.
 
 ---
 
@@ -156,6 +195,20 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Remediation:** <specific fix with code example>
+
+### Supplemental AWS Service Findings
+
+#### [AWS-LAMBDA-X] <Recommendation Title>
+- **Status:** Pass / Fail / Not Evaluable
+- **Severity:** Critical / High / Medium / Low / Informational
+- **Service:** AWS Lambda
+- **Resource:** <function name, alias/version, URL id, or ARN>
+- **File:** <path to relevant config>
+- **Line(s):** <line numbers if applicable>
+- **Description:** <what was found>
+- **Evidence:** <function URL, policy, execution role, VPC, event source, edge, or audit evidence>
+- **CIS impact:** Supplemental; not included in CIS AWS v3.0.0 score
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -225,10 +278,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- AWS Lambda function URL access control: https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html
+- AWS Lambda function URL configuration: https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html
+- AWS Lambda resource-based policies: https://docs.aws.amazon.com/lambda/latest/dg/access-control-resource-based.html
+- AWS Lambda VPC configuration: https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc.html
+- AWS Lambda event source mappings: https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added supplemental Lambda function URL evidence gates for auth type, resource-based policy, execution role, VPC/effects, event sources, and audit posture.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
