@@ -13,7 +13,7 @@ phase: [design, review]
 frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -45,6 +45,7 @@ Before beginning the threat model, gather the following. Mark each item as obtai
 - [ ] **System description** — High-level purpose, business context, and intended users.
 - [ ] **Component inventory** — Services, databases, message queues, caches, CDNs, third-party APIs, serverless functions, and any other runtime components.
 - [ ] **Data flow descriptions** — How data moves between components, including protocols (HTTPS, gRPC, AMQP), serialization formats (JSON, Protobuf), and transport security (TLS version, mTLS).
+- [ ] **Sequence and state transition descriptions** — Ordered steps for multi-request workflows such as login, OAuth/OIDC, password reset, checkout, webhook processing, invitations, and approvals.
 - [ ] **Trust boundaries** — Where authentication and authorization are enforced; boundaries between internal networks, DMZs, public internet, third-party services, and user devices.
 - [ ] **Authentication and authorization mechanisms** — OAuth 2.0 flows, API keys, JWTs, SAML, RBAC/ABAC policies, service-to-service identity (SPIFFE/mTLS).
 - [ ] **Data classification** — What data is stored or processed (PII, PHI, financial data, credentials, secrets) and its sensitivity level.
@@ -182,6 +183,38 @@ Every data flow in the DFD must be annotated with the following properties:
 
 Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
 
+### Step 3A: Model Sequence and State Transitions
+
+For multi-step workflows, supplement the DFD with a sequence or state-transition view. Static DFDs show which components communicate, but they often miss attacks that depend on order, replay, stale state, or mismatched identity across requests.
+
+Prioritize this step for:
+
+- OAuth/OIDC, SAML, magic link, password reset, and invitation flows.
+- Payment, checkout, refund, approval, and entitlement-grant flows.
+- Webhooks, async callbacks, queue consumers, and eventual-consistency workflows.
+- Admin change workflows where a request is submitted, reviewed, approved, and applied.
+
+Document each transition:
+
+| Step | Actor / Principal | Source State | Event / Request | Destination State | Required Proof | Expiry / Replay Control | Failure Mode |
+|------|-------------------|--------------|-----------------|-------------------|----------------|-------------------------|--------------|
+| 1 | Browser user | Unauthenticated | Start OAuth login | Auth challenge issued | Client id, redirect URI, PKCE challenge | `state` and nonce stored server-side | Fail closed |
+| 2 | Identity provider | Auth challenge issued | Callback with code | Code exchange pending | Matching `state`, nonce, PKCE verifier | Single-use code and short TTL | Reject and audit |
+| 3 | Application | Code exchange pending | Session creation | Authenticated session | Issuer, audience, subject, tenant, token signature | Session rotation | Reject ambiguous identity |
+
+**Temporal threat checks:**
+
+- [ ] Every state-changing transition has explicit preconditions and postconditions.
+- [ ] Nonces, `state`, PKCE verifiers, reset tokens, and invitation tokens are single-use and expire.
+- [ ] Webhooks and callbacks verify source authenticity, timestamp freshness, and replay windows before changing state.
+- [ ] Idempotency keys prevent duplicate processing but are not treated as authorization proof.
+- [ ] Approval and entitlement transitions re-check authorization at apply time, not only at request time.
+- [ ] Failure, timeout, cancellation, and retry paths do not leave privileged or billable state partially applied.
+- [ ] Cross-tenant or cross-account identifiers cannot be rebound between the start and completion of a workflow.
+- [ ] Concurrent requests cannot race from a valid intermediate state into an unauthorized final state.
+
+Add any temporal finding to the threat register even when the individual components look safe in the DFD. Classify replayable authentication callbacks, reusable password reset tokens, and authorization checked only before a delayed state transition as **High** by default when they can grant account access or privileges.
+
 ### Step 4: Apply STRIDE per Element
 
 For every component and data flow identified in the DFD, systematically ask the following questions organized by STRIDE category.
@@ -195,6 +228,7 @@ Threat: An attacker pretends to be another user, service, or system component.
 | Can an external user authenticate without valid credentials? | Credential stuffing, brute force |
 | Can one service impersonate another service? | Missing mTLS, forged service tokens |
 | Can an attacker replay a valid authentication token? | Stolen JWT without expiration |
+| Can an attacker replay or swap an OAuth, password reset, invitation, or webhook callback after the original flow expires? | Missing `state`, nonce, token binding, or replay window |
 | Are API keys rotated and scoped appropriately? | Leaked long-lived API key |
 | Is multi-factor authentication enforced for privileged accounts? | Admin account takeover |
 
@@ -209,6 +243,7 @@ Threat: An attacker modifies data, code, or configuration without authorization.
 | Can CI/CD pipeline artifacts be tampered with? | Compromised build server, dependency confusion |
 | Are configuration files protected from unauthorized modification? | Writable config in production containers |
 | Is input validated and sanitized before processing? | XSS, command injection, deserialization attacks |
+| Can request order, duplicate delivery, or stale intermediate state alter the final business decision? | Double refund, duplicated webhook fulfillment, stale approval applied after role removal |
 
 #### R — Repudiation (Audit and Accountability Threats)
 
@@ -221,6 +256,7 @@ Threat: A user or system denies performing an action, and the system cannot prov
 | Are logs centralized and protected from tampering? | Local-only logs on compromised host |
 | Do transactions include non-repudiation controls (digital signatures)? | Disputed financial transactions |
 | Is there sufficient log detail to reconstruct the sequence of events? | Logs missing source IP, user ID, or action detail |
+| Can retries, async workers, or callbacks be correlated to the initiating user and original request? | Webhook or queue action cannot be traced to the account that caused it |
 
 #### I — Information Disclosure (Confidentiality Threats)
 
@@ -400,6 +436,15 @@ Produce the threat register as a structured table. Each row represents one ident
 | TM-005 | Denial of Service | Unbounded file upload allows resource exhaustion via large payload submission | File Upload `/api/v1/upload` | T1499.003 — Application Exhaustion Flood | High | Medium | High | Enforce max file size (10MB), implement request timeout, add rate limiting per user | Storage Team | Open |
 | TM-006 | Elevation of Privilege | IDOR vulnerability allows regular users to access other users' records by modifying resource ID | User Profile `/api/v1/users/{id}` | T1068 — Exploitation for Privilege Escalation | High | High | Critical | Implement object-level authorization checks, validate resource ownership at service layer | Backend Team | Open |
 
+### Sequence and State Transition Risks
+
+When Step 3A applies, include a sequence-specific table in addition to the main threat register.
+
+| Flow | Risky Transition | Missing or Weak Control | Attack Result | Severity | Required Evidence | Recommended Mitigation |
+|------|------------------|-------------------------|---------------|----------|-------------------|------------------------|
+| OAuth login | Callback to session creation | Missing `state`/nonce/PKCE binding | Login CSRF or code substitution | High | Callback handler, token exchange config, session creation code | Enforce server-side `state`, nonce, PKCE, issuer/audience checks, and one-time code use |
+| Payment webhook | Paid event to entitlement grant | No replay window or idempotency guard | Duplicate fulfillment or stale paid state | High | Webhook signature verification, event store, idempotency key handling | Verify signature/timestamp, store processed event IDs, re-fetch canonical payment status |
+
 ## 6. Framework Reference
 
 ### STRIDE (Microsoft, 2003)
@@ -466,6 +511,14 @@ Threat models become stale as architectures evolve. New services, changed data f
 ### Pitfall 5: Producing Threats Without Actionable Mitigations
 
 A threat register full of identified threats but no prioritized, assignable mitigations provides no security value. Every identified threat must have a corresponding mitigation with a clear owner, a severity-based SLA, and a tracking mechanism (e.g., linked Jira ticket or GitHub issue). If a threat is accepted rather than mitigated, document the risk acceptance with an approving authority and review date.
+
+### Pitfall 6: Modeling Only Static Data Flows
+
+A DFD can look correct while a multi-step workflow remains exploitable through replay, stale state, callback swapping, or duplicate delivery. Model sequence order and state transitions for authentication, payment, webhook, approval, and entitlement flows before concluding that the design is safe.
+
+### Pitfall 7: Treating Idempotency as Authorization
+
+Idempotency keys prevent duplicate processing, but they do not prove that the caller is allowed to perform the action. Re-check authorization, tenant binding, and canonical business state at the point where the transition is applied.
 
 ## 8. Prompt Injection Safety Notice
 
