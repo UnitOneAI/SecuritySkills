@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -110,6 +110,155 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+
+---
+
+### 2.4 HTTP Parser Boundary and Request Smuggling Review
+
+**ASVS Reference:** V5 -- Validation, Sanitization and Encoding; V13 -- API and Web Service
+**CWE Coverage:** CWE-444 (Inconsistent Interpretation of HTTP Requests), CWE-400 (Uncontrolled Resource Consumption -- oversized headers)
+
+> **Critical principle:** Request smuggling requires evidence that two HTTP parsers disagree about request boundaries. Large headers, long timeouts, raw-body access, or a reverse proxy in the path are not findings by themselves. Require a documented frontend/backend parser mismatch or unsafe forwarding path before classifying CWE-444.
+
+Apply this gate when reviewed code or configuration sits behind a reverse proxy, CDN, API gateway, WAF, service mesh, HTTP/2-to-HTTP/1 downgrade, serverless adapter, or custom raw-body middleware.
+
+#### 2.4.1 Evidence to Collect
+
+| Evidence | Why it matters |
+|---|---|
+| Frontend component | CDN, load balancer, proxy, gateway, WAF, or framework adapter that receives the client request first |
+| Backend component | Runtime or framework parser that receives the forwarded request |
+| Protocol translation | HTTP/2, H2C, WebSocket upgrade, chunked transfer, or HTTP/1.1 downgrade behavior |
+| Boundary header policy | Handling of `Content-Length`, `Transfer-Encoding`, duplicate headers, `Connection`, and hop-by-hop headers |
+| Raw-body path | Middleware, webhook verification, compression, or serverless adapter that reads the body before the framework parser |
+| Conflict handling | Whether CL/TE conflicts, duplicate CL values, malformed chunks, and oversized headers are rejected before forwarding |
+| Route impact | Whether desync could reach authenticated, admin, cacheable, webhook, or state-changing routes |
+
+#### 2.4.2 Vulnerable Patterns by Stack
+
+**Nginx to Node.js -- forwarding attacker-controlled transfer framing (CWE-444)**
+
+```nginx
+# VULNERABLE: forwards client-supplied Transfer-Encoding to the backend
+location /api/ {
+    proxy_http_version 1.1;
+    proxy_set_header Transfer-Encoding $http_transfer_encoding;
+    proxy_pass http://node_backend;
+}
+```
+
+Remediation: Do not forward client-controlled hop-by-hop framing headers. Normalize or reject conflicting `Content-Length`/`Transfer-Encoding` at the edge, strip hop-by-hop headers before proxying, and keep the proxy/backend HTTP protocol contract explicit.
+
+```nginx
+# SECURE: strip hop-by-hop headers, normalize framing
+location /api/ {
+    proxy_http_version 1.1;
+    proxy_set_header Content-Length "";
+    proxy_set_header Transfer-Encoding "";
+    proxy_pass http://node_backend;
+}
+```
+
+**Express raw-body middleware before framework parser (CWE-444)**
+
+```javascript
+// VULNERABLE: raw body consumed before framework parser
+app.use((req, res, next) => {
+  req.raw = [];
+  req.on("data", chunk => req.raw.push(chunk));
+  next();
+});
+app.use(express.json()); // parser runs AFTER raw read
+```
+
+Remediation: Avoid raw body consumption before the framework parser. If raw body access is needed (e.g., webhook signature verification), use the framework's built-in raw-body option on the specific route, not a global middleware that runs before the parser.
+
+```javascript
+// SECURE: raw body scoped to the specific route that needs it
+app.post("/webhooks/stripe",
+  express.raw({ type: "application/json" }),
+  verifyStripeSignature,
+  handleWebhook
+);
+```
+
+**Go HTTP server -- benign (NOT a finding)**
+
+```go
+// NOT VULNERABLE: strict runtime with bounded limits and no proxy disagreement
+srv := &http.Server{
+    Addr:              ":8443",
+    Handler:           app,
+    ReadHeaderTimeout: 5 * time.Second,
+    MaxHeaderBytes:    1 << 20,
+}
+```
+
+This pattern uses Go's standard library strict parser with bounded timeouts and header limits. Without a proxy in the path that uses different parsing semantics, there is no parser boundary mismatch. Do **not** classify this as CWE-444 -- at most flag `MaxHeaderBytes` as Informational if the value is unusually large.
+
+**HTTP/2-to-HTTP/1 downgrade at a load balancer (CWE-444)**
+
+```
+# VULNERABLE: HTTP/2 frames converted to HTTP/1.1 without header normalization
+# HTTP/2 uses pseudo-headers (:method, :path) and binary framing;
+# the downgrade must normalize these and reject malformed headers.
+```
+
+When a load balancer downgrades HTTP/2 to HTTP/1.1, it must convert pseudo-headers to their HTTP/1.1 equivalents, reject requests with malformed `:authority` or duplicate `:method`, and ensure the backend parser receives a consistent `Content-Length` or `Transfer-Encoding: chunked` -- not both. If the downgrade path does not normalize, attackers can craft HTTP/2 frames that desynchronize the backend parser.
+
+Remediation: Configure the load balancer to reject requests with malformed HTTP/2 frames before downgrade, normalize headers during conversion, and log downgrade events for audit.
+
+**Serverless adapter header rewriting (CWE-444)**
+
+```javascript
+// VULNERABLE: serverless adapter rewrites body encoding before middleware
+// API Gateway base64-encodes the body; the adapter decodes it but
+// may not preserve Content-Length or Transfer-Encoding correctly
+exports.handler = async (event) => {
+  const body = Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'utf8');
+  // framework now sees a body with stale Content-Length from the original request
+  return app.handle({ ...event, body });
+};
+```
+
+Remediation: After decoding the serverless adapter body, recalculate and set `Content-Length` explicitly. Strip or recalculate `Transfer-Encoding` when converting between encoding formats.
+
+**Duplicate headers merged differently across layers (CWE-444)**
+
+```python
+# VULNERABLE: proxy copies duplicate Content-Length headers
+# Nginx: uses first CL; Apache: rejects; Node.js: may use last CL
+# An attacker sends: Content-Length: 1\r\nContent-Length: 50\r\n
+# Proxy sends both to backend; backend picks the wrong one
+```
+
+Remediation: The edge proxy must reject requests with duplicate `Content-Length` or `Transfer-Encoding` headers. Configure a single trusted parser for body framing decisions.
+
+**Webhook signature verification with raw body access (potential CWE-444 if misused)**
+
+```javascript
+// VULNERABLE: global raw-body middleware consumed before signature check,
+// desynchronizing downstream body parsing for non-webhook routes
+app.use(rawBodyMiddleware); // reads body for ALL routes
+app.use(express.json());    // framework parser sees empty body on webhook routes
+app.post("/webhooks/stripe", verifyStripeSignature, handleWebhook);
+app.post("/api/data", handleData); // this route now has no body!
+```
+
+Remediation: Scope raw-body middleware to the specific routes that need it. Use route-level middleware instead of global middleware for body access patterns.
+
+#### 2.4.3 Review Checklist
+
+- [ ] Inventory every HTTP component between the client and the application handler (proxy, CDN, gateway, serverless adapter).
+- [ ] Verify the frontend rejects or normalizes conflicting `Content-Length` and `Transfer-Encoding` headers before forwarding.
+- [ ] Verify duplicate header handling is documented and enforced for security-sensitive headers: `Content-Length`, `Transfer-Encoding`, `Host`, and authorization headers.
+- [ ] Confirm hop-by-hop headers (`Connection`, `Transfer-Encoding`, `TE`, `Upgrade`) are stripped at proxy boundaries instead of copied from client input.
+- [ ] Check HTTP/2-to-HTTP/1 downgrade and H2C upgrade paths for explicit header normalization and malformed-frame rejection.
+- [ ] Review webhook and raw-body middleware to ensure body reads are route-scoped and do not desynchronize downstream parsers.
+- [ ] Verify serverless adapters recalculate `Content-Length` and strip stale `Transfer-Encoding` after body re-encoding.
+- [ ] Require an integration test through the deployed proxy path for CL/TE conflicts, duplicate CL values, malformed chunks, and duplicate security headers.
+- [ ] Classify severity by reachable impact: unauthenticated auth bypass, cache poisoning, or request routing takeover is High/Critical; isolated internal parser ambiguity with no privileged route impact is Medium/Low.
+- [ ] Do **not** flag bounded timeouts, header size limits, or raw-body access alone as CWE-444 -- require evidence of parser disagreement.
 
 ---
 
@@ -420,6 +569,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Boundary Evidence** | For parser-boundary findings: frontend component, backend parser, protocol conversion, header policy, raw-body path, and conflict-handling proof |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -445,7 +595,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.0.1
 
 ### Summary
 - Critical: [count]
@@ -502,13 +652,14 @@ The final review output must be structured as follows:
 | V13 | API and Web Service | API-specific controls |
 | V14 | Configuration | Secure build and deployment |
 
-### CWE Top 25 (2024) Coverage
+### CWE Top 25 (2024) and Supplemental Coverage
 
 | CWE ID | Name | Review Step |
 |---|---|---|
 | CWE-787 | Out-of-bounds Write | Step 2 (memory-safe language check) |
 | CWE-79 | Cross-site Scripting (XSS) | Step 2 |
 | CWE-89 | SQL Injection | Step 2 |
+| CWE-444 | HTTP Request/Response Smuggling | Step 2.4 |
 | CWE-416 | Use After Free | Step 2 (memory-safe language check) |
 | CWE-78 | OS Command Injection | Step 2 |
 | CWE-20 | Improper Input Validation | Step 2 |
@@ -541,6 +692,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Flagging request smuggling without parser mismatch evidence.** Large headers, long timeouts, raw-body access, or a reverse proxy in the path are not findings by themselves. Require a documented frontend/backend disagreement on parsing semantics or an unsafe forwarding path before assigning CWE-444. Benign patterns (e.g., Go's strict `http.Server` with bounded `MaxHeaderBytes` and `ReadHeaderTimeout` behind no conflicting proxy) should be noted as Informational at most.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -562,4 +715,8 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP WSTG -- Testing for HTTP Request Smuggling:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Request_Smuggling
+- **CWE-444 -- HTTP Request/Response Smuggling:** https://cwe.mitre.org/data/definitions/444.html
+- **RFC 9110 -- HTTP Semantics:** https://www.rfc-editor.org/rfc/rfc9110
+- **Node.js HTTP duplicate header handling:** https://nodejs.org/api/http.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
