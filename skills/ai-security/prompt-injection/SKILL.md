@@ -3,11 +3,11 @@ name: prompt-injection
 description: >
   Tests LLM applications for prompt injection vulnerabilities per OWASP LLM01:2025.
   Covers direct injection (user input manipulating model behavior) and indirect
-  injection (external content containing hidden instructions). Auto-invoked when
+  injection (external content containing hidden instructions), as well as multimodal injection (images/audio). Auto-invoked when
   reviewing LLM applications that process external content, build RAG pipelines,
   or accept user input that reaches a language model. Produces a test report with
   categorized findings and defense recommendations.
-tags: [ai-security, prompt-injection, llm, testing]
+tags: [ai-security, prompt-injection, llm, testing, multimodal]
 role: [appsec-engineer, security-engineer]
 phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
@@ -46,6 +46,8 @@ The research community distinguishes two fundamental variants:
 - **Direct prompt injection** — The attacker's malicious instructions are submitted directly as user input to the application. First systematically studied by Perez & Ribeiro (2022) in "Ignore Previous Prompt: Attack Techniques For Language Models," this class covers cases where user-controlled text is concatenated into the prompt sent to the LLM.
 
 - **Indirect prompt injection** — The attacker plants malicious instructions in external content that the LLM later retrieves and processes. Greshake et al. (2023) formalized this in "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection," demonstrating that poisoned web pages, documents, and emails can hijack LLM behavior when ingested as context.
+  
+- **Multimodal prompt injection** — The attacker embeds malicious instructions into non-text modalities, such as adversarial noise in audio files or hidden white-on-white text in images, which are directly parsed by multimodal models (e.g., GPT-4o, Gemini Vision) to execute unauthorized instructions.
 
 Simon Willison's prompt injection taxonomy further refines these categories by documenting real-world attack surfaces and defense limitations, providing practical grounding for security assessments.
 
@@ -55,7 +57,7 @@ Simon Willison's prompt injection taxonomy further refines these categories by d
 
 Identify every point where user-supplied or externally sourced content reaches the language model. Produce a complete interaction map covering:
 
-1. **User input channels** — Chat interfaces, form fields, API parameters, file uploads, voice input transcriptions, and any other path where a user directly provides text that is included in an LLM prompt.
+1. **User input channels** — Chat interfaces, form fields, API parameters, file/image uploads, audio/voice input, and any other path where a user directly provides text or multimodal data that is included in an LLM prompt.
 2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
 3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
 4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
@@ -92,6 +94,7 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Cross-Site Prompt Injection (XSPI) / Agent-to-Agent** — In multi-agent architectures, if Agent A is compromised, it can generate malicious text/context that is passed to Agent B, laterally spreading the injection.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
@@ -141,6 +144,15 @@ The attacker causes the model to include sensitive data in its output or to tran
 - Does the model have access to sensitive data (PII, credentials, internal documents) that could be included in responses?
 - Can tool calls be used to send data to arbitrary external endpoints?
 - Are outputs filtered for sensitive data patterns?
+
+### 4.6 Multimodal Injection
+
+The attacker uses vision or audio inputs to bypass text-based sanitization entirely. Multimodal models can parse embedded instructions directly from pixels or audio spectrograms.
+
+**What to evaluate:**
+- Does the application accept images, audio, or video inputs that are sent to a multimodal model?
+- Are there defenses specifically designed to strip hidden text (OCR scanning) or adversarial perturbations from images?
+- Does the application blindly trust the model's interpretation of an uploaded image without bounding the resulting actions?
 
 ### 4.5 Jailbreaking
 
@@ -204,6 +216,14 @@ Evaluate which of the following mitigations are implemented and how effectively.
 
 ---
 
+### 5.8 AI Firewall / LLM Gateway
+
+- Does the application deploy a dedicated LLM Gateway or AI Firewall (e.g., NeMo Guardrails, Lakera Guard, PromptArmor) as a discrete architectural layer?
+- Is there evidence that the gateway inspects both inbound user prompts (for injection) and outbound LLM responses (for data loss/policy violation)?
+- Does the firewall enforce strict system/user role separation at the API level (e.g., ChatML roles)?
+
+---
+
 ## Step 6: Report Findings
 
 Compile findings into a structured report using the classification and output format below.
@@ -237,7 +257,7 @@ Each finding should be assigned a severity based on potential impact:
 ### Findings
 
 #### Finding [N]: [Title]
-- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking]
+- Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking | Multimodal Injection | XSPI]
 - Vector: [Direct | Indirect]
 - Severity: [Critical | High | Medium | Low | Informational]
 - Location: [file path and line numbers, or architectural component]
@@ -267,13 +287,15 @@ Each finding should be assigned a severity based on potential impact:
 
 1. **Testing only direct injection and ignoring indirect injection.** Indirect injection through RAG pipelines, emails, and fetched web content is often a larger attack surface than direct user input. Applications that ingest external content are exposed to any adversary who can influence that content, which is frequently a much broader set of attackers than those with direct application access.
 
-2. **Relying on prompt instructions as a security boundary.** System prompts that say "never reveal these instructions" or "always refuse harmful requests" are not enforceable security controls. They are behavioral suggestions to a probabilistic model. Security-critical constraints must be enforced through code, not through natural language instructions to the LLM.
+2. **Ignoring Multimodal Input Surfaces.** Text-based prompt sanitization is useless if an attacker can upload an image containing the text "Ignore previous instructions." Multimodal LLMs read images natively, meaning vision and audio inputs must be treated with the exact same adversarial scrutiny as text fields.
 
-3. **Assuming input blocklists are sufficient.** Blocklisting known injection phrases (e.g., "ignore previous instructions") is trivially bypassed through paraphrasing, encoding, or language switching. Input validation should focus on allowlisting expected input formats rather than blocklisting known attacks.
+3. **Relying on prompt instructions as a security boundary.** System prompts that say "never reveal these instructions" or "always refuse harmful requests" are not enforceable security controls. They are behavioral suggestions to a probabilistic model. Security-critical constraints must be enforced through code, not through natural language instructions to the LLM.
 
-4. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
+4. **Assuming input blocklists are sufficient.** Blocklisting known injection phrases (e.g., "ignore previous instructions") is trivially bypassed through paraphrasing, encoding, or language switching. Input validation should focus on allowlisting expected input formats rather than blocklisting known attacks.
 
-5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
+5. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
+
+6. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
 
 ---
 
