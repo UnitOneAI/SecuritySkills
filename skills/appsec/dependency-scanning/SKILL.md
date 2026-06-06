@@ -100,6 +100,20 @@ For any dependency path deeper than five levels, require a context check before 
 
 If depth is the only risk signal and provenance evidence is strong, report it as `Monitor` or `Contextual Risk` instead of escalating automatically. If depth combines with missing pins, unknown publishers, install scripts, or weak registry routing, escalate the finding.
 
+### Ecosystem Evidence Sources
+
+Use the package manager's native artifacts before relying on registry pages or scanner summaries. Record which evidence source was inspected so another reviewer can reproduce the conclusion.
+
+| Ecosystem | Pins and Hashes | Registry Routing | Provenance / Publisher Evidence |
+|---|---|---|---|
+| npm / pnpm / Yarn | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `integrity` fields | `.npmrc`, `.yarnrc.yml`, lockfile `resolved` URLs, scoped registry rules | npm provenance, verified publisher metadata, Sigstore bundle where available |
+| Python | `requirements.txt` with hashes, `poetry.lock`, `Pipfile.lock`, constraints files | `pip.conf`, `PIP_INDEX_URL`, `--extra-index-url`, lockfile source entries | PyPI trusted publisher, signed artifacts, package maintainers, release history |
+| Go | `go.sum`, `go.mod` exact versions, module proxy checksums | `GONOSUMDB`, `GOPRIVATE`, `GONOPROXY`, private module proxy config | Module path ownership, checksum database coverage, tagged release provenance |
+| Rust | `Cargo.lock`, exact crate versions and checksums | `.cargo/config.toml`, alternate registry definitions | crates.io owner/teams, cargo-vet audits, signed release notes where available |
+| Maven / Gradle | `pom.xml`/lock equivalents, Gradle dependency locks, checksum verification | repository blocks, mirror config, private artifact repositories | Central publisher identity, signed artifacts, SLSA/in-toto attestations where available |
+
+Treat missing evidence as `Not Evaluable` rather than safe. For example, a private Python package configured through `--extra-index-url` can still be dependency-confusion exposed if public index fallback is possible and package names are not reserved.
+
 ### Mitigation
 
 - Always commit lockfiles (`package-lock.json`, `poetry.lock`, `go.sum`, `Cargo.lock`) to version control.
@@ -292,6 +306,7 @@ Use `fixtures/supply-chain-risk-context.yaml` as regression evidence for:
 - Lockfiles with hashes but weak historical bisectability.
 - Verified direct dependencies that pull in unverified transitive packages.
 - Scoped private packages with registry-routing evidence.
+- Python `--extra-index-url` routing where public fallback remains possible.
 - Non-typosquat packages that still deserve a high supply-chain risk score.
 
 ### Recommendations

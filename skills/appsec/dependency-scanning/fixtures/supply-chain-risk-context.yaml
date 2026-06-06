@@ -58,6 +58,22 @@ dependency_confusion_routing:
     risk: Low
     action: Document routing evidence instead of flagging by name alone
 
+python_extra_index_fallback:
+  description: Private-looking Python package can still resolve publicly when extra-index fallback is enabled.
+  dependency:
+    name: internal-auth-client
+    version: "2.1.0"
+    package_manager: pip
+    declared_source: requirements.txt
+  registry_routing:
+    pip_command: "pip install -r requirements.txt --extra-index-url https://private.example.com/simple"
+    public_index_disabled: false
+    package_name_reserved_on_public_index: false
+  expected_assessment:
+    public_fallback_possible: true
+    risk: High
+    action: Require private index as primary source, disable public fallback, or reserve the public package name
+
 independent_package_risk_score:
   description: Package is not a typosquat but still has risky supply-chain signals.
   dependency:
