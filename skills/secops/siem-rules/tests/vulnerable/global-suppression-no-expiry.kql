@@ -1,0 +1,8 @@
+// Vulnerable: privileged and service accounts are excluded forever with no owner,
+// ticket, bounded scope, or expiry/review date.
+let excluded_users = dynamic(["admin", "svc-backup", "testuser"]);
+SigninLogs
+| where TimeGenerated > ago(1h)
+| where ResultType == 0
+| where UserPrincipalName !in (excluded_users)
+| project TimeGenerated, UserPrincipalName, IPAddress, AppDisplayName

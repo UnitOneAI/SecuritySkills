@@ -1,0 +1,7 @@
+`comment("Benign: lookup has owner, expiry, and freshness evidence before suppressing scanner activity")`
+index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624
+| lookup approved_scanner_sources ip as IpAddress OUTPUT owner ticket expires_at last_updated
+| eval expires_epoch=strptime(expires_at, "%Y-%m-%dT%H:%M:%SZ")
+| eval updated_epoch=strptime(last_updated, "%Y-%m-%dT%H:%M:%SZ")
+| where isnull(ticket) OR now() > expires_epoch OR now() - updated_epoch > 86400
+| stats count by TargetUserName, IpAddress, owner, ticket, expires_at, last_updated

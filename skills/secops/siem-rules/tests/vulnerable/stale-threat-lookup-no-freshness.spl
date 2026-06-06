@@ -1,0 +1,5 @@
+`comment("Vulnerable: threat-intel lookup drives detection with no last_updated, TTL, or refresh-failure evidence")`
+index=proxy sourcetype=bluecoat
+| lookup threat_intel_domains domain as cs_host OUTPUT threat_score
+| where threat_score >= 80
+| stats count by src_ip, user, cs_host, threat_score

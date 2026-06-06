@@ -57,6 +57,7 @@ Before beginning, gather or confirm:
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
+- [ ] **Suppression and lookup evidence:** Exception owners, ticket references, expiry/review dates, watchlist or lookup freshness, and failed-refresh monitoring for any exclusions or enrichment sources.
 
 ---
 
@@ -445,6 +446,59 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 | `frequency` | How often the rule runs | Every 5m, 15m, 1h |
 | `suppression window` | Cooldown after firing to prevent duplicate alerts | 1h, 4h, 24h |
 
+### Step 4a: Suppression and Lookup Governance
+
+Suppression windows, exclusions, watchlists, and lookup tables are operational trust boundaries. They reduce noise and improve portability when governed, but they can also hide attacks if stale, broad, or unowned.
+
+**Exception evidence requirements:**
+
+| Evidence | Required For | Risk If Missing |
+|----------|--------------|-----------------|
+| Owner | Any suppression, allowlist, watchlist, or lookup | Nobody accountable for stale blind spots |
+| Ticket or change reference | Non-trivial exception or tuning change | Unapproved or undocumented detection bypass |
+| Bounded entity scope | User, host, IP, tenant, service, or rule-specific exception | Global suppression hides unrelated activity |
+| Created date and expiry/review date | All suppressions and allowlist entries | Permanent exception becomes a detection gap |
+| Reason category | Maintenance, scanner, break-glass, known automation, lab/test | Analysts cannot validate whether the exception still applies |
+| Approval evidence | Broad, privileged, or high-severity-rule exceptions | High-impact blind spot lacks risk acceptance |
+
+**Lookup/watchlist freshness requirements:**
+
+| Evidence | Required For | Risk If Missing |
+|----------|--------------|-----------------|
+| Source/feed name | Threat-intel, asset, identity, scanner, or admin lookups | Unknown trust and provenance |
+| `last_updated` or refresh timestamp | Any lookup that drives detection or suppression logic | Stale enrichment misses active threats |
+| TTL or per-row `expires_at` | Indicator and exception lookups | Expired entries continue to affect alerts |
+| Schema mapping | Field names mapped to query fields | Lookup silently fails or joins on wrong fields |
+| Refresh job status | Automated feeds and managed watchlists | Failed refresh creates valid-looking stale results |
+
+**Governed KQL maintenance exception example:**
+
+```kql
+let approved_maintenance = datatable(Host:string, StartTime:datetime, EndTime:datetime, Ticket:string, Owner:string)
+[
+  "jumpbox-01", datetime(2026-06-07T01:00:00Z), datetime(2026-06-07T03:00:00Z), "CHG-4821", "secops@example.com"
+];
+DeviceProcessEvents
+| where TimeGenerated > ago(1h)
+| where FileName in~ ("powershell.exe", "pwsh.exe")
+| join kind=leftouter approved_maintenance on $left.DeviceName == $right.Host
+| where isempty(Ticket) or TimeGenerated < StartTime or TimeGenerated > EndTime
+```
+
+Treat this as lower risk because the exception is scoped, time-bound, owned, and tied to a change record.
+
+**Risky global suppression example:**
+
+```kql
+let excluded_users = dynamic(["admin", "svc-backup", "testuser"]);
+SigninLogs
+| where TimeGenerated > ago(1h)
+| where ResultType == 0
+| where UserPrincipalName !in (excluded_users)
+```
+
+Flag this unless separate evidence proves each entry has an owner, reason, bounded scope, expiry/review date, and approval appropriate for the rule severity.
+
 **KQL alert rule scheduling (Sentinel Analytics Rule):**
 
 ```
@@ -479,6 +533,8 @@ Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Comp
 | Last triggered date | Within 90 days | > 180 days (rule may be stale or ineffective) |
 | Query execution time | < 30 seconds | > 2 minutes (performance issue) |
 | Exclusion count | < 10 | > 20 (rule may need fundamental redesign) |
+| Expired exception count | 0 active expired exceptions | Any expired exception still suppressing alerts |
+| Lookup freshness | Within feed TTL / documented SLA | No `last_updated` evidence or failed refresh |
 
 **Quarterly review checklist:**
 
@@ -499,6 +555,13 @@ Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Comp
 | P2 | High | Detection rule exists but has a high false negative rate or is disabled due to performance issues. | Fix and redeploy within 7 days |
 | P3 | Medium | Detection rule needs tuning (high FP rate) or coverage improvement (missing sub-technique variants). | Tune within 30 days |
 | P4 | Low | Rule health metric outside target range (stale rule, high exclusion count). No immediate security impact. | Review within 90 days |
+
+**Suppression and lookup severity adjustments:**
+
+- Escalate to **P2** when a high-severity rule has a broad or global suppression with no entity grouping, owner, ticket, or expiry evidence.
+- Escalate to **P2** when a detection depends on threat-intel, asset, or identity lookups and the feed refresh is failing open or stale beyond its TTL.
+- Classify as **P3** when lookup freshness or exception ownership is missing but the rule has compensating controls and limited scope.
+- Classify as **P4** when exception metadata is incomplete for low-severity detections and there is no immediate coverage impact.
 
 ---
 
@@ -533,6 +596,14 @@ Produce SIEM rule deliverables in this structure:
 | Time window | [Xm/h] | [Why this window] |
 | Frequency | [Xm/h] | [How often to run] |
 | Suppression | [Xh] | [Cooldown period] |
+
+### Suppression and Lookup Evidence
+| Control | Evidence reviewed | Missing evidence | Risk |
+|---------|-------------------|------------------|------|
+| Exception owner/ticket | [watchlist columns, change record, rule metadata] | [owner/ticket/reason] | [unapproved blind spot] |
+| Expiry/review date | [expires_at, review_due, maintenance window] | [expiry/review cadence] | [permanent suppression] |
+| Lookup freshness | [last_updated, feed TTL, refresh job status] | [freshness/TTL evidence] | [stale enrichment] |
+| Entity-aware grouping | [user/host/IP/tenant keys] | [entity scope] | [unrelated activity hidden] |
 
 ### Entity Mapping
 | Entity Type | Source Field |
@@ -632,6 +703,10 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
+### Pitfall 6: Trusting Suppressions and Lookups Without Freshness Evidence
+
+Suppressions, allowlists, watchlists, and lookup tables should not be treated as inherently trustworthy. A stale scanner allowlist can hide attacker-controlled infrastructure, an expired maintenance exception can suppress real privilege abuse, and a failed threat-intel refresh can make a rule miss active indicators while still returning syntactically valid results. Require owner, ticket, expiry/review date, entity scope, feed source, `last_updated`, TTL, and failed-refresh monitoring evidence before treating exclusions or enrichment as safe.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -658,3 +733,5 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 8. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 9. **Sentinel Entity Mapping** -- https://learn.microsoft.com/en-us/azure/sentinel/map-data-fields-to-entities
 10. **Splunk CIM (Common Information Model)** -- https://docs.splunk.com/Documentation/CIM/latest/User/Overview
+11. **Microsoft Sentinel Watchlists** -- https://learn.microsoft.com/en-us/azure/sentinel/watchlists
+12. **Splunk lookup command** -- https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference/9.4/search-commands/lookup
