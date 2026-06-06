@@ -12,6 +12,24 @@ validated wrappers or parameterized query builders.
 | `vulnerable/express-raw-sql-flow.js` | True positive | Express query parameter reaches raw SQL construction | Rule/query id and finding output |
 | `benign/express-query-builder.js` | True negative | Express query parameter flows through parser plus query builder API | Rule/query id and no-finding output |
 
+## Reproducible Semgrep Evidence
+
+The sample rules in `semgrep-rules/dataflow-evidence.yml` are intentionally
+small. They give reviewers a concrete way to prove that a SAST configuration
+tracks source-to-sink flow without flagging the paired benign wrapper.
+
+Expected checks:
+
+```bash
+semgrep --config tests/semgrep-rules/dataflow-evidence.yml tests/vulnerable
+semgrep --config tests/semgrep-rules/dataflow-evidence.yml tests/benign
+```
+
+Record the rule id, command, and finding count for each run. The vulnerable
+directory should produce findings for the matching rule family; the benign
+directory should stay quiet unless the reviewed sanitizer model is too broad or
+too weak.
+
 When a review accepts a sanitizer or wrapper as safe, cite the matching benign
 fixture path and the scan output that stayed quiet. When a rule claims
 source-to-sink coverage, cite the matching vulnerable fixture path and the

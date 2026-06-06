@@ -1,0 +1,40 @@
+rules:
+  - id: evidence.python.command-injection-taint
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: User-controlled request data reaches shell execution.
+    pattern-sources:
+      - pattern: request.args[$KEY]
+    pattern-sanitizers:
+      - pattern: validate_report_id(...)
+    pattern-sinks:
+      - pattern: subprocess.run($CMD, shell=True, ...)
+    metadata:
+      cwe:
+        - "CWE-78: OS Command Injection"
+      evidence-fixtures:
+        true-positive: tests/vulnerable/command-injection-taint.py
+        true-negative: tests/benign/validated-command-wrapper.py
+
+  - id: evidence.javascript.raw-sql-dataflow
+    mode: taint
+    languages: [javascript]
+    severity: ERROR
+    message: User-controlled request data reaches raw SQL construction.
+    pattern-sources:
+      - pattern: req.query.$FIELD
+    pattern-propagators:
+      - pattern: $OUT = buildWhereClause($IN)
+        from: $IN
+        to: $OUT
+    pattern-sanitizers:
+      - pattern: parseSearchTerm(...)
+    pattern-sinks:
+      - pattern: db.raw(...)
+    metadata:
+      cwe:
+        - "CWE-89: SQL Injection"
+      evidence-fixtures:
+        true-positive: tests/vulnerable/express-raw-sql-flow.js
+        true-negative: tests/benign/express-query-builder.js

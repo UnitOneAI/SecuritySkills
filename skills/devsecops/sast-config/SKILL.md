@@ -240,6 +240,7 @@ rules:
 - [ ] Safe wrappers and validators are modeled as sanitizers, not suppressed wholesale.
 - [ ] Rule tests include at least one vulnerable flow and one benign flow for every sanitizer or wrapper exception.
 - [ ] Fixture evidence records the expected result, rule or query family, and scan output for each true-positive and true-negative sample.
+- [ ] Evidence fixtures are paired with a runnable rule/query snippet or command so reviewers can reproduce the expected true-positive and true-negative behavior.
 
 #### 3.3 Semgrep Taint Mode and Safe-Wrapper Review
 
@@ -280,6 +281,7 @@ def export_report():
 - Safe wrappers are accepted only when their implementation is in scope and covered by a benign fixture.
 - `pattern-not` exceptions do not remove the entire sink family or all calls inside a broad directory.
 - For monorepos, taint rules are tested in at least one package boundary where shared helpers and app code live in different workspaces.
+- Evidence packs include the rule id, scan command, vulnerable fixture path, benign fixture path, and observed finding counts.
 
 **Finding classification:** A dataflow vulnerability class represented by syntax-only rules is **High** for CWE Top 10 injection classes and **Medium** for other dataflow classes. A sanitizer that is not backed by code evidence or a benign fixture is **Medium**. A broad `pattern-not` that masks a sink family is **High**.
 
