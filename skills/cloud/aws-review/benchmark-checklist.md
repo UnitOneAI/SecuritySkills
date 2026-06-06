@@ -160,6 +160,95 @@ aws_organizations_organization
 
 Look for policies restricting CloudShell access.
 
+### AWS-Specific IAM Gate -- Third-party AssumeRole trust and ExternalId lifecycle
+
+This gate complements CIS Section 1. Use it for vendor, MSP, scanner, SIEM, CSPM,
+backup, CI/CD, support, and incident-response integrations that assume roles in
+the reviewed AWS account.
+
+**Trust policies to inspect:**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+  "Action": "sts:AssumeRole"
+}
+```
+
+Flag third-party AWS principals as `Fail` or `Not Evaluable` when the policy lacks
+customer-unique confused-deputy protection:
+
+```json
+{
+  "Condition": {
+    "StringEquals": {
+      "sts:ExternalId": "<customer-unique-external-id>"
+    }
+  }
+}
+```
+
+For AWS service principals, check for service-specific source constraints instead
+of ExternalId:
+
+```json
+{
+  "Condition": {
+    "StringEquals": {"aws:SourceAccount": "<account-id>"},
+    "ArnLike": {"aws:SourceArn": "arn:aws:<service>:<region>:<account-id>:<resource>"}
+  }
+}
+```
+
+For OIDC or SAML federation, require issuer/provider, audience, subject, and
+certificate/thumbprint or claim lifecycle evidence:
+
+```
+aws_iam_openid_connect_provider
+aws_iam_saml_provider
+token.actions.githubusercontent.com:aud
+token.actions.githubusercontent.com:sub
+sts:AssumeRoleWithWebIdentity
+sts:AssumeRoleWithSAML
+```
+
+**Grep patterns:**
+
+```
+sts:AssumeRole
+sts:ExternalId
+aws:SourceArn
+aws:SourceAccount
+AssumeRolePolicyDocument
+aws_iam_role
+aws_iam_role_policy
+aws_iam_policy_document
+arn:aws:iam::[0-9]{12}:root
+ReadOnlyAccess
+SecurityAudit
+MaxSessionDuration
+```
+
+**Evidence to record:**
+
+- role name and trusted principal
+- whether the principal is an entire account root, exact role ARN, service principal, OIDC provider, or SAML provider
+- ExternalId value source without exposing secret-like values; record owner, age, last rotation date, and rotation trigger
+- `aws:SourceArn` and `aws:SourceAccount` for service integrations
+- OIDC/SAML issuer, audience, subject, and claim/certificate lifecycle evidence
+- `MaxSessionDuration` and whether vendor automation justifies it
+- AWS role last-used timestamp and CloudTrail `AssumeRole` review
+- sensitive read-only exposure such as S3, CloudTrail, Security Hub, IAM metadata, Secrets Manager metadata, KMS aliases, backup catalogs, or account inventory
+- vendor owner, contract/ticket reference, data handled, integration status, and offboarding evidence
+
+**Finding guidance:**
+
+- **High:** third-party AWS account root can assume the role without ExternalId, or role remains assumable after vendor offboarding.
+- **Medium:** ExternalId exists but owner, rotation, last-used, or sensitive read exposure cannot be verified.
+- **Low:** source constraints or ExternalId are present, but session duration or documentation needs hardening.
+- **Not Evaluable:** trust path exists but evidence for owner, ExternalId rotation, role last-used, or offboarding status is missing.
+
 ---
 
 ## Section 2 -- Storage

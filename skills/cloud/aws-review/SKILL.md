@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -97,6 +97,19 @@ Evaluate all AWS configurations against CIS AWS v3.0.0 Sections 1 through 5, cov
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, grep patterns, and configuration examples for all five sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
 
+During Section 1 IAM review, add an AWS-specific third-party role trust pass for every `sts:AssumeRole` trust policy that names an external AWS account, OIDC provider, SAML provider, SaaS vendor, scanner, support provider, MSP, SIEM, CSPM, backup tool, CI/CD platform, or incident-response partner. Do not score a role as low risk only because the attached permissions are read-only. Require evidence for:
+
+- trusted principal scope: exact role ARN or provider claims, not broad account root unless justified
+- confused-deputy protection: unique `sts:ExternalId` for third-party AWS principals, or service-specific `aws:SourceArn` and `aws:SourceAccount` constraints for AWS services
+- OIDC/SAML restrictions: issuer, audience, subject, thumbprint or certificate lifecycle, and claim pinning
+- ExternalId owner, creation date, last rotation date, and rotation trigger
+- role session duration and whether vendor automation needs the configured maximum
+- role last-used timestamp, CloudTrail `AssumeRole` evidence, and post-offboarding activity check
+- sensitive read-only exposure: S3, CloudTrail, Security Hub, IAM metadata, Secrets Manager metadata, KMS aliases, backup catalogs, or account inventory
+- integration owner, contract or ticket reference, data handled, and offboarding status
+
+If any required evidence is unavailable, mark the trust path as `Not Evaluable` with a reason code such as `not_evaluable_missing_external_id_owner`, `not_evaluable_missing_external_id_rotation`, `not_evaluable_missing_role_last_used`, `not_evaluable_missing_vendor_offboarding`, or `not_evaluable_missing_source_constraints`.
+
 ---
 
 ### Step 7: Compile Assessment Report
@@ -158,6 +171,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Third-Party AWS Trust Evidence
+
+| Role | Trusted Principal | Trust Type | ExternalId / Source Constraint | Owner | Last Rotated | Last Used | Session Duration | Sensitive Read Scope | Offboarding Status | Evidence Status |
+|------|-------------------|------------|--------------------------------|-------|--------------|-----------|------------------|----------------------|--------------------|-----------------|
+| <role> | <account/provider/service> | AWS account / AWS service / OIDC / SAML | <evidence or gap code> | <owner> | <date/status> | <date/status> | <duration> | <scope> | <active/offboarded/not evaluable> | <pass/fail/not evaluable> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -200,6 +219,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Over-crediting read-only vendor roles.** `SecurityAudit`, `ReadOnlyAccess`, or service-specific read permissions can still expose sensitive inventory, logs, identities, bucket names, trail configuration, and security findings. Review the trust path and data exposure, not only admin privileges.
+8. **Treating vendor UI disablement as AWS offboarding.** Disabling an integration in a SaaS console does not prove the AWS role trust was removed, ExternalId rotated, sessions expired, or post-offboarding `AssumeRole` activity stopped.
+9. **Using account-root trust without lifecycle evidence.** Trusting `arn:aws:iam::<vendor-account>:root` is not automatically unsafe, but it requires stronger evidence: unique ExternalId, owner, rotation trigger, last-used review, and vendor-side principal governance.
 
 ---
 
@@ -222,6 +244,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Amazon Web Services Foundations Benchmark v3.0.0: https://www.cisecurity.org/benchmark/amazon_web_services
 - AWS Security Best Practices: https://docs.aws.amazon.com/security/
 - AWS IAM Best Practices: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
+- AWS IAM confused deputy prevention and ExternalId guidance: https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html
+- AWS IAM cross-account role access: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html
+- AWS STS AssumeRole API: https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
@@ -231,4 +256,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Added third-party AWS role trust evidence gates for ExternalId/source constraints, role last-used, session duration, sensitive read-only exposure, and vendor offboarding.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
