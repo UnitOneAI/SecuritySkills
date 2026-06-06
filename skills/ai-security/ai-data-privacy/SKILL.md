@@ -10,10 +10,10 @@ description: >
 tags: [ai-security, privacy, data-governance]
 role: [security-engineer, privacy-engineer, appsec-engineer, vciso]
 phase: [design, build, review, operate]
-frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
+frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025, GDPR]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -81,6 +81,42 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
 | Data classification scheme | Governance documentation | Defines sensitivity levels applied to AI data flows |
 | Regulatory requirements | Compliance documentation, legal counsel input | Identifies applicable data protection obligations |
+
+### Processor, Subprocessor, and Transfer Evidence Gate
+
+A provider DPA, EU data-region setting, or "not used for training" statement does not prove that an AI data flow is privacy-ready. For every third-party LLM, embedding service, vector database, prompt analytics tool, evaluation platform, monitoring service, human review queue, MCP/tool gateway, or support workflow, map the legal role, region, subprocessor chain, and transfer mechanism.
+
+Use this gate when the system processes EU personal data, regulated personal data, or customer-confidential data through a third-party or remotely administered AI service.
+
+```
+AI-PRIV-XFER-01: Processor/subprocessor chain is missing for AI data flows that leave the application boundary
+AI-PRIV-XFER-02: Storage, processing, support-access, observability/logging, human-review, or evaluation regions are not documented separately
+AI-PRIV-XFER-03: Cross-border transfer mechanism is missing, unsupported, or not tied to the actual legal role and data flow
+AI-PRIV-XFER-04: EU-US Data Privacy Framework reliance lacks official entity/service/date verification or fallback SCC/TIA evidence
+AI-PRIV-XFER-05: SCC module, annex, onward-transfer terms, transfer impact assessment, or supplementary measures are missing where Article 46 mechanisms are used
+AI-PRIV-XFER-06: Article 28 processor terms are missing subprocessor authorization, audit rights, deletion/return, assistance, breach notice, or TOM evidence
+AI-PRIV-XFER-07: Adjacent AI tooling subprocessors are excluded from the data-flow matrix even though they receive prompts, completions, embeddings, files, eval rows, logs, or human-review samples
+AI-PRIV-XFER-08: Transfer evidence is unavailable and the report does not mark the flow Not Evaluable with the exact missing artifact
+```
+
+**Processor and Subprocessor Matrix:**
+
+| Entity | Legal Role | AI Data Types | Purpose | Storage Region | Processing Region | Support / Review Region | Subprocessors / Onward Transfers | Evidence Source | Decision |
+|---|---|---|---|---|---|---|---|---|---|
+| [provider/tool] | Controller / Processor / Subprocessor | [prompts, completions, embeddings, files, eval rows] | [purpose] | [region] | [region] | [region] | [entities] | [DPA, docs, contract, registry] | Pass / Gap / Not Evaluable |
+
+**Transfer Mechanism Matrix:**
+
+| Data Flow | Origin -> Destination | Mechanism | Proof Required | TIA / Supplementary Measures | Key Control / Encryption | Status |
+|---|---|---|---|---|---|---|
+| [prompt/API/log/eval/support] | [region -> region] | Adequacy / EU-US DPF / SCC / BCR / Derogation / None | [certification, SCC module, contract annex, date checked] | [required/present/missing] | [CMK/BYOK/provider-managed] | Pass / Gap / Not Evaluable |
+
+**Decision rules:**
+
+- Mark privacy risk **High** when EU or regulated personal data leaves the EEA or primary jurisdiction without a documented transfer mechanism tied to the actual AI data flow.
+- Mark privacy risk **High** when the processor/subprocessor list omits AI tooling that receives prompts, completions, embeddings, eval data, logs, or human-review samples.
+- Mark privacy risk **Medium** when EU-US DPF certification, SCC annexes, TIA, supplementary measures, support-access region, or encryption/key-control evidence is incomplete.
+- Mark the flow **Not Evaluable** when provider region, subprocessor, transfer mechanism, DPF/SCC proof, TIA, or support-access evidence is unavailable.
 
 ---
 
@@ -433,6 +469,13 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
+| Processor/subprocessor transfers | [Yes/Partial/No/Not Evaluable] | [description] | [severity] |
+
+## Processor, Subprocessor, and Transfer Evidence
+
+| Entity | Legal Role | AI Data Types | Regions | Transfer Mechanism | CUE / Support Access | Subprocessors | Evidence | Decision |
+|---|---|---|---|---|---|---|---|---|
+| [provider/tool] | [role] | [data] | [storage/processing/support] | [adequacy/DPF/SCC/BCR/etc.] | [support/human review] | [list] | [source/date] | [Pass/Gap/Not Evaluable] |
 
 ## Recommendations
 [Prioritized list of remediation actions with regulatory alignment]
@@ -451,6 +494,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | NIST AI RMF 1.0 | GOVERN 1.1 | Legal and regulatory requirements applicable to the AI system |
 | OWASP Top 10 for LLMs (2025) | LLM02 | Sensitive Information Disclosure -- model reveals training data, PII, or confidential information |
 | GDPR | Art. 5, 6, 13, 17, 22, 25, 35 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, DPIA |
+| GDPR | Art. 28, Chapter V | Processor/subprocessor terms and international transfer mechanisms |
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
 
@@ -472,6 +516,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
+6. **Treating EU region and no-training claims as transfer clearance.** EU storage, no-training commitments, and short retention can all be true while support access, telemetry, abuse review, eval tooling, or subprocessors create separate transfer paths. Review transfer legality separately from training and retention settings.
+
 ---
 
 ## References
@@ -480,6 +526,9 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - OWASP Top 10 for LLM Applications (2025), LLM02: Sensitive Information Disclosure -- https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
 - EU AI Act, Regulation (EU) 2024/1689 -- https://eur-lex.europa.eu/eli/reg/2024/1689
 - GDPR, Regulation (EU) 2016/679 -- https://eur-lex.europa.eu/eli/reg/2016/679
+- European Commission Standard Contractual Clauses -- https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en
+- EDPB Recommendations 01/2020 on supplementary measures for transfers -- https://www.edpb.europa.eu/our-work-tools/our-documents/recommendations/recommendations-012020-measures-supplement-transfer_en
+- Data Privacy Framework official program -- https://www.dataprivacyframework.gov/
 - CCPA/CPRA, California Civil Code Sec. 1798.100-199 -- https://leginfo.legislature.ca.gov/
 - Carlini, N. et al. (2021). "Extracting Training Data from Large Language Models." USENIX Security Symposium. arXiv:2012.07805
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
@@ -487,3 +536,12 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - Microsoft Presidio (PII detection and anonymization) -- https://github.com/microsoft/presidio
 - NIST SP 800-188, De-Identifying Government Datasets -- https://csrc.nist.gov/publications/detail/sp/800-188/final
 - Article 29 Working Party, Guidelines on Data Protection Impact Assessment (WP 248) -- https://ec.europa.eu/newsroom/article29/items/611236
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.1 | 2026-06-06 | Add processor, subprocessor, and international-transfer evidence gates for AI data flows. |
+| 1.0.0 | Initial | Initial AI data privacy and governance review skill. |
