@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,7 @@ Before beginning triage, gather or confirm:
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
+- [ ] **Timestamp reliability:** For every correlated source, collect original event time, ingestion/index time, timezone, timestamp precision, source clock offset or NTP confidence, and any corrected event time used for ordering.
 
 If some context is unavailable, proceed with available information and note gaps as assumptions.
 
@@ -79,6 +80,7 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
+| **Timestamp metadata** | Event time, ingestion/index time, timezone, precision, source clock offset or NTP status, corrected event time | SIEM metadata, EDR sensor health, NTP/chrony logs, cloud audit delivery fields |
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
 
@@ -93,6 +95,29 @@ Connect the alert data with surrounding context to build a picture of what happe
 3. **Behavioral correlation:** Does this activity match known ATT&CK technique patterns? Does it match the user's or system's normal behavior baseline?
 4. **Threat intel correlation:** Do any indicators match known threat actor infrastructure, malware campaigns, or published IOCs?
 5. **Kill chain correlation:** Where does this activity fall in the attack lifecycle? Is there evidence of preceding (reconnaissance, initial access) or subsequent (persistence, lateral movement, exfiltration) stages?
+
+**Timeline reliability gate:**
+
+Do not treat a displayed SIEM timeline, ingestion order, or raw source timestamp as authoritative until the event times are normalized and confidence-scored. Record the following evidence before using event order to justify TP, BTP, FP, priority, or escalation decisions:
+
+| ID | Evidence Gate | Requirement |
+|----|---------------|-------------|
+| `ALERT-TIME-01` | Event and ingestion time | Preserve both original `event_time` and `ingestion_time` or `_indextime` for each source. |
+| `ALERT-TIME-02` | Timezone and precision | Normalize to UTC while documenting source timezone, timestamp precision, and any truncation or rounding. |
+| `ALERT-TIME-03` | Source clock confidence | Record source clock offset, NTP/chrony/agent health, or mark the offset as unknown. |
+| `ALERT-TIME-04` | Corrected ordering | Compare corrected event times, not ingestion order, when deciding what happened before or after the alert. |
+| `ALERT-TIME-05` | Ingestion latency | Measure or estimate ingestion latency for SIEM, EDR, IdP, SaaS, cloud audit, and network sources; flag delayed or backfilled telemetry. |
+| `ALERT-TIME-06` | Timeline confidence | Assign `High`, `Medium`, or `Low` timeline confidence and explain how it affects disposition and priority. |
+| `ALERT-TIME-07` | Offline or delayed sources | Treat offline endpoint uploads, mobile telemetry, regional cloud-audit delays, and batch imports as timeline uncertainty until corrected. |
+| `ALERT-TIME-08` | Escalation uncertainty | If event ordering is material but timeline confidence is low, escalate with the uncertainty stated instead of closing as FP or BTP. |
+
+**Timeline confidence scoring:**
+
+| Confidence | Criteria | Decision Impact |
+|------------|----------|-----------------|
+| High | Event times and ingestion times are preserved, source clocks are synchronized or offset-corrected, timezone/precision are known, and ordering remains stable after correction. | Timeline-dependent TP/BTP/FP decisions may rely on event order. |
+| Medium | Most sources are normalized, but one non-critical source has unknown offset, coarse precision, or moderate delivery delay that does not change the key sequence. | Keep the decision provisional if that source affects priority or escalation. |
+| Low | Clock offset is unknown or large, ingestion latency could reverse the sequence, offline/backfilled telemetry is present, or corrected ordering contradicts the displayed timeline. | Do not close as FP/BTP based on sequence alone; document uncertainty and escalate or collect more evidence. |
 
 **ATT&CK-based correlation framework:**
 
@@ -135,7 +160,7 @@ Assign a priority level based on the combination of asset criticality, threat se
 | User privilege level | Domain admin, service account, C-suite | Standard user, contractor |
 | Threat intel match | IOCs match active campaign | No TI matches, known benign scanner |
 | Kill chain stage | Late-stage (exfiltration, impact) | Early-stage (reconnaissance) |
-| Confidence level | Multiple corroborating signals | Single low-fidelity signal |
+| Confidence level | Multiple corroborating signals and high-confidence corrected timeline | Single low-fidelity signal or low-confidence event ordering |
 | Business context | During M&A, audit, or incident response | Normal operations |
 
 ### Phase 4: Escalate
@@ -168,6 +193,7 @@ Escalation Notice:
 - Affected User:      [Username, role, privilege level]
 - ATT&CK Technique:   [Technique ID and name if mapped]
 - Key Evidence:       [Bullet list of critical findings]
+- Timeline Confidence:[High / Medium / Low, with key clock or latency caveat]
 - Recommended Action: [Containment steps, investigation scope]
 - Escalated To:       [Name/role of escalation recipient]
 - Escalated By:       [Analyst name]
@@ -194,7 +220,7 @@ Produce the triage decision as a structured report:
 ```markdown
 ## Alert Triage Report
 **Date:** [YYYY-MM-DD HH:MM UTC]
-**Skill:** alert-triage v1.0.0
+**Skill:** alert-triage v1.1.0
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 **Analyst:** [Name or AI-assisted]
 
@@ -221,6 +247,7 @@ Produce the triage decision as a structured report:
 | **Disposition** | **[True Positive / Benign True Positive / False Positive]** |
 | **Priority** | **[P1 Critical / P2 High / P3 Medium / P4 Low]** |
 | **Confidence** | [High / Medium / Low] |
+| **Timeline Confidence** | [High / Medium / Low] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
 
 ### Evidence Summary
@@ -230,6 +257,7 @@ Produce the triage decision as a structured report:
 
 ### Correlation Results
 - **Temporal:** [Related events within +/- 30 min window]
+- **Timeline Reliability:** [event time vs ingestion time, source clock offset/NTP confidence, timezone/precision normalization, corrected ordering, and latency caveats]
 - **Lateral:** [Related alerts on other hosts/users]
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
@@ -243,6 +271,11 @@ Produce the triage decision as a structured report:
 [If disposition is BTP or FP, describe the recommended rule tuning
 to prevent recurrence -- e.g., add filter for specific parent process,
 exclude known-good IP range, adjust threshold.]
+
+### Timeline Evidence Matrix
+| Source | Event Time | Ingestion Time | Clock Offset / NTP | Timezone / Precision | Corrected Event Time | Ingestion Latency | Timeline Confidence |
+|--------|------------|----------------|--------------------|----------------------|----------------------|-------------------|---------------------|
+| [SIEM / EDR / IdP / Cloud / Network] | [Original source time] | [Indexed or received time] | [Offset or unknown] | [UTC/local, seconds/ms] | [UTC corrected time] | [Duration] | [High/Medium/Low] |
 ```
 
 ---
@@ -315,7 +348,11 @@ Marking an alert as "False Positive" or "Benign" without recording why leads to 
 
 Investigating an alert in isolation without checking for activity before and after the detected event misses multi-stage attacks. An attacker who triggers one alert likely generated detectable activity at other stages of the kill chain. Always check for related events within a +/- 30 minute window on the same host and user, and look for lateral activity on other hosts.
 
-### Pitfall 5: Delaying Escalation While Seeking Perfect Information
+### Pitfall 5: Trusting Raw Timestamp Order Without Clock or Ingestion Evidence
+
+Cross-source timelines can be misleading when endpoint clocks drift, SaaS logs arrive late, cloud audit events are delivered regionally, or SIEM views sort by ingestion time instead of event time. A sequence such as "VPN login, token use, process execution" may reverse after clock correction. Preserve original event times, ingestion times, source clock evidence, timezone/precision, corrected ordering, and timeline confidence before using sequence to downgrade or escalate an alert.
+
+### Pitfall 6: Delaying Escalation While Seeking Perfect Information
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
