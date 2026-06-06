@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -312,6 +312,13 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain or use ePHI
 - Verify audit logging is enabled on all ePHI systems
 - Verify logs are reviewed and retained appropriately
+- Require an ePHI audit-control coverage matrix before marking this standard compliant. Generic "logging enabled", one EHR login event, or SIEM forwarding alone is not sufficient evidence for 164.312(b).
+- For each in-scope system, API, data warehouse, mobile app, interface engine, medical device, and Business Associate platform that creates, receives, maintains, or transmits ePHI, record whether the audit trail covers authentication success/failure, ePHI view/read access, ePHI export/download/print/share actions, ePHI create/modify/delete/restore actions, break-glass or emergency access, administrative privilege changes, audit-configuration changes, API/service-account access, and denied authorization decisions.
+- Capture the audit evidence source for each event family: application audit log, database audit log, cloud audit trail, API gateway log, SIEM query, EDR record, Business Associate report, or compensating manual control.
+- Verify log integrity and time basis: NTP/time-source evidence, immutable or WORM retention where appropriate, hash/signature or archive controls, chain-of-custody for exported evidence, and restore/export test evidence for retained logs.
+- Link 164.312(b) audit controls to 164.308(a)(1)(ii)(D) Information System Activity Review by recording the report/query reviewed, review owner, cadence, exception disposition, and follow-up ticket or risk acceptance.
+- Classify login-only logging, missing ePHI activity event coverage, mutable logs with no integrity evidence, missing time basis, or activity reviews disconnected from collected audit events as **Partial Compliance** or **Non-Compliance** depending on scope and risk.
+- Mark legacy or Business Associate systems as **Not Evaluable** when event coverage, integrity, or review evidence cannot be obtained. Do not infer compliance from retention policy text alone.
 
 #### 164.312(c)(1) — Integrity (Standard)
 
@@ -446,6 +453,12 @@ Assess:
 ### Technical Safeguards (164.312)
 [same table format]
 
+## HIPAA Audit-Control Coverage Matrix
+
+| ePHI System | Event Coverage | Log Source | Integrity / Time Basis | Retention Evidence | Activity Review Linkage | Exceptions / Owner | Decision |
+|-------------|----------------|------------|------------------------|--------------------|-------------------------|--------------------|----------|
+| [EHR/API/warehouse/BA system] | [login, view, export, modify, delete, failed access, break-glass, admin change, API/service access] | [app/db/cloud/SIEM/BA report] | [NTP, immutable archive, hash/signature, chain of custody] | [period, archive, restore/export test] | [164.308(a)(1)(ii)(D) report, owner, cadence, disposition] | [gap owner, ticket, compensating control] | [Compliant / Partial / Non-Compliance / Not Evaluable] |
+
 ### Organizational Requirements (164.314)
 [same table format]
 
@@ -571,6 +584,8 @@ Policies, Procedures, and Documentation — 164.316
 
 5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
 
+6. **Treating audit logging as audit-control coverage.** A SIEM integration or retained login event does not prove 164.312(b) compliance unless reviewers can show ePHI event coverage, reliable timestamps, integrity/retention evidence, and a documented 164.308(a)(1)(ii)(D) activity-review loop. Login-only audit trails, mutable exports, disconnected reviews, or unknown Business Associate event coverage should be reported as gaps or Not Evaluable outcomes.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -592,6 +607,9 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - 45 CFR Part 164, Subpart C — Security Standards for the Protection of Electronic Protected Health Information
 - 45 CFR Part 164, Subpart D — Notification in the Case of Breach of Unsecured Protected Health Information
 - HHS OCR HIPAA Security Rule Guidance Material (hhs.gov/hipaa/for-professionals/security/guidance)
+- eCFR 45 CFR 164.308 — Administrative Safeguards: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.308
+- eCFR 45 CFR 164.312 — Technical Safeguards: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.312
+- eCFR 45 CFR 164.316 — Policies and Procedures and Documentation Requirements: https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164/subpart-C/section-164.316
 - HHS OCR HIPAA Audit Protocol (2016 revision)
 - NIST SP 800-66 Rev. 2 — Implementing the Health Insurance Portability and Accountability Act (HIPAA) Security Rule: A Cybersecurity Resource Guide (February 2024)
 - HHS OCR Breach Portal and Resolution Agreements archive
@@ -599,3 +617,9 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - H-ISAC (Health Information Sharing and Analysis Center) — https://h-isac.org/
 - CISA Healthcare and Public Health Sector Guidance — https://www.cisa.gov/topics/critical-infrastructure-security-and-resilience/critical-infrastructure-sectors/healthcare-and-public-health-sector
 - KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026) — https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+
+## Changelog
+
+- **1.0.2** — Added 164.312(b) audit-control evidence gates, ePHI event coverage requirements, log integrity/time-basis checks, activity-review linkage, Not Evaluable handling, and report output fields for HIPAA audit-control coverage.
+- **1.0.1** — Added destructive/wiper malware considerations for healthcare risk analysis, training, and contingency planning.
+- **1.0.0** — Initial HIPAA Security Rule review coverage.
