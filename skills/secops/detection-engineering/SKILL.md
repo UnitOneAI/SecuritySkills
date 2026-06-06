@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Before beginning, gather or confirm:
 - [ ] **SIEM platform(s):** Target SIEM for rule deployment (Microsoft Sentinel, Splunk, Elastic, Chronicle, QRadar) -- determines Sigma backend conversion target.
 - [ ] **Environment context:** Operating systems, domain structure, cloud providers, key applications in the environment.
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
+- [ ] **Rule lifecycle evidence:** Current Sigma status, validation method/date, sample event IDs, backend conversion target/version, production field coverage, deployment scope, false-positive health, owner, review cadence, and demotion criteria.
 - [ ] **Detection priority:** Is this for a known active threat, proactive coverage expansion, or compliance requirement?
 - [ ] **Organizational naming conventions:** Rule ID format, severity taxonomy, and tagging standards used by the detection engineering team.
 
@@ -182,6 +183,33 @@ fields:
 | `level` | Yes | `informational`, `low`, `medium`, `high`, `critical` |
 | `fields` | Recommended | Fields to include in alert output for analyst context |
 
+#### Sigma Status Promotion Evidence
+
+Treat Sigma `status` as an evidence-backed lifecycle claim. A syntactically valid rule or one lab test is not enough to call a rule `stable` if production telemetry, backend conversion, field mappings, or false-positive health are unknown.
+
+| Status | Required Evidence | Disallowed Claim |
+|---|---|---|
+| **experimental** | Rule logic drafted, ATT&CK mapping selected, expected log source identified, assumptions and blind spots documented | Do not claim production coverage or stable heatmap score |
+| **test** | Rule linted, synthetic true-positive and true-negative tests run, backend conversion attempted, field mappings reviewed against target SIEM | Do not claim operational coverage until deployed telemetry proves required fields exist |
+| **stable** | Production deployment confirmed, backend query validated, required fields present in production logs, sample event IDs retained, false-positive review completed, owner/review cadence set, and demotion criteria documented | Do not mark stable when field coverage, deployment scope, FP rate, or conversion fidelity is unknown |
+
+```
+Lifecycle Promotion Record:
+- Rule ID/Title:          [Sigma id and title]
+- Current Status:         [experimental | test | stable | deprecated | unsupported]
+- Requested Status:       [experimental | test | stable]
+- Status Rationale:       [Why the requested status is justified]
+- Validation Date/Method: [Date and Atomic/manual/replay method]
+- Sample Event IDs:       [Known TP/TN event IDs or test artifacts]
+- Backend Conversion:     [Target SIEM, backend version, conversion result]
+- Field Mapping Evidence: [Required fields and production availability]
+- Telemetry Scope:        [Segments/hosts/cloud accounts covered and excluded]
+- False-Positive Health:  [FP rate, review date, budget, known noisy sources]
+- Owner/Review Cadence:   [Owner and next review date]
+- Demotion Criteria:      [Conditions that move rule back to test/experimental]
+- Promotion Decision:     [Promote | Hold | Demote | Not Evaluable]
+```
+
 **Sigma detection logic operators:**
 
 | Operator | Usage | Example |
@@ -278,10 +306,37 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | Level | Color | Definition |
 |-------|-------|------------|
 | **None** | White | No detection rule exists for this technique |
-| **Theoretical** | Light Yellow | A rule exists but has not been validated or tested |
-| **Tested** | Light Green | Rule has been validated with synthetic test data (e.g., Atomic Red Team) |
-| **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
-| **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
+| **Theoretical** | Light Yellow | A rule exists but has not been validated, converted, or tested against the target telemetry |
+| **Tested** | Light Green | Rule has been validated with synthetic test data and backend conversion evidence, but deployment or production field coverage is not yet proven |
+| **Operational** | Green | Rule is deployed in production, required fields are present for the claimed scope, false-positive health is acceptable, and lifecycle evidence supports `stable` |
+| **Robust** | Dark Green | Multiple complementary stable/operational rules cover different procedure examples, segmented scope is explicit, and at least one rule has caught or replayed real-world activity |
+
+#### ATT&CK Coverage Evidence Gate
+
+Do not let rule existence alone drive heatmap scores. Score each technique by environment segment and cap the score when lifecycle evidence is weaker than the claimed coverage.
+
+| Evidence Gap | Maximum Coverage Level |
+|---|---|
+| Rule exists but no validation evidence | Theoretical |
+| Synthetic validation exists but backend conversion or field mapping is unproven | Tested |
+| Deployed only to a subset of the claimed population | Operational only for that segment; Theoretical/None elsewhere |
+| Production fields are missing, truncated, or parser-dependent | Tested or Not Evaluable until field coverage is fixed |
+| False-positive budget exceeded or rule disabled | Demote to Test or Theoretical |
+| No owner, review cadence, or demotion criteria | Tested until lifecycle ownership is documented |
+
+```
+ATT&CK Coverage Segment Record:
+- Technique:          [Txxxx[.xxx]]
+- Segment:            [Servers | Workstations | Cloud | Identity | SaaS | OT | Tenant/account]
+- Rule IDs:           [Rules contributing to coverage]
+- Deployment State:   [Not deployed | Test | Production | Disabled]
+- Telemetry Scope:    [Included/excluded host groups, accounts, products]
+- Required Fields:    [Fields and production availability]
+- Lifecycle Evidence: [Promotion record references]
+- FP Health:          [Within budget | Exceeds budget | Unknown]
+- Coverage Level:     [None | Theoretical | Tested | Operational | Robust | Not Evaluable]
+- Score Cap Reason:   [If downgraded from requested score]
+```
 
 **Heatmap construction process:**
 
@@ -365,7 +420,7 @@ Produce detection engineering deliverables in this structure:
 ```markdown
 ## Detection Engineering Report: [ATT&CK Technique ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** detection-engineering v1.0.0
+**Skill:** detection-engineering v1.0.1
 **Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
 
 ### ATT&CK Technique Summary
@@ -388,6 +443,26 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+
+### Lifecycle Promotion Evidence
+| Field | Value |
+|---|---|
+| Current / Requested Status | [experimental/test/stable/deprecated/unsupported] |
+| Status Rationale | [Evidence-backed rationale] |
+| Validation Date / Method | [Date and method] |
+| Sample Event IDs | [TP/TN event IDs or artifacts] |
+| Backend Conversion | [Target/backend version/result] |
+| Field Mapping Evidence | [Required fields and availability] |
+| Telemetry Scope | [Included and excluded segments] |
+| False-Positive Health | [Rate, budget, last review] |
+| Owner / Review Cadence | [Owner and next review] |
+| Demotion Criteria | [Conditions] |
+| Promotion Decision | [Promote/Hold/Demote/Not Evaluable] |
+
+### ATT&CK Coverage Segment Matrix
+| Technique | Segment | Rule IDs | Deployment State | Required Fields | Coverage Level | Score Cap Reason |
+|---|---|---|---|---|---|---|
+| [Txxxx] | [Segment] | [Rules] | [State] | [Fields] | [None/Theoretical/Tested/Operational/Robust/Not Evaluable] | [Reason or N/A] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -489,6 +564,10 @@ A detection rule that has never been tested against a known-true-positive event 
 ### Pitfall 4: Ignoring Detection Rule Lifecycle Management
 
 Detection rules are not write-once artifacts. Log sources change, environments evolve, adversary techniques mutate, and SIEM platforms update their query syntax. Rules that are not periodically reviewed become stale, accumulate false positives, or silently stop working. Implement a review cadence (quarterly minimum) and track rule health metrics (fire count, TP/FP ratio, last triggered date).
+
+### Pitfall 4b: Promoting Stable Rules Without Production Evidence
+
+Do not mark a Sigma rule `stable` or score ATT&CK coverage as operational when backend conversion, production field availability, deployment scope, false-positive health, owner, or demotion criteria are missing. Segment coverage by environment so a server-only rule does not overstate workstation, cloud, or SaaS coverage.
 
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
