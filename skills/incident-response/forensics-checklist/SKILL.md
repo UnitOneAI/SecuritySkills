@@ -339,6 +339,46 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
 
+### 3.5 Ephemeral Cloud Workload Evidence
+
+For Kubernetes, managed containers, and serverless functions, a cloud disk snapshot or provider activity log is not sufficient by itself. Preserve immutable workload identity, runtime configuration, and short-retention logs before pods are evicted, tasks are replaced, aliases move, or log retention expires.
+
+**Kubernetes evidence to preserve:**
+- Pod YAML/spec, namespace, node name, service account, owner references, labels, annotations, priority class, tolerations, and scheduler events
+- Container statuses, restart counts, current and previous container logs, init containers, sidecars, command/entrypoint, args, and image digests
+- Volume mounts, PVC references, `emptyDir` usage, projected config/secret references (record references and hashes where possible, not plaintext secrets)
+- Network policies, ingress/egress controls, service bindings, admission controller decisions, and Kubernetes audit events for the incident window
+- Deployment, ReplicaSet, StatefulSet, Job, or CronJob manifests that created the affected pod
+
+**Managed container service evidence to preserve:**
+- ECS task definition revision, Fargate task metadata, Cloud Run revision, AKS/EKS/GKE workload manifest, or equivalent immutable service revision
+- Image digest, registry repository metadata, signature or provenance status, pull history, and deployment timestamp
+- Runtime command, environment and secret references, execution role or service account, network configuration, security group/firewall policy, and volume mounts
+- Centralized logs, sidecar logs, service mesh telemetry, container runtime events, and cloud audit events for create/update/delete actions
+
+**Serverless evidence to preserve:**
+- Function version or immutable revision, alias mapping at incident time, deployment package or code hash, runtime, layers, and last modified timestamp
+- Environment variable and secret references (redacted), execution role/service account, IAM policy snapshot, VPC/network configuration, and concurrency settings
+- Trigger or event source mapping, queue/topic/subscription configuration, invocation logs, platform audit logs, and deployment history
+- Cold start/runtime errors, timeout and memory settings, dead-letter queue records, retry configuration, and failed invocation payload references where legally authorized
+
+**Ephemeral workload evidence gates:**
+
+| Evidence Item | What to Preserve | Common Gap |
+|---|---|---|
+| Kubernetes pod identity | Pod YAML, owner refs, namespace, node, service account, labels/annotations | Pod is evicted and only the backing node snapshot remains |
+| Container runtime state | Current/previous logs, container statuses, restart counts, command/args, image digest | Report captures `latest` tag but no immutable digest or runtime config |
+| Workload configuration | Deployment/task/function revision, env/secret refs, volume mounts, network policy | Mutable service configuration changed after containment |
+| Serverless identity | Function version/revision, alias mapping, code hash, layers, execution role | Report names only `prod` alias or `$LATEST` |
+| Provider audit trail | CloudTrail, Azure Activity Log, GCP Audit Logs, Kubernetes audit events | Audit logs are not exported before retention or region/account gaps |
+| Log retention | Invocation logs, pod logs, previous container logs, service mesh telemetry | Logs rotate before acquisition or were never enabled |
+
+**Findings conditions:**
+- Classify as P1 when a container, Kubernetes, or serverless incident cannot be tied to an immutable workload version, image digest, or function revision.
+- Classify as P1 when volatile workload logs were available but not preserved before eviction, task replacement, alias movement, or log retention expiry.
+- Classify as P2 when evidence uses mutable identifiers such as `latest`, `$LATEST`, or an alias without an incident-time mapping to immutable artifacts.
+- Classify as P2 when cloud evidence is collected from only one region, account, subscription, project, namespace, or cluster despite indicators spanning more than one scope.
+
 ---
 
 ## 4. Findings Classification
@@ -401,6 +441,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### Ephemeral Workload Evidence (if applicable)
+| Platform | Workload | Immutable Identifier | Logs Preserved | Runtime Config Preserved | Gaps |
+|---|---|---|---|---|---|
+| [Kubernetes/ECS/Fargate/Cloud Run/Lambda/Cloud Functions] | [Name/ID] | [Image digest/function version/revision] | [Yes/No] | [Yes/No] | [Notes] |
 ```
 
 ---
