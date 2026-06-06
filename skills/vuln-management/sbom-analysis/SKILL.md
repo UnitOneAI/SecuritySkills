@@ -119,16 +119,31 @@ NTIA Completeness Assessment:
 - Version present:            [N/N] ([%])
 - Unique Identifier present:  [N/N] ([%])
 - Dependency Relationships:   [N/N] ([%]) components with at least one relationship
+- Graph Completeness:         [Complete Graph | Partial Graph | Flat List | Missing] -- traceable top-level to transitive leaves
 - SBOM Author:                [Present: name | Missing]
 - Timestamp:                  [Present: ISO 8601 datetime | Missing]
 - Overall Completeness:       [Complete | Partial -- list gaps | Incomplete]
 ```
 
+#### Dependency Graph Completeness
+
+Dependency relationship presence is necessary but not sufficient. A flat list of components can satisfy the NTIA field while failing to support transitive risk triage.
+
+```
+SBOM-GRAPH-01: Transitive components are listed but not connected to a top-level dependency path
+SBOM-GRAPH-02: Dependency graph depth is 1 despite declared transitive components
+SBOM-GRAPH-03: Orphan components cannot be traced to a consuming product, package, or service
+SBOM-GRAPH-04: Multi-SBOM composition lacks linkage between sub-SBOMs and the parent product
+SBOM-GRAPH-05: CycloneDX `formulation` or SPDX relationships conflict with runtime dependency graph
+```
+
+Track `traceable_depth_max`, `orphan_component_relationships`, `flat_list_component_count`, `top_level_component_count`, and `graph_completeness_rating`. Do not rate the SBOM as Strong when the graph is flat or missing, even if all seven NTIA minimum elements are present.
+
 #### Completeness Thresholds
 
 | Rating | Criteria |
 |---|---|
-| **Complete** | All 7 NTIA elements present for 100% of components |
+| **Complete** | All 7 NTIA elements present for 100% of components and dependency graph is traceable from top-level components to transitive leaves |
 | **Substantially Complete** | All 7 elements present for >= 90% of components; gaps documented |
 | **Partial** | 5-6 elements present for majority of components; significant gaps in supplier or dependency data |
 | **Incomplete** | Fewer than 5 elements consistently present; SBOM not suitable for compliance or risk assessment |
@@ -168,7 +183,22 @@ VEX Assessment:
 - Affected:            [N] (require remediation)
 - Fixed:               [N] (verify deployment)
 - Under Investigation: [N] (monitor for updates)
+- Verification Status: [consumer_verified | third_party_verified | vendor_attested | not_verified] per entry
+- Stale VEX Entries:   [N] under-investigation or vendor-attested entries beyond expected review SLA
 ```
+
+#### VEX Credibility Assessment
+
+Not all "Not Affected" statuses carry the same confidence. Record the evidence behind the status before using it for risk acceptance.
+
+| Verification Status | Meaning | Required Evidence |
+|---|---|---|
+| **consumer_verified** | The SBOM consumer independently verified the VEX claim in its integration context | Internal code/runtime review, call graph, configuration proof, or exploitability test |
+| **third_party_verified** | Independent assessor verified the claim | External report, signed attestation, or validated test evidence |
+| **vendor_attested** | Vendor states the status but consumer has not verified it | Vendor statement, VEX author identity, publication date |
+| **not_verified** | No evidence beyond a status string | Treat as uncertain for critical paths |
+
+Add `verification_status`, `verification_date`, `verifier`, `evidence_reference`, and `stale_vex_age_days` for each VEX entry. For critical components, do not accept `vulnerable_code_not_in_execute_path` or `vulnerable_code_cannot_be_controlled_by_adversary` as final without consumer or third-party verification.
 
 ### Step 4: Transitive Dependency Analysis
 
@@ -202,6 +232,21 @@ Transitive Dependency Analysis:
 - Known Vulnerabilities:    [N] CVEs across [N] transitive components
 - Stale Dependencies:       [N] components with no update in >= 18 months
 ```
+
+### Step 4b: SBOM Freshness and Trustworthiness
+
+Assess whether the SBOM is current enough and trustworthy enough to support vulnerability decisions.
+
+```
+SBOM-FRESH-01: SBOM timestamp predates the deployed/released software version by more than policy allows
+SBOM-FRESH-02: SBOM age exceeds freshness threshold (recommended: 30 days for active products, 90 days for stable releases)
+SBOM-FRESH-03: Last CVE scan is older than the SBOM or older than the vulnerability-management SLA
+SBOM-TRUST-01: SBOM is unsigned or lacks build provenance / generation attestation
+SBOM-TRUST-02: Signer identity, SBOM author, and build pipeline identity cannot be correlated
+SBOM-TRUST-03: Multi-SBOM composition lacks parent/child trust chain evidence
+```
+
+Record `sbom_age_days`, `software_version_lag`, `latest_release_version`, `last_cve_scan_date`, `cve_scan_currency`, `build_provenance_level`, `signer_identity`, `generation_tool`, and `trustworthiness_rating` (`Trusted`, `Attested`, `Unsigned`, `Untrusted`).
 
 ### Step 5: License Conflict Detection
 
@@ -245,10 +290,10 @@ Classify the overall SBOM analysis into one of the following states:
 
 | Classification | Definition | Criteria |
 |---|---|---|
-| **Critical Supply Chain Risk** | SBOM reveals high-risk supply chain exposure | Known exploited CVEs in dependencies, incomplete SBOM with missing critical elements, or license conflicts blocking distribution |
-| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, multiple stale transitive dependencies, or VEX "Under Investigation" for critical components |
-| **Acceptable** | SBOM meets minimum requirements with minor gaps | NTIA completeness >= 90%, no critical/high CVEs in dependencies, minor license issues documented |
-| **Strong** | SBOM is comprehensive and low-risk | NTIA 100% complete, all VEX statuses resolved, no critical dependency risks, clean license posture |
+| **Critical Supply Chain Risk** | SBOM reveals high-risk supply chain exposure | Known exploited CVEs in dependencies, incomplete SBOM with missing critical elements, flat graph for critical product, or license conflicts blocking distribution |
+| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, partial/flat graph, stale SBOM, unsigned/untrusted SBOM, multiple stale transitive dependencies, or VEX "Under Investigation" for critical components |
+| **Acceptable** | SBOM meets minimum requirements with minor gaps | NTIA completeness >= 90%, traceable graph, current timestamp, no critical/high CVEs in dependencies, minor license issues documented |
+| **Strong** | SBOM is comprehensive and low-risk | NTIA 100% complete, complete dependency graph, fresh/trusted SBOM provenance, all VEX statuses resolved or verified, no critical dependency risks, clean license posture |
 
 ---
 
@@ -293,12 +338,32 @@ conflicts), and overall classification.]
 
 **NTIA Completeness Rating:** [Complete / Substantially Complete / Partial / Incomplete]
 
+### Dependency Graph Completeness
+
+| Metric | Value | Notes |
+|---|---|---|
+| Graph Completeness Rating | [Complete Graph / Partial Graph / Flat List / Missing] | [Notes] |
+| Traceable Max Depth | [N] | [Top-level to transitive leaves] |
+| Orphan Components | [N] | [Components with no consuming path] |
+| Flat-Listed Transitives | [N] | [Transitive components with no parent-child linkage] |
+| Multi-SBOM Linkage | [Pass/Fail/N/A] | [Parent/child composition evidence] |
+
 ### VEX Status Summary
 [If VEX documents are provided]
 
-| CVE ID | Component | VEX Status | Justification | Action |
-|---|---|---|---|---|
-| [CVE-ID] | [component] | [Not Affected/Affected/Fixed/Under Investigation] | [justification if Not Affected] | [action] |
+| CVE ID | Component | VEX Status | Justification | Verification Status | Evidence / Verifier | Action |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [component] | [Not Affected/Affected/Fixed/Under Investigation] | [justification if Not Affected] | [consumer_verified/vendor_attested/etc.] | [reference] | [action] |
+
+### SBOM Freshness and Trustworthiness
+
+| Check | Value | Status | Notes |
+|---|---|---|---|
+| SBOM Age | [N days] | [Fresh/Stale] | [Timestamp vs current/release date] |
+| Software Version Lag | [N releases] | [Current/Lagging] | [Latest known version] |
+| Last CVE Scan Currency | [date / N days] | [Current/Stale] | [Scanner/source] |
+| Build Provenance | [SLSA level / unsigned / unknown] | [Trusted/Attested/Unsigned/Untrusted] | [Signer or attestation] |
+| VEX Staleness | [N stale entries] | [Pass/Fail] | [Under Investigation beyond SLA] |
 
 ### Transitive Dependency Risk
 
