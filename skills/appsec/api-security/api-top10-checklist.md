@@ -80,6 +80,31 @@ const resolvers = {
 };
 ```
 
+### gRPC Vulnerable Patterns
+
+```go
+// VULNERABLE: Authenticated caller can read any tenant invoice by ID.
+func (s *BillingServer) GetInvoice(ctx context.Context, req *pb.GetInvoiceRequest) (*pb.Invoice, error) {
+    if auth.FromContext(ctx) == nil {
+        return nil, status.Error(codes.Unauthenticated, "login required")
+    }
+    return s.store.Invoice(ctx, req.InvoiceId) // No tenant or ownership check.
+}
+```
+
+Remediation:
+
+```go
+// SECURE: Enforce caller-to-object relationship before returning data.
+func (s *BillingServer) GetInvoice(ctx context.Context, req *pb.GetInvoiceRequest) (*pb.Invoice, error) {
+    caller := auth.FromContext(ctx)
+    if caller == nil {
+        return nil, status.Error(codes.Unauthenticated, "login required")
+    }
+    return s.store.InvoiceForTenant(ctx, caller.TenantID, req.InvoiceId)
+}
+```
+
 ### BOLA vs BFLA Distinction
 
 BOLA and BFLA (API5:2023) are frequently confused. The distinction is critical for accurate findings:
@@ -101,6 +126,8 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] gRPC methods that accept object IDs enforce tenant, owner, account, or relationship checks after metadata authentication.
+- [ ] grpc-gateway routes and direct gRPC methods share the same object-level authorization policy.
 
 ---
 
@@ -119,6 +146,7 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 - Missing or weak token rotation -- refresh tokens that never expire or are not rotated on use.
 - Password reset or account recovery flows that leak tokens or allow enumeration.
 - Micro-service-to-service communication without authentication (implicit trust based on network location).
+- gRPC metadata accepted without token validation, audience checks, issuer checks, or mTLS/service identity validation.
 
 ### Vulnerable Patterns
 
@@ -157,6 +185,7 @@ paths:
 - Implement token expiration: access tokens (5-15 minutes), refresh tokens (hours to days with rotation).
 - Use `bcrypt`, `scrypt`, or `Argon2id` for password storage.
 - Authenticate service-to-service calls with mTLS or signed tokens, not network-based trust.
+- For gRPC, validate `authorization` or custom metadata with explicit issuer, audience, expiry, and algorithm requirements; validate mTLS identities against allowed workload or service identities.
 
 ### Review Checklist
 
@@ -166,6 +195,8 @@ paths:
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
+- [ ] gRPC interceptors or per-method handlers authenticate metadata before service logic runs.
+- [ ] mTLS or SPIFFE/SPIRE identities are constrained to expected services, not any workload on the mesh.
 
 ---
 
@@ -267,6 +298,21 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```proto
+// VULNERABLE: Streaming methods with no documented size, duration, or rate controls.
+service ReportService {
+  rpc Upload(stream ReportChunk) returns (UploadResult);
+  rpc Search(SearchRequest) returns (stream SearchResult);
+}
+```
+
+```text
+max_receive_message_size: unlimited
+deadline_required: false
+stream_rate_limit: none
+per_peer_concurrency: not configured
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
@@ -275,6 +321,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
+- For gRPC, enforce maximum receive/send message sizes, required deadlines or server-side timeouts, stream duration and message count limits, cancellation propagation, and per-peer concurrency controls.
 
 ### Review Checklist
 
@@ -284,6 +331,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
+- [ ] gRPC unary and streaming methods have message size limits, deadlines/timeouts, cancellation handling, stream limits, and backpressure controls.
 
 ---
 
@@ -316,12 +364,24 @@ const resolvers = {
 };
 ```
 
+```go
+// VULNERABLE: Authentication exists, but no method-level privilege check.
+func (s *AdminServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
+    user := auth.FromContext(ctx)
+    if user == nil {
+        return nil, status.Error(codes.Unauthenticated, "login required")
+    }
+    return s.store.DeleteUser(ctx, req.UserId) // Any authenticated user can call admin function.
+}
+```
+
 ### Remediation Guidance
 
 - Implement a centralized authorization middleware or policy engine that enforces role/permission checks consistently across all endpoints.
 - Deny by default: every endpoint should require explicit permission grants. Do not rely on "security through obscurity" of admin URL paths.
 - Enforce authorization on every HTTP method independently. A user authorized to `GET` a resource is not automatically authorized to `DELETE` it.
 - In GraphQL, use directive-based or middleware-based authorization on mutations (`@hasRole(role: ADMIN)`).
+- In gRPC, enforce role, tenant, and service-to-service authorization in interceptors or explicit per-method policy before privileged service logic.
 - Regularly audit the endpoint inventory against the authorization policy matrix to detect gaps.
 
 ### Review Checklist
@@ -330,6 +390,7 @@ const resolvers = {
 - [ ] Authorization middleware is centralized and applied consistently.
 - [ ] Each HTTP method on each endpoint has an independent authorization check.
 - [ ] GraphQL mutations enforce role/permission checks in resolvers or directives.
+- [ ] gRPC methods with privileged actions map to a method authorization policy and deny unauthorized callers even when metadata authentication succeeds.
 - [ ] The authorization policy is deny-by-default; endpoints are inaccessible unless explicitly permitted.
 
 ---
@@ -450,6 +511,13 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+```go
+// VULNERABLE: Reflection registered on the same public listener as admin RPCs.
+grpcServer := grpc.NewServer()
+pb.RegisterAdminServiceServer(grpcServer, adminServer)
+reflection.Register(grpcServer)
+```
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
@@ -462,6 +530,7 @@ Document doc = builder.parse(request.getInputStream());
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
+- Disable public gRPC reflection or restrict it to authenticated internal listeners. Health checks should not reveal method names, tenant data, versions, or backend dependency details.
 
 ### Review Checklist
 
@@ -472,6 +541,7 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
+- [ ] gRPC reflection is disabled on public listeners or constrained by authentication, network policy, and method sensitivity.
 
 ---
 
@@ -485,6 +555,7 @@ Document doc = builder.parse(request.getInputStream());
 - Multiple API versions running simultaneously (`/api/v1/`, `/api/v2/`, `/api/v3/`) where older versions lack security patches.
 - Debug or test endpoints present in production (`/api/debug/`, `/api/test/`, `/api/internal/`, `/graphql/playground`).
 - Undocumented endpoints that exist in code but are absent from the OpenAPI specification.
+- gRPC services or methods present in `.proto` files, generated stubs, reflection output, or grpc-gateway annotations but missing from the review inventory.
 - API endpoints exposed to the public internet that should be internal-only.
 - Deprecated endpoints that remain functional after the announced retirement date.
 - Different security configurations between environments (staging allows unauthenticated access, production does not, but staging is publicly accessible).
@@ -498,6 +569,7 @@ Document doc = builder.parse(request.getInputStream());
 4. Flag any endpoint marked as deprecated that is still reachable.
 5. Check for environment-specific routes (debug, test, internal) that should not exist in production.
 6. Verify that older API versions have equivalent security controls to current versions.
+7. For gRPC, compare `.proto` service definitions, registered server implementations, reflection output, and grpc-gateway mappings to find shadow RPC methods.
 ```
 
 ### Remediation Guidance
@@ -515,6 +587,7 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] No debug, test, or playground endpoints are accessible in production.
 - [ ] Internal APIs are not reachable from external networks.
 - [ ] CI/CD pipelines validate that code routes match the API specification.
+- [ ] gRPC `.proto`, generated stubs, reflection, and grpc-gateway mappings agree with the documented service inventory.
 
 ---
 

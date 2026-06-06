@@ -1,17 +1,19 @@
 ---
 name: api-security
 description: >
-  Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
+  Reviews REST, GraphQL, and gRPC/protobuf APIs against the OWASP API
+  Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
-tags: [appsec, api, rest, graphql]
+  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, gRPC
+  reflection, protobuf method authorization, and SSRF. Produces findings
+  mapped to API1-API10 with remediation guidance.
+tags: [appsec, api, rest, graphql, grpc, protobuf]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -21,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST, GraphQL, and gRPC/protobuf APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, protobuf service definitions, gRPC interceptors, grpc-gateway mappings, and API gateway configurations.
 
 ---
 
@@ -32,12 +34,12 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 Before analyzing any endpoint, establish a complete inventory of the API surface under review.
 
 1. **Identify the API style** -- REST (OpenAPI/Swagger), GraphQL, gRPC, or hybrid. Each style has distinct attack patterns.
-2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions.
-3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, or custom tokens. Note which endpoints require authentication and which are public.
-4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
+2. **Catalog all endpoints and operations** -- For REST, list every path and HTTP method. For GraphQL, list all queries, mutations, and subscriptions. For gRPC, list every `.proto` service, RPC method, streaming direction, grpc-gateway annotation, reflection endpoint, and health service exposed by each listener.
+3. **Map authentication mechanisms** -- OAuth 2.0 flows, API keys, JWTs, session cookies, mTLS, gRPC metadata tokens, SPIFFE/SPIRE identities, or custom tokens. Note which endpoints or RPC methods require authentication and which are public.
+4. **Identify authorization models** -- RBAC, ABAC, ownership-based, tenant-boundary, service-to-service, or no authorization. Document how object-level and function-level access control decisions are made per route, resolver, or RPC method.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, gRPC upstreams, service meshes, or webhooks that the API consumes.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -92,7 +94,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.1.0
 
 ### Summary
 
@@ -201,6 +203,53 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 ---
 
+## gRPC/Protobuf-Specific Considerations
+
+gRPC APIs share the OWASP API risks with REST and GraphQL, but their attack surface is defined by `.proto` services, generated stubs, interceptors, metadata, listener exposure, reflection, streaming behavior, and optional grpc-gateway HTTP mappings. Do not downgrade a gRPC service merely because it lacks OpenAPI paths or REST middleware; require evidence from the gRPC control plane instead.
+
+### gRPC Evidence Table
+
+For each reviewed service, capture this evidence before assigning severity:
+
+| Evidence Field | Required Detail |
+|---|---|
+| **Service and method** | `.proto` package, service, RPC name, request/response types, and whether it is unary, client-streaming, server-streaming, or bidirectional |
+| **Listener exposure** | Internet-facing, partner-facing, internal-only, admin-only, mesh-only, or localhost; include gateway or load balancer path if present |
+| **Reflection status** | Disabled, internal-only, authenticated, or public; note whether reflection reveals privileged methods |
+| **Authentication source** | mTLS identity, JWT/OAuth metadata, API key metadata, service account, SPIFFE ID, or unauthenticated |
+| **Authorization decision point** | Interceptor, per-method policy, service implementation, sidecar/mesh policy, or missing/Not Evaluable |
+| **Tenant/object boundary** | Caller tenant, object owner, organization, project, or account relationship checked by the method |
+| **Resource controls** | `max_receive_message_bytes`, deadlines/timeouts, cancellation handling, stream duration, stream rate, and per-peer concurrency |
+| **Gateway parity** | grpc-gateway or transcoding route, HTTP method/path, and whether REST and gRPC paths share the same policy |
+
+### Reflection and Service Inventory
+
+Public gRPC reflection can turn undocumented RPC methods into an enumerable attack surface. Report reflection as:
+
+- **High** when public reflection exposes privileged methods or admin services without authentication or network restriction.
+- **Medium** when reflection is externally reachable but sensitive methods still require strong auth and method authorization.
+- **Low/Informational** when reflection is internal-only, authenticated, and restricted by listener or network policy.
+
+### Metadata Authentication vs Method Authorization
+
+Authentication metadata only proves who the caller is. Each sensitive RPC method still needs method-level authorization for role, tenant, object ownership, and service-to-service trust. A method that checks only `user != nil` before deleting, exporting, rotating, or updating resources is a BFLA/BOLA candidate.
+
+### Deadlines, Message Limits, and Streaming Abuse
+
+Map missing gRPC deadlines, unlimited protobuf message size, unbounded streams, no backpressure, and missing cancellation handling to API4:2023. Streaming upload/search methods should define:
+
+- Maximum receive/send message sizes.
+- Required caller deadlines or server-side timeouts.
+- Stream duration and message count limits.
+- Per-peer concurrency and rate limits.
+- Cancellation propagation to downstream work.
+
+### False Positive Guardrails
+
+Do not flag safe gRPC services as High solely because they do not expose REST routes, OpenAPI specs, or HTTP middleware. A benign service may rely on `.proto` inventory, mTLS, authenticated metadata, per-method interceptors, bounded messages, required deadlines, disabled public reflection, and service mesh policy. Mark missing runtime evidence as `Not Evaluable` instead of assuming exposure.
+
+---
+
 ## Common Pitfalls
 
 1. **Confusing authentication with authorization.** An API that verifies the user's identity (authentication) but does not verify the user's permission to access the specific resource or function (authorization) is vulnerable to both BOLA (API1) and BFLA (API5). These are distinct checks that must both be present.
@@ -214,6 +263,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Reviewing gRPC like REST.** gRPC services may have no path router or OpenAPI document. Review `.proto` services, generated stubs, interceptors, reflection registration, metadata auth, and service config instead of assuming REST-style middleware is the source of truth.
+
+8. **Treating mTLS as complete authorization.** mTLS authenticates a workload or client certificate; it does not prove that the caller may perform every RPC method or access every object. Privileged methods still need role, tenant, and ownership policy evidence.
 
 ---
 
@@ -239,3 +292,8 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+- **gRPC Authentication:** https://grpc.io/docs/guides/auth/
+- **gRPC Metadata:** https://grpc.io/docs/guides/metadata/
+- **gRPC Deadlines:** https://grpc.io/docs/guides/deadlines/
+- **gRPC Server Reflection Protocol:** https://github.com/grpc/grpc/blob/master/doc/server-reflection.md
+- **grpc-gateway Documentation:** https://grpc-ecosystem.github.io/grpc-gateway/
