@@ -1,0 +1,9 @@
+control: A.8.10 Information deletion
+processor: support_saas
+contains_personal_or_confidential_data: true
+delete_request_forwarded_at: 2026-06-01T10:00:00Z
+confirmation_received: missing
+sla: missing
+backup_retention_disclosed: missing
+subprocessor_propagation: unknown
+expected_assessment: not_evaluable_or_minor_nonconformity

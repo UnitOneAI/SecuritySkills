@@ -1,0 +1,14 @@
+control: A.8.10 Information deletion
+information_class: payment_dispute_records
+retained_after_deletion_request:
+  reason: legal_hold
+  authority: litigation_preservation_order
+  approver: general_counsel
+  scope: dispute_case_records_only
+  expiration_or_review_date: 2026-12-31
+  residual_risk_owner: legal_operations
+  linked_risk_or_requirement: risk-42
+access_controls:
+  restricted_group: legal-hold-reviewers
+  quarterly_review: documented
+expected_assessment: conforming_exception_with_residual_risk_traceability

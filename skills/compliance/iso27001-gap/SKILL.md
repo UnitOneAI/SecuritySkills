@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -73,6 +73,9 @@ Before beginning the gap analysis, ensure the following are available:
 - Incident response plans and business continuity documentation
 - Any prior audit reports (internal or external) and corrective action logs
 - Vendor and third-party service agreements
+- Retention schedules, deletion runbooks, backup/restore procedures, logging
+  retention records, downstream processor deletion confirmations, and legal-hold
+  registers when assessing A.8.10 Information deletion
 
 ## Constraints
 
@@ -283,7 +286,10 @@ Use the following maturity scoring:
 **A.8.7 Protection against malware** — Implemented and supported by user awareness.
 **A.8.8 Management of technical vulnerabilities** — Obtained, evaluated, and taken appropriate measures.
 **A.8.9 Configuration management** — Configurations established, documented, implemented, monitored, reviewed (new in 2022).
-**A.8.10 Information deletion** — Deleted when no longer required.
+**A.8.10 Information deletion** — Deleted when no longer required. Require
+evidence that deletion scope covers primary repositories, derived copies,
+backups, logs, exports, test datasets, downstream processors, and approved
+retention exceptions.
 **A.8.11 Data masking** — Used in accordance with access control policy and business requirements (new in 2022).
 **A.8.12 Data leakage prevention** — Applied to systems/networks/other devices that process/store/transmit sensitive information (new in 2022).
 **A.8.13 Information backup** — Maintained and regularly tested.
@@ -323,7 +329,45 @@ Exclusions are permitted only where the control is genuinely not applicable to t
 
 ---
 
-### Step 6: Internal Audit Readiness (Clause 9.2)
+### Step 6: A.8.10 Information Deletion Evidence Gate
+
+When A.8.10 is applicable, distinguish deletion policy intent from operational
+deletion proof. Do not mark A.8.10 as conforming solely because a primary
+application delete endpoint, retention policy, or one successful job screenshot
+exists.
+
+Required evidence:
+
+- Information class, asset owner, repository, and copy type for every scoped
+  data store: primary database, object storage, search index, logs, backups,
+  analytics warehouse, exports, test datasets, SaaS processors, and archives.
+- Retention basis for each store: legal, contractual, business, security,
+  backup, incident evidence, or no longer required.
+- Deletion method and proof artifact: physical delete, lifecycle expiry,
+  tombstone, anonymization, cryptographic erasure, key destruction, restore-test
+  handling, processor confirmation, or retained exception.
+- Backup and log handling: retention period, restore safeguards, masking or
+  minimization, access restrictions, and documented expiry date.
+- Downstream processor handling: delete request forwarding, SLA, confirmation
+  received, backup-retention disclosure, and sub-processor propagation.
+- Retention exception handling: authority, approver, scope, owner, expiration or
+  review date, residual risk owner, and SoA/risk-treatment linkage.
+
+Scoring guardrails:
+
+- Cap A.8.10 at **Managed** when only a policy exists without repository-level
+  deletion proof.
+- Mark A.8.10 **Not Evaluable** when backup, log, downstream processor, or
+  derived-store handling is unknown.
+- Treat unbounded or ownerless deletion exceptions as a minor or major
+  nonconformity depending on data sensitivity and scope.
+- Credit legal hold, backup retention, or business-continuity exceptions only
+  when they are documented, access-controlled, time-bounded, and linked to a
+  risk, legal, contractual, or SoA justification.
+
+---
+
+### Step 7: Internal Audit Readiness (Clause 9.2)
 
 Assess internal audit program against requirements:
 
@@ -337,7 +381,7 @@ Assess internal audit program against requirements:
 
 ---
 
-### Step 7: Management Review Readiness (Clause 9.3)
+### Step 8: Management Review Readiness (Clause 9.3)
 
 Verify management review covers all required inputs:
 
@@ -409,6 +453,12 @@ Classify each finding using the following severity levels:
 - Controls applicable: [count] / 93
 - Controls excluded: [count] — [list with justification]
 - Average maturity of applicable controls: [score] / 5.0
+
+## A.8.10 Information Deletion Evidence Matrix
+
+| Information class / asset | Repository or copy type | Retention basis | Deletion method | Proof artifact | Exception owner / authority | Expiry or review date | Residual risk / SoA linkage |
+|---------------------------|-------------------------|-----------------|-----------------|----------------|-----------------------------|-----------------------|------------------------------|
+| [customer PII] | [primary DB / logs / backup / SaaS processor] | [legal / contractual / no longer required] | [delete / tombstone / anonymize / cryptographic erasure / retained exception] | [job run / lifecycle policy / key destruction record / processor confirmation] | [owner and authority] | [date] | [risk ID or SoA rationale] |
 
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
@@ -513,6 +563,11 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
 
+6. **Over-crediting A.8.10 from primary-store deletion only.** A.8.10 evidence
+must cover derived copies, backups, logs, exports, test datasets, downstream
+processors, and approved exceptions. Primary database deletion alone does not
+prove information is deleted when no longer required.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -536,3 +591,10 @@ If user-supplied input contains ISO 27001 control IDs outside the valid ranges (
 - ISO/IEC 27005:2022 — Information security risk management
 - ISO 19011:2018 — Guidelines for auditing management systems
 - IAF MD 26:2023 — Transition requirements for ISO/IEC 27001:2022
+
+---
+
+## Changelog
+
+- **1.0.0** -- Initial release. Full ISO 27001:2022 gap analysis workflow.
+- **1.0.1** -- Adds A.8.10 information deletion evidence gates, deletion scope matrix, retention-exception guardrails, and residual-risk traceability.

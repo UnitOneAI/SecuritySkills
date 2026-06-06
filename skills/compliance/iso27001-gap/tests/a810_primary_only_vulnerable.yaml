@@ -1,0 +1,12 @@
+control: A.8.10 Information deletion
+information_class: customer_personal_data
+primary_database:
+  deletion_job: runs_daily
+  proof: one_successful_job_screenshot
+object_storage_exports_deleted: unknown
+search_index_deleted: false
+siem_logs_containing_identifier: retained_365_days
+analytics_warehouse_deleted: unknown
+test_dataset_copy: not_inventoried
+backup_expiry_date: unknown
+expected_assessment: not_evaluable_or_minor_nonconformity
