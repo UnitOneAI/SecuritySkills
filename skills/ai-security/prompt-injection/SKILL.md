@@ -1,7 +1,8 @@
 ---
 name: prompt-injection
 description: >
-  Tests LLM applications for prompt injection vulnerabilities per OWASP LLM01:2025.
+  Reviews and, when authorized runtime tools are available, tests LLM
+  applications for prompt injection vulnerabilities per OWASP LLM01:2025.
   Covers direct injection (user input manipulating model behavior) and indirect
   injection (external content containing hidden instructions). Auto-invoked when
   reviewing LLM applications that process external content, build RAG pipelines,
@@ -13,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -36,6 +37,17 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 > Unauthorized testing against systems you do not own or have explicit permission
 > to test is unethical and likely illegal. Always obtain proper authorization
 > before conducting any security assessment.
+
+## Assessment Modes and Evidence Boundary
+
+This skill defaults to **static review mode** because its declared tool contract is `Read`, `Grep`, and `Glob`.
+
+| Mode | Permitted evidence | What not to claim |
+|------|--------------------|-------------------|
+| Static review | Source code, prompts, policy files, model configuration, tool schemas, renderer/sanitizer code, checked-in tests | Do not claim a payload was accepted, a tool was invoked, a canary alert fired, or a benchmark passed unless runtime evidence exists |
+| Dynamic red-team | Authorized browser/API/runtime tools, seeded fixtures, captured model outputs, tool-call logs, canary alerts, benchmark output | Do not test systems outside the agreed scope or report adaptive-attack resistance from a single scripted payload |
+
+Reports must say which mode was used. If only static evidence is available, mark runtime robustness, rendered-output behavior, canary detection, and benchmark results as **Not Verified** rather than as pass/fail findings.
 
 ## Background
 
@@ -61,6 +73,9 @@ Identify every point where user-supplied or externally sourced content reaches t
 4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
 5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
 
+6. **Tool-output reinsertion** -- Which tool outputs, retrieval results, API responses, or scraped pages are reinserted into later model context, and whether they can influence a subsequent tool call.
+7. **Renderer and output channels** -- Whether model output is rendered as Markdown, HTML, rich text, cards, previews, email, attachments, or link unfurls, and which sanitizer/link-preview controls apply.
+
 **Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
 
 ---
@@ -73,6 +88,8 @@ For each user input channel identified in Step 1, determine whether an attacker 
 - **Instruction boundary weakness** — Is there any delimiter or structural separation between system instructions and user input? If delimiters are used (e.g., triple quotes, XML tags), are they enforceable or can the user simply close the delimiter?
 - **Multi-turn injection** — Can an attacker embed instructions in earlier conversation turns that alter the model's behavior in subsequent turns?
 - **Parameter injection** — Can user-controlled values (e.g., a "name" field, a search query) that are inserted into prompts carry executable instructions?
+
+**False-positive guard:** Do not report "user-controlled text reaches an LLM" as a vulnerability by itself. It is lower risk when the text stays in the user role, is clearly delimited as data, is constrained by a schema, and the path has no side-effect tools. In that case, record the exposure and remaining evidence gaps instead of calling it prompt injection.
 
 **What to look for in code:**
 - String concatenation or interpolation with user input going into LLM API calls
@@ -92,6 +109,20 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+
+#### 3.1 Tool-Output to Tool-Call Flow
+
+Indirect injection becomes high impact when untrusted tool output can influence a later tool choice or tool argument. Trace the second hop explicitly:
+
+| Evidence | Review question |
+|----------|-----------------|
+| Tool output reinserted into context | Does web/search/RAG/API output appear in a later model call as `tool`, `assistant`, or user-visible context? |
+| Follow-on tools available | Can the next model call invoke email, CRM, payment, code, file, ticket, or database tools? |
+| Argument validation | Are proposed tool arguments validated by deterministic code after the model emits them? |
+| Independent authorization | Does every state-changing tool re-check the end user's permission server-side? |
+| Provenance and trust labels | Does the prompt or message schema preserve source, trust level, and user visibility for external content? |
+
+If untrusted tool output can directly steer a state-changing tool without deterministic validation and authorization, classify the issue under **Privilege Escalation** or **Data Exfiltration**, not merely as "bad text in context."
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
@@ -138,6 +169,8 @@ The attacker causes the model to include sensitive data in its output or to tran
 
 **What to evaluate:**
 - Can the model render markdown images or links (a common exfiltration vector via URL-encoded data)?
+- Which renderer is actually used: Markdown, HTML, sanitized rich text, cards, email, attachments, or link previews?
+- Are remote images, SVG/image attributes, auto-unfurled links, and preview fetchers disabled or routed through a safe proxy?
 - Does the model have access to sensitive data (PII, credentials, internal documents) that could be included in responses?
 - Can tool calls be used to send data to arbitrary external endpoints?
 - Are outputs filtered for sensitive data patterns?
@@ -185,6 +218,7 @@ Evaluate which of the following mitigations are implemented and how effectively.
 
 - Does the system prompt include canary strings that, if they appear in the model's output, indicate a prompt leaking attempt?
 - Is there automated detection and alerting when canary tokens appear in responses?
+- Are canaries treated as detection signals rather than prevention controls, with non-sensitive values, environment scoping, alert routing, and response ownership documented?
 
 ### 5.6 Instruction Hierarchy
 
@@ -201,6 +235,17 @@ Evaluate which of the following mitigations are implemented and how effectively.
   - **InjecAgent** -- Tests indirect prompt injection in agentic settings where the LLM processes external content and has tool access.
   - **AgentDojo** -- Evaluates agent robustness against injection attacks across diverse tool-use scenarios with realistic adversarial content.
   - **fabraix/playground** (https://github.com/fabraix/playground) -- Open-source library of AI agent exploit PoCs that can serve as a test harness for validating direct and indirect injection defenses against published attack patterns.
+
+### 5.8 Test Evidence and Fixtures
+
+When dynamic testing is in scope, use seeded benign and vulnerable fixtures so results are reproducible:
+
+- **Benign negative controls:** Support tickets, knowledge-base articles, or documents that quote prompt-injection text as data and should still be summarized or classified normally.
+- **Tool-output fixtures:** Search/API/RAG results that contain hostile instructions and then flow into a second model call with tools available.
+- **Renderer fixtures:** Markdown, HTML, SVG, rich-text, link-preview, and attachment examples that test whether remote fetches or unsafe attributes are blocked.
+- **Authorization fixtures:** Attempts to make the model call state-changing tools with another user's object ID, tenant ID, email recipient, or CRM/customer identifier.
+
+Record the exact fixture ID, input, expected safe behavior, observed model/tool output, and whether the result came from static review or an authorized runtime run.
 
 ---
 
@@ -229,10 +274,24 @@ Each finding should be assigned a severity based on potential impact:
 - Application: [name]
 - Assessment date: [date]
 - Scope: [what was tested]
+- Assessment mode: [Static review | Dynamic red-team | Mixed]
+- Runtime tests executed: [Yes/No; commands or harness if yes]
 - Overall risk: [Critical / High / Medium / Low]
+
+### Evidence Boundary
+| Claim | Evidence reviewed | Status |
+|-------|-------------------|--------|
+| Runtime prompt resistance | [fixtures / logs / not provided] | Verified / Not Verified |
+| Tool-call authorization | [code paths / runtime logs / not provided] | Verified / Partially Verified / Not Verified |
+| Renderer exfiltration controls | [renderer/sanitizer code / browser evidence / not provided] | Verified / Not Verified |
+| Canary alerting | [alert config / runtime alert / not provided] | Verified / Not Verified |
 
 ### Interaction Surface Map
 [Table from Step 1]
+
+### Tool-Output Flow Map
+| Source tool/output | Reinserted into model context | Follow-on tools available | Validation gate | Authorization gate | Risk |
+|--------------------|-------------------------------|---------------------------|-----------------|--------------------|------|
 
 ### Findings
 
@@ -243,6 +302,7 @@ Each finding should be assigned a severity based on potential impact:
 - Location: [file path and line numbers, or architectural component]
 - Description: [What the vulnerability is and why it matters]
 - Evidence: [Code pattern or architectural observation that demonstrates the issue]
+- Evidence type: [Static code/config | Runtime fixture | Benchmark | Architecture evidence]
 - Recommendation: [Specific defensive measure to implement]
 
 ### Defense Posture Summary
@@ -275,6 +335,19 @@ Each finding should be assigned a severity based on potential impact:
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
 
+6. **Overclaiming dynamic test results from static review.** Reading code can identify likely risks and missing gates, but it cannot prove a model resisted a payload, rendered a link safely, or triggered a canary alert. Mark those claims as Not Verified unless runtime evidence exists.
+
+7. **Missing the second hop.** A retrieved page, email, or API response containing hostile text is often only medium risk until it can steer a later tool call. Trace whether untrusted tool output can influence state-changing tool arguments.
+
+8. **Skipping benign negative controls.** Documentation or support content may quote prompt-injection text as data. Add benign fixtures so reviewers do not report every mention of "ignore previous instructions" as a vulnerability.
+
+---
+
+## Changelog
+
+- **1.0.3** -- Split static review from dynamic red-team evidence, add tool-output second-hop flow checks, renderer-specific exfiltration review, canary caveats, output evidence-boundary fields, and reusable fixtures.
+- **1.0.2** -- Prior version.
+
 ---
 
 ## References
@@ -285,4 +358,7 @@ Each finding should be assigned a severity based on potential impact:
 - Greshake, K. et al. (2023). "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection." arXiv:2302.12173.
 - Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
 - Yin, X. et al. "PISmith: RL-Optimized Adaptive Black-Box Prompt Injection Attacks" (2026) -- arXiv:2603.13026
+- OWASP LLM01:2025 Prompt Injection: https://genai.owasp.org/llmrisk/llm012025-prompt-injection/
+- AgentDojo benchmark: https://github.com/ethz-spylab/agentdojo
+- InjecAgent benchmark: https://github.com/uiuc-kang-lab/InjecAgent
 - fabraix/playground — Open-source AI agent exploit library for testing injection defenses — https://github.com/fabraix/playground
