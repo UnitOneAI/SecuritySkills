@@ -446,6 +446,16 @@ Score each criterion using the following maturity scale:
 | 3 | **Defined** | Controls are implemented and documented. Procedures are standardized. Evidence exists but may not cover the full audit period. |
 | 4 | **Managed** | Controls are fully implemented, documented, monitored, and operating effectively. Evidence covers the full audit period. Ready for SOC 2 Type II examination. |
 
+### Evidence Quality Scoring Constraints
+
+Apply these caps after the initial maturity score:
+
+- Cap at 2 if evidence exists but lacks audit period coverage, population, sample size, or system boundary mapping.
+- Cap at 2 if a Type II control has only design evidence and no operating effectiveness evidence.
+- Cap at 3 if evidence covers only part of the observation period or a partial population without documented auditor-ready justification.
+- Cap at 3 if exceptions were found but remediation and retest evidence are missing.
+- Score 4 only when evidence is current, owner-assigned, retained in a traceable location, mapped to the in-scope system boundary, and supports the full observation period.
+
 ### Scoring Template
 
 Complete the following matrix for all in-scope criteria:
@@ -568,3 +578,23 @@ After scoring, calculate:
 | P1.6 | Third-party data sharing agreements; breach notification procedures |
 | P1.7 | Data quality procedures; data subject update mechanisms |
 | P1.8 | Privacy compliance monitoring; complaint handling process; privacy impact assessments |
+
+### Evidence Quality Checklist
+
+For every artifact in the evidence reference table, record the following fields before marking it audit-ready:
+
+| Field | Required For | Auditor-Ready Expectation |
+|---|---|---|
+| Criteria ID | All evidence | Maps to a valid in-scope TSC criterion |
+| Control Owner | All evidence | Named team or individual accountable for evidence quality |
+| Source System | All evidence | GRC tool, IAM system, SIEM, CI/CD, HRIS, vendor portal, ticketing system, or policy repository |
+| Audit Period Covered | Type II operating evidence | Start and end dates align to the planned review period |
+| Evidence Date | All evidence | Artifact date is inside or relevant to the review period |
+| Collection Date | All evidence | Date the evidence was captured for the readiness binder |
+| System Boundary | All evidence | Maps to in-scope systems, people, procedures, data, and third parties |
+| Population | Sampled controls | Full population is identified before sampling |
+| Sample Size | Sampled controls | Sample count is documented and defensible |
+| Sample Method | Sampled controls | Full population, random, judgmental, or exception-based selection is stated |
+| Exceptions | Sampled controls | Exceptions are counted and summarized |
+| Remediation Evidence | Exceptions found | Ticket, owner, completion evidence, and retest result are linked |
+| Retention Location | All evidence | Stored in a stable evidence binder or GRC location |

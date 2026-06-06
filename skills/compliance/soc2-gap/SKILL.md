@@ -297,6 +297,55 @@ For detailed Trust Services Criteria evaluation questions, evidence requirements
 
 ---
 
+### Step 5: Evidence Quality and Audit Period Coverage
+
+SOC 2 Type II readiness requires evidence that supports operating effectiveness across the observation period, not only control design at a single point in time. For each criterion and control, record whether the evidence covers the in-scope system boundary, the review period, and a sufficient sample population.
+
+#### 5.1 Evidence Quality Gates
+
+| Gate | Requirement | Readiness Impact |
+|---|---|---|
+| Audit Period Coverage | Evidence start/end dates align to the planned Type II review period | Downgrade if evidence is point-in-time or outside the period |
+| Population Definition | Full population is identified for sampled controls | Downgrade if sample cannot be tied to the complete population |
+| Sample Sufficiency | Sample size and selection method are documented | Downgrade if sample count or selection logic is missing |
+| System Boundary Mapping | Evidence maps to in-scope systems, people, processes, data, and third parties | Downgrade if evidence covers only a subset of the system description |
+| Evidence Freshness | Evidence date, collection date, owner, source system, and retention location are recorded | Downgrade stale or ownerless evidence |
+| Exception Handling | Exceptions are documented with remediation status and retest evidence | Downgrade unresolved or untracked exceptions |
+
+#### 5.2 Evidence Record Template
+
+```
+SOC 2 Evidence Record:
+- Criteria ID:             [CC/A/C/PI/P criterion]
+- Control Name:            [Control title]
+- Artifact Name:           [Evidence artifact]
+- Evidence Type:           [Policy | Configuration | Report | Ticket sample | Log export | Meeting minutes | Screenshot]
+- Supports:                [Design | Operating Effectiveness | Both]
+- Audit Period Covered:    [YYYY-MM-DD to YYYY-MM-DD]
+- Evidence Date:           [YYYY-MM-DD]
+- Collection Date:         [YYYY-MM-DD]
+- Source System:           [GRC/IAM/SIEM/CI-CD/HRIS/Vendor portal/etc.]
+- Evidence Owner:          [Name/team]
+- Retention Location:      [Repository/GRC folder/path]
+- System Boundary Covered: [Systems/processes/people/data/vendors]
+- Population:              [Full population description or N/A]
+- Sample Size:             [N of total population or N/A]
+- Sample Method:           [Full population | Random | Judgmental | Exception-based | N/A]
+- Exceptions Found:        [None / count and summary]
+- Exception Remediation:   [Ticket IDs, retest evidence, or N/A]
+- Freshness Status:        [Current | Stale | Outside period | Partial period]
+```
+
+#### 5.3 Scoring Impact
+
+- Score no higher than 2 when evidence exists but does not identify the audit period, population, or system boundary.
+- Score no higher than 2 when a Type II control has only point-in-time design evidence and no operating evidence.
+- Score no higher than 3 when evidence covers only part of the observation period or a subset of in-scope systems without documented justification.
+- Score no higher than 3 when exceptions exist but remediation and retest evidence are incomplete.
+- Reserve score 4 for controls with complete period coverage, traceable samples, resolved exceptions, and owner/source/retention metadata.
+
+---
+
 ### Step 6: Remediation Roadmap
 
 Prioritize remediation by audit readiness impact. Items that would result in examination exceptions or qualifications take highest priority.
@@ -365,7 +414,7 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 2. **Gap Assessment Matrix**: Completed scoring template from Step 4 with all in-scope criteria scored and annotated.
 3. **Category Summary**: Average maturity score per category with narrative assessment.
 4. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
-5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
+5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing and recording period coverage, sample sufficiency, owner, source, and boundary mapping.
 6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
 7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
 
