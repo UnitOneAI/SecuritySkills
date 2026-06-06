@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -247,8 +247,33 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 - DNS (UDP/TCP 53) is restricted to authorized internal resolvers only.
 - Direct outbound SMTP (TCP 25) is restricted to authorized mail servers.
 - Outbound HTTPS (TCP 443) is routed through a forward proxy where feasible.
+- Encrypted DNS bypass paths are denied or routed to an approved resolver:
+  DoH over TCP/443, DoT over TCP/853, and DoQ over UDP/853.
+- UDP/443 / QUIC is denied by default or forced through an approved inspection
+  path when HTTPS proxy inspection is required.
 - Uncommon outbound protocols (SSH 22, RDP 3389, ICMP) are restricted or denied by default.
 - Outbound connections to known anonymization services (Tor exit nodes) are blocked.
+- Cloud and vendor objects are expanded before classification: AWS managed
+  prefix lists, Azure service tags or FQDN rules, GCP firewall tags, and vendor
+  address objects. Record the feed version or timestamp used for the expansion.
+
+**Encrypted DNS and QUIC evidence gate:**
+
+| Check | Pass condition |
+|-------|----------------|
+| DoH | TCP/443 to known public DoH providers is denied, routed to an approved encrypted-DNS gateway, or limited to approved proxy/resolver destinations. |
+| DoT | TCP/853 is denied except to approved resolvers. |
+| DoQ | UDP/853 is denied except to approved resolvers. |
+| QUIC / HTTP/3 | UDP/443 is denied or explicitly routed through an approved path when direct Internet egress is not allowed. |
+| Object expansion | Prefix lists, service tags, FQDN rules, and address objects are resolved to concrete destinations with source, timestamp, and scope. |
+| Proxy bypass exceptions | Any direct 443, DoH, DoT, DoQ, or QUIC exception has owner, expiry, ticket, and monitoring evidence. |
+
+**Finding classification:** Unrestricted encrypted DNS or UDP/443 egress from
+production networks that require resolver or proxy inspection is **High**.
+Unexpanded cloud objects that prevent a reviewer from proving whether HTTPS/443
+is proxy-bound or direct Internet egress are **Medium**. Narrow prefix-list,
+service-tag, FQDN, or address-object rules can pass when expansion evidence shows
+approved destinations and a current provider feed timestamp.
 
 **Finding classification:** Unrestricted outbound egress (allow all) is **High**. Missing DNS egress restriction is **Medium**.
 
@@ -311,11 +336,19 @@ Produce the final report using the following structure.
 |---------------|----------|----------------|----------|--------|
 
 ### Egress Filtering Status
-| Protocol/Port | Restricted | Authorized Destinations |
-|---------------|-----------|------------------------|
-| DNS (53)      | Yes/No    | <resolver IPs>         |
-| SMTP (25)     | Yes/No    | <mail server IPs>      |
-| HTTPS (443)   | Yes/No    | <proxy or direct>      |
+| Protocol/Port | Restricted | Authorized Destinations | Evidence Source |
+|---------------|-----------|-------------------------|-----------------|
+| DNS (53)      | Yes/No    | <resolver IPs>          | <rule/log/object expansion> |
+| DoH (443)     | Yes/No    | <approved encrypted DNS or denied> | <rule/FQDN/IP evidence> |
+| DoT/DoQ (853) | Yes/No    | <approved resolver or denied> | <rule evidence> |
+| HTTPS (443)   | Yes/No    | <proxy, prefix list, FQDN, or direct> | <expanded object + timestamp> |
+| UDP/443 QUIC  | Yes/No    | <approved path or denied> | <rule evidence> |
+| SMTP (25)     | Yes/No    | <mail server IPs>       | <rule evidence> |
+
+### Cloud Object Expansion Evidence
+| Object | Platform | Expanded Destinations | Feed Timestamp | Classification |
+|--------|----------|-----------------------|----------------|----------------|
+| <prefix list/service tag/FQDN/address object> | <AWS/Azure/GCP/vendor> | <CIDRs/FQDNs> | <timestamp/version> | <approved/proxy/direct/Not Evaluable> |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -361,6 +394,15 @@ Produce the final report using the following structure.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
+6. **Checking only UDP/TCP 53 for DNS control.** Modern clients can bypass
+resolver policy with DoH, DoT, or DoQ. Treat DNS as a resolution path, not only
+as port 53, and verify TCP/443, TCP/853, UDP/853, and UDP/443 behavior.
+
+7. **Classifying HTTPS egress without expanding objects.** Managed prefix lists,
+service tags, FQDN rules, and vendor address objects can represent either a
+narrow approved proxy path or broad Internet destinations. Do not classify the
+rule until the object expansion evidence and feed timestamp are recorded.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -381,9 +423,13 @@ This skill processes firewall configurations that may contain user-supplied comm
 - NIST SP 800-41 Rev 1, Guidelines on Firewalls and Firewall Policy: https://csrc.nist.gov/publications/detail/sp/800-41/rev-1/final
 - NIST SP 800-41 Rev 1 (PDF): https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-41r1.pdf
 - CIS Benchmarks (platform-specific firewall hardening): https://www.cisecurity.org/cis-benchmarks
+- AWS managed prefix lists: https://docs.aws.amazon.com/vpc/latest/userguide/managed-prefix-lists.html
+- Azure Firewall application rules and FQDN filtering: https://learn.microsoft.com/azure/firewall/rule-processing
+- Google Cloud firewall rules: https://cloud.google.com/firewall/docs/firewalls
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added encrypted DNS, QUIC, cloud object expansion, and proxy bypass evidence gates for egress review.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
