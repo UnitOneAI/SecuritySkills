@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,10 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Business criticality of affected systems** -- Revenue impact, customer impact, SLA obligations, regulatory implications of downtime.
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
+- [ ] **Legal hold and preservation status** -- Has legal, privacy, HR, or regulatory counsel required preservation of mailboxes, endpoint images, logs, cloud audit trails, chat history, or case records before cleanup or destructive changes?
+- [ ] **SOAR / automation execution mode** -- Are containment playbooks running in dry-run, approval-gated, or fully automatic mode? Which actions can disable identities, revoke tokens, isolate hosts, delete files, or alter group membership?
+- [ ] **Rollback owner and pre-action snapshot** -- Who can reverse a containment action, and has the team captured group membership, firewall rules, security group state, endpoint isolation state, and token/session inventory before changes?
+- [ ] **Validation telemetry path** -- Which logs, EDR events, network flows, identity events, DNS events, or SOAR action logs will prove containment worked and continue flowing after isolation?
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
 
 ---
@@ -74,6 +78,8 @@ NIST SP 800-61 Rev 2 (Section 3.3.1) identifies the following criteria for conta
 | **Resource requirements** | Does the containment strategy require resources not currently available? | Choose strategies executable with available tools and personnel |
 | **Duration** | How long will containment need to remain in place? | Long-duration containment must be sustainable without degrading business operations |
 | **Effectiveness** | Will this containment action actually prevent further attacker activity? | Partial containment that the attacker can bypass wastes time and tips off the adversary |
+| **Reversibility** | Can the action be rolled back with a known owner, snapshot, and approval path? | Low-reversibility actions require stronger approval unless threat speed demands immediate isolation |
+| **Legal hold / preservation** | Will the action alter evidence subject to legal, regulatory, HR, or insurance preservation? | Preservation requirements favor snapshot, image, export, or counsel approval before cleanup |
 
 **Containment decision matrix:**
 
@@ -215,6 +221,7 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+| Validation telemetry still flowing | Confirm SIEM, EDR, identity, DNS, cloud, and SOAR logs still arrive after containment | No monitoring blind spot introduced by isolation |
 
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
@@ -224,7 +231,41 @@ After implementing containment, verify effectiveness before proceeding to eradic
 
 If containment fails, escalate to full network isolation and engage external incident response support.
 
-### Step 6: Rollback Criteria
+### Step 6: SOAR Automation, Rollback, and Legal-Hold Gates
+
+Automated containment is valuable when the threat is moving faster than a human team can respond. It also increases the risk of over-containment, evidence destruction, and business disruption. Before recommending or approving SOAR-driven containment, classify each action by execution mode and reversibility.
+
+**SOAR action evidence matrix:**
+
+| Evidence Gate | Required Evidence | Why It Matters |
+|---|---|---|
+| Execution mode | Dry-run, approval-required, or automatic; playbook version and trigger condition | Prevents treating a simulated or approval-gated action like a destructive action already taken |
+| Human approval threshold | Who approves identity disablement, host isolation, group removal, DNS changes, or cloud quarantine | High-impact automation needs accountable authorization unless immediate isolation is required |
+| Pre-action snapshot | User groups, role assignments, sessions/tokens, firewall/security group rules, endpoint isolation state, DNS records | Enables rollback and preserves evidence of attacker access paths |
+| Action log | SOAR case ID, run ID, timestamp, operator/approver, target, result, and error output | Provides auditability and proves what actually executed |
+| Rollback owner | Named person/team, restore procedure, expected restore time, and escalation path | Avoids irreversible business disruption from broad automated actions |
+| Post-action validation | Telemetry query proving C2, lateral movement, or abuse stopped after the action | Confirms the automation contained the threat rather than only changing configuration |
+
+**High-impact automated actions that require explicit rollback evidence:**
+
+- Disabling users, service accounts, OAuth apps, API clients, or privileged roles.
+- Revoking sessions, refresh tokens, Kerberos tickets, certificates, API keys, or secrets.
+- Removing users from groups, tenants, projects, channels, or distribution lists.
+- EDR host isolation, cloud security group quarantine, firewall block deployment, or DNS sinkholing.
+- Cleanup that deletes temporary files, quarantines mailboxes, removes persistence, or wipes suspect artifacts.
+
+**Legal-hold and preservation gate:**
+
+Before cleanup, wipe, mailbox changes, session destruction, or endpoint reimaging, record whether legal hold, privacy, HR, insurance, regulator, or customer-notification obligations apply. If preservation applies and threat speed permits, preserve relevant evidence first:
+
+- Mailbox, message trace, forwarding rule, OAuth grant, and sign-in logs for business email compromise.
+- Endpoint image, memory, EDR timeline, quarantine logs, and isolation state for host compromise.
+- Cloud audit logs, IAM policy history, security group diffs, object access logs, and snapshots for cloud incidents.
+- Chat, ticket, SOAR case, approval, and action logs for responder decision evidence.
+
+Do not delay immediate isolation for confirmed wiper, active exfiltration, or attacker-controlled destructive activity. In those cases, document the preservation risk and execute the fastest containment action that protects remaining systems.
+
+### Step 7: Rollback Criteria
 
 Define conditions under which containment actions should be rolled back or modified:
 
@@ -233,6 +274,9 @@ Define conditions under which containment actions should be rolled back or modif
 | Containment causes unacceptable business disruption exceeding incident impact | Reduce to surgical containment with enhanced monitoring | Incident Commander + Business Owner |
 | Forensic investigation requires attacker communication to continue (controlled observation) | Relax network blocks under monitored conditions with legal approval | Incident Commander + Legal + CISO |
 | Containment action was applied to wrong scope (false positive) | Remove containment controls from unaffected systems | Incident Commander |
+| Automated action removed access or configuration required for business recovery | Restore from pre-action snapshot and reapply narrower containment | Incident Commander + Business Owner + Automation Owner |
+| Legal hold or preservation gap identified after containment | Freeze further cleanup, preserve remaining evidence, and document already-altered state | Incident Commander + Legal |
+| Validation telemetry stopped after isolation | Restore or reroute logging path before further narrowing the containment perimeter | Incident Commander + SOC Lead |
 | Eradication complete and validated | Phase out containment controls in stages with monitoring | Incident Commander + Security Team |
 
 ---
@@ -269,10 +313,12 @@ threat severity and business criticality, and expected impact on operations.]
 |---|---|---|
 | Potential damage if uncontained | [Assessment] | [High/Medium/Low] |
 | Evidence preservation impact | [Assessment] | [High/Medium/Low] |
+| Legal hold / preservation impact | [Assessment] | [High/Medium/Low] |
 | Service availability impact | [Assessment] | [High/Medium/Low] |
 | Resource requirements | [Assessment] | [High/Medium/Low] |
 | Expected containment duration | [Assessment] | [Hours/Days/Weeks] |
 | Containment effectiveness | [Assessment] | [High/Medium/Low] |
+| Reversibility / rollback readiness | [Assessment] | [High/Medium/Low] |
 
 ### Short-Term Containment Actions
 | Action | Target | ATT&CK Technique Countered | Status | Owner | ETA |
@@ -289,10 +335,25 @@ threat severity and business criticality, and expected impact on operations.]
 |---|---|---|---|
 | [Service] | [Description of disruption] | [Workaround if any] | [Yes/No -- requires escalation] |
 
+### SOAR Automation and Rollback Evidence
+| Automated Action | Mode | Approval | Pre-Action Snapshot | Rollback Owner | Action Log / Case ID |
+|---|---|---|---|---|---|
+| [Action] | [Dry-run/Approval/Automatic] | [Approver or N/A] | [Captured/Missing/N/A] | [Name/team] | [Case/run ID] |
+
+### Legal Hold and Preservation Gate
+| Evidence Source | Preservation Required | Status | Owner |
+|---|---|---|---|
+| [Mailbox/endpoint/cloud logs/chat/SOAR case] | [Yes/No/Unknown] | [Preserved/Pending/At risk] | [Legal/IR owner] |
+
 ### Containment Validation Checklist
 | Check | Result | Timestamp |
 |---|---|---|
 | [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+
+### Validation Telemetry
+| Telemetry Source | Still Flowing After Containment | Query / Evidence | Gap |
+|---|---|---|---|
+| [SIEM/EDR/identity/DNS/cloud/SOAR] | [Yes/No/Unknown] | [Evidence] | [Gap or none] |
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
@@ -348,6 +409,18 @@ Disconnecting a business-critical production system from the network stops the a
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
 
+### Pitfall 5: Treating SOAR Automation as Reversible Without Evidence
+
+SOAR playbooks can disable identities, revoke sessions, isolate hosts, and alter network controls in seconds. A playbook labeled "rollback enabled" is not enough. Capture the pre-action state, identify the rollback owner, preserve the action log, and test the restore path for high-impact actions before relying on automation in production. If the action is fully automatic, require stronger trigger confidence and post-action validation.
+
+### Pitfall 6: Destroying Evidence Under Legal Hold
+
+Containment and cleanup can change or destroy evidence: session revocation removes active-token state, endpoint isolation can block forensic acquisition, mailbox cleanup can alter messages, and reimaging erases artifacts. If the incident involves regulated data, insider activity, litigation, insurance claims, or customer notification, record legal-hold status before cleanup when threat speed permits. For destructive malware or active exfiltration, isolate immediately and document what evidence may have been altered.
+
+### Pitfall 7: Cutting Off the Telemetry Needed to Prove Containment
+
+Cloud quarantine security groups, EDR network isolation, DNS sinkholes, and firewall blocks can also break log forwarding or redirect evidence in ways that hide the original attacker path. Validate that SIEM, EDR, identity, DNS, cloud audit, and SOAR logs still arrive after containment. If telemetry stops, reroute logging or add an exception before assuming containment succeeded.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -376,3 +449,5 @@ This skill processes incident data including attacker-controlled indicators (IP 
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+13. **NIST SP 800-86** -- Guide to Integrating Forensic Techniques into Incident Response -- https://csrc.nist.gov/publications/detail/sp/800-86/final
+14. **Microsoft Sentinel automation rules** -- https://learn.microsoft.com/en-us/azure/sentinel/automate-incident-handling-with-automation-rules
