@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,6 +53,7 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Affected systems inventory** -- Hostnames, IPs, cloud resource IDs, services running on affected systems, and their business function.
 - [ ] **Attack vector and techniques** -- Known MITRE ATT&CK techniques in use (initial access, lateral movement, persistence, C2).
 - [ ] **Attacker access scope** -- What accounts, systems, and network segments has the attacker accessed or potentially compromised?
+- [ ] **Identity/SaaS access scope** -- Affected IdP users, OAuth apps, consent grants, service principals, app passwords, mailbox rules, SaaS admin sessions, cloud STS tokens, and file-sharing links.
 - [ ] **Business criticality of affected systems** -- Revenue impact, customer impact, SLA obligations, regulatory implications of downtime.
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
@@ -121,6 +122,47 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Service account reset** | Reset service account passwords and regenerate keys | Lateral movement via service accounts | Downstream services may break |
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
+| **OAuth grant revocation** | Revoke delegated/app grants, disable malicious enterprise apps, remove tenant-wide consent | BEC, SaaS token theft, malicious consent app | User, app, or tenant-wide depending on grant scope |
+| **SaaS admin session revocation** | Invalidate active SaaS sessions and admin refresh tokens, force reauthentication | SaaS admin or IdP compromise | Tenant/app admin population |
+| **Service principal credential rotation** | Remove leaked client secrets/certificates, rotate workload identity credentials, audit app role assignments | OAuth app/service principal misuse | Application and downstream integrations |
+
+### Step 2b: SaaS / OAuth Containment Branch
+
+Use this branch for BEC, IdP compromise, malicious OAuth consent, SaaS token theft, cloud-control-plane compromise, or any incident where password reset alone may leave delegated or refresh-token access alive.
+
+#### SaaS / OAuth Revocation Checklist
+
+| Area | Containment Action | Validation Evidence |
+|---|---|---|
+| **Refresh tokens and sessions** | Revoke user refresh tokens, invalidate SaaS sessions, force reauthentication, and document residual token lifetime if the platform cannot revoke immediately | Sign-in/session logs show old tokens rejected and no post-revocation API activity |
+| **OAuth grants and consent apps** | Inventory delegated/admin consent grants, disable suspicious enterprise apps, revoke risky scopes, and remove tenant-wide consent where abused | App audit logs show grants removed; app cannot call APIs with previous refresh/access tokens |
+| **App passwords and legacy auth** | Disable app passwords/basic auth exceptions, rotate legacy protocol credentials, and block POP/IMAP/SMTP/EWS paths used by the actor | Legacy-auth sign-in logs stop and exception groups are empty or owner-approved |
+| **Mailbox persistence** | Remove forwarding rules, inbox rules, delegates, transport rules, hidden mailbox permissions, and external sharing links | Mailbox audit/DLP logs show no new forwarding, delegate access, or exfiltration after cleanup |
+| **SaaS admin sessions** | Revoke admin sessions across Microsoft 365, Google Workspace, Okta, GitHub, Slack, Salesforce, and similar SaaS control planes | Admin audit logs show forced logout and no new privileged actions from old sessions |
+| **Service principals and API keys** | Rotate client secrets/certificates, disable abused service principals, remove app role assignments, and review workload identity federation | Service principal sign-in/API logs show no post-rotation use of old credentials |
+| **Cloud STS/session tokens** | Revoke/expire cloud sessions where supported and document unavoidable expiration windows for AWS STS, Azure, or GCP tokens | Cloud audit logs show no new actions from compromised sessions after revocation/expiry |
+| **File-sharing and exfil paths** | Revoke anonymous links, external shares, repository tokens, and SaaS API export permissions tied to the incident | DLP/cloud audit logs show no new downloads, shares, or export jobs after revocation |
+
+Choose the narrowest scope that contains the access path without leaving persistence:
+
+- **Per-user:** Use when a single compromised user or mailbox is confirmed and OAuth grants are user-delegated only.
+- **Per-app:** Use when one OAuth application, service principal, or SaaS integration is abused across users.
+- **Tenant-wide:** Use when admin consent, IdP admin compromise, malicious enterprise applications, or unknown grant scope creates broad residual access.
+- **Residual-risk monitored:** Use only when the platform cannot revoke existing tokens immediately; record the token lifetime, compensating detections, and next validation time.
+
+```
+SaaS / OAuth Revocation Plan:
+- Incident Path:         [BEC | IdP compromise | OAuth consent abuse | SaaS token theft | Cloud control plane]
+- Scope:                 [Per-user | Per-app | Tenant-wide | Residual-risk monitored]
+- Affected Identities:   [Users, groups, admins, service principals]
+- OAuth Apps/Grants:     [App IDs, scopes, consent type, owner]
+- Tokens/Sessions:       [Refresh tokens, SaaS sessions, STS tokens, residual lifetime]
+- Mailbox/File Paths:    [Forwarding rules, delegates, sharing links, export jobs]
+- Revocation Actions:    [Actions and owners]
+- Business Impact:       [Expected disruption and approved exceptions]
+- Validation Evidence:   [Logs proving no post-revocation activity]
+- Residual Risk:         [Known token windows, unrecoverable sessions, compensating controls]
+```
 
 ### Step 3: Long-Term Containment
 
@@ -213,6 +255,7 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Lateral movement blocked | Monitor authentication logs and network flows between segments | No unauthorized cross-segment authentication |
 | Compromised credentials revoked | Attempt authentication with known-compromised credentials | Authentication fails |
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
+| SaaS/OAuth persistence removed | Review OAuth grants, app passwords, service principals, mailbox rules, SaaS sessions, cloud STS tokens, and file-sharing links | No post-revocation activity from old apps/tokens/sessions |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
 
@@ -256,7 +299,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.0
+**Skill:** containment v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -283,6 +326,16 @@ threat severity and business criticality, and expected impact on operations.]
 | Action | Target | Duration | Status | Owner |
 |---|---|---|---|---|
 | [Action] | [Scope] | [Duration] | [Planned/In Progress/Complete] | [Name] |
+
+### SaaS / OAuth Revocation Plan
+| Scope | App/User/Token Path | Revocation Action | Owner | Residual Risk |
+|---|---|---|---|---|
+| [Per-user/Per-app/Tenant-wide] | [OAuth app, user, session, STS token, mailbox/file-sharing path] | [Action] | [Owner] | [Residual token lifetime or none] |
+
+### SaaS / OAuth Validation
+| Evidence Source | Expected Signal | Result | Timestamp |
+|---|---|---|---|
+| [Sign-in, audit, DLP, mailbox, cloud API, SaaS admin log] | [No post-revocation activity from old token/app/session] | [Pass/Fail/Pending] | [timestamp] |
 
 ### Business Impact Assessment
 | Service/System | Impact of Containment | Mitigation | Acceptable |
@@ -347,6 +400,10 @@ Disconnecting a business-critical production system from the network stops the a
 ### Pitfall 4: Not Validating Containment Effectiveness
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
+
+### Pitfall 5: Treating Password Reset as Complete SaaS Containment
+
+In BEC, IdP, OAuth consent, and SaaS token theft incidents, password resets and session invalidation may not remove refresh tokens, malicious consent grants, app passwords, service principal credentials, mailbox rules, cloud STS tokens, or file-sharing links. Validate each delegated access path and document residual token windows before declaring containment complete.
 
 ---
 
