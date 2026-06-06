@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -183,6 +183,9 @@ In early 2024, researchers from UIUC demonstrated a multi-agent privilege escala
 - Shared memory spaces in multi-agent systems where any agent can write context that other agents consume.
 - RAG pipelines where the ingestion source includes user-submitted or externally-sourced documents that are embedded without content validation.
 - Agent "learning" mechanisms that update long-term memory based on interaction outcomes without human review.
+- Memory records missing actor identity, source URI or event ID, trust tier, approval state, TTL, integrity digest, or quarantine state.
+- Retrieval pipelines that mix system, developer, user, tool, and agent-generated memories in one vector index before enforcing trust or tenant boundaries.
+- Deletion workflows that remove only a primary vector row while derived summaries, embeddings, session context, prompt caches, or replicas remain reusable.
 
 **Real-World Failure Mode:**
 
@@ -195,6 +198,24 @@ In 2024, researchers demonstrated a persistent memory poisoning attack against a
 3. Separate memory by trust level. User-sourced context, agent-generated context, and system-provided context must be stored and retrieved with different trust labels.
 4. Implement memory decay and review cycles. Periodically audit long-term memory for anomalous entries. Apply TTLs to user-sourced memories.
 5. In multi-agent systems, isolate memory per agent. Shared memory must be mediated by a trusted memory broker that validates writes.
+
+**Persistent Memory Evidence Gates:**
+
+Do not rate AG04 as PASS solely because a system has a vector store, a delete endpoint, or a periodic memory review. For every persistent memory store, collect enough evidence to answer each gate below.
+
+| Gate | Evidence to require | Fail condition |
+|---|---|---|
+| AG04-MEM-01 write authorization | Allowed writers, approval workflow, deny-by-default rules for user documents and tool output, and audit records for create/update events | Untrusted input can be summarized or saved into long-term memory without explicit approval |
+| AG04-MEM-02 provenance chain | Source URI or event ID, actor identity, tenant, agent identity, ingestion time, raw source reference, sanitizer/reviewer step, trust tier, and approval state | The memory record only says which agent wrote it, not where the underlying content came from |
+| AG04-MEM-03 trust-tier retrieval | Tenant, user, agent, purpose, and required-trust filters applied before vector similarity ranking or re-ranking | Low-trust memory can enter a privileged prompt because it is semantically similar |
+| AG04-MEM-04 integrity proof | Append-only log, hash chain, Merkle proof, immutable event stream, signed record, or equivalent tamper-evident update trail | Memory can be edited, replaced, or re-embedded without a detectable audit event |
+| AG04-MEM-05 lifetime controls | TTL, review cadence, decay rules, owner disposition, and policy for promoting or demoting trust | User or tool memories persist indefinitely with no owner or review trigger |
+| AG04-MEM-06 quarantine semantics | Flag-or-tombstone behavior, immediate retrieval exclusion, audit preservation, and replay plan | Poisoned memory is deleted destructively or remains retrievable until a batch cleanup runs |
+| AG04-MEM-07 derived artifact cleanup | Cache invalidation for summaries, embeddings, prompt caches, session context, replicated indexes, and downstream stores | A vector delete leaves derived artifacts that can still influence future prompts |
+
+For tool-derived memory, provenance must follow the content rather than only the final writer. A useful chain is `agent -> tool(https://source.example) -> raw_response -> sanitizer -> memory_entry`. For retrieval, trust filtering should happen before similarity ranking; a common pattern is `filter trust_tier >= context.required_tier`, then rank by similarity, recency, and trust score. For quarantine, suspicious entries should be excluded from retrieval immediately while audit data is preserved.
+
+User-authored personal memory can be acceptable when it is isolated per user, labeled as user-sourced, never promoted to system or developer trust without approval, and removable with evidence. Ephemeral session memory is lower risk than cross-session memory, but it still needs prompt-injection handling before reuse inside the same task.
 
 **Framework Mapping:**
 
@@ -434,6 +455,16 @@ Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,j
 
 For practical validation of OWASP Agentic AI risks against concrete exploits, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs that can be used alongside the theoretical framework in Step 2 to test each AG01-AG10 category against real attack scenarios.
 
+### AG04 Memory Evidence Review
+
+Before assigning the AG04 rating, build an evidence table for each persistent memory store. Use the fixture cases in `skills/ai-security/agentic-top-10/tests/memory-integrity-edge-cases.md` to calibrate pass, fail, and not-evaluable decisions.
+
+| Store | Write sources | Provenance chain | Trust controls | Integrity proof | Retrieval filters | Quarantine/removal | Residual artifacts |
+|---|---|---|---|---|---|---|---|
+| [pgvector / Redis / conversation DB / scratchpad] | [user docs, tool output, agent notes, system seed] | [actor -> source -> raw artifact -> sanitizer -> memory entry] | [tenant, agent, user, trust tier, approval, TTL] | [hash chain, immutable log, checksum, signed event] | [tenant, agent, purpose, required trust tier, top-k constraints] | [flag, tombstone, cache invalidation, replay audit] | [none / tracked owner / unresolved] |
+
+Rate AG04 at least **MEDIUM** when persistent memory exists but any of write authorization, provenance/trust labels, or retrieval trust boundaries is missing. Rate it **HIGH** when untrusted content can be saved and later retrieved into privileged prompts across sessions. Rate it **CRITICAL** when poisoned memory can trigger privileged tool calls, data exfiltration, credential exposure, or autonomous actions without human approval.
+
 ### Step 2 — Threat Assessment
 
 For each of the 10 categories, assess the system and assign a risk rating:
@@ -492,6 +523,9 @@ Structure the final report as follows:
 - Agent framework: [framework name and version]
 - Tools registered: [count and categories]
 - Memory stores: [types]
+- Persistent memory write sources: [user input / tool output / agent notes / system seed]
+- Memory provenance and trust controls: [source chain, tenant/user/agent scope, trust tier, approval state, TTL, integrity proof]
+- Memory remediation controls: [quarantine, tombstone/delete, cache invalidation, replay audit, residual derived artifacts]
 - Human approval gates: [present/absent, description]
 - Multi-agent communication: [method]
 
@@ -501,6 +535,7 @@ Structure the final report as follows:
 - **Rating:** [rating]
 - **Finding:** [description]
 - **Evidence:** [file path, code reference]
+- **Memory evidence:** [write authorization, provenance chain, retrieval filters, integrity proof, quarantine/removal, residual artifacts]
 - **Impact:** [what could go wrong]
 - **Remediation:** [specific action]
 - **Priority:** [P0/P1/P2/P3]
@@ -581,6 +616,8 @@ An approval gate is only effective if the human reviewer has sufficient context,
 ### 4. Ignoring the Memory Attack Surface
 
 Persistent agent memory is a high-value target because it persists across sessions and influences all future agent behavior. Teams routinely deploy vector stores and conversation databases without access controls, integrity protections, or poisoning detection. Every persistent memory store must be treated as a security-critical data store with appropriate controls.
+
+Do not confuse vector deletion with memory removal. If a poisoned entry was summarized, embedded, cached, replicated, or copied into session context, a delete endpoint for the primary record is only partial remediation. The report should identify each derived artifact and whether it was invalidated, quarantined, replay-audited, or left as residual risk.
 
 ### 5. Assuming Tool Calls Are Safe Because the Tool Is Legitimate
 
