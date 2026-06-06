@@ -378,6 +378,17 @@ Escalate to the next tier when any of the following conditions are met:
 | Insider threat involving executive or privileged admin | Legal counsel, HR, Board (if executive) | Immediately |
 | IR team lacks expertise for the attack type | External IR retainer, Vendor support | Upon recognition |
 
+#### Step 3.6: 2026 Scenario Validation Cases
+
+Use these scenario checks to validate that the report actually exercised the new evidence gates. If the evidence is unavailable, mark the field as "Not Evaluable" and name the missing source instead of assuming the control passed.
+
+| Scenario | Required Gate Evidence | Report Sections That Must Be Populated |
+|----------|------------------------|----------------------------------------|
+| SaaS or API token exfiltration | IdP session revocation, OAuth grant review, API key rotation, SaaS audit logs, forwarding-rule review | Incident Classification, Containment Actions, Stakeholder Notifications |
+| Cold-shutdown wiper response | Shutdown rationale, unaffected-system scope, immutable/offline backup proof, snapshot binary scan, sandbox canary restore, owner approval | Containment Actions, Eradication and Recovery, Backup/Snapshot Integrity Gate |
+| Public-company materiality review | Legal/executive decision record, timestamp of materiality determination, financial and operational impact estimate, Form 8-K deadline if material | Materiality Determination, Stakeholder Notifications, Open Items and Next Steps |
+| Synthetic identity or deepfake BEC | Artifact provenance, independent callback verification, payment freeze or clawback attempt, vendor-bank-change review, legal/fraud owner | Incident Classification, Containment Actions, Escalation Decisions |
+
 ---
 
 ## 4. Findings Classification
