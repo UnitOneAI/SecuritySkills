@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all-prod-egress
+  namespace: prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-diagnostics
+  namespace: prod
+spec:
+  selector:
+    matchLabels:
+      app: node-diagnostics
+  template:
+    metadata:
+      labels:
+        app: node-diagnostics
+    spec:
+      hostNetwork: true
+      containers:
+        - name: diag
+          image: example.invalid/node-diagnostics:latest

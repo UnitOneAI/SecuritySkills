@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -126,7 +126,8 @@ Every inter-zone communication path must traverse a PEP that enforces access pol
 **What constitutes a violation:**
 
 ```
-# BAD: Flat routing between application and data tiers
+# BAD: Flat routing between application and data tiers with no effective
+# enforcement at the workload, subnet, or inspection layer.
 route {
   destination_cidr = "10.2.0.0/16"  # data tier
   target           = "local"         # direct route, no inspection
@@ -138,6 +139,27 @@ route {
   target           = "firewall-eni"  # routed through firewall
 }
 ```
+
+**Cloud effective-path evidence:** Do not classify an AWS VPC `local` route,
+Azure VNet system route, or similar cloud-local route as a segmentation failure
+by itself. Local routing proves reachability substrate exists; it does not prove
+that traffic is permitted. Before assigning Critical/High severity, build an
+effective path evidence row that combines:
+
+| Evidence field | Required review question |
+|----------------|--------------------------|
+| Route reachability | Which VPC/VNet/subnet route, peering, transit gateway, PrivateLink, or service endpoint makes the path possible? |
+| Enforcement point | Which security group, NACL, cloud firewall, Kubernetes policy, service mesh policy, or identity-aware proxy permits or denies the path? |
+| Workload attachment | Is enforcement attached to the actual ENI/NIC/pod/workload, not only to a neighboring subnet or diagram label? |
+| Allowed tuple | Which source identity/CIDR/security group, destination, protocol, and port are allowed? |
+| Bypass or exception | Are AWS reserved service paths, metadata, DNS, DHCP, time sync, node traffic, host networking, or managed-service paths outside the claimed enforcement scope? |
+| Validation source | Reachability analyzer output, packet capture, controlled probe, flow log, policy simulator, or reviewed IaC line references. |
+
+For AWS, a `local` route with restrictive security-group references such as
+`app_sg -> db_sg tcp/5432` can be a valid non-firewall enforcement design. Flag
+it only when the SG/NACL/firewall/policy union permits unauthorized source,
+destination, or port combinations, or when no workload-attached enforcement can
+be demonstrated.
 
 **Finding classification:** Missing enforcement point between zones is **Critical**. Bypass paths through transit zones are **High**.
 
@@ -192,6 +214,29 @@ spec:
 
 **Finding classification:** No intra-zone controls (flat east-west within zones) is **High**. Absence of Kubernetes default-deny NetworkPolicy in production namespaces is **High**.
 
+#### 3.1.1 Kubernetes NetworkPolicy Enforcement Gate
+
+Treat NetworkPolicy manifests as intent until enforcement evidence is present.
+Kubernetes NetworkPolicy requires a policy-capable network plugin; if no
+controller enforces the API, creating a NetworkPolicy has no isolation effect.
+
+For each production namespace, record:
+
+| Evidence field | Pass condition |
+|----------------|----------------|
+| CNI / policy engine | Calico, Cilium, Antrea, Kube-router, cloud CNI with NetworkPolicy support, or equivalent is deployed and enforcing. |
+| Default-deny scope | Default-deny ingress and egress policies select the intended production pods. |
+| Additive policy union | All policies selecting the same pods are reviewed together; broad `0.0.0.0/0`, namespace-wide, or podSelector `{}` allow rules are justified. |
+| Bidirectional path | Source egress and destination ingress are both evaluated for pod-to-pod paths. |
+| Bypass workloads | `hostNetwork: true`, privileged DaemonSets, node-local agents, and service mesh sidecar bypass paths are inventoried. |
+| Rollout behavior | Policy creation/update propagation and CNI failure modes have controlled test or monitoring evidence. |
+
+**Finding classification:** NetworkPolicy YAML with no policy-capable CNI or
+enforcement proof is **High**. Additive allow-all policy that defeats
+default-deny for production pods is **High**. `hostNetwork` or node-local
+traffic paths that bypass claimed pod isolation are **Medium** unless they allow
+direct access to high-value data or management systems, which is **High**.
+
 ---
 
 #### 3.2 Micro-Segmentation Readiness Assessment
@@ -237,11 +282,13 @@ If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
 Document or verify the existence of a segmentation testing process:
 
-1. **From each zone, attempt to reach every other zone** on unauthorized ports. Expected result: connection refused or timed out.
-2. **From outside the CDE, attempt to reach CDE systems** on all ports. Expected result: no connectivity.
-3. **From the DMZ, attempt to reach internal zones** on unauthorized ports. Expected result: blocked.
-4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
-5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
+1. **Confirm authorization and safety limits** before active probing. Record owner approval, maintenance window, source systems, rate limits, and excluded production protocols.
+2. **Perform passive reachability analysis first** using IaC review, route analysis, VPC Reachability Analyzer or equivalent, flow logs, service mesh telemetry, and CNI policy inspection.
+3. **From each approved zone, attempt scoped probes** to representative unauthorized ports. Expected result: connection refused, timed out, or denied by the documented enforcement point.
+4. **From outside the CDE, attempt approved probes to CDE systems.** Expected result: no unauthorized connectivity.
+5. **From the DMZ, attempt approved probes to internal zones** on unauthorized ports. Expected result: blocked.
+6. **Test VLAN hopping** via double-tagging only in an approved lab or maintenance window. Expected result: traffic dropped.
+7. **Validate that segmentation controls survive failover** (HA firewall, CNI restart, policy rollout, or route table failover should not open transit paths).
 
 ---
 
@@ -283,6 +330,19 @@ Document or verify the existence of a segmentation testing process:
 | DMZ         | App       | Firewall    | Restricted | Pass |
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
+
+### Effective Path Evidence Matrix
+
+| Source | Destination | Route Reachability | Enforcement Point | Allowed Tuple | Exceptions / Bypass | Validation Source | Status |
+|--------|-------------|-------------------|-------------------|---------------|---------------------|-------------------|--------|
+| app_sg | db_sg | AWS VPC local route | SG on DB ENI | app_sg -> db_sg tcp/5432 | IMDS/DNS reviewed separately | IaC + reachability analyzer | Pass |
+| prod pods | prod db pods | Cluster pod network | NetworkPolicy + CNI | app label -> db label tcp/5432 | hostNetwork daemon excluded | policy union + probe | Needs review |
+
+### Kubernetes Policy Enforcement Evidence
+
+| Namespace | Policy Engine | Default Deny | Additive Policy Review | hostNetwork / Node Exceptions | Rollout Test | Finding |
+|-----------|---------------|--------------|------------------------|-------------------------------|--------------|---------|
+| prod | [Calico/Cilium/Other] | [Ingress/Egress/Both/Missing] | [Complete/Partial/Missing] | [None/List] | [Evidence] | [Pass/Finding ID] |
 
 ### Findings
 
@@ -345,6 +405,10 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Flagging cloud local routes without policy context.** AWS `local` routes and comparable cloud system routes are normal reachability substrate. They become segmentation findings only when the effective SG/NACL/firewall/policy path permits traffic that should be denied or when no workload-attached enforcement evidence exists.
+
+7. **Counting Kubernetes NetworkPolicy files without enforcement proof.** NetworkPolicy is additive and plugin-dependent. A default-deny YAML file can be ineffective if the CNI does not enforce it, or defeated by another policy that broadly allows egress or cross-namespace ingress.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -366,10 +430,13 @@ This skill processes network configurations that may contain user-supplied comme
 - CIS Control 12 -- Network Infrastructure Management: https://www.cisecurity.org/controls/network-infrastructure-management
 - PCI DSS v4.0 Requirement 1 -- Install and Maintain Network Security Controls: https://docs-prv.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0.pdf
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
+- Kubernetes Declare Network Policy: https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/
+- AWS VPC Security Groups: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html
 - Project Calico Documentation: https://docs.tigera.io/calico/latest/about/
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added cloud effective-path evidence, AWS local-route false-positive guardrails, Kubernetes NetworkPolicy enforcement gates, and safer authorized segmentation testing guidance.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
