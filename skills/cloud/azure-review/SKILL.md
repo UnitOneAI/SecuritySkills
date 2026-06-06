@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -88,6 +88,41 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 10.5: Managed Identity, Effective Access, and PIM Evidence
+
+Static role assignments are not enough to judge Azure identity risk. For managed identities, service principals, privileged users, and Key Vault access paths, collect effective access evidence before assigning severity.
+
+For each privileged assignment or managed identity, record:
+
+- **Principal evidence:** principal type, object ID, user-assigned vs system-assigned managed identity, app/service principal, group membership, and whether the identity can be attached to new compute.
+- **Effective scope:** management group, subscription, resource group, resource, inherited assignment, deny assignment, eligible assignment, active assignment, and data-plane vs control-plane permission.
+- **Role impact:** Owner, User Access Administrator, Privileged Role Administrator, Key Vault Administrator, Key Vault Secrets Officer, custom role actions/dataActions, or Reader/Monitoring Reader.
+- **PIM controls:** eligibility vs active assignment, activation duration, MFA/authentication strength, approval, justification, ticket, alerting, and activation/audit logs.
+- **Key Vault mode:** RBAC authorization vs access-policy mode; do not recommend RBAC-only fixes when the vault still uses access policies.
+
+Classify identity posture:
+
+| Status | Criteria | Finding Guidance |
+|---|---|---|
+| **Benign / least privilege** | Low-impact role at documented scope with no privileged data-plane actions and current owner evidence | Record evidence; do not flag solely because the principal is a managed identity |
+| **High-impact managed identity** | Workload identity has admin, data-plane secret/key, Owner, or User Access Administrator rights without scope/justification/attachability controls | High finding |
+| **PIM evidence gap** | Privileged eligibility exists but activation policy, MFA, approval, duration, justification, or audit logs are missing | Not Evaluable or Medium/High depending on active privilege |
+| **Inherited-scope blind spot** | Subscription-local IaC misses management-group or group-inherited role assignments | Not Evaluable until effective assignment export is provided |
+| **Key Vault mode mismatch** | Remediation assumes RBAC while the vault uses access policies, or access-policy evidence is missing | Medium/High based on exposed secrets/keys |
+
+```
+Azure Identity / PIM Evidence:
+- Principal:              [type, object ID, managed identity mode]
+- Effective Scope:        [management group/subscription/RG/resource; inherited?]
+- Role / Data Actions:    [role name, actions, dataActions]
+- PIM State:              [eligible/active/permanent; activation controls]
+- Key Vault Mode:         [RBAC authorization/access policies/not applicable]
+- Attachability Controls: [which compute can attach this identity]
+- Status:                 [Benign / least privilege | High-impact managed identity | PIM evidence gap | Inherited-scope blind spot | Key Vault mode mismatch]
+- Remediation:            [scope reduction, custom role, PIM controls, identity isolation, Key Vault mode-specific fix]
+```
+
+---
 
 ---
 
@@ -152,7 +187,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Identity/PIM Evidence:** <principal, effective scope, role/dataActions, PIM activation, Key Vault mode, or Not Evaluable reason>
 - **Remediation:** <specific fix with code example>
+
+### Azure Identity / PIM Evidence
+
+| Principal | Principal Type | Effective Scope | Role / Data Actions | PIM State | Key Vault Mode | Status |
+|-----------|----------------|-----------------|---------------------|-----------|----------------|--------|
+| <object ID/name> | Managed identity / service principal / user / group | Scope and inheritance | Role/actions/dataActions | Eligible/active/permanent/unknown | RBAC/access policy/n/a | Pass/Fail/Not Evaluable |
 
 ### Prioritized Remediation Plan
 
@@ -200,6 +242,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Treating role assignment files as effective access.** Role assignments can be inherited from management groups or groups, and managed identities can gain new reach when attached to compute. Require effective assignment exports, PIM activation evidence, and Key Vault mode evidence before closing identity findings.
 
 ---
 
@@ -226,9 +269,13 @@ Produce the final report using the structure defined in the Output Format sectio
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
+- Microsoft Entra Privileged Identity Management: https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/
+- Managed identities for Azure resources: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview
+- Azure Key Vault RBAC guide: https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added managed identity, effective access, PIM, and Key Vault mode evidence gates with calibration fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.

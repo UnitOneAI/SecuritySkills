@@ -95,6 +95,20 @@ resource "azuread_directory_role_assignment" { ... }
 
 #### CIS 1.3.3 -- Ensure that 'Restrict access to Microsoft Entra admin center' is set to 'Yes'
 
+#### Managed Identity, Effective Access, and PIM Evidence Gates
+
+For privileged role assignments, managed identities, service principals, and Key Vault access, capture effective access rather than only static IaC declarations.
+
+| Evidence Area | What to Verify | Risk if Missing |
+|---|---|---|
+| Managed identity scope | User-assigned/system-assigned identity, role, scope, dataActions, and attachable compute resources | High-impact identity may be reusable on new workloads |
+| Effective assignments | Direct, group-inherited, management-group inherited, deny assignments, and custom role actions/dataActions | Subscription-local IaC can miss inherited privilege |
+| PIM activation | Eligible vs active assignment, MFA/authentication strength, approval, justification, duration, alerting, and audit logs | Eligibility may become privileged active access without governance |
+| Key Vault mode | RBAC authorization vs access-policy mode, role assignments or access policies, private endpoint/logging context | RBAC remediation may not affect access-policy-mode vaults |
+| Workload federation | Federated credentials and app registrations that can use or modify the identity path | External workload can activate an assumed safe principal |
+
+Classify Reader or Monitoring Reader at narrow scope as benign when owner and purpose are documented. Flag Owner, User Access Administrator, Privileged Role Administrator, Key Vault Administrator, broad custom roles, or secret/key dataActions without scope reduction, PIM controls, and justification.
+
 ---
 
 ## Section 2 -- Microsoft Defender for Cloud
