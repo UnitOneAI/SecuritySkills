@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -58,6 +58,7 @@ Before conducting the PIR, gather or confirm:
 - [ ] **Existing controls** -- Documentation of security controls that were in place at the time of the incident (detection rules, access controls, network segmentation, patching cadence).
 - [ ] **Previous PIR reports** -- Any prior post-incident reviews for similar incident types, to identify recurring patterns.
 - [ ] **Metrics data** -- Timestamps needed to compute MTTD, MTTR, and MTTC (see Step 4).
+- [ ] **Remediation verification inputs** -- Action tracker, closure criteria, retest evidence, verifier signoff, residual-risk decisions, and recurrence signals for this incident class.
 
 ---
 
@@ -266,10 +267,37 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 
 **Remediation action template:**
 
-| ID | Finding | Action | Owner | Priority | Deadline | Tracking |
-|---|---|---|---|---|---|---|
-| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] |
-| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Tracking | Closure Criterion | Verification Method |
+|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] | [Observable condition that proves the failure mode is addressed] | [Retest, replay, sample, drill, or review] |
+| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] | [Criterion] | [Method] |
+
+Do not mark P0/P1 actions or repeated-control-failure actions complete based only on ticket closure. They need verification evidence against the original failure mode or explicit residual-risk acceptance.
+
+#### 6.1 Remediation Verification and Recurrence Gate
+
+For each high-impact remediation action, collect:
+
+| Field | Required Evidence |
+|---|---|
+| Action ID | REM-### from the action register |
+| Mapped control failure | Preventive, detective, corrective, process, communication, data, or vendor failure |
+| Closure criterion | Specific observable state that proves the failure mode is addressed |
+| Verification method | Detection replay, segmentation validation, access review sample, patch/config proof, restore drill, tabletop, alert-routing test, vendor evidence, or manual review |
+| Verification evidence | Ticket, log export, test output, query ID, change record, screenshot, artifact hash, or report ID |
+| Verifier | Person/team independent enough to validate the fix |
+| Residual risk status | Fixed, mitigated, accepted, transferred, blocked, or not verified |
+| Follow-up review date | Date to recheck high-impact actions and recurrence signals |
+
+Track recurrence separately:
+
+| Field | Required Evidence |
+|---|---|
+| Similar prior incidents | Incident IDs, near misses, or PIRs with matching root cause/control failure |
+| Prior action outcome | Verified, incomplete, failed verification, accepted risk, or did not cover this scenario |
+| Recurrence signal | Detection name, metric, precursor event, control exception, vulnerability class, or service/path |
+| Monitoring window | 30/60/90 days or longer for low-frequency controls |
+| Reopen threshold | Count, severity, or condition that reopens the PIR or creates a new action |
 
 **Remediation prioritization:**
 
@@ -354,12 +382,24 @@ root cause, and the number/priority of remediation actions identified.]
 - [Gap or failure identified during retrospective]
 
 ### Remediation Plan
-| ID | Finding | Action | Owner | Priority | Deadline | Ticket |
+| ID | Finding | Action | Owner | Priority | Deadline | Ticket | Closure Criterion | Verification Method |
+|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] | [Evidence that proves failure mode is addressed] | [Retest/replay/sample/drill/review] |
+
+### Remediation Verification Register
+| Action ID | Mapped Control Failure | Verification Method | Verification Evidence | Verifier | Residual Risk Status | Follow-Up Review Date |
 |---|---|---|---|---|---|---|
-| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
+| REM-001 | [Control failure] | [Detection replay / segmentation test / access review sample / tabletop / restore drill / vendor evidence] | [Ticket/log/export/test artifact] | [Name/team] | [Fixed/Mitigated/Accepted/Blocked/Not verified] | [YYYY-MM-DD] |
+
+### Recurrence Tracking
+| Similar Prior Incident | Prior Action Outcome | Recurrence Signal | Monitoring Window | Reopen Threshold | Follow-Up Outcome |
+|---|---|---|---|---|---|
+| [IR-ID / near miss / none found] | [Verified/Incomplete/Failed verification/Accepted risk/Did not cover scenario] | [Detection/metric/precursor/control exception] | [30/60/90 days] | [condition] | [No recurrence/Recurrence detected/Action reopened/Risk accepted] |
 
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
+- **Verification Review Date:** [YYYY-MM-DD -- for P0/P1 and repeated control failures]
+- **Recurrence Review Date:** [YYYY-MM-DD -- end of monitoring window]
 - **PIR Report Distribution:** [List of recipients]
 - **Playbook Updates Required:** [Yes/No -- list specific playbooks]
 - **Detection Rule Updates Required:** [Yes/No -- list specific rules]
@@ -408,9 +448,13 @@ The most common pitfall is skipping the post-incident review entirely, especiall
 
 When the PIR focuses on who made mistakes rather than what systemic conditions enabled the incident, participants become defensive, withhold information, and the organization learns nothing. The "lesson learned" becomes "person X should have done Y" rather than "process Z should be changed to prevent this class of error." Enforce blameless ground rules at the start of every PIR and redirect blame-oriented statements to system-level observations.
 
-### Pitfall 3: Identifying Remediation Actions Without Tracking Them
+### Pitfall 3: Identifying Remediation Actions Without Verifying Them
 
-Documenting lessons learned and remediation actions in a PIR report that is then filed and forgotten produces zero security improvement. Every remediation action must be entered into the organization's work tracking system (Jira, ServiceNow, Azure DevOps) with an owner, priority, deadline, and scheduled review date. The PIR facilitator should schedule a follow-up review (typically 30 days after the PIR) to verify remediation progress.
+Documenting lessons learned and remediation actions in a PIR report that is then filed and forgotten produces zero security improvement. Every remediation action must be entered into the organization's work tracking system (Jira, ServiceNow, Azure DevOps) with an owner, priority, deadline, closure criterion, verification method, and scheduled review date. The PIR facilitator should schedule a follow-up review (typically 30 days after the PIR) to verify remediation progress and a verification review for high-impact actions.
+
+### Pitfall 3a: Treating Implemented as Verified
+
+"Implemented" means a team reports that a fix exists. "Verified" means independent evidence proves the fix addresses the original failure mode. A detection rule that has never been replayed, a segmentation change that has not been tested from the relevant source, or a playbook update that responders have not exercised should not close a high-impact PIR action.
 
 ### Pitfall 4: Stopping Root Cause Analysis at the Proximate Cause
 
@@ -445,3 +489,9 @@ This skill processes incident response data including timelines, forensic findin
 7. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
 8. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
 9. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Added remediation verification, residual-risk, and recurrence tracking gates with calibration fixtures.
