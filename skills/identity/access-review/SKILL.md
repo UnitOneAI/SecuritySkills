@@ -127,7 +127,55 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 
 ---
 
-### Step 2: Entitlement Review and Certification
+### Step 2: Effective Entitlement Expansion
+
+**Objective:** Expand each principal's direct assignments into the complete effective access graph before any certifier approves or revokes access.
+
+**NIST SP 800-53 Reference:** AC-6 Least Privilege; AC-6(7) Review of User Privileges
+**CIS Controls v8 Reference:** Control 6.1 Establish an Access Granting Process; Control 6.7 Centralize Access Control
+
+Certification is only meaningful when the reviewer can see the final permissions created by direct groups, nested groups, dynamic or birthright rules, inherited cloud IAM, app-local roles, database grants, and resource-level ACLs. A direct IdP group export is not sufficient evidence for least privilege.
+
+**What to look for:**
+
+```
+AR-EFF-01: No transitive group expansion before certification
+AR-EFF-02: Nested group path not shown to certifier
+AR-EFF-03: Dynamic group or birthright rule not captured with rule version and sample timestamp
+AR-EFF-04: Cloud IAM inheritance not analyzed across org/folder/project/subscription/account scopes
+AR-EFF-05: Application-local roles or database grants not reconciled with IdP assignments
+AR-EFF-06: Resource-level ACLs excluded from effective permission calculation
+AR-EFF-07: Unresolved graph nodes, loops, depth limits, or stale connectors not recorded
+AR-EFF-08: Certifier approves friendly group name without seeing effective permission or SoD impact
+```
+
+**Effective entitlement evidence gates:**
+
+| Gate | Required Evidence | Finding When Missing |
+|---|---|---|
+| Direct entitlement | Group, role, permission set, grant, ACL, or app role assigned directly | Review cannot explain the first-hop access source |
+| Transitive path | Nested group or inherited policy path with source system and max depth | Final access may come from hidden nested membership |
+| Dynamic / birthright rule | Rule expression, HR/SCIM attributes, rule version, owner, and sample timestamp | Membership can change after certification without reviewer visibility |
+| Inherited cloud binding | Org/folder/project/subscription/account inheritance path and effective role | Project or app review misses upstream cloud privileges |
+| Local app/database grant | SaaS admin console role, database role, schema grant, or resource ACL | IdP-only review misses local privileged access |
+| Effective permission | Final privilege after expansion, including admin, export, deploy, payment, or data access | Certifier approves labels instead of actual capability |
+| Certifier visibility | Evidence that the reviewer saw the effective permission and path, not only the direct group | Approval may be a false positive least-privilege decision |
+| Unresolved graph nodes | Loops, inaccessible systems, connector failures, stale sync, and Not Evaluable reason | Missing expansion is hidden instead of downgraded |
+
+**Severity calibration:**
+
+| Condition | Severity |
+|---|---|
+| Privileged production access cannot be expanded beyond direct assignment | High |
+| Nested or inherited path grants admin, payment, deploy, or sensitive-data export access without certifier visibility | High |
+| Dynamic/birthright rule grants sensitive access without owner, version, or sample timestamp | High |
+| Local app/database grants are outside the certification population for critical systems | High |
+| Unresolved graph nodes are recorded and downgraded to Not Evaluable with compensating review | Medium |
+| Low-risk read-only access has partial expansion but documented owner and remediation plan | Low |
+
+---
+
+### Step 3: Entitlement Review and Certification
 
 **Objective:** Validate that every entitlement is appropriate, necessary, and approved.
 
@@ -159,7 +207,7 @@ AR-CERT-08: Delegated reviews without accountability (certifier delegates but is
 
 ---
 
-### Step 3: Orphaned Account Detection
+### Step 4: Orphaned Account Detection
 
 **Objective:** Identify accounts with no valid owner or business justification.
 
@@ -191,7 +239,7 @@ AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle man
 
 ---
 
-### Step 4: Role Explosion Detection
+### Step 5: Role Explosion Detection
 
 **Objective:** Identify uncontrolled growth in role definitions that undermines RBAC governance.
 
@@ -222,7 +270,7 @@ AR-ROLE-08: Custom roles duplicating built-in/managed role permissions
 
 ---
 
-### Step 5: Segregation of Duties Analysis
+### Step 6: Segregation of Duties Analysis
 
 **Objective:** Detect SoD violations where a single identity holds conflicting entitlements.
 
@@ -266,7 +314,7 @@ AR-SOD-07: SoD conflicts in service accounts (single account spans multiple func
 
 ---
 
-### Step 6: Remediation Enforcement and Evidence Collection
+### Step 7: Remediation Enforcement and Evidence Collection
 
 **Objective:** Verify that review outcomes are enforced and evidence is retained for audit.
 
@@ -321,6 +369,9 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, roles, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding (counts, examples, screenshots) |
+| **Transitive Path** | Nested group, inherited cloud binding, dynamic rule, app-local role, database grant, or resource ACL path producing access |
+| **Effective Permission** | Final permission or business capability after entitlement expansion |
+| **Certifier Visibility** | Whether the certifier saw the direct entitlement, expansion path, effective permission, and unresolved nodes before deciding |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -346,11 +397,12 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 
 ### Findings by Category
 - Review Scope & Cadence (Step 1): [count]
-- Entitlement Certification (Step 2): [count]
-- Orphaned Accounts (Step 3): [count]
-- Role Explosion (Step 4): [count]
-- Segregation of Duties (Step 5): [count]
-- Enforcement & Evidence (Step 6): [count]
+- Effective Entitlement Expansion (Step 2): [count]
+- Entitlement Certification (Step 3): [count]
+- Orphaned Accounts (Step 4): [count]
+- Role Explosion (Step 5): [count]
+- Segregation of Duties (Step 6): [count]
+- Enforcement & Evidence (Step 7): [count]
 
 ### Detailed Findings
 [Findings table]
@@ -404,6 +456,10 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 
 ---
 
+8. **Direct-group-only certification** -- A direct IdP group can look harmless while nested groups, dynamic rules, inherited cloud bindings, local app roles, database grants, or ACLs create privileged effective access. Expand the graph before asking a certifier to approve.
+
+---
+
 ## Prompt Injection Safety Notice
 
 ```
@@ -427,6 +483,12 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 ---
 
+- Microsoft Graph transitive memberOf API: https://learn.microsoft.com/en-us/graph/api/group-list-transitivememberof
+- Google Cloud Policy Analyzer for allow policies: https://docs.cloud.google.com/policy-intelligence/docs/analyze-iam-policies
+- AWS IAM Access Analyzer unused access: https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-create-unused.html
+
+---
+
 ## Cross-References
 
 | Related Skill | When to Chain |
@@ -443,4 +505,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-06 | Added effective entitlement expansion gates for transitive groups, dynamic rules, inherited cloud bindings, local grants, certifier visibility, and unresolved graph nodes |
 | 1.0.0 | 2025-03-06 | Initial release |
