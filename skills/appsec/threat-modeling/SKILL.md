@@ -6,14 +6,16 @@ description: >
   diagram or design document, or asks "what could go wrong?" Produces threat actor
   profiles, component-threat matrix, a threat register with STRIDE classification,
   data-flow diagram template, trust boundary identification, and prioritized
-  mitigations mapped to MITRE ATT&CK techniques.
+  mitigations mapped to MITRE ATT&CK techniques, with specific evidence gates
+  for async queues, event buses, webhook receivers, retries, DLQs, and redrive
+  paths.
 tags: [appsec, design, architecture, threat-model]
 role: [security-engineer, architect, appsec-engineer, vciso]
 phase: [design, review]
 frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,6 +54,7 @@ Before beginning the threat model, gather the following. Mark each item as obtai
 - [ ] **Compliance and regulatory requirements** — Applicable standards (SOC 2, PCI DSS, HIPAA, GDPR, FedRAMP).
 - [ ] **Existing security controls** — WAF, IDS/IPS, SIEM, secret management (Vault, AWS Secrets Manager), encryption at rest and in transit.
 - [ ] **Deployment environment** — Cloud provider (AWS, GCP, Azure), Kubernetes, serverless, on-premises, hybrid.
+- [ ] **Async flow semantics** — Queues, event buses, webhooks, scheduled workers, retry policies, DLQs, redrive paths, delivery and ordering guarantees, idempotency keys, replay windows, and consumer authorization checks.
 
 ## 3. Process
 
@@ -159,6 +162,7 @@ Use this checklist to identify trust boundaries that are often missed:
 - [ ] **Cloud account/subscription boundaries** — Cross-account access, shared services, peered VPCs
 - [ ] **CI/CD pipeline boundaries** — Between source control, build system, artifact registry, and deployment target
 - [ ] **Third-party SDK/library boundaries** — Between your code and vendor SDKs, open-source packages, or embedded interpreters
+- [ ] **Async ownership boundaries** — Between producers, brokers, consumers, DLQs, replay tooling, webhook providers, and worker identities
 
 For each data flow crossing a trust boundary, document:
 1. Source and destination components
@@ -182,6 +186,33 @@ Every data flow in the DFD must be annotated with the following properties:
 
 Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
 
+#### Async and Event-Driven Flow Evidence
+
+Treat async paths as explicit data flows, not implementation details hidden behind a process box. Queue messages, webhook deliveries, event-bus topics, scheduled jobs, DLQs, and redrive tools can cross trust boundaries even when the broker sits on an internal network.
+
+For every async or webhook flow, collect and record the following evidence before rating the threat:
+
+| Evidence gate | Required evidence | STRIDE focus |
+|---------------|-------------------|--------------|
+| Flow ownership | Producer, broker or provider, topic or queue, consumer, DLQ, redrive operator, and owning teams | R, E |
+| Message authentication | mTLS, broker ACL, per-topic IAM, HMAC over the raw webhook body, key rotation, and secret scope | S, T |
+| Freshness and replay | Timestamp tolerance, nonce or event ID uniqueness, replay cache TTL, clock-skew handling, and duplicate rejection | S, R |
+| Idempotency | Idempotency key source, persistence window, duplicate side-effect controls, and failure behavior | T, D |
+| Authorization at consumption | Tenant, user, object, and action authorization rechecked when the worker acts, not only when the event was produced | E |
+| Retry and backoff | Max attempts, exponential backoff with jitter, poison-message isolation, circuit breakers, and alert thresholds | D |
+| DLQ and redrive | Approval path, audited operator identity, scoped redrive target, duplicate suppression, and safe replay ordering | R, T, E |
+| Sensitive payload handling | Field minimization, encryption, broker retention, log/tracing redaction, DLQ retention, and deletion guarantees | I |
+| Parser and schema handling | Canonicalization, signature validation before parsing, strict schema versioning, unknown-field behavior, and converter trust | T, E |
+
+Use `Not Applicable` only when the architecture has no async, webhook, scheduled, brokered, or redrive path in scope. Use `Not Evaluable` when async paths exist but evidence is missing; record the missing evidence and do not mark the async path low risk by default.
+
+Severity guidance:
+
+- Rate replayable payment, identity, privilege, or fulfillment webhooks as High or Critical when duplicate side effects are possible.
+- Rate missing consumer-side authorization as High or Critical when queued work can touch tenant, financial, admin, or regulated data.
+- Rate unbounded retry storms, poison-message loops, and unsafe DLQ redrive as at least Medium, and High when they can exhaust shared workers or corrupt state.
+- Rate sensitive payload retention in broker logs, traces, or DLQs according to the data class and retention window; restricted data with broad operator access is usually High.
+
 ### Step 4: Apply STRIDE per Element
 
 For every component and data flow identified in the DFD, systematically ask the following questions organized by STRIDE category.
@@ -195,6 +226,7 @@ Threat: An attacker pretends to be another user, service, or system component.
 | Can an external user authenticate without valid credentials? | Credential stuffing, brute force |
 | Can one service impersonate another service? | Missing mTLS, forged service tokens |
 | Can an attacker replay a valid authentication token? | Stolen JWT without expiration |
+| Can an attacker replay a signed webhook or queue message inside the accepted freshness window? | Reused event ID creates duplicate fulfillment or payment state |
 | Are API keys rotated and scoped appropriately? | Leaked long-lived API key |
 | Is multi-factor authentication enforced for privileged accounts? | Admin account takeover |
 
@@ -209,6 +241,8 @@ Threat: An attacker modifies data, code, or configuration without authorization.
 | Can CI/CD pipeline artifacts be tampered with? | Compromised build server, dependency confusion |
 | Are configuration files protected from unauthorized modification? | Writable config in production containers |
 | Is input validated and sanitized before processing? | XSS, command injection, deserialization attacks |
+| Is the raw webhook body signed and verified before parsing or canonicalization? | Parser changes a payload after signature verification |
+| Can event schema downgrade or unknown fields alter consumer behavior? | Worker accepts tampered message version |
 
 #### R — Repudiation (Audit and Accountability Threats)
 
@@ -221,6 +255,7 @@ Threat: A user or system denies performing an action, and the system cannot prov
 | Are logs centralized and protected from tampering? | Local-only logs on compromised host |
 | Do transactions include non-repudiation controls (digital signatures)? | Disputed financial transactions |
 | Is there sufficient log detail to reconstruct the sequence of events? | Logs missing source IP, user ID, or action detail |
+| Are retries, duplicate deliveries, DLQ moves, and redrive actions attributable to a user or worker identity? | Operator replays a message without audit evidence |
 
 #### I — Information Disclosure (Confidentiality Threats)
 
@@ -233,6 +268,7 @@ Threat: Sensitive data is exposed to unauthorized parties.
 | Do error messages or stack traces leak internal details? | Verbose error pages reveal DB schema |
 | Are secrets stored in environment variables or dedicated vaults? | Hardcoded credentials in source code |
 | Is access to data stores restricted by least-privilege IAM policies? | Over-permissive S3 bucket policy |
+| Do brokers, traces, logs, and DLQs avoid storing sensitive event payloads longer than required? | PII remains in a DLQ readable by broad operations roles |
 
 #### D — Denial of Service (Availability Threats)
 
@@ -244,6 +280,7 @@ Threat: An attacker makes the system unavailable to legitimate users.
 | Is there protection against application-layer DoS (Slowloris, ReDoS)? | Regex-based input causes CPU exhaustion |
 | Are resource quotas enforced (memory, CPU, storage, connections)? | Memory leak triggered by crafted input |
 | Is the system resilient to dependency failures (circuit breakers)? | Cascading failure from downstream outage |
+| Are poison messages bounded by max attempts, backoff with jitter, and DLQ isolation? | Retry storm exhausts shared worker pools |
 | Are there auto-scaling policies and DDoS mitigation services? | Sustained DDoS overwhelms fixed capacity |
 
 #### E — Elevation of Privilege (Authorization Threats)
@@ -256,6 +293,7 @@ Threat: An attacker gains access to resources or actions beyond their authorized
 | Can a regular user access admin functionality? | Missing role checks on admin endpoints |
 | Are privilege boundaries enforced in containerized environments? | Container escape, privileged container |
 | Can an attacker exploit deserialization or injection for code execution? | Remote code execution via insecure deserialization |
+| Does the consumer recheck tenant, object, and action authorization at execution time? | Stale queued command runs after access was revoked |
 | Are default credentials and unnecessary services removed? | Default admin/admin on management interfaces |
 
 ### Step 5: Build Component-Threat Matrix
@@ -269,6 +307,8 @@ Synthesize the STRIDE-per-element analysis into a heatmap-style matrix. For each
 | Database | L | H | L | H | M | M | High |
 | Object Storage | L | M | L | H | L | M | Medium |
 | Message Queue | L | M | L | M | M | L | Medium |
+| Webhook Receiver | H | H | M | M | M | M | High |
+| DLQ Redrive Tool | M | H | H | H | M | H | Critical |
 
 **How to fill in:**
 1. For each component from the DFD, review every threat identified in Step 4.
@@ -399,6 +439,16 @@ Produce the threat register as a structured table. Each row represents one ident
 | TM-004 | Information Disclosure | API error responses include stack traces and internal service names in production | All API endpoints | T1552 — Unsecured Credentials | High | Medium | High | Implement generic error responses in production, route detailed errors to logging only | Backend Team | Open |
 | TM-005 | Denial of Service | Unbounded file upload allows resource exhaustion via large payload submission | File Upload `/api/v1/upload` | T1499.003 — Application Exhaustion Flood | High | Medium | High | Enforce max file size (10MB), implement request timeout, add rate limiting per user | Storage Team | Open |
 | TM-006 | Elevation of Privilege | IDOR vulnerability allows regular users to access other users' records by modifying resource ID | User Profile `/api/v1/users/{id}` | T1068 — Exploitation for Privilege Escalation | High | High | Critical | Implement object-level authorization checks, validate resource ownership at service layer | Backend Team | Open |
+| TM-007 | Spoofing | Payment webhook accepts duplicate signed events without nonce or event ID replay protection | Webhook Receiver `/webhooks/payments` | T1556 — Modify Authentication Process | High | High | Critical | Verify HMAC over raw body, enforce timestamp tolerance, persist event IDs for the replay window, and make fulfillment idempotent | Payments Team | Open |
+
+### Async Flow Evidence Output
+
+When async or webhook flows are in scope, include this evidence table after the threat register. Keep `Not Applicable` and `Not Evaluable` explicit so missing async evidence does not disappear from the model.
+
+| Flow | Producer / Provider | Broker / Queue / Topic | Consumer / Worker | Message Auth | Freshness / Replay | Idempotency | Consumer Auth Recheck | Retry / DLQ / Redrive | Sensitive Payload Handling | Outcome |
+|------|---------------------|------------------------|-------------------|--------------|--------------------|-------------|-----------------------|-----------------------|----------------------------|---------|
+| Payment webhook to fulfillment worker | Payment provider | `payment-events` topic | Fulfillment worker | HMAC over raw body, secret rotated quarterly | 5 minute timestamp tolerance, event ID stored 30 days | Fulfillment keyed by provider event ID | Tenant and order ownership checked before state change | 5 attempts, jittered backoff, DLQ requires approval and audit | No card data in message, logs redact customer fields, DLQ retention 7 days | Pass |
+| Password reset email queue | API service | `email-jobs` queue | Email worker | Broker IAM only | Not Evaluable: event ID TTL missing | Idempotency by reset token | Not Evaluable: user status not rechecked | Max attempts and DLQ present, redrive approval missing | Email address stored in queue for 14 days | Needs mitigation |
 
 ## 6. Framework Reference
 
@@ -467,6 +517,10 @@ Threat models become stale as architectures evolve. New services, changed data f
 
 A threat register full of identified threats but no prioritized, assignable mitigations provides no security value. Every identified threat must have a corresponding mitigation with a clear owner, a severity-based SLA, and a tracking mechanism (e.g., linked Jira ticket or GitHub issue). If a threat is accepted rather than mitigated, document the risk acceptance with an approving authority and review date.
 
+### Pitfall 6: Treating Async Paths as Trusted Internals
+
+Queues, event buses, worker jobs, webhooks, and DLQ redrive consoles often look internal on diagrams, but they still carry attacker-controlled data, stale authorization decisions, and replayable side effects. Always model async producers, brokers, consumers, dead-letter storage, and replay tools as separate elements with explicit trust boundaries, evidence gates, and mitigations.
+
 ## 8. Prompt Injection Safety Notice
 
 This skill processes user-supplied content that may include system descriptions, architecture diagrams, configuration files, and design documents. The agent must adhere to the following safety constraints:
@@ -489,3 +543,7 @@ This skill processes user-supplied content that may include system descriptions,
 8. **NIST SP 800-154** — Guide to Data-Centric System Threat Modeling — https://csrc.nist.gov/publications/detail/sp/800-154/draft
 9. **STRIDE Original Paper** — Kohnfelder, L. & Garg, P. (1999). "The Threats to Our Products." Microsoft Internal Document.
 10. **OWASP Risk Rating Methodology** — https://owasp.org/www-community/OWASP_Risk_Rating_Methodology
+11. **OWASP API Security Top 10 2023** — https://owasp.org/API-Security/editions/2023/en/0x00-header/
+12. **CWE-294: Authentication Bypass by Capture-replay** — https://cwe.mitre.org/data/definitions/294.html
+13. **CWE-345: Insufficient Verification of Data Authenticity** — https://cwe.mitre.org/data/definitions/345.html
+14. **CWE-400: Uncontrolled Resource Consumption** — https://cwe.mitre.org/data/definitions/400.html

@@ -1,0 +1,27 @@
+{
+  "name": "unsafe-dlq-redrive-sensitive-payload",
+  "type": "queue-redrive-flow",
+  "producer": "billing-api",
+  "queue": "billing-jobs",
+  "consumer": "billing-worker",
+  "deadLetterQueue": "billing-jobs-dlq",
+  "payload": {
+    "customerEmail": "customer@example.test",
+    "billingToken": "raw-token-value",
+    "invoiceAmount": "250.00"
+  },
+  "observedControls": {
+    "dlqRetentionDays": 90,
+    "traceRedaction": false,
+    "operatorRole": "broad-operations",
+    "redriveApprovalRequired": false,
+    "operatorIdentityLogged": false,
+    "duplicateSuppression": false
+  },
+  "expectedThreatModelFinding": {
+    "stride": "Information Disclosure",
+    "secondaryStride": "Repudiation",
+    "severity": "High",
+    "evidence": "Sensitive billing payloads remain in a broadly readable DLQ and can be redriven without approval, audit identity, or duplicate suppression."
+  }
+}

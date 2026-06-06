@@ -1,0 +1,28 @@
+{
+  "name": "bounded-dlq-redrive",
+  "type": "queue-redrive-flow",
+  "producer": "orders-api",
+  "queue": "order-jobs",
+  "consumer": "order-worker",
+  "deadLetterQueue": "order-jobs-dlq",
+  "controls": {
+    "retryPolicy": {
+      "maxAttempts": 5,
+      "backoff": "exponential-with-jitter",
+      "poisonMessageIsolation": true
+    },
+    "redrive": {
+      "approvalRequired": true,
+      "operatorIdentityLogged": true,
+      "targetQueuePinned": "order-jobs",
+      "duplicateSuppression": "job_id",
+      "dryRunMode": true
+    },
+    "payloadHandling": {
+      "restrictedFields": "tokenized",
+      "traceRedaction": true,
+      "dlqRetentionDays": 7
+    }
+  },
+  "expectedThreatModelOutcome": "Pass: retry limits, audited redrive, duplicate suppression, and payload retention evidence are present."
+}

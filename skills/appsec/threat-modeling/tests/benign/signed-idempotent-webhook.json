@@ -1,0 +1,33 @@
+{
+  "name": "signed-idempotent-payment-webhook",
+  "type": "webhook-flow",
+  "provider": "payment-provider",
+  "receiver": "payments-webhook-api",
+  "downstreamQueue": "payment-events",
+  "controls": {
+    "signature": {
+      "algorithm": "HMAC-SHA256",
+      "input": "raw-request-body",
+      "secretScope": "provider-tenant",
+      "rotationDays": 90
+    },
+    "freshness": {
+      "timestampToleranceSeconds": 300,
+      "clockSkewAlert": true
+    },
+    "replayProtection": {
+      "eventIdCacheDays": 30,
+      "duplicateOutcome": "reject-before-side-effect"
+    },
+    "idempotency": {
+      "key": "provider_event_id",
+      "persistenceDays": 30,
+      "sideEffect": "order-fulfillment"
+    },
+    "consumerAuthorization": {
+      "tenantRechecked": true,
+      "orderOwnershipRechecked": true
+    }
+  },
+  "expectedThreatModelOutcome": "Pass: signature, freshness, replay, idempotency, and consumer authorization evidence are present."
+}

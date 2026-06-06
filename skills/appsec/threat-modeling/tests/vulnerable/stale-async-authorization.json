@@ -1,0 +1,29 @@
+{
+  "name": "stale-async-authorization",
+  "type": "queue-consumer-flow",
+  "producer": "documents-api",
+  "queue": "document-export-jobs",
+  "consumer": "export-worker",
+  "timeline": [
+    {
+      "time": "10:00:00Z",
+      "event": "user-requests-export",
+      "authorizationAtProducer": "allowed"
+    },
+    {
+      "time": "10:01:00Z",
+      "event": "user-access-revoked"
+    },
+    {
+      "time": "10:05:00Z",
+      "event": "worker-exports-document",
+      "authorizationAtConsumer": "not-checked"
+    }
+  ],
+  "expectedThreatModelFinding": {
+    "stride": "Elevation of Privilege",
+    "severity": "High",
+    "weakness": "stale authorization decision",
+    "evidence": "Consumer executes queued work after access revocation without tenant, object, and action recheck."
+  }
+}

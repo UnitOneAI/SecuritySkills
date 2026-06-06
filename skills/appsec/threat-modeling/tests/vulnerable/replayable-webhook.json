@@ -1,0 +1,22 @@
+{
+  "name": "replayable-payment-webhook",
+  "type": "webhook-flow",
+  "provider": "payment-provider",
+  "receiver": "payments-webhook-api",
+  "observedBehavior": {
+    "signatureVerified": true,
+    "signatureInput": "parsed-json-body",
+    "timestampToleranceSeconds": 86400,
+    "eventIdPersisted": false,
+    "duplicateSideEffect": "fulfillment-created-again"
+  },
+  "expectedThreatModelFinding": {
+    "stride": "Spoofing",
+    "severity": "Critical",
+    "weaknesses": [
+      "CWE-294",
+      "CWE-345"
+    ],
+    "evidence": "Signed webhook can be replayed for duplicate fulfillment because the event ID is not persisted and freshness is too broad."
+  }
+}

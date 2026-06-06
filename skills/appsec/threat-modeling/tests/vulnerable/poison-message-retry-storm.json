@@ -1,0 +1,24 @@
+{
+  "name": "poison-message-retry-storm",
+  "type": "queue-consumer-flow",
+  "producer": "inventory-api",
+  "queue": "inventory-sync",
+  "consumer": "inventory-worker",
+  "retryPolicy": {
+    "maxAttempts": null,
+    "backoff": "none",
+    "deadLetterQueue": null,
+    "poisonMessageIsolation": false
+  },
+  "failureMode": {
+    "message": "invalid-schema-version",
+    "workerBehavior": "throws-and-immediately-requeues",
+    "blastRadius": "shared-worker-pool"
+  },
+  "expectedThreatModelFinding": {
+    "stride": "Denial of Service",
+    "severity": "High",
+    "weakness": "CWE-400",
+    "evidence": "A single poison message can loop without max attempts, jittered backoff, or DLQ isolation."
+  }
+}
