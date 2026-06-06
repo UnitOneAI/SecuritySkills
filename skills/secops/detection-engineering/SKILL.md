@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -259,6 +259,50 @@ Describe how to test that this detection works correctly.
 3. **Filter validation:** If SCCM is in use, verify that SCCM client operations do not trigger the alert.
 4. **ATT&CK technique coverage:** Validate with atomic red team test `T1059.001` (https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1059.001/T1059.001.md).
 
+#### Validation Evidence Matrix
+
+Before assigning a coverage level above **Theoretical**, the agent MUST produce a validation evidence matrix that documents the actual evidence gathered for each test category. This prevents coverage claims that outrun available telemetry.
+
+| Evidence Type | Required Evidence | Expected Result | How to Obtain |
+|---------------|-------------------|-----------------|---------------|
+| **True positive** | Known-bad sample or Atomic Red Team test that exercises the technique | Rule fires with all expected fields populated in the alert | Execute Atomic Red Team test, import malicious sample, or use sandbox replay |
+| **Benign near-match** | Benign command, event, or workflow that closely resembles the suspicious pattern | Rule does not fire, or fires as a documented benign true positive with an approved exclusion | Identify legitimate tooling that matches parts of the detection logic (e.g., SCCM encoded commands) |
+| **Malicious near-filter** | Suspicious sample that passes through every broad allowlist filter or exclusion boundary | Rule still fires; tuning does not hide attacker use of trusted tooling | Craft a test event that combines a malicious indicator with a parent process or field value that matches an exclusion |
+| **Telemetry absent** | Host or log stream that is missing a required field (e.g., CommandLine, ScriptBlockText, ParentImage) | Coverage remains **Theoretical** or **Not Evaluable** for that scope | Review log source configuration; identify hosts where the field is not collected or is truncated |
+| **Backend conversion** | Sigma rule converted to each target SIEM query language plus one smoke-test event per backend | Converted query preserves Sigma selection logic, filter semantics, field mappings, and modifier behavior | Run `sigma-cli convert` for each backend; execute smoke test in a dev/staging SIEM instance |
+
+**Required fields for the matrix output:**
+
+```markdown
+| Evidence Type | Sample / Source | Target SIEM | Result | Pass/Fail |
+|---------------|----------------|-------------|--------|-----------|
+| True positive | [Atomic test T1059.001] | [Sentinel KQL] | Alert fires, CommandLine field populated | Pass |
+| Benign near-match | [SCCM admin script with -enc] | [Sentinel KQL] | No alert fires | Pass |
+| Malicious near-filter | [Encoded cmd via legitimate SCCM parent] | [Sentinel KQL] | Alert fires (filter correctly excludes only benign) | Pass |
+| Telemetry absent | [Host without Sysmon EID 1] | [Sentinel KQL] | Coverage marked Theoretical | Pass |
+| Backend conversion | [Converted SPL query] | [Splunk SPL] | SPL fires on same smoke-test event | Pass |
+```
+
+#### Telemetry Sufficiency Gate
+
+Coverage levels **Tested**, **Operational**, and **Robust** require evidence that the target environment actually captures the fields the Sigma rule depends on. Before promoting coverage above Theoretical, verify:
+
+- **Field presence:** Every field referenced in the rule's `selection` or `filter` clauses exists in the target log source (e.g., `CommandLine` in process creation events).
+- **Field completeness:** The field is not truncated, sampled, or redacted in a way that breaks detection logic (e.g., command-line length limits, PowerShell script-block log chunking).
+- **Host coverage:** The required log source is enabled on a sufficient percentage of endpoints to provide meaningful coverage (document the percentage and any exclusion scopes).
+- **Retention period:** The log data is retained long enough for the detection's investigation window (minimum 30 days for most use cases).
+
+If any of these conditions cannot be confirmed, the coverage level must remain **Theoretical** or **Not Evaluable** for the affected scope. Use `logsource.definition` in the Sigma rule or the ADS **Blind Spots and Assumptions** section to document the onboarding requirements for non-default fields such as command-line arguments, script-block logs, or EDR-specific process metadata.
+
+#### Backend Conversion Notes
+
+When the Sigma rule will be deployed to one or more SIEM backends, document the following for each conversion target:
+
+- **Modifier support:** Note any Sigma modifiers (e.g., `|base64offset`, `|re`, `|contains`) that lack a direct equivalent in the target query language. Explain how the conversion tool handles them and whether the behavior is preserved.
+- **Field mapping differences:** Record fields that are renamed during conversion (e.g., `CommandLine` → `ProcessCommandLine` in Sentinel, `command_line` in Splunk). Confirm the mapping is correct for the target platform's schema.
+- **Filter semantics:** Verify that compound `condition` expressions with `not` exclusions, allowlist boundaries, and regex filters translate correctly. A syntactically valid converted query can still produce different results if filter precedence changes.
+- **Smoke-test evidence:** Include at least one converted query per backend that has been executed against a sample event to confirm it fires (or does not fire) as expected.
+
 #### Response
 Define the analyst response procedure when this alert fires.
 
@@ -282,6 +326,12 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | **Tested** | Light Green | Rule has been validated with synthetic test data (e.g., Atomic Red Team) |
 | **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
 | **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
+
+**Coverage promotion gates:**
+
+- **Do not promote a rule above Theoretical** unless the required telemetry exists in the target environment and the validation evidence matrix is complete for the intended SIEM backend. Theoretical coverage means a rule has been authored and documented but has not been validated against real or simulated telemetry.
+- **Do not promote from Tested to Operational** unless the deployed rule has production alert evidence, a documented alert disposition history (TP/FP counts), and tuning adjustments that have been validated.
+- **Do not promote to Robust** unless multiple complementary rules cover different procedure examples of the same technique and at least one rule has caught confirmed real-world activity in production.
 
 **Heatmap construction process:**
 
@@ -389,6 +439,17 @@ Produce detection engineering deliverables in this structure:
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
 
+#### Telemetry Evidence
+| Field | Log Source | Host Coverage | Status |
+|-------|-----------|---------------|--------|
+| [e.g., CommandLine] | [Sysmon EID 1 / Security 4688] | [% of hosts] | [Present / Truncated / Absent] |
+| [e.g., ParentImage] | [Sysmon EID 1] | [% of hosts] | [Present / Truncated / Absent] |
+
+#### Backend Conversion Evidence
+| Target SIEM | Query Language | Modifier Handling | Field Mapping Notes | Smoke Test |
+|-------------|----------------|-------------------|---------------------|------------|
+| [e.g., Sentinel] | [KQL] | [e.g., base64offset → unsupported, manual equivalent] | [CommandLine → ProcessCommandLine] | [Pass/Fail] |
+
 ### Deployment Notes
 - **Target SIEM:** [Platform]
 - **Converted Query:** [KQL/SPL/EQL equivalent if requested]
@@ -493,6 +554,17 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
+
+### Pitfall 6: Backend Conversion Semantic Drift and Allowlist Boundary Misclassification
+
+A Sigma rule that looks correct can silently produce incorrect results after conversion to a SIEM-specific query language. Common failure modes include:
+
+- **Modifier loss:** Sigma modifiers like `|base64offset`, `|re`, and `|windash` may lack direct equivalents in the target backend. `sigma-cli` may silently drop or approximate these modifiers, producing a query that matches a different event set than intended.
+- **Field renaming:** The same logical field can have different names across platforms (e.g., `CommandLine` in Sigma maps to `ProcessCommandLine` in Sentinel KQL, `command_line` in Splunk SPL). Incorrect mappings cause the query to run against the wrong field or fail silently.
+- **Filter precedence changes:** Compound `condition` expressions with `not` exclusions can change meaning when translated to a different query language's operator precedence rules. A filter that correctly excludes benign events in Sigma may suppress malicious events in the converted query.
+- **Allowlist boundary misclassification:** A broad filter (e.g., exclude all events where `ParentImage` ends with `\admin-wrapper.exe`) can hide malicious execution that uses a legitimate automation parent. Always craft a "malicious near-filter" test sample that combines a known-bad indicator with a value matching the filter boundary to confirm the exclusion is correctly scoped.
+
+**Mitigation:** Before promoting a converted rule to any production environment, execute the backend conversion evidence smoke test described in the Validation Evidence Matrix. Do not assume that a syntactically valid converted query is semantically equivalent to the source Sigma rule.
 
 ---
 
