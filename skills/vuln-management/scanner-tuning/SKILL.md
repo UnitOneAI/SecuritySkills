@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -348,7 +348,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.1
+**Skill:** scanner-tuning v1.0.2
 **Frameworks:** CVSS 4.0, CWE
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
 
@@ -440,6 +440,15 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 ---
 
+## Calibration Fixtures
+
+Use the included fixtures to verify scanner tuning preserves CVSS provenance:
+
+- `tests/vulnerable/active-exploitation-hidden-by-environment.md` confirms `E:A` active exploitation stays visible even when Environmental controls reduce an asset-specific score.
+- `tests/benign/dated-unreported-threat-evidence.md` confirms a dated `E:U` finding can be handled as monitored context without inventing active exploitation.
+
+---
+
 ## Common Pitfalls
 
 1. **Suppressing findings instead of investigating root cause.** When scanner results contain noise, the temptation is to suppress plugins globally. This creates blind spots. Instead, identify the root cause of the false positive (e.g., unauthenticated scan misreading a banner) and fix the detection method (enable authentication) rather than hiding the symptom (disabling the plugin).
@@ -493,4 +502,5 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 ## Changelog
 
+- **1.0.2** -- Added calibration fixtures for active-exploitation evidence hidden by environmental downgrades and dated unreported-threat evidence handling.
 - **1.0.1** -- Added CVSS v4.0 Threat metric evidence gates, CVSS-B/BT/BE/BTE score labelling, vector source/date provenance, Supplemental metric context, and output fields that prevent Base-only NVD scores from being reported as final tuned severity without supporting Threat or Environmental evidence.
