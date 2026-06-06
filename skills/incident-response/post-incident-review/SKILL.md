@@ -280,6 +280,38 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 | P2 | Moderate gap that represents a defense-in-depth weakness | 90 days |
 | P3 | Minor improvement or best-practice enhancement | Next quarter |
 
+### Step 7: Remediation Verification and Recurrence Monitoring
+
+Do not treat a remediation action as closed because a tracking ticket is closed. Each action must have objective acceptance criteria, verification evidence, and a named verifier who is not the action owner when independence is required.
+
+**Verification gates:**
+
+| Gate | Requirement | Evidence |
+|---|---|---|
+| Acceptance Criteria | Define what must be true before the action can close | Testable criteria linked to the PIR finding and control failure |
+| Implementation Evidence | Prove the change was deployed or process update was adopted | Configuration export, merged PR, policy version, change ticket, training record |
+| Independent Validation | Verify the fix works and addresses the root cause | Retest result, control test, tabletop result, audit sample, screenshots or logs |
+| Detection Validation | Confirm new or updated detections fire and route correctly | Test event, alert screenshot/log, routing destination, runbook link |
+| Recurrence Monitoring | Watch for the same failure mode after closure | Monitoring query, dashboard, owner, watch period, success criteria |
+| Closure Approval | Document who accepted closure and residual risk | Approver, date, evidence links, risk acceptance if gaps remain |
+
+**Verification by control type:**
+
+| Remediation Type | Minimum Closure Evidence | False Positive Closure |
+|---|---|---|
+| Preventive control | Retest showing the original attack path is blocked or mitigated | Ticket says "MFA enabled" but no login test or policy export exists |
+| Detective control | Test signal generates expected alert, severity, owner, and routing | Rule was created but never tested with a representative event |
+| Corrective control | Recovery or rollback exercise proves the process works | Backup job exists but restore was not tested |
+| Process control | Updated playbook, trained owners, and tabletop or walkthrough result | Document was edited but responders were not trained |
+| Governance action | Risk owner approval, deadline, review cadence, and residual risk | Action is deferred without time-bounded risk acceptance |
+
+**Recurrence monitoring rules:**
+- Define a watch period for each P0/P1 remediation, typically 30 to 90 days depending on incident severity and business cycle.
+- Monitor for the original precursor, indicator, control failure, or detection gap that contributed to the incident.
+- Reopen the PIR action if the same failure mode recurs, if detection tests fail, or if validation evidence cannot be produced.
+- Escalate overdue P0 actions to executive visibility after the deadline; P1/P2 actions require documented exception approval before extension.
+- Record residual risk when a remediation is only partially effective, including the compensating controls and next review date.
+
 ---
 
 ## 4. Findings Classification
@@ -354,9 +386,19 @@ root cause, and the number/priority of remediation actions identified.]
 - [Gap or failure identified during retrospective]
 
 ### Remediation Plan
-| ID | Finding | Action | Owner | Priority | Deadline | Ticket |
-|---|---|---|---|---|---|---|
-| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Ticket | Acceptance Criteria |
+|---|---|---|---|---|---|---|---|
+| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] | [Evidence required before closure] |
+
+### Remediation Verification
+| ID | Verification Owner | Implementation Evidence | Validation Method | Result | Residual Risk |
+|---|---|---|---|---|---|
+| REM-001 | [Name/team] | [Config/PR/change/policy evidence] | [Retest/control test/tabletop/detection test] | [Pass/Fail/Partial] | [None/description] |
+
+### Recurrence Monitoring
+| ID | Watch Period | Signal or Query | Owner | Success Criteria | Escalation Condition |
+|---|---|---|---|---|---|
+| REM-001 | [30/60/90 days] | [Detection, metric, log query, audit sample] | [Name/team] | [No recurrence / alert fires / control remains effective] | [When to reopen or escalate] |
 
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
