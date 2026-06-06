@@ -432,6 +432,31 @@ CORS(app, origins="*", supports_credentials=True)  # Allows any origin with cred
 ```
 
 ```javascript
+// VULNERABLE: Reflects arbitrary origins, including null/file origins
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (origin) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Access-Control-Allow-Credentials', 'true');
+  }
+  next();
+});
+```
+
+```http
+# VULNERABLE: Private Network Access preflight is allowed without a trusted origin gate
+OPTIONS /admin/export HTTP/1.1
+Origin: https://attacker.example
+Access-Control-Request-Method: POST
+Access-Control-Request-Private-Network: true
+
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://attacker.example
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Private-Network: true
+```
+
+```javascript
 // VULNERABLE: Verbose error messages in production
 app.use((err, req, res, next) => {
   res.status(500).json({
@@ -453,6 +478,11 @@ Document doc = builder.parse(request.getInputStream());
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
+- Reject `Origin: null`, `file://`, sandboxed document, and opaque origins unless there is a documented, low-risk use case with separate authentication and CSRF protections.
+- Do not reflect the request `Origin` header directly. Match exact scheme, host, and port against an allowlist; avoid broad suffix or regex matches that allow attacker-controlled subdomains.
+- Return `Vary: Origin` whenever CORS responses differ by origin so shared caches do not reuse one tenant's allow decision for another origin.
+- For Private Network Access (PNA), only return `Access-Control-Allow-Private-Network: true` for trusted origins that are explicitly allowed to reach private-network resources. Treat PNA preflights as high-signal evidence for internal API exposure.
+- Validate preflight `Access-Control-Request-Method` and `Access-Control-Request-Headers` against per-endpoint allowlists instead of returning broad method/header grants.
 - Set security response headers on all API responses:
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
   - `X-Content-Type-Options: nosniff`
@@ -466,6 +496,11 @@ Document doc = builder.parse(request.getInputStream());
 ### Review Checklist
 
 - [ ] CORS is configured with an explicit origin allowlist; wildcard is not used with credentials.
+- [ ] CORS allowlists match exact origins and do not reflect arbitrary `Origin` values.
+- [ ] `null`, `file://`, sandboxed, and opaque origins are rejected or explicitly justified with compensating controls.
+- [ ] CORS responses that vary by origin include `Vary: Origin`.
+- [ ] PNA preflights are reviewed; `Access-Control-Allow-Private-Network: true` is limited to trusted origins and private-resource endpoints that require it.
+- [ ] Preflight methods and headers are restricted per endpoint.
 - [ ] Security headers are present on all API responses.
 - [ ] Error responses in production are generic; no stack traces, SQL queries, or internal paths.
 - [ ] Only required HTTP methods are enabled per endpoint.
