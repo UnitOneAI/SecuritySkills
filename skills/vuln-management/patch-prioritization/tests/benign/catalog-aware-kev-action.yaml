@@ -1,0 +1,24 @@
+cve: CVE-2026-99999
+asset: prod-edge-appliance
+asset_context:
+  exposure: open
+  exposure_source: external_attack_surface_scan
+  business_criticality: high
+  context_confidence: verified
+cisa_kev:
+  listed: true
+  due_date: "2026-06-19"
+  required_action: "Apply vendor mitigation or discontinue use if mitigation is unavailable"
+  known_ransomware_campaign_use: Unknown
+patch_status:
+  vendor_patch_available: false
+  workaround_available: true
+  workaround: "Disable vulnerable module and restrict management interface"
+expected_triage:
+  ssvc_exploitation: active
+  active_exploitation_evidence: cisa_kev
+  schedule_action: mitigation_or_discontinue_use
+  local_deadline_basis: cisa_due_date_plus_local_exposure_policy
+  must_not_do:
+    - replace_required_action_with_patch_only
+    - ignore_catalog_due_date
