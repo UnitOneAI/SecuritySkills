@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -258,6 +258,41 @@ IAM-STALE-07: Accounts disabled but not deleted after retention period
 IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for privileged, semi-annual for standard)
 ```
 
+#### Downstream Deprovisioning and Token Revocation Evidence Gate
+
+Do not mark deprovisioning complete based only on the IdP account status or a successful SCIM user disable event. Verify that relying-party accounts, sessions, app-local roles, refresh tokens, API tokens, mobile/device tokens, and owned machine identities no longer preserve effective access.
+
+```
+IAM-DEPROV-01: IdP disabled or SCIM event succeeded, but relying-party account/session state is not verified
+IAM-DEPROV-02: Browser, mobile, CLI, OAuth refresh, personal API, or device tokens remain active after termination or access change
+IAM-DEPROV-03: Group removal does not propagate to app-local RBAC, cached claims, entitlement tables, warehouse grants, or cloud roles
+IAM-DEPROV-04: Non-SCIM application lacks compensating lifecycle control and reconciliation evidence
+IAM-DEPROV-05: Owner termination or transfer does not trigger review of service accounts, OAuth apps, deploy keys, CI/CD secrets, OIDC trust policies, or static keys
+IAM-DEPROV-06: Break-glass, emergency, or excluded accounts lack owner, expiry, monitoring, test, and post-use rotation evidence
+IAM-DEPROV-07: Deprovisioning evidence lacks event IDs, timestamps, source-of-truth records, or residual-access decision
+IAM-DEPROV-08: Downstream lifecycle evidence is unavailable; deprovisioning must be Not Evaluable
+```
+
+**Required evidence matrix:**
+
+| Evidence Area | Required Detail | Risk if Missing |
+|---|---|---|
+| Source lifecycle event | Hire, transfer, termination, group removal, owner change, emergency access use, HRIS/IdP ticket, source-of-truth ID, event timestamp | Review cannot prove the access change is authoritative or timely |
+| IdP and provisioning evidence | Directory status, SCIM PATCH/DELETE event, IdP group delta, provisioning job result, failure queue, retry status, and event ID | SCIM may fail partially or disable only the identity object |
+| Relying-party state | App-local user state, roles/groups, entitlement table, data warehouse grants, cloud/SaaS role bindings, cache TTL, last sync, and audit event | Effective access can persist outside the IdP |
+| Token/session revocation | Browser sessions, mobile sessions, OAuth refresh tokens, personal API tokens, device tokens, CLI tokens, and service-specific sessions | Users can remain authenticated after account disablement |
+| Machine identity impact | Owned service accounts, deploy keys, OAuth apps, GitHub/GitLab tokens, CI/CD secrets, OIDC trust policies, static keys, workload identity bindings, and owner reassignment | Departed owners can leave non-human production access behind |
+| Non-SCIM compensating controls | Manual disable checklist, API revocation proof, periodic reconciliation, exception owner, review cadence, and residual access result | SSO-only apps can retain local access without lifecycle coverage |
+| Break-glass exceptions | Account owner, business purpose, expiry, monitoring, test result, vaulting, post-use password/key rotation, and approval evidence | Emergency access can become permanent ungoverned access |
+
+**Decision rules:**
+
+- Mark former employee, contractor, or vendor residual access **Critical** when active sessions, refresh tokens, API tokens, or app-local admin roles remain valid after termination.
+- Mark access-change propagation **High** when group removal or role change does not invalidate cached app-local RBAC, cloud grants, or entitlement tables within the required SLA.
+- Mark machine identity lifecycle **High** when a departed owner still controls service accounts, deploy keys, OAuth apps, OIDC trust policies, static keys, or CI/CD secrets.
+- Mark non-SCIM apps **Partial** only when compensating controls prove local account disablement, token/session revocation, reconciliation, and residual access review.
+- Mark deprovisioning **Not Evaluable** when only IdP status or SCIM success is available without relying-party state, token/session, and machine-identity evidence.
+
 **Platform-specific checks:**
 
 | Platform | Check | What to look for |
@@ -265,14 +300,18 @@ IAM-STALE-08: Access reviews not conducted on required cadence (quarterly for pr
 | **AWS** | IAM Credential Report: `password_last_used`, `access_key_last_used` | Inactive users, unused access keys |
 | **Azure / Entra ID** | Sign-in logs, last sign-in activity (requires Entra ID P1+) | Inactive users, stale guest accounts |
 | **Azure / Entra ID** | Access Reviews (Entra ID Governance) | Configured and completing on schedule |
+| **Azure / Entra ID** | Continuous Access Evaluation, refresh-token revocation, enterprise app assignments | Token/session revocation, app-local roles, stale service principals |
 | **GCP** | Policy Analyzer, Admin Activity audit logs | Service accounts with no API calls, unused IAM bindings |
+| **SaaS / IdP** | SCIM job logs, app audit logs, OAuth app/token inventory, session APIs | Downstream disablement, token/session revocation, group cache propagation |
 
 **Severity Classification:**
 
 | Finding | Severity | Rationale |
 |---|---|---|
 | Former employee with active admin access | **Critical** | Immediate unauthorized access risk |
+| Former employee with active token/session/API access | **Critical** | IdP disablement did not remove effective access |
 | Orphaned service account with production access | **High** | No owner to monitor or respond to abuse |
+| Group removal not reflected in relying-party roles | **High** | Access change has not propagated to effective authorization |
 | Inactive human account > 90 days | **Medium** | Credential stuffing / takeover target |
 | Disabled but not deleted account > 180 days | **Low** | Hygiene improvement |
 
@@ -414,6 +453,12 @@ For each finding, produce a row with:
 ### Detailed Findings
 [Findings table — see above]
 
+### Downstream Deprovisioning and Token Revocation
+
+| Lifecycle Event | IdP / SCIM Evidence | Relying Party State | Token / Session Revocation | Machine Identity Impact | Exception Evidence | Decision |
+|---|---|---|---|---|---|---|
+| [termination/group removal/owner change] | [event ID, timestamp, job result] | [app roles/groups/grants/cache state] | [browser/mobile/OAuth/API/device/CLI] | [service accounts, keys, apps, OIDC, CI/CD] | [non-SCIM or break-glass controls] | Pass / Fail / Partial / Not Evaluable |
+
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
 
@@ -508,4 +553,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-06 | Add downstream deprovisioning and token revocation evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
