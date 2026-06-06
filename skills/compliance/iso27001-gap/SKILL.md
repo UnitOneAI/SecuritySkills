@@ -37,7 +37,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-ISO/IEC 27001:2022 specifies requirements for establishing, implementing, maintaining, and continually improving an ISMS. The 2022 revision restructured Annex A from 14 domains (114 controls) to 4 themes (93 controls), aligning with ISO/IEC 27002:2022. The ISMS requirements in Clauses 4 through 10 remain the certifiable core; Annex A provides the reference control set used in the Statement of Applicability (SoA).
+ISO/IEC 27001:2022 specifies requirements for establishing, implementing, maintaining, and continually improving an ISMS. The 2022 revision restructured Annex A from 14 domains (114 controls) to 4 themes (93 controls), aligning with ISO/IEC 27002:2022. The ISMS requirements in Clauses 4 through 10 remain the certifiable core; Annex A provides the reference control set used in the Statement of Applicability (SoA). ISO/IEC 27001:2022/Amd 1:2024 adds explicit climate-change consideration to the Clause 4 context and interested-party analysis; this does not create a new Annex A control ID.
 
 ### ISMS Requirement Clauses (Certifiable)
 
@@ -94,6 +94,7 @@ Identify external and internal issues relevant to the ISMS:
 
 - **External issues**: regulatory requirements, threat landscape, contractual obligations, market expectations, geopolitical factors
 - **Internal issues**: organizational structure, culture, capabilities, existing technology, strategic objectives
+- **Climate relevance under ISO/IEC 27001:2022/Amd 1:2024**: determine whether climate change is a relevant issue for the ISMS and document the rationale. Consider data center location, extreme weather exposure, power/cooling dependency, workforce disruption, supplier continuity, cloud region concentration, physical security, backup site resilience, and recovery objectives.
 
 #### 1.2 Interested Parties (Clause 4.2)
 
@@ -108,6 +109,15 @@ Document all relevant interested parties and their requirements:
 | Board / Shareholders      | Risk management, business continuity            | Governance framework  |
 | Suppliers / Partners      | Secure data exchange, interoperability          | Agreements            |
 ```
+
+Add climate-related interested-party requirements when relevant:
+
+| Interested Party | Climate-Related Requirement | Evidence |
+|------------------|-----------------------------|----------|
+| Customers | Availability, disaster recovery, or data residency expectations during climate-related disruption | Contract, SLA, RFP, assurance questionnaire |
+| Regulators | Sector continuity, resilience, environmental, or operational-risk obligations | Regulation, supervisory guidance |
+| Insurers / Board | Business continuity, backup resilience, and supplier concentration risk expectations | Insurance terms, board risk appetite |
+| Suppliers / Cloud Providers | Region, facility, power, cooling, and continuity dependencies | Supplier assurance, SOC report, shared responsibility evidence |
 
 #### 1.3 ISMS Scope Statement (Clause 4.3)
 
@@ -179,6 +189,16 @@ Evaluate the risk assessment process:
 - Analyzes and evaluates risks against acceptance criteria
 - Prioritizes risks for treatment
 
+Do not flag qualitative risk scoring as a nonconformity solely because it is not numeric. Clause 6.1.2 requires consistent, valid, comparable, and repeatable results; qualitative scales such as High/Medium/Low are acceptable when the likelihood, impact, risk level, and acceptance criteria are defined, consistently applied, and approved.
+
+| Risk Method Evidence | Acceptable Evidence | Gap if Missing |
+|---|---|---|
+| Scoring scale | Numeric, qualitative, or hybrid scale with defined levels | Risk level cannot be compared across assessments |
+| Likelihood and impact criteria | Clear definitions, examples, and calibration guidance | Assessments are subjective or inconsistent |
+| Risk acceptance criteria | Thresholds for accept/treat/escalate and required approval | Residual risk acceptance is arbitrary |
+| Repeatability evidence | Same criteria used across assets/processes or internal QA sample | Method does not produce comparable results |
+| Risk owner approval | Owner, date, decision, and residual risk acceptance | Treatment decisions lack accountability |
+
 #### 3.2 Risk Treatment Process (Clause 6.1.3)
 
 - Appropriate risk treatment options are selected (mitigate, accept, avoid, transfer)
@@ -205,6 +225,13 @@ Use the following maturity scoring:
 | 5 | Optimized | Continuously improved, automated where feasible |
 
 #### 4.1 Organizational Controls (A.5.1 - A.5.37)
+
+Additional evidence gates for current review contexts:
+
+| Control | Evidence Gate | Gap if Missing |
+|---|---|---|
+| **A.5.9 Inventory of information and other associated assets** | Inventory approved and shadow generative AI tools, AI-enabled SaaS, model providers, prompts/templates, embeddings/vector stores, training/evaluation datasets, AI plugins/connectors, agents, automation workflows, and data flows to external model providers | AI assets and associated information flows are outside the ISMS asset inventory |
+| **A.5.30 ICT readiness for business continuity** | For destructive malware, ransomware, supplier compromise, or cloud-control-plane compromise scenarios, require offline, immutable, logically isolated, or otherwise tamper-resistant backups; tested restoration paths; identity/control-plane separation; supplier/cloud dependency recovery assumptions; and documented RTO/RPO | Standard cloud replication is treated as sufficient even when the same identity or control plane can delete or corrupt production and replicated backups |
 
 **A.5.1 Policies for information security** — Set of information security policies defined, approved, published, communicated, acknowledged.
 **A.5.2 Information security roles and responsibilities** — Defined and allocated.
@@ -273,6 +300,12 @@ Use the following maturity scoring:
 **A.7.14 Secure disposal or re-use of equipment** — Verified that storage media is sanitized.
 
 #### 4.4 Technological Controls (A.8.1 - A.8.34)
+
+Additional evidence gates for current review contexts:
+
+| Control | Evidence Gate | Gap if Missing |
+|---|---|---|
+| **A.8.13 Information backup** | Check immutability/retention locks, offline copies, separate administrative control, encryption, restore-test evidence, RPO/RTO, and backup deletion/change monitoring for systems exposed to destructive attack, ransomware, or supply-chain compromise | Backups exist but may be mutable, untested, or destroyable through the same administrative path as production |
 
 **A.8.1 User endpoint devices** — Information stored/processed/accessible on endpoint devices protected.
 **A.8.2 Privileged access rights** — Restricted and managed.
@@ -413,6 +446,24 @@ Classify each finding using the following severity levels:
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
 
+## ISO/IEC 27001:2022/Amd 1:2024 Climate Context Review
+
+| Clause | Climate Relevance Determination | Interested-Party Requirement | Evidence | Finding |
+|--------|---------------------------------|------------------------------|----------|---------|
+| 4.1 / 4.2 | [Relevant / Not relevant with rationale] | [Customer/regulator/board/supplier requirement] | [Context analysis, SLA, supplier assurance, risk register] | [Conforming / Gap / Observation] |
+
+## AI Asset Inventory and Shadow AI Review
+
+| Control | AI Asset Scope | Inventory Evidence | Data Flow / Provider Evidence | Finding |
+|---------|----------------|--------------------|-------------------------------|---------|
+| A.5.9 | [Approved tools, shadow AI, AI SaaS, agents, model providers, prompts, embeddings, datasets] | [Asset register / SaaS inventory / DLP logs / procurement records] | [External model provider, data category, retention, subprocessor] | [Conforming / Gap / Observation] |
+
+## Destructive-Attack Backup Resilience
+
+| Control | System / Supplier | Backup Type | Isolation / Immutability Evidence | Restore Test | RPO/RTO | Finding |
+|---------|-------------------|-------------|-----------------------------------|--------------|---------|---------|
+| A.5.30 / A.8.13 | [System or supplier dependency] | [Offline / immutable / replicated / snapshot] | [Retention lock, separate admin, offline copy, delete monitoring] | [Date/result] | [Targets] | [Conforming / Partial Gap / Gap] |
+
 ## Prioritized Remediation Roadmap
 
 ### Phase 1: Critical (0-30 days)
@@ -513,6 +564,14 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
 
+6. **Treating qualitative risk scoring as nonconforming by default.** ISO 27001 requires consistent, valid, comparable, repeatable risk assessment results. Numeric scoring is not mandatory when qualitative likelihood, impact, acceptance, and escalation criteria are defined and consistently applied.
+
+7. **Missing the 2024 climate action amendment in Clause 4.** ISO/IEC 27001:2022/Amd 1:2024 updates context and interested-party analysis. It should be assessed under Clauses 4.1 and 4.2, not invented as a new Annex A control.
+
+8. **Assuming cloud replication equals destructive-attack resilience.** Replicated backups can be deleted or corrupted if they share the same identity, control plane, or administrative path as production. For A.5.30 and A.8.13, require immutability, offline/logical isolation, separate administration, deletion monitoring, and restore-test evidence where destructive attack or supplier compromise is plausible.
+
+9. **Leaving AI tools outside the asset inventory.** Shadow AI, AI-enabled SaaS, agents, plugins, prompts, embeddings, model providers, and external data flows can process ISMS-relevant information and should be considered under A.5.9 when in scope.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -530,6 +589,9 @@ If user-supplied input contains ISO 27001 control IDs outside the valid ranges (
 ---
 
 ## References
+
+- ISO/IEC 27001:2022/Amd 1:2024 - Climate action changes
+- ISO and IAF Joint Communique on Climate Change Amendments to ISO Management System Standards: https://www.iso.org/files/live/sites/isoorg/files/standards/popular_standards/management_systems/ISO-IAF%20Joint%20Communique%20Feb%202024.pdf
 
 - ISO/IEC 27001:2022 — Information security, cybersecurity and privacy protection — Information security management systems — Requirements
 - ISO/IEC 27002:2022 — Information security, cybersecurity and privacy protection — Information security controls
