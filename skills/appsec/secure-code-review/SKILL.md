@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -110,6 +110,81 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
+
+---
+
+### 2.4 HTTP Parser Boundary and Request Smuggling Review
+
+**ASVS Reference:** V5 -- Validation, Sanitization and Encoding; V13 -- API and Web Service
+**CWE Coverage:** CWE-444 (Inconsistent Interpretation of HTTP Requests)
+
+Apply this gate when reviewed code or configuration sits behind a reverse proxy, CDN, API gateway, WAF, service mesh, HTTP/2-to-HTTP/1 downgrade, serverless adapter, or custom raw-body middleware. Request smuggling risk requires evidence that two HTTP parsers may disagree about request boundaries; header size, timeout, or buffering settings alone are not enough.
+
+#### 2.4.1 Evidence to Collect
+
+| Evidence | Why it matters |
+|---|---|
+| Frontend component | CDN, load balancer, proxy, gateway, WAF, or framework adapter that receives the client request first |
+| Backend component | Runtime or framework parser that receives the forwarded request |
+| Protocol translation | HTTP/2, H2C, WebSocket upgrade, chunked transfer, or HTTP/1.1 downgrade behavior |
+| Boundary header policy | Handling of `Content-Length`, `Transfer-Encoding`, duplicate headers, `Connection`, and hop-by-hop headers |
+| Raw-body path | Middleware, webhook verification, compression, or serverless adapter that reads the body before the framework parser |
+| Conflict handling | Whether CL/TE conflicts, duplicate CL values, malformed chunks, and oversized headers are rejected before forwarding |
+| Route impact | Whether desync could reach authenticated, admin, cacheable, webhook, or state-changing routes |
+
+#### 2.4.2 Vulnerable Patterns by Stack
+
+**Nginx to Node.js -- forwarding attacker-controlled transfer framing**
+
+```nginx
+# VULNERABLE: forwards client-supplied Transfer-Encoding to the backend
+location /api/ {
+    proxy_http_version 1.1;
+    proxy_set_header Transfer-Encoding $http_transfer_encoding;
+    proxy_pass http://node_backend;
+}
+```
+
+Remediation: Do not forward client-controlled hop-by-hop framing headers. Normalize or reject conflicting `Content-Length`/`Transfer-Encoding` at the edge, strip hop-by-hop headers before proxying, and keep the proxy/backend HTTP protocol contract explicit.
+
+**JavaScript -- raw body middleware before the framework parser**
+
+```javascript
+// VULNERABLE: consumes the request stream before the JSON parser
+app.use((req, res, next) => {
+  req.rawBody = [];
+  req.on("data", chunk => req.rawBody.push(chunk));
+  next();
+});
+app.use(express.json());
+```
+
+Remediation: Scope raw-body capture to the exact webhook route that needs it, use framework-supported `verify` hooks or raw-body middleware before route dispatch, and prove that downstream parsers see the same bytes that signature verification used.
+
+**Go -- benign bounded HTTP server settings**
+
+```go
+// BENIGN: size and timeout controls without a parser disagreement
+srv := &http.Server{
+    Addr:              ":8443",
+    Handler:           app,
+    ReadHeaderTimeout: 5 * time.Second,
+    MaxHeaderBytes:    1 << 20,
+}
+```
+
+Classification: Do not report this as request smuggling by itself. It can be a hardening control or DoS control; smuggling requires proxy/backend parser mismatch, conflicting framing acceptance, or unsafe raw-body handling evidence.
+
+#### 2.4.3 Review Checklist
+
+- [ ] Inventory every HTTP component between the client and application handler.
+- [ ] Verify the frontend rejects or normalizes conflicting `Content-Length` and `Transfer-Encoding` headers before forwarding.
+- [ ] Verify duplicate header handling is documented for security-sensitive headers, especially `Content-Length`, `Transfer-Encoding`, `Host`, and authorization headers.
+- [ ] Confirm hop-by-hop headers are stripped at proxy boundaries instead of copied from client input.
+- [ ] Check HTTP/2-to-HTTP/1 downgrade and H2C upgrade paths for explicit normalization tests.
+- [ ] Review webhook/raw-body middleware to ensure body reads are route-scoped and do not desynchronize downstream parsers.
+- [ ] Require an integration test through the deployed proxy path for CL/TE conflicts, duplicate CL values, malformed chunks, and duplicate security headers.
+- [ ] Classify severity by reachable impact: unauthenticated auth bypass, cache poisoning, or request routing takeover is High/Critical; isolated internal parser ambiguity with no privileged route impact is Medium/Low.
 
 ---
 
@@ -420,6 +495,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Boundary Evidence** | For parser-boundary findings: frontend, backend, protocol conversion, header policy, raw-body path, and conflict-handling proof |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -445,7 +521,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.0.1
 
 ### Summary
 - Critical: [count]
@@ -502,13 +578,14 @@ The final review output must be structured as follows:
 | V13 | API and Web Service | API-specific controls |
 | V14 | Configuration | Secure build and deployment |
 
-### CWE Top 25 (2024) Coverage
+### CWE Top 25 (2024) and Supplemental Coverage
 
 | CWE ID | Name | Review Step |
 |---|---|---|
 | CWE-787 | Out-of-bounds Write | Step 2 (memory-safe language check) |
 | CWE-79 | Cross-site Scripting (XSS) | Step 2 |
 | CWE-89 | SQL Injection | Step 2 |
+| CWE-444 | HTTP Request/Response Smuggling | Step 2.4 |
 | CWE-416 | Use After Free | Step 2 (memory-safe language check) |
 | CWE-78 | OS Command Injection | Step 2 |
 | CWE-20 | Improper Input Validation | Step 2 |
@@ -541,6 +618,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Flagging request smuggling without parser mismatch evidence.** Large headers, long timeouts, raw-body access, or a reverse proxy are not findings by themselves. Require a documented frontend/backend disagreement or unsafe forwarding path before assigning CWE-444.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -562,4 +641,8 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP WSTG -- Testing for HTTP Request Smuggling:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Request_Smuggling
+- **CWE-444 -- HTTP Request/Response Smuggling:** https://cwe.mitre.org/data/definitions/444.html
+- **RFC 9110 -- HTTP Semantics:** https://www.rfc-editor.org/rfc/rfc9110
+- **Node.js HTTP duplicate header handling:** https://nodejs.org/api/http.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
