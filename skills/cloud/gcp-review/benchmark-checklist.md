@@ -152,7 +152,7 @@ Check Dataproc clusters for CMEK configuration.
 
 ### CIS 1.18 -- Ensure Secrets Are Not Stored in Cloud Functions Environment Variables by Using Secret Manager
 
-Check Cloud Functions for secrets in environment variables vs. Secret Manager references:
+Check Cloud Functions for secrets in environment variables vs. Secret Manager references. Include first-generation `google_cloudfunctions_function`, second-generation `google_cloudfunctions2_function`, and Cloud Run services used as function/runtime targets:
 
 ```hcl
 # BAD: Secret in env var
@@ -170,7 +170,222 @@ resource "google_cloudfunctions_function" {
     version = "latest"
   }
 }
+
+# BAD: Cloud Functions v2 literal secret in service_config
+resource "google_cloudfunctions2_function" "webhook" {
+  service_config {
+    environment_variables = {
+      STRIPE_WEBHOOK_SECRET = "whsec_plaintext_value"
+    }
+  }
+}
 ```
+
+For Cloud Functions v2, also evaluate Cloud Run runtime behavior: invoker IAM, ingress, runtime service account, Eventarc trigger source, and Secret Manager accessor grants.
+
+### Supplemental -- Cloud Run and Cloud Functions v2 Serverless Evidence
+
+Review Cloud Run v2, Cloud Functions v2, and Eventarc even when the CIS checklist item does not name them directly.
+
+**Discovery patterns:**
+
+```hcl
+resource "google_cloud_run_v2_service"
+resource "google_cloud_run_service_iam_member"
+resource "google_cloud_run_service_iam_binding"
+resource "google_cloudfunctions2_function"
+resource "google_cloudfunctions2_function_iam_member"
+resource "google_eventarc_trigger"
+resource "google_iam_workload_identity_pool_provider"
+resource "google_service_account_iam_member"
+```
+
+**Public invocation, ingress, and disabled Invoker IAM checks:**
+
+```hcl
+# BAD: Public Cloud Run invoker for an internal/admin service
+resource "google_cloud_run_service_iam_member" "public" {
+  role   = "roles/run.invoker"
+  member = "allUsers"
+}
+
+# BAD: Public internet ingress for an internal/admin service
+resource "google_cloud_run_v2_service" "admin_api" {
+  ingress = "INGRESS_TRAFFIC_ALL"
+}
+
+# GOOD: Private ingress plus named invoker
+resource "google_cloud_run_v2_service" "checkout_api" {
+  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+}
+
+resource "google_cloud_run_service_iam_member" "private_invoker" {
+  role   = "roles/run.invoker"
+  member = "serviceAccount:edge-proxy@example.iam.gserviceaccount.com"
+}
+```
+
+Flag public invocation as **Critical** for admin, internal, payment, customer-data, or privileged automation APIs. Public access can be acceptable for public frontends only when the report records data classification, authentication expectations, ingress, backend authorization, and abuse controls. If platform exports indicate Invoker IAM checks are disabled, record that separately from IAM bindings.
+
+**Secret Manager references vs literal environment secrets:**
+
+```hcl
+# BAD: Literal secret value in Cloud Run env
+resource "google_cloud_run_v2_service" "api" {
+  template {
+    containers {
+      env {
+        name  = "PAYMENT_API_KEY"
+        value = "plain-text-secret"
+      }
+    }
+  }
+}
+
+# GOOD: Secret Manager reference with pinned version and scoped accessor
+resource "google_cloud_run_v2_service" "api" {
+  template {
+    service_account = google_service_account.runtime.email
+
+    containers {
+      env {
+        name = "PAYMENT_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.payment_api_key.secret_id
+            version = "2"
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "runtime_can_read_key" {
+  secret_id = google_secret_manager_secret.payment_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+```
+
+Do not flag a Secret Manager-backed `secret_key_ref` as plaintext merely because the environment variable name contains `KEY`, `TOKEN`, or `SECRET`. Do flag literal values, broad `roles/secretmanager.secretAccessor` grants, default runtime service accounts, cross-project secret access without justification, and unpinned `latest` versions for environment-variable secrets.
+
+**Cloud Functions v2 / Eventarc trigger checks:**
+
+```hcl
+# BAD: Broad Eventarc trigger without source resource filter
+resource "google_eventarc_trigger" "ingest" {
+  matching_criteria {
+    attribute = "type"
+    value     = "google.cloud.storage.object.v1.finalized"
+  }
+
+  destination {
+    cloud_run_service {
+      service = google_cloud_run_v2_service.processor.name
+      region  = "us-central1"
+    }
+  }
+}
+
+# GOOD: Trigger source and service account are explicit
+resource "google_eventarc_trigger" "ingest" {
+  service_account = google_service_account.eventarc_invoker.email
+
+  matching_criteria {
+    attribute = "type"
+    value     = "google.cloud.storage.object.v1.finalized"
+  }
+
+  matching_criteria {
+    attribute = "bucket"
+    value     = google_storage_bucket.approved_uploads.name
+  }
+}
+```
+
+For Functions v2 and Eventarc-backed Cloud Run receivers, record trigger type, event filters, trigger service account, destination service, source resource ACLs, and whether Pub/Sub, Storage, or Audit Log producers are restricted. Treat missing trigger-source evidence as **Not Evaluable** for event-driven workloads.
+
+**Resource limits and concurrency:**
+
+```hcl
+# BAD: Public service with high concurrency and no max instance cap
+resource "google_cloud_run_v2_service" "public_api" {
+  ingress = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    containers {
+      resources {
+        limits = {
+          cpu    = "4"
+          memory = "8Gi"
+        }
+      }
+    }
+
+    max_instance_request_concurrency = 1000
+    timeout                          = "3600s"
+  }
+}
+
+# GOOD: Concurrency, timeout, and scaling are bounded for expected traffic
+resource "google_cloud_run_v2_service" "frontend" {
+  template {
+    max_instance_request_concurrency = 80
+    timeout                          = "60s"
+    scaling {
+      max_instance_count = 20
+    }
+  }
+}
+```
+
+Record concurrency, timeout, min/max instances, CPU/memory limits, and expected traffic class for public or high-value services. Flag missing or excessive values when they can create resource exhaustion, cost-spike, or noisy-neighbor risk.
+
+**Workload Identity Federation checks:**
+
+```hcl
+# BAD: Missing attribute_condition for GitHub OIDC provider
+resource "google_iam_workload_identity_pool_provider" "github" {
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+  }
+}
+
+# GOOD: Provider scoped to the expected organization/repository/ref
+resource "google_iam_workload_identity_pool_provider" "github" {
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+    "attribute.ref"        = "assertion.ref"
+  }
+
+  attribute_condition = "attribute.repository == 'example/checkout-api' && attribute.ref == 'refs/heads/main'"
+}
+```
+
+Verify issuer, audience if configured, subject mapping, provider-specific attributes, `attribute_condition`, and the service-account impersonation binding. Treat keyless federation as lower risk than user-managed service account keys only when these trust constraints are present.
+
+**Serverless evidence matrix:**
+
+| Evidence Area | Pass Evidence | Fail / Not Evaluable Indicator |
+|---|---|---|
+| Runtime identity | Dedicated non-default service account with scoped IAM | Default service account, broad project role, or missing runtime identity |
+| Public invocation | Restricted invoker IAM or documented public frontend rationale | `allUsers`, `allAuthenticatedUsers`, disabled invoker IAM check, or unknown invoker policy |
+| Ingress | Internal, internal-load-balancer, or documented public ingress | Internet ingress for internal/admin service or missing ingress evidence |
+| Secret source | Secret Manager env/volume reference with scoped accessor IAM | Literal secret values, broad accessor IAM, unpinned `latest`, or unknown secret source |
+| Eventarc trigger | Source filters, trigger service account, destination, and source ACLs documented | Broad/missing filters, unknown source ACLs, or trigger service account missing |
+| Resource limits | Bounded concurrency, timeout, scaling, and resource limits tied to expected traffic | Excessive concurrency/timeout, no max instance cap for public endpoints, or missing evidence |
+| WIF trust | Issuer, mapping, conditions, and impersonation scope are constrained | Missing `attribute_condition`, broad subject trust, or project-wide impersonation |
 
 ---
 

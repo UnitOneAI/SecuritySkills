@@ -3,7 +3,8 @@ name: gcp-review
 description: >
   Performs a GCP security posture review against the CIS Google Cloud Platform
   Foundation Benchmark v2.0.0. Auto-invoked when reviewing GCP infrastructure,
-  IAM bindings, VPC firewall rules, Cloud Audit Logs, or GCS bucket security.
+  IAM bindings, VPC firewall rules, Cloud Run, Cloud Functions v2, Eventarc,
+  Cloud Audit Logs, or GCS bucket security.
   Walks through all seven benchmark sections, evaluates each recommendation,
   and produces a prioritized findings report with remediation guidance mapped
   to specific CIS control IDs.
@@ -13,7 +14,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,6 +54,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - gcloud CLI output or configuration exports (if reviewing a live environment)
 - IAM policy bindings and org policy definitions
 - VPC and firewall rule definitions
+- Cloud Run, Cloud Functions v2, Eventarc trigger, Secret Manager, runtime service account, and Workload Identity Federation configuration when serverless workloads are in scope
 - Cloud Audit Logs configuration
 
 ---
@@ -88,6 +90,29 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Step 8.5: Supplemental Serverless Identity, Secrets, and Eventarc Review
+
+Cloud Run and Cloud Functions v2 can expose public endpoints, privileged runtime service accounts, secret material, and event-driven access paths without VM public IP or firewall evidence. Review serverless resources separately before closing a GCP posture assessment.
+
+**Serverless evidence to record:**
+
+| Evidence Area | Required Detail | Risk if Missing |
+|---------------|-----------------|-----------------|
+| Resource Inventory | `google_cloud_run_v2_service`, `google_cloudfunctions2_function`, Cloud Run functions, Eventarc triggers, invoker IAM, runtime service accounts | Serverless attack paths are missed by VM-only checks |
+| Public Access | Cloud Run/Functions invoker IAM, `allUsers` / `allAuthenticatedUsers`, disabled Invoker IAM checks, ingress mode, load balancer/IAP context | Internal/admin APIs can be internet reachable |
+| Runtime Identity | Non-default service account, least-privilege IAM, Secret Manager access, cross-project secret access justification | Default or broad runtime identities expand blast radius |
+| Secret Source | Literal env var, Secret Manager env reference, Secret Manager volume, pinned version vs `latest`, accessor IAM scope | Secret-looking env names can be false positives, while literal secrets and broad access are missed |
+| Functions v2 / Eventarc | Trigger type, event filters, trigger service account, destination service, Pub/Sub/Storage/Audit Log source ACLs | Event-driven functions may be invoked through broad or spoofable sources |
+| Network / Egress | Ingress mode, VPC connector, egress setting, private backend access, public frontend rationale | Public ingress or unrestricted egress can bypass network assumptions |
+| Resource Controls | Concurrency, min/max instances, CPU/memory limits, timeout, request size expectations | High-concurrency or unbounded scale can create DoS or noisy-neighbor risk |
+| Workload Identity Federation | Issuer, audience, subject mapping, attribute condition, service-account impersonation binding | Keyless federation can over-trust external identities |
+
+Classify missing serverless IAM, Eventarc, ingress, resource-limit, or secret-source evidence as `Not Evaluable` rather than inferring safety from absent VM, firewall, or public-IP findings.
+
+Use `tests/serverless-identity-eventarc-edge-cases.md` for vulnerable and benign calibration examples.
+
+---
+
 ### Step 9: Compile Assessment Report
 
 
@@ -99,8 +124,8 @@ Produce the final report using the structure defined in the Output Format sectio
 
 | Severity | Definition | Examples |
 |----------|-----------|----------|
-| **Critical** | Immediate risk of data breach or unauthorized access | Public GCS buckets, firewall rules allowing 0.0.0.0/0 on SSH/RDP, Cloud SQL with public IP and no SSL, user-managed SA keys with admin roles |
-| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs |
+| **Critical** | Immediate risk of data breach or unauthorized access | Public GCS buckets, firewall rules allowing 0.0.0.0/0 on SSH/RDP, Cloud SQL with public IP and no SSL, public serverless admin APIs, user-managed SA keys with admin roles |
+| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs, literal serverless secrets, broad Eventarc trigger sources |
 | **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, Shielded VM not enabled, uniform bucket access not set |
 | **Low** | Hardening recommendation or defense-in-depth measure | OS Login not enabled, serial port access not explicitly disabled, BigQuery tables without CMEK |
 | **Informational** | Best practice observation, no direct security impact | Default network still exists (non-production), naming conventions, documentation gaps |
@@ -150,6 +175,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Supplemental Serverless Findings
+
+| Resource | Public Invoker | Ingress | Runtime Service Account | Secret Source | Eventarc / Trigger Evidence | Resource Limits | WIF Condition | Status |
+|----------|----------------|---------|-------------------------|---------------|-----------------------------|-----------------|---------------|--------|
+| <Cloud Run / Function> | allUsers / restricted / not evaluable | all / internal / not evaluable | <service account> | literal / Secret Manager pinned / latest / none | trigger filters + source ACLs / not applicable / not evaluable | concurrency + max instances + timeout | present / missing / N/A | Pass / Fail / Not Evaluable |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -194,6 +225,10 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Serverless exposure without VM evidence.** Cloud Run and Cloud Functions v2 can be public through invoker IAM or disabled Invoker IAM checks even when no VM has a public IP. Review ingress, invoker IAM, runtime identity, and backend authorization together.
+8. **Eventarc triggers are not ordinary HTTP invokers.** Functions v2 and Cloud Run event receivers can be reached through Pub/Sub, Storage, Audit Logs, or Eventarc trigger paths. Review trigger filters, trigger service accounts, source resource ACLs, and destination permissions.
+9. **Assuming Secret Manager references are plaintext secrets.** `secret_key_ref` and `secret_environment_variables` are valid patterns when accessor IAM is scoped and versions are pinned. Literal values, broad secret access, and unpinned `latest` need separate findings.
+10. **Ignoring concurrency and scaling controls.** Public serverless endpoints with high concurrency, missing max instances, long timeouts, or weak authentication can produce resource exhaustion risk even when IAM is otherwise correct.
 
 ---
 
@@ -219,6 +254,11 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
+- Google Cloud Run Authentication: https://cloud.google.com/run/docs/authenticating/overview
+- Google Cloud Run Public Access: https://cloud.google.com/run/docs/authenticating/public
+- Google Cloud Run Secrets: https://cloud.google.com/run/docs/configuring/services/secrets
+- Cloud Run Functions and Eventarc Triggers: https://cloud.google.com/functions/docs/calling
+- Google Cloud Workload Identity Federation: https://cloud.google.com/iam/docs/workload-identity-federation
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
 ---
@@ -226,3 +266,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+- **1.0.1** -- Add supplemental Cloud Run, Cloud Functions v2, Eventarc, Secret Manager, resource-limit, and Workload Identity Federation evidence gates.
