@@ -80,6 +80,7 @@ Record all discovered files. Categorize each by:
 - **Platform:** iptables, nftables, pf, cloud security groups, Kubernetes NetworkPolicy, vendor-specific (Palo Alto, Fortinet, Cisco ASA).
 - **Direction:** Perimeter (north-south) vs. internal (east-west).
 - **Scope:** Server, endpoint, network segment.
+- **Object resolution source:** static CIDR, managed prefix list, service tag, FQDN rule, vendor address object, or dynamic group.
 
 ---
 
@@ -247,10 +248,45 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 - DNS (UDP/TCP 53) is restricted to authorized internal resolvers only.
 - Direct outbound SMTP (TCP 25) is restricted to authorized mail servers.
 - Outbound HTTPS (TCP 443) is routed through a forward proxy where feasible.
+- Encrypted DNS bypasses are denied or explicitly routed through approved resolvers:
+  - DNS-over-HTTPS (DoH) over TCP/443 to public resolver FQDNs/IPs.
+  - DNS-over-TLS (DoT) over TCP/853.
+  - DNS-over-QUIC (DoQ) over UDP/853 or UDP/443, depending on platform.
+- QUIC/HTTP/3 over UDP/443 is denied by default unless explicitly approved and logged.
 - Uncommon outbound protocols (SSH 22, RDP 3389, ICMP) are restricted or denied by default.
 - Outbound connections to known anonymization services (Tor exit nodes) are blocked.
 
-**Finding classification:** Unrestricted outbound egress (allow all) is **High**. Missing DNS egress restriction is **Medium**.
+**Cloud object expansion evidence:**
+
+Before classifying HTTPS or DNS egress, resolve provider objects to their effective destinations:
+
+| Object Type | Examples | Evidence Required |
+|-------------|----------|-------------------|
+| AWS managed prefix list | `prefix_list_ids`, customer-managed prefix lists | Prefix list entries and version used during review |
+| Azure service tag / FQDN rule | `AzureCloud`, `Internet`, `target_fqdns` | Service tag JSON version or exact FQDN list |
+| GCP firewall tag / service account target | `target_tags`, `target_service_accounts` | Effective instances and destination CIDRs/FQDNs |
+| Vendor address object/group | Palo Alto, Fortinet, Cisco ASA objects | Expanded object members and timestamp |
+
+**Patterns to check:**
+
+```
+# DNS-over-TLS / DNS-over-QUIC bypass
+egress tcp any any eq 853
+egress udp any any eq 853
+
+# QUIC / HTTP/3 direct Internet path
+egress udp any any eq 443
+
+# Cloud FQDN/application rule to public DoH providers
+target_fqdns = ["cloudflare-dns.com", "dns.google"]
+
+# Benign proxy-only HTTPS egress: classify after prefix list expansion
+prefix_list_ids = [aws_ec2_managed_prefix_list.corp_egress_proxy.id]
+from_port       = 443
+to_port         = 443
+```
+
+**Finding classification:** Unrestricted outbound egress (allow all) is **High**. Missing DNS egress restriction is **Medium**. Direct public DoH/DoT/DoQ egress is **Medium** by default and **High** when it bypasses mandated DNS logging, filtering, or incident-response controls. Unrestricted UDP/443 QUIC egress is **Medium** and should be raised to **High** when TCP/443 is required to traverse an inspection proxy.
 
 ---
 
@@ -311,11 +347,14 @@ Produce the final report using the following structure.
 |---------------|----------|----------------|----------|--------|
 
 ### Egress Filtering Status
-| Protocol/Port | Restricted | Authorized Destinations |
-|---------------|-----------|------------------------|
-| DNS (53)      | Yes/No    | <resolver IPs>         |
-| SMTP (25)     | Yes/No    | <mail server IPs>      |
-| HTTPS (443)   | Yes/No    | <proxy or direct>      |
+| Protocol/Port | Restricted | Authorized Destinations | Evidence Source |
+|---------------|-----------|-------------------------|-----------------|
+| DNS (53)      | Yes/No    | <resolver IPs>          | <rule/log/object> |
+| DoH/DoT/DoQ   | Yes/No    | <approved encrypted resolvers or blocked> | <FQDN/IP/object expansion> |
+| SMTP (25)     | Yes/No    | <mail server IPs>       | <rule/log/object> |
+| HTTPS (443)   | Yes/No    | <proxy or direct>       | <rule/log/object> |
+| QUIC (UDP/443)| Yes/No    | <approved destinations or blocked> | <rule/log/object> |
+| Proxy bypass exceptions | Yes/No | <owners and expiry dates> | <ticket/change record> |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -361,6 +400,10 @@ Produce the final report using the following structure.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
+6. **Marking DNS egress compliant after checking only port 53.** Browsers, endpoint agents, malware, and troubleshooting exceptions may use DoH, DoT, or DoQ. Verify encrypted DNS paths and UDP/443 before concluding that DNS is restricted to internal resolvers.
+
+7. **Treating TCP/443 proxy enforcement as covering HTTP/3.** A forward proxy requirement can be bypassed when UDP/443 is permitted directly. Review QUIC/HTTP/3 policy and logging separately from TCP/443.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -386,4 +429,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.1.0** -- Added encrypted DNS, QUIC, and cloud object expansion evidence gates for egress reviews.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
