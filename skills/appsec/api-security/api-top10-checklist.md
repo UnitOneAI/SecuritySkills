@@ -431,6 +431,28 @@ from flask_cors import CORS
 CORS(app, origins="*", supports_credentials=True)  # Allows any origin with credentials
 ```
 
+```http
+# VULNERABLE: Credentialed API trusts opaque/null origins
+Origin: null
+Cookie: session=...
+
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: null
+Access-Control-Allow-Credentials: true
+```
+
+```http
+# VULNERABLE: Private Network Access preflight is granted to an untrusted public origin
+Origin: https://attacker.example
+Access-Control-Request-Method: POST
+Access-Control-Request-Private-Network: true
+
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://attacker.example
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Private-Network: true
+```
+
 ```javascript
 // VULNERABLE: Verbose error messages in production
 app.use((err, req, res, next) => {
@@ -450,9 +472,35 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+### CORS and Private Network Access Evidence Gates
+
+When reviewing CORS under API8, distinguish exact allowlist reflection from arbitrary origin reflection. A response that echoes `https://app.example.com` is not automatically unsafe if the implementation proves the origin matched an explicit allowlist, returns `Vary: Origin`, and limits allowed methods/headers to the endpoint's real needs. Flag arbitrary reflection, wildcard use with credentials, or broad regex/domain suffix matching that can be controlled by an attacker.
+
+Collect and document these evidence points for CORS/PNA findings:
+
+- Request `Origin`, whether credentials are in use, and whether the endpoint returns sensitive or authenticated data.
+- The allowlist source and matching rule: exact string match, environment-scoped list, trusted wildcard subdomain rule, or unsafe reflection/regex.
+- `Access-Control-Allow-Origin`, `Access-Control-Allow-Credentials`, `Vary: Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers` response values.
+- Treatment of `Origin: null` and other opaque origins from sandboxed documents or non-hierarchical schemes such as `file:` and `data:`.
+- Private Network Access handling: `Access-Control-Request-Private-Network` requests must only receive `Access-Control-Allow-Private-Network: true` after a trusted-origin gate.
+- Environment evidence showing development origins are disabled or separately scoped in production.
+
+Use these classification guardrails:
+
+| Condition | Classification |
+|---|---|
+| Exact allowlist match, `Vary: Origin`, endpoint-scoped methods/headers, no credential exposure beyond intended trusted origins | Not a finding |
+| Credentialed API accepts `Origin: null` or reflects arbitrary origins | Finding |
+| Public unauthenticated read-only API allows broad CORS without credentials or sensitive data | Low or Informational, depending on business impact |
+| PNA is irrelevant because the API has no private-network resources or browser-reachable private target path | Not Applicable with rationale |
+| PNA preflight grants `Access-Control-Allow-Private-Network: true` to untrusted or reflected origins | Finding |
+
 ### Remediation Guidance
 
-- Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
+- Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`, and never treat `Origin: null` as trusted for credentialed or sensitive APIs.
+- For dynamic CORS, compare the request origin to an exact allowlist before reflecting it, return `Vary: Origin`, and scope allowed methods and headers per endpoint.
+- Permit local development origins only in non-production configuration, with evidence that they are disabled or environment-scoped in production.
+- For Private Network Access, only return `Access-Control-Allow-Private-Network: true` after the same trusted-origin decision used for credentialed CORS.
 - Set security response headers on all API responses:
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
   - `X-Content-Type-Options: nosniff`
@@ -466,6 +514,11 @@ Document doc = builder.parse(request.getInputStream());
 ### Review Checklist
 
 - [ ] CORS is configured with an explicit origin allowlist; wildcard is not used with credentials.
+- [ ] Dynamic origin reflection is backed by exact allowlist matching and returns `Vary: Origin`.
+- [ ] Credentialed or sensitive endpoints reject `Origin: null` and other opaque origins unless a documented trusted-origin exception exists.
+- [ ] Preflight `Access-Control-Allow-Methods` and `Access-Control-Allow-Headers` are scoped to endpoint needs.
+- [ ] Private Network Access preflights only return `Access-Control-Allow-Private-Network: true` for trusted origins, or are marked Not Applicable with rationale.
+- [ ] Development-only origins are disabled or environment-scoped in production.
 - [ ] Security headers are present on all API responses.
 - [ ] Error responses in production are generic; no stack traces, SQL queries, or internal paths.
 - [ ] Only required HTTP methods are enabled per endpoint.

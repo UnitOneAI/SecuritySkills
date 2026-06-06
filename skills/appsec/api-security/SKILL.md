@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -66,6 +66,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
+| **CORS/PNA Evidence** | For API8 CORS or Private Network Access findings: request `Origin`, credential use, allowlist decision source, `Access-Control-Allow-*` headers, `Vary: Origin`, preflight method/header scope, environment, and Not Applicable rationale when relevant |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -92,7 +93,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -144,7 +145,7 @@ The final review output must be structured as follows:
 | API5:2023 | Broken Function Level Authorization | CWE-285 | Missing role/permission checks on operations |
 | API6:2023 | Unrestricted Access to Sensitive Business Flows | CWE-799, CWE-837 | Automated abuse of legitimate business logic |
 | API7:2023 | Server Side Request Forgery | CWE-918 | Fetching user-supplied URLs without validation |
-| API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, XXE |
+| API8:2023 | Security Misconfiguration | CWE-16, CWE-611, CWE-942 | CORS including null-origin/PNA handling, headers, TLS, error handling, XXE |
 | API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, deprecated versions, missing documentation |
 | API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
 
@@ -215,6 +216,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Treating all dynamic CORS reflection as equal.** Exact allowlist reflection with `Vary: Origin` and endpoint-scoped preflight methods is different from arbitrary origin reflection. Review the allowlist decision source before flagging a finding.
+
+8. **Missing opaque-origin and Private Network Access cases.** `Origin: null` can come from sandboxed documents or non-hierarchical schemes, and Private Network Access preflights indicate a browser path toward less-public network resources. Credentialed APIs should reject opaque origins unless a trusted-origin exception is documented, and PNA grants should require a trusted-origin gate.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -229,6 +234,15 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 
 ---
 
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.1 | 2026-06-06 | Added CORS null-origin and Private Network Access evidence gates, report evidence fields, false-positive guardrails, and references. |
+| 1.0.0 | Initial | Baseline OWASP API Security Top 10:2023 review workflow. |
+
+---
+
 ## References
 
 - **OWASP API Security Top 10:2023:** https://owasp.org/API-Security/editions/2023/en/0x11-t10/
@@ -238,4 +252,7 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
+- **MDN CORS Guide:** https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+- **MDN Access-Control-Allow-Origin:** https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+- **WICG Private Network Access:** https://wicg.github.io/private-network-access/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
