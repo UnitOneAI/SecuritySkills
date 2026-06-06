@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -294,13 +294,69 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
+### Step 7: Certificate Issuance and DNS Control Plane
+
+Public certificate issuance is part of DNS security because CAA records,
+ACME DNS-01 challenges, delegated validation zones, and dangling DNS records can
+change who is able to obtain trusted certificates for a domain.
+
+For every public zone and high-value internal name that can receive public
+certificates through DNS-01, review:
+
+| Evidence | Required review |
+|----------|-----------------|
+| Effective CAA | Query the effective CAA set at the FQDN and parent labels. Record `issue`, `issuewild`, `iodef`, and supported parameters such as `accounturi` and `validationmethods`. |
+| CA ownership | Every permitted CA has a business owner, use case, approved ACME or CA account, and monitoring path. Multi-CA issuance can pass when this evidence exists. |
+| Wildcard policy | `issuewild` is explicitly denied or restricted unless wildcard issuance is required and approved. |
+| ACME DNS-01 delegation | `_acme-challenge` CNAME or delegated zones have a documented owner, approved account binding, scoped DNS API token, and revocation path. |
+| DNS API scope | Automation can write only required challenge names or delegated validation zones, not arbitrary records in the production zone. |
+| Dangling records | CNAME, ALIAS/ANAME, NS delegation, cloud load balancer aliases, object-storage website endpoints, app-service aliases, and stale validation records are checked for claimable targets. |
+| CT monitoring | Certificate Transparency monitoring alerts on unexpected certificates, unknown ACME accounts, CAA violations, and renewal anomalies. |
+| Evidence confidence | Mark Not Evaluable when registrar, DNS provider, ACME account, API policy, or CT monitoring evidence is unavailable. |
+
+**Patterns to check:**
+
+```
+CAA 0 issue
+CAA 0 issuewild
+CAA 0 iodef
+accounturi=
+validationmethods=
+_acme-challenge
+azurewebsites.net
+s3-website
+cloudfront.net
+herokuapp.com
+github.io
+unclaimed
+```
+
+**Finding classification:** No CAA issuance policy and no CT monitoring for a
+production domain is **High**. DNS-01 automation with broad production-zone write
+access is **High**. Dangling DNS records that point to claimable third-party
+services for sensitive subdomains are **High** and may be **Critical** when they
+enable trusted certificate issuance or authentication bypass. CAA records that
+lack owner, wildcard, `iodef`, account binding, or monitoring evidence are
+**Medium**. Stale `_acme-challenge` records with confirmed non-reusable values
+and documented owners are **Low**.
+
+**Not Evaluable reason codes:**
+
+- `NO_REGISTRAR_ACCESS`: parent-zone, DS, or effective CAA evidence requires registrar access not provided.
+- `NO_DNS_PROVIDER_API`: DNS provider API policy, write scope, or audit logs were unavailable.
+- `UNKNOWN_ACME_OWNER`: ACME account, CA account, or challenge-zone owner could not be identified.
+- `NO_CT_MONITORING_EVIDENCE`: CT monitoring is handled outside the repository and no alerting evidence was provided.
+- `UNVERIFIED_DANGLING_TARGET`: a third-party target could not be safely tested or ownership evidence was unavailable.
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; sensitive dangling DNS record enables trusted certificate issuance or authentication bypass. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; broad DNS-01 write authority; no CAA and no CT monitoring for production domains. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; CAA lacks owner/account/wildcard/iodef evidence. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -327,6 +383,18 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### Certificate Issuance Control
+
+| Domain | Effective CAA | issue | issuewild | iodef | accounturi / validationmethods | Approved ACME Account | DNS-01 Delegation | DNS API Scope | CT Monitoring | Status |
+|--------|---------------|-------|-----------|-------|--------------------------------|-----------------------|-------------------|---------------|---------------|--------|
+| example.com | Present/Absent/Not Evaluable | <CA list> | <CA/denied> | <mail/URL> | <parameters> | <owner/account> | <direct/delegated/none> | <challenge-only/broad/unknown> | <enabled/missing/external> | Pass/Fail/Not Evaluable |
+
+### Dangling DNS and Validation Records
+
+| Record | Type | Target | Ownership Evidence | Claimability | Certificate Risk | Status |
+|--------|------|--------|--------------------|--------------|------------------|--------|
+| old-app.example.com | CNAME/NS/ALIAS/TXT | <target> | <owner/proof/missing> | <claimable/not claimable/unknown> | <yes/no/unknown> | <Pass/Finding/Not Evaluable> |
 
 ### Findings
 
@@ -384,6 +452,19 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Treating all ACME DNS-01 delegation as takeover risk.** Delegating
+`_acme-challenge` can reduce blast radius when the delegated validation zone and
+API token are tightly scoped, owned, logged, and revocable. Review the evidence
+instead of blanket-failing the pattern.
+
+6. **Checking CAA only at the apex.** Effective CAA evaluation walks labels.
+Record the effective records for the requested FQDN and parent labels, including
+wildcard issuance behavior through `issuewild`.
+
+7. **Ignoring certificate monitoring when CAA exists.** CAA reduces issuance
+risk but does not replace detection. Require CT monitoring, `iodef` routing,
+approved account inventory, and renewal anomaly alerting for important domains.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -403,9 +484,12 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
+- RFC 8555 -- Automatic Certificate Management Environment (ACME): https://www.rfc-editor.org/rfc/rfc8555
+- RFC 8659 -- DNS Certification Authority Authorization (CAA): https://www.rfc-editor.org/rfc/rfc8659
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
+- Let's Encrypt CAA documentation: https://letsencrypt.org/docs/caa/
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
 
@@ -413,4 +497,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.1.0** -- Added CAA, ACME DNS-01, dangling-record, Certificate Transparency, and DNS API token scope evidence gates.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
