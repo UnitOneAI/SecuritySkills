@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -329,6 +329,34 @@ env:
 
 **Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**.
 
+#### 4.2 Authenticated Session Safety and State Controls
+
+Authenticated scans can create false confidence when the scanner keeps using a stale token, silently falls back to anonymous coverage, loses anti-CSRF state, or follows logout and state-changing flows during spidering. Treat "authentication configured" as provisional until the scan proves that every crawler and active-scan phase stayed logged in, refreshed session state safely, and avoided destructive actions.
+
+**Session safety matrix:**
+
+| Evidence Field | Required Proof | Risk if Missing |
+|----------------|----------------|-----------------|
+| Authenticated coverage baseline | URLs, roles, and endpoints reached while logged in vs. anonymous crawl | Scan may only test public pages while reporting "authenticated" |
+| Session freshness | Re-authentication trigger, logged-out regex, token expiry handling, last successful verification timestamp | Scanner may reuse expired cookies or bearer tokens |
+| CSRF/state token handling | Login script or browser auth refreshes CSRF tokens, hidden fields, SameSite cookies, and nonce-bearing forms | Active scan requests may be rejected or mutate stale state |
+| Logout and lockout traps | Logout, password reset, MFA reset, account lockout, delete/reset endpoints excluded from spider and active scan | Scanner can log itself out, lock test users, or damage data |
+| Role and tenant isolation | Dedicated test roles, tenant IDs, and seed data for each authorization profile | Scanner may miss IDOR/tenant surfaces or pollute shared tenants |
+| State reset | Ephemeral environment, database snapshot restore, or cleanup job after active scanning | Findings become non-reproducible and test data accumulates |
+| Anti-automation controls | WAF/rate-limit allowlist or documented expected throttling behavior | Scanner may report false negatives after being blocked |
+
+**What to verify:**
+
+- [ ] The scan report records authenticated URL count separately from anonymous URL count.
+- [ ] Login verification runs during spider and active-scan phases, not only before the first request.
+- [ ] CSRF tokens, nonce fields, and dynamic session headers are refreshed through browser/script authentication rather than pasted as static values.
+- [ ] Logout, password reset, MFA reset, account lockout, account deletion, billing, invitation, and administrative state-change routes are excluded or use seeded disposable data.
+- [ ] Each tested role has separate credentials and evidence; admin-only scans do not stand in for standard-user authorization coverage.
+- [ ] Active scans run against disposable or restorable data, with cleanup evidence captured in the report.
+- [ ] WAF/rate-limit blocks are recorded as scan constraints instead of being treated as clean results.
+
+**Finding classification:** No session freshness evidence for authenticated scans is **High**. Static CSRF tokens or copied session cookies in scan configuration are **High**. Logout, lockout, or destructive flows reachable by spider/active scan are **High**. Missing authenticated-vs-anonymous coverage counts are **Medium**. Missing state reset evidence for active scans is **Medium**.
+
 ---
 
 ### Step 5: CI/CD DAST Integration
@@ -482,8 +510,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; no session freshness evidence; static CSRF/session token reuse. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules; no authenticated-vs-anonymous coverage count; missing active-scan state reset evidence. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -518,6 +546,10 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
+| Auth session freshness | Yes/No | <verification cadence, re-auth trigger, last check> |
+| CSRF/state token handling | Yes/No | <browser/script auth evidence> |
+| Authenticated coverage count | <count> | <authenticated URLs vs anonymous URLs> |
+| State reset/cleanup | Yes/No | <snapshot, seeded data, cleanup job> |
 | Results deduplication | Yes/No | <dedup method> |
 
 ### Findings
@@ -580,9 +612,13 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 3. **Not excluding destructive endpoints from scan scope.** ZAP's spider will follow every link and form action it finds. If a "Delete Account" or "Reset Database" endpoint is in scope, the scanner will exercise it. Explicitly exclude destructive paths in the scan context.
 
-4. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+4. **Counting a stale login as authenticated coverage.** A scan that logs in once and then expires, logs itself out, or gets blocked by a WAF is not an authenticated scan. Require phase-level logged-in checks, authenticated URL counts, and explicit blocked/request-failed evidence.
 
-5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
+5. **Pasting CSRF tokens or session cookies into DAST config.** Static tokens make the first request look authenticated and then cause false negatives once tokens rotate. Use browser-based or script-based authentication that extracts fresh hidden fields, cookies, and headers.
+
+6. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
+
+7. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
 ---
 
@@ -604,8 +640,11 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP Web Security Testing Guide v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
 - OWASP ZAP Documentation: https://www.zaproxy.org/docs/
 - ZAP Automation Framework: https://www.zaproxy.org/docs/automate/automation-framework/
+- ZAP Authentication: https://www.zaproxy.org/docs/desktop/start/features/authentication/
+- ZAP Authentication Helper: https://www.zaproxy.org/docs/desktop/addons/authentication-helper/
 - ZAP GitHub Actions: https://www.zaproxy.org/docs/docker/github-actions/
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
+- OWASP Cross-Site Request Forgery Prevention Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
 - OWASP API Security Top 10: https://owasp.org/API-Security/
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
 - SARIF Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
@@ -614,4 +653,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **1.0.1** -- Added authenticated session safety gates covering session freshness, CSRF/state token refresh, logout/destructive-flow traps, role/tenant evidence, active-scan state reset, and authenticated-vs-anonymous coverage counts.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
