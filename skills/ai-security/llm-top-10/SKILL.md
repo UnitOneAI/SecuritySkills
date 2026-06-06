@@ -313,6 +313,19 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Do not store raw source text in vector metadata unless access controls are equivalent to the source document's classification.
 - Monitor vector store access patterns for anomalous query volumes or bulk extraction attempts.
 
+**Retrieval authorization evidence gates:**
+
+- **Pre-query authorization:** Verify the authenticated tenant, user, group, role, and document permission scope are converted into query filters before vector, keyword, or hybrid search runs.
+- **Post-retrieval validation:** Verify every returned chunk is checked against the current document or chunk ACL before reranking, aggregation, prompt assembly, or response streaming.
+- **Cache scoping:** Retrieval caches must be keyed by tenant, user or permission scope, source collection, query, model/embedding version, and permission version. Shared caches keyed only by query text or embedding hash are unsafe.
+- **Reranker and hybrid search metadata:** Rerankers, BM25 results, graph expansion, and chunk stitching must preserve source document ID, tenant ID, ACL metadata, classification, and permission version.
+- **Chunk-level permissions:** Review whether redacted or section-specific documents require chunk ACLs instead of only document-level ACLs.
+- **Permission change invalidation:** Group membership changes, document sharing changes, source deletion, and classification changes must invalidate affected indexes, caches, and prompt-context stores.
+- **Public content exception:** Public/shared documents require explicit classification and immutable source metadata. Do not infer public access because a collection is shared.
+- **Prompt assembly boundary:** The final context passed to the model should include only chunks that passed authorization after all retrieval, reranking, cache, and aggregation steps.
+
+**False positive to avoid:** Do not mark LLM08 as pass because the initial vector query includes `tenant_id` or because the vector database has collection-level ACLs. Confirm the full path from query construction through cache, reranker, aggregation, and prompt assembly preserves and enforces the requesting user's current permissions.
+
 **CWE Mapping:** CWE-284 (Improper Access Control), CWE-311 (Missing Encryption of Sensitive Data)
 
 ---
@@ -434,6 +447,12 @@ Structure the findings report as follows:
 | ID | OWASP Category | Severity | Priority | Status |
 |----|---------------|----------|----------|--------|
 | FINDING-001 | LLM0X:2025 | High | P1 | Open |
+
+## RAG Retrieval Authorization
+
+| Pipeline | Pre-query Filter | Post-retrieval ACL Check | Cache Scope | Reranker Preserves ACL Metadata | Permission Invalidation | Residual Risk |
+|----------|------------------|--------------------------|-------------|----------------------------------|-------------------------|---------------|
+| [pipeline name] | [tenant/user/group/doc/chunk] | [Yes/No] | [tenant/user/permission/version] | [Yes/No] | [events handled] | [Low/Medium/High] |
 
 ## Recommendations
 
