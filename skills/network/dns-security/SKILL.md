@@ -292,6 +292,18 @@ abcdef0123456789.dnscat.example.com TXT
 - **DGA detection:** Domain Generation Algorithms produce random-appearing domain names. Detection relies on entropy analysis and machine learning classifiers integrated into protective DNS services.
 - **Typosquatting monitoring:** Monitor for DNS queries to domains that are typographic variations of the organization's primary domains.
 
+### Step 6A: Resolver Privacy and Log Minimization
+
+DNSSEC, encrypted transport, and RPZ filtering do not automatically minimize resolver privacy exposure. For each recursive resolver or protective DNS service, collect evidence for:
+
+- **QNAME minimization:** Recursive resolvers should minimize the full query name sent to each delegation level where supported. Record whether QNAME minimization is enabled, disabled, or not supported.
+- **EDNS Client Subnet (ECS):** Record whether ECS is disabled, anonymized/coarsened, or forwarded with client-specific prefixes. Document any CDN/performance exception.
+- **Query log minimization:** Record whether logs contain full client IPs, user IDs, full QNAMEs, ECS values, and response data; document aggregation, pseudonymization, encryption, access controls, and retention.
+- **Privacy exception evidence:** If detailed logs or ECS are required for security operations, record purpose, owner, retention period, access controls, and review date.
+- **Resolver privacy statement:** For external or managed DNS privacy services, record the provider policy or resolver privacy statement and whether it covers retention, sharing, and operational access.
+
+**Finding classification:** QNAME minimization disabled without compatibility justification is **Medium**. Forwarding full or overly specific ECS for enterprise clients without documented exception is **Medium**. Long-lived detailed DNS logs without minimization, access controls, or retention justification are **High** for user-identifiable data and **Medium** otherwise. Missing privacy evidence for a managed resolver is **Low** unless sensitive populations are in scope.
+
 ---
 
 ## Findings Classification
@@ -300,7 +312,7 @@ abcdef0123456789.dnscat.example.com TXT
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
 | **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; QNAME minimization disabled without justification; ECS forwarding without documented exception. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -343,6 +355,11 @@ abcdef0123456789.dnscat.example.com TXT
 - Entropy-based detection: <Deployed / Not deployed>
 - Volumetric thresholds: <Configured / Not configured>
 - SIEM integration: <Yes / No>
+
+### Resolver Privacy Posture
+| Resolver | QNAME Minimization | ECS Forwarding | Log Detail | Retention | Access Controls | Exception Owner | Status |
+|----------|--------------------|----------------|------------|-----------|-----------------|-----------------|--------|
+| resolver1 | Enabled/Disabled/Unknown | Disabled/Coarsened/Full/Unknown | Aggregated/Full | 7d/30d/365d | Yes/No | <owner or N/A> | Pass/Fail/Not Evaluable |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -405,6 +422,9 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
+- RFC 9156 -- DNS Query Name Minimisation to Improve Privacy: https://www.rfc-editor.org/rfc/rfc9156
+- RFC 7871 -- Client Subnet in DNS Queries: https://www.rfc-editor.org/rfc/rfc7871
+- RFC 8932 -- Recommendations for DNS Privacy Service Operators: https://www.rfc-editor.org/rfc/rfc8932
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
