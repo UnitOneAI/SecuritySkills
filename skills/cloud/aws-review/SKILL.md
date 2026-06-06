@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +55,7 @@ The CIS Amazon Web Services Foundations Benchmark v3.0.0 is a consensus-driven s
 - S3 bucket policies and ACL configurations
 - VPC, security group, and NACL definitions
 - CloudTrail and CloudWatch configuration files
+- Third-party role trust policies, STS AssumeRole evidence, IAM Access Analyzer findings, role last-used data, and vendor/offboarding records when reviewing external AWS access
 
 ---
 
@@ -152,11 +153,18 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Status:** Pass / Fail / Not Evaluable
 - **Severity:** Critical / High / Medium / Low
 - **CIS Profile:** Level 1 / Level 2
+- **Evidence Confidence:** High / Medium / Low / Not Evaluable
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Not Evaluable Reason:** <reason code and exact evidence needed>
 - **Remediation:** <specific fix with code example>
+
+### Third-Party AWS Trust Evidence
+
+| Role | Trusted Principal | ExternalId / Source Constraint | Permission Scope | Last Used | Session Duration | Owner / Contract | Offboarding Status | Status |
+|------|-------------------|--------------------------------|------------------|-----------|------------------|------------------|--------------------|--------|
 
 ### Prioritized Remediation Plan
 
@@ -200,6 +208,9 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Over-crediting read-only third-party roles.** `SecurityAudit` or `ReadOnlyAccess` can still expose S3 object metadata, CloudTrail, Security Hub, IAM, or secrets inventory. Review sensitive read scope, not only administrator access.
+8. **Missing confused-deputy controls.** Vendor account-root trust needs a vendor-generated `sts:ExternalId`; AWS service principals need service-specific `aws:SourceArn`, `aws:SourceAccount`, `aws:SourceOrgID`, or equivalent constraints where supported.
+9. **Ignoring vendor lifecycle evidence.** A disabled SaaS integration does not remove the AWS role. Require owner, contract, last-used, rotation, and offboarding evidence before passing stale third-party access.
 
 ---
 
@@ -222,6 +233,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Amazon Web Services Foundations Benchmark v3.0.0: https://www.cisecurity.org/benchmark/amazon_web_services
 - AWS Security Best Practices: https://docs.aws.amazon.com/security/
 - AWS IAM Best Practices: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
+- AWS Confused Deputy Guidance: https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html
+- AWS Third-Party Role Access: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html
+- AWS STS AssumeRole API: https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
@@ -231,4 +245,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added third-party AssumeRole trust evidence gates, report fields, and calibration fixtures.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).

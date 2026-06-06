@@ -160,6 +160,37 @@ aws_organizations_organization
 
 Look for policies restricting CloudShell access.
 
+### Supplemental IAM Review -- Third-Party AssumeRole Trust Evidence
+
+Review third-party cross-account roles for confused-deputy, lifecycle, and sensitive read-only exposure risk. This supplements CIS Section 1 when an IAM role trusts an external AWS account, vendor, MSP, scanner, SIEM, CSPM, support provider, OIDC provider, SAML provider, or AWS service principal.
+
+Build a third-party AWS trust evidence matrix:
+
+| Field | Required Evidence |
+|---|---|
+| Role and source | Role name, ARN, IaC path, live role export timestamp, and trust policy document |
+| Trusted principal | External AWS account, root/account principal, role ARN, service principal, OIDC/SAML provider, or organization principal |
+| Confused-deputy control | Vendor-generated `sts:ExternalId`, or service-specific `aws:SourceArn`, `aws:SourceAccount`, `aws:SourceOrgID`, `aws:SourceOrgPaths`, audience, subject, and issuer constraints |
+| Permission scope | Attached/inline policies, sensitive read scope, cross-account data exposure, and whether read-only grants expose secrets, CloudTrail, Security Hub, IAM, or S3 inventory |
+| Session controls | `MaxSessionDuration`, session tag requirements, transitive tag limits, and CloudTrail evidence for assumed-role sessions |
+| Lifecycle evidence | Owner, vendor contract, ticket, ExternalId rotation date, role last-used timestamp, and offboarding status |
+| Access Analyzer | Finding status, archive reason, and reviewed external access path |
+| Status | Pass, Fail, or Not Evaluable with reason code |
+
+Use these Not Evaluable codes when evidence is incomplete:
+
+| Code | Reason |
+|---|---|
+| `AWS-TP-NE-01` | Live role trust policy or attached permission export is missing |
+| `AWS-TP-NE-02` | Vendor-generated ExternalId value, uniqueness, or rotation evidence is missing |
+| `AWS-TP-NE-03` | Service principal trust lacks SourceArn/SourceAccount/SourceOrg evidence or applicability proof |
+| `AWS-TP-NE-04` | OIDC or SAML issuer, audience, subject, thumbprint, or claim constraints are missing |
+| `AWS-TP-NE-05` | Role last-used, CloudTrail AssumeRole, or session-duration evidence is missing |
+| `AWS-TP-NE-06` | Owner, contract, ticket, or offboarding evidence is missing |
+| `AWS-TP-NE-07` | Sensitive read-only exposure scope is not documented |
+
+Fail the review when a vendor or third-party account-root principal can assume a role without `sts:ExternalId` or an explicit documented exception. Fail AWS service principal trust when supported confused-deputy conditions are absent. Mark stale vendor roles High when offboarding is complete but the role remains assumable or last-used activity continues after termination.
+
 ---
 
 ## Section 2 -- Storage
