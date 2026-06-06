@@ -82,6 +82,8 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
 | Access controls on model storage | Cloud storage IAM, artifact registry permissions | Determines who can replace or modify model weights |
 | Adapter/plugin sources | LoRA configs, adapter download code | Third-party adapters inherit the same supply chain risks |
+| Internal mirror and retention policy | Model registry settings, object-lock policies, artifact lifecycle rules | Confirms that pinned artifacts remain rebuildable after upstream deletion, gating, or license changes |
+| Rollback and rebuild evidence | Release records, restore tests, incident drills, CI rebuild logs | Shows whether production can recover when a public model, adapter, tokenizer, or config becomes unavailable |
 
 ---
 
@@ -133,7 +135,59 @@ Glob: **/config.json
 
 ---
 
-### Step 2 -- Training Data Lineage
+### Step 2 -- Registry Availability and Rollback Continuity
+
+Assess whether every production model artifact can still be rebuilt, audited, and rolled back if an upstream registry removes the model, gates access, renames the repository, changes license terms, or evicts cached large files. Integrity controls prove what was downloaded; continuity controls prove the organization can still operate when the upstream source disappears.
+
+**What to look for in code and configuration:**
+
+- Production models loaded only from public registry URLs, even when revisions and checksums are pinned.
+- No immutable internal mirror for model weights, adapters, tokenizer files, config files, generation templates, or evaluation fixtures.
+- Registry retention described as `best_effort`, `latest`, or cache-based rather than a defined duration with deletion controls.
+- Rollback artifacts referenced as "latest" instead of a specific mirrored version, digest, and release identifier.
+- LoRA or PEFT adapters pinned by checksum while the base model, tokenizer, or config is referenced only by name.
+- License or access terms captured only by linking to the live model card, with no dated snapshot retained for the approved production release.
+- No rebuild or rollback drill showing that a clean environment can reproduce or restore the deployed model without reaching the original public registry.
+
+**Detection methods using allowed tools:**
+
+```
+# Find public registry dependencies and cache-only release paths
+Grep: "huggingface.co|hf_hub_download|snapshot_download|from_pretrained|modelscope|civitai|torch.hub" in **/*.{py,yaml,yml,json,md,toml}
+Grep: "cache_dir|TRANSFORMERS_CACHE|HF_HOME|latest|best_effort|rollback|retention|mirror" in **/*.{py,yaml,yml,json,md,toml}
+
+# Check adapter, tokenizer, and config identity binding
+Grep: "lora|qlora|peft|adapter|base_model|tokenizer|config.json|generation_config" in **/*.{py,yaml,yml,json,md,toml}
+
+# Check for immutable retention and restore evidence
+Grep: "object.lock|retention|immutab|versioning|legal.hold|restore|rebuild|disaster.recovery|drill" in **/*.{yaml,yml,json,md,toml,tf}
+```
+
+**Evidence gates for production use:**
+
+| Gate | Required Evidence | Pass Condition |
+|---|---|---|
+| Immutable mirror | Internal registry, bucket, or artifact-store path for each model file | Mirror is versioned, access-controlled, and not dependent on public-registry availability |
+| Retention duration | Lifecycle policy or retention configuration | Retention meets production rollback, audit, and regulatory requirements |
+| Complete artifact set | Weights, adapter, base model, tokenizer, config, generation template, and model card snapshot | All runtime-critical files are bound to exact revisions and digests |
+| License and access snapshot | Dated copy of license, model card, acceptable-use terms, and approval record | Terms at approval time are auditable even if upstream changes |
+| Rollback copy | Release record naming a previous known-good model artifact set | Rollback does not use "latest" or a mutable public URL |
+| Rebuild or rollback drill | CI log, incident drill, or restore test in a clean environment | Drill succeeds without contacting the original public registry |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Production rollback depends on an upstream public model that is not internally mirrored | High |
+| Adapter is pinned but its base model, tokenizer, or config identity is mutable or unavailable | High |
+| No retention duration or deletion protection for production model artifacts | High |
+| License/access terms are not snapshotted at release approval time | Medium |
+| No clean-environment rebuild or rollback drill for critical models | Medium |
+| Registry cache may evict artifacts while metadata remains available | Medium |
+
+---
+
+### Step 3 -- Training Data Lineage
 
 Assess the provenance, integrity, and governance of data used to train or fine-tune models.
 
@@ -174,7 +228,7 @@ Grep: "s3://|gs://|az://|https://" in **/*data*.{py,yaml,yml,json,toml}
 
 ---
 
-### Step 3 -- Fine-Tuning Pipeline Security
+### Step 4 -- Fine-Tuning Pipeline Security
 
 Assess the integrity and access controls of the fine-tuning pipeline from data ingestion through weight production.
 
@@ -229,7 +283,7 @@ Glob: **/Jenkinsfile
 
 ---
 
-### Step 4 -- Inference Dependency Review
+### Step 5 -- Inference Dependency Review
 
 Assess the security of libraries, frameworks, and runtime dependencies used in the model serving path.
 
@@ -278,7 +332,7 @@ Grep: "langchain|llamaindex|llama.index|vllm|ray|transformers|onnxruntime" in **
 
 ---
 
-### Step 5 -- Model Card Evaluation
+### Step 6 -- Model Card Evaluation
 
 Assess the completeness and accuracy of model documentation as a supply chain trust signal.
 
@@ -319,7 +373,7 @@ Grep: "model.card|intended.use|training.data|evaluation|limitations|ethical" in 
 
 ---
 
-### Step 6 -- Backdoor Detection Patterns
+### Step 7 -- Backdoor Detection Patterns
 
 Assess whether architectural and procedural controls exist to detect model backdoors -- targeted modifications that cause specific misbehavior on trigger inputs while maintaining normal performance on standard benchmarks.
 
@@ -378,14 +432,14 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ## Model Inventory
 
-| Model | Source | Format | Checksum Verified | Pinned Version | Model Card |
-|---|---|---|---|---|---|
-| [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
+| Model | Source | Format | Checksum Verified | Pinned Version | Internal Mirror | Retention | Rollback Copy | Model Card |
+|---|---|---|---|---|---|---|---|---|
+| [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Yes/No] | [duration/policy] | [Yes/No] | [Complete/Partial/Missing] |
 
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Provenance | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
+- **Category:** [Provenance | Registry Availability | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM03:2025 -- Supply Chain Vulnerabilities
 - **MITRE ATLAS Technique:** [technique ID and name]
@@ -401,6 +455,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Domain | Current State | Target State | Gap Severity |
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
+| Registry availability and rollback | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
@@ -433,13 +488,15 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 1. **Verifying checksums against attacker-controlled sources.** Downloading a model from a public registry and verifying its checksum against a value published on the same registry provides no security. If the attacker compromised the model, they also control the published checksum. Checksums must be verified against an independently trusted source -- the model publisher's signed release, a separate attestation service, or an internal model registry that independently computed the hash on first ingestion.
 
-2. **Treating `safetensors` as a complete solution.** The `safetensors` format eliminates arbitrary code execution during deserialization, which is a critical improvement over pickle-based formats. However, it does not protect against model weight manipulation (backdoors), training data poisoning, or any other supply chain attack that operates on the model's learned parameters rather than its serialization format. `safetensors` addresses one attack vector; the other five steps in this assessment remain necessary.
+2. **Treating revision pins as availability guarantees.** Pinning a Hugging Face commit and verifying a digest protects integrity, but it does not guarantee that the model, tokenizer, adapter base, or license terms will remain accessible later. Production releases need an immutable internal mirror, retention policy, and tested rollback copy for the full artifact set.
 
-3. **Auditing application dependencies but ignoring ML framework dependencies.** Standard SCA tooling often covers `requests`, `flask`, or `django` but misses ML-specific libraries (transformers, vLLM, Ray, LangChain) that have had critical CVEs. Ensure vulnerability scanning covers the full dependency tree including ML frameworks.
+3. **Treating `safetensors` as a complete solution.** The `safetensors` format eliminates arbitrary code execution during deserialization, which is a critical improvement over pickle-based formats. However, it does not protect against model weight manipulation (backdoors), training data poisoning, unavailable upstream artifacts, or any other supply chain attack that operates on the model's learned parameters rather than its serialization format. `safetensors` addresses one attack vector; the other steps in this assessment remain necessary.
 
-4. **Assuming Hugging Face models are vetted.** Hugging Face Hub is a hosting platform, not a curation service. Any user can upload any model. While Hugging Face has introduced malware scanning and model signing capabilities, the majority of hosted models have no cryptographic provenance. Treat Hugging Face models as untrusted artifacts requiring verification, the same way you treat npm packages.
+4. **Auditing application dependencies but ignoring ML framework dependencies.** Standard SCA tooling often covers `requests`, `flask`, or `django` but misses ML-specific libraries (transformers, vLLM, Ray, LangChain) that have had critical CVEs. Ensure vulnerability scanning covers the full dependency tree including ML frameworks.
 
-5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
+5. **Assuming Hugging Face models are vetted.** Hugging Face Hub is a hosting platform, not a curation service. Any user can upload any model. While Hugging Face has introduced malware scanning and model signing capabilities, the majority of hosted models have no cryptographic provenance. Treat Hugging Face models as untrusted artifacts requiring verification, the same way you treat npm packages.
+
+6. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
 
 ---
 
