@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -339,6 +339,38 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
 
+### Step 6a: Ephemeral Cloud Workload Evidence Gate
+
+Cloud snapshots and provider audit logs do not prove forensic completeness for ephemeral workloads. Kubernetes pods, managed containers, serverless functions, and task revisions can be evicted, redeployed, or re-pointed before disk-style evidence exists. Capture immutable workload identity and runtime evidence before relying on mutable tags, aliases, or control-plane summaries.
+
+Use these checks when the incident involves Kubernetes, ECS/Fargate, Cloud Run, AKS, EKS, GKE, Lambda, Azure Functions, Cloud Functions, containers, serverless jobs, or short-lived build/runtime workers.
+
+```
+FORENSICS-EPHEMERAL-01: Kubernetes pod evidence missing pod spec/YAML, namespace, UID, owner references, labels/annotations, service account, node, restart count, container statuses, image digests, mounted volumes, and relevant events
+FORENSICS-EPHEMERAL-02: Kubernetes logs do not include current logs, previous container logs for restarted containers, sidecar/init-container logs, and log export hash/time range
+FORENSICS-EPHEMERAL-03: Managed container evidence relies on mutable image tags instead of immutable digest, task/revision ID, runtime command, environment/secret references, network attachment, and deployment history
+FORENSICS-EPHEMERAL-04: Serverless evidence relies on mutable alias or latest revision without immutable function version/revision, package/code hash, runtime/layers, environment and secret references, role/service account, trigger mapping, invocation logs, and deployment history
+FORENSICS-EPHEMERAL-05: Workload-to-control-plane correlation is missing provider audit events, Kubernetes audit events, scheduler/deployment events, registry pull evidence, and orchestrator timestamps
+FORENSICS-EPHEMERAL-06: Report claims complete cloud forensics based only on disk snapshot, managed-disk snapshot, or provider audit logs for an ephemeral workload
+FORENSICS-EPHEMERAL-07: Ephemeral workload evidence is unavailable and the report does not mark the workload Not Evaluable with the exact missing artifact and retention/eviction reason
+```
+
+**Required evidence matrix:**
+
+| Workload Type | Required Evidence | Why It Matters |
+|---|---|---|
+| Kubernetes pod | Pod spec/YAML, UID, namespace, node, owner references, labels/annotations, service account, current and previous logs, events, container statuses, image digests, mounted volumes, network policy, Kubernetes audit events | Pods can be evicted and restarted; owner and runtime state often disappear before disk evidence exists |
+| Managed container service | Cluster/service/task or revision ID, immutable image digest, runtime command/entrypoint, environment and secret references, IAM role/service account, network attachments, deployment history, orchestrator logs, registry pull metadata | Tags and service names are mutable and do not identify the executed artifact |
+| Serverless function | Function version/revision, alias mapping at incident time, deployment package or source hash, runtime/layers/extensions, environment and secret references, execution role/service account, trigger/event source mapping, invocation logs, deployment history | Aliases such as `prod` and `$LATEST` are mutable and can hide the code that actually executed |
+| Build/runtime worker | Job/run ID, runner image digest, workflow revision, checkout commit, secrets boundary, artifact digest, logs, ephemeral VM/container metadata | Workers are intentionally destroyed after execution |
+
+**Decision rules:**
+
+- Mark evidence preservation **Critical** when a compromised ephemeral workload is terminated, evicted, or redeployed before immutable workload identity, logs, and runtime configuration are preserved.
+- Mark evidence preservation **High** when the report relies on mutable image tags, function aliases, `$LATEST`, task family names, service names, or disk snapshots without immutable digest/version/revision evidence.
+- Mark evidence preservation **Medium** when immutable identity is present but logs, previous container logs, trigger mappings, deployment history, or registry metadata are incomplete.
+- Mark the workload **Not Evaluable** when required runtime evidence no longer exists or was never retained. Record the missing artifact, retention window, eviction/redeployment time, and compensating evidence.
+
 ---
 
 ## 4. Findings Classification
@@ -401,6 +433,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### Ephemeral Workload Evidence (if applicable)
+| Workload | Immutable Identity | Runtime Config | Logs / Events | Image / Package Evidence | Trigger / Network Evidence | Decision |
+|---|---|---|---|---|---|---|
+| [pod/function/task/revision] | [pod UID, image digest, function version, task revision] | [env/secret refs, service account, command, role] | [current/previous logs, invocation logs, events] | [digest/hash/layers/registry metadata] | [event source, network policy, audit events] | [Pass/Fail/Partial/Not Evaluable] |
 ```
 
 ---
@@ -461,6 +498,10 @@ Applying traditional forensic methods to cloud environments without adaptation l
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
 
+### Pitfall 6: Treating Mutable Cloud Names as Forensic Identity
+
+Container tags, Kubernetes service names, function aliases, `$LATEST`, task family names, and serverless routes are not immutable forensic identifiers. Preserve digests, versions, revisions, pod UIDs, deployment history, registry metadata, and trigger mappings before the workload is redeployed or garbage-collected.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -487,3 +528,16 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
 9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
 10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+11. **Kubernetes Pods** -- https://kubernetes.io/docs/concepts/workloads/pods/
+12. **Kubernetes Debug Running Pods** -- https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/
+13. **AWS Lambda Function Versions** -- https://docs.aws.amazon.com/lambda/latest/dg/configuration-versions.html
+14. **Google Cloud Run Revisions** -- https://cloud.google.com/run/docs/managing/revisions
+
+---
+
+## 10. Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.1 | 2026-06-06 | Add ephemeral cloud workload evidence gates for Kubernetes, managed containers, serverless functions, and build/runtime workers |
+| 1.0.0 | Initial | Initial forensic evidence collection checklist |
