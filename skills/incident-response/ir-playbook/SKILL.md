@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -127,6 +127,7 @@ Classify the incident using the NIST SP 800-61 taxonomy:
 | **Supply Chain Compromise** | Compromise via trusted third-party software or service | Malicious update, compromised dependency, vendor breach |
 | **Web Application Attack** | Exploitation of web application vulnerabilities | SQL injection, XSS, SSRF, API abuse |
 | **Social Engineering** | Manipulation of personnel to gain access or information | Phishing, BEC, vishing, pretexting |
+| **Synthetic Identity / Deepfake BEC** | AI-generated voice, video, or identity artifacts used to authorize payments, credential changes, or sensitive actions | Deepfake CFO call, cloned executive voice, synthetic video approval, vendor bank-change fraud |
 
 #### Step 2.2: Severity Determination
 
@@ -168,6 +169,18 @@ Assign severity based on the combination of functional impact, information impac
 | **SEV-3 (Medium)** | Low functional impact OR information impact with regular recovery | IR team investigates during business hours; management notification within 24 hours |
 | **SEV-4 (Low)** | None/minimal functional impact; no information impact; regular recovery | Documented and monitored; addressed in normal operations |
 
+#### Step 2.2a: SEC Materiality Determination Checklist
+
+For publicly traded organizations or subsidiaries with public-company reporting exposure, open a legal-led materiality track as soon as the incident may affect investors. The SEC Form 8-K Item 1.05 clock is four business days from the materiality determination, so the skill must distinguish "incident awareness" from "materiality determination" and record who made the decision.
+
+| Evidence Area | Materiality Questions | Required Output |
+|---------------|-----------------------|-----------------|
+| Functional impact | Did the incident materially disrupt critical products, revenue-generating services, manufacturing, safety, or customer delivery? | Affected business functions, outage duration, customer impact, recovery estimate |
+| Financial impact | Are costs, lost revenue, fraud losses, remediation spend, insurance recoveries, or contractual penalties reasonably likely to be material? | Preliminary financial range, assumptions, CFO/controller owner, confidence |
+| Reputation and market impact | Could the incident affect customer trust, partner obligations, regulated operations, market perception, or executive credibility? | Reputation risk summary, customer/regulator exposure, communications owner |
+| Data and legal exposure | Is sensitive data, non-public business information, or regulated data involved? Are disclosure obligations probable? | Data classes, estimated record count, jurisdictions, counsel determination |
+| Decision record | Has legal/executive leadership determined the incident is material, not material, or still under evaluation? | Determination, timestamp, approver, Form 8-K deadline if material |
+
 #### Step 2.3: Indicator Analysis
 
 For each IOC, document and cross-reference:
@@ -197,6 +210,7 @@ START: Is the attack actively ongoing?
   +-- YES --> Is data actively being exfiltrated?
   |             |
   |             +-- YES --> IMMEDIATE CONTAINMENT
+  |             |           - If SaaS/API token abuse: revoke OAuth sessions, API keys, refresh tokens, and MFA bypass grants first
   |             |           - Network isolation (disable switchport / security group)
   |             |           - Block egress to C2 IPs/domains at firewall
   |             |           - Capture memory before power-off if possible
@@ -230,6 +244,8 @@ START: Is the attack actively ongoing?
                           - Rebuild from known-good baseline
 ```
 
+**Identity-level containment gate:** For cloud-native SaaS exfiltration, managed API abuse, or valid-token compromise, network isolation alone is insufficient. Before or alongside host isolation, revoke active sessions and refresh tokens, disable suspicious OAuth grants, rotate API/service-account keys, reset MFA factors, invalidate passwordless/passkey sessions if supported, remove malicious inbox/storage forwarding rules, and preserve identity-provider, CASB, SaaS audit, and token issuance logs.
+
 #### Step 3.1b: Wiper / Destructive Malware Response Track
 
 Wiper malware destroys data irrecoverably (unlike ransomware which preserves encrypted data for ransom). This demands a fundamentally different response posture.
@@ -238,8 +254,18 @@ Wiper malware destroys data irrecoverably (unlike ransomware which preserves enc
 
 1. **Isolate aggressively** -- Disconnect affected segments at switch/firewall level. Wipers propagate via SMB, WMI, or GPO. Do not wait for forensic imaging.
 2. **Preemptively shut down unaffected systems** if propagation vector is unknown. A wiper that has not triggered is stopped by cold shutdown.
-3. **Verify backup integrity** -- Wipers target Volume Shadow Copies, backup agents, and NAS/SAN. Confirm offline/immutable backups exist before recovery planning.
+3. **Verify backup and snapshot integrity** -- Wipers target Volume Shadow Copies, backup agents, NAS/SAN, and cloud snapshots. Confirm offline/immutable backups exist and scan candidate restore points before recovery planning.
 4. **Preserve one affected system** (powered off, disk intact) for forensics and attribution.
+
+**Snapshot integrity verification gate (before restore):**
+
+| Check | Evidence Required | Fail Condition |
+|-------|-------------------|----------------|
+| Immutable/offline status | Backup immutability lock, offline media record, or air-gap control evidence | Restore point is writable by compromised admin, backup agent, or attacker-controlled tenant role |
+| Binary scan | EDR/YARA/AV scan result for boot artifacts, startup paths, scripts, drivers, and scheduled tasks in the snapshot | Wiper payload, loader, persistence, destructive script, or suspicious unsigned binary found |
+| Restore canary | Isolated sandbox restore with monitored boot and no production network access | Destructive behavior, beaconing, credential scraping, or unexpected privilege changes observed |
+| Snapshot age and chain | Snapshot timestamp, dependency chain, and last-known-good rationale | Restore point overlaps known attacker dwell time without compensating clean evidence |
+| Approval | Incident commander and legal/business owner sign-off before production restoration | Recovery proceeds without documented verification and owner approval |
 
 **Key differences from ransomware:**
 
@@ -269,10 +295,11 @@ Restore systems to normal operations:
 
 1. **Restore from known-good state** -- Use verified backups or rebuild from golden images; never restore from potentially compromised backups
 2. **Validate system integrity** -- Compare file hashes against known-good baselines; verify configuration integrity
-3. **Phased reconnection** -- Reconnect systems to the network in stages; monitor each phase for signs of re-compromise
-4. **Enhanced monitoring** -- Increase logging verbosity and alerting sensitivity for a minimum of 30 days post-recovery
-5. **Stakeholder confirmation** -- Obtain business owner sign-off before declaring systems operational
-6. **Update IOC blocklists** -- Ensure all identified IOCs remain blocked across perimeter and endpoint controls
+3. **Verify restore artifacts** -- For destructive/wiper cases, perform binary scan and sandbox canary restore before reconnecting recovered systems
+4. **Phased reconnection** -- Reconnect systems to the network in stages; monitor each phase for signs of re-compromise
+5. **Enhanced monitoring** -- Increase logging verbosity and alerting sensitivity for a minimum of 30 days post-recovery
+6. **Stakeholder confirmation** -- Obtain business owner sign-off before declaring systems operational
+7. **Update IOC blocklists** -- Ensure all identified IOCs remain blocked across perimeter and endpoint controls
 
 #### Step 3.4: Stakeholder Notification
 
@@ -283,6 +310,7 @@ Use the appropriate communication template based on the audience.
 ```
 Subject: [SEVERITY] Security Incident - [Category] - [Incident ID]
 
+Legal Privilege: [Attorney-Client Privilege / Attorney Work Product if counsel has directed privileged handling; otherwise omit]
 Status: [Active | Contained | Eradicated | Recovered]
 Severity: [SEV-1 | SEV-2]
 Classification: [Unauthorized Access | Malware | Data Exfiltration | ...]
@@ -294,6 +322,8 @@ Current Actions: [What the IR team is doing now]
 Next Update: [Scheduled time for next update]
 Incident Commander: [Name and contact]
 ```
+
+**Privilege handling note:** For SEV-1 incidents, destructive events, suspected fraud, or public-company disclosure analysis, coordinate executive updates through legal counsel before broad distribution. Do not over-label routine operational updates as privileged; record the counsel owner and distribution list when privilege is asserted.
 
 **Legal/Regulatory Notification:**
 
@@ -339,6 +369,8 @@ Escalate to the next tier when any of the following conditions are met:
 | Confirmed data exfiltration involving PII/PHI | Legal counsel, Privacy Officer, Executive leadership | Immediately |
 | Ransomware with encryption of production systems | Executive leadership, External IR, Cyber insurance carrier, Law enforcement (FBI IC3) | Within 1 hour |
 | Wiper/destructive malware with active data destruction | Executive leadership, External IR, Cyber insurance, FBI IC3, CISA, Sector ISAC (e.g., H-ISAC for healthcare) | Immediately |
+| SaaS/API exfiltration using valid tokens or OAuth grants | Identity team, SaaS owner, Legal counsel, Executive leadership | Immediately |
+| Public-company incident may be material | Legal counsel, CFO/controller, Disclosure committee, Executive leadership | Immediately |
 | Active attacker with domain admin / root access | External IR firm, Executive leadership | Within 1 hour |
 | Incident duration exceeds 4 hours without containment | IR lead escalates to management for resource allocation | At 4-hour mark |
 | Evidence of supply chain compromise affecting customers | Legal, Customer communications, Executive leadership | Within 2 hours |
@@ -367,7 +399,7 @@ Produce the incident response report with these exact sections:
 ```markdown
 ## Incident Response Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** ir-playbook v1.0.0
+**Skill:** ir-playbook v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, SANS Incident Handler's Handbook
 **Incident Commander:** [Name or "Unassigned -- assign immediately"]
 
@@ -379,7 +411,7 @@ and recommended immediate actions. Lead with the most critical fact.]
 | Field | Value |
 |---|---|
 | Incident ID | [IR-YYYY-NNNN] |
-| Category | [Unauthorized Access / Malware / Data Exfiltration / DoS / Insider / Supply Chain / Web App / Social Engineering] |
+| Category | [Unauthorized Access / Malware / Destructive-Wiper / Data Exfiltration / DoS / Insider / Supply Chain / Web App / Social Engineering / Synthetic Identity-Deepfake BEC] |
 | Severity | [SEV-1 / SEV-2 / SEV-3 / SEV-4] |
 | Functional Impact | [None / Low / Medium / High] |
 | Information Impact | [None / Privacy Breach / Proprietary Breach / Integrity Loss] |
@@ -401,16 +433,25 @@ and recommended immediate actions. Lead with the most critical fact.]
 |---|---|---|---|
 | [Action taken] | [Complete / In Progress / Planned] | [timestamp] | [responder] |
 
+### Materiality Determination
+| Area | Evidence | Current Assessment | Owner |
+|---|---|---|---|
+| Functional impact | [service/customer impact] | [Material / Not material / Under evaluation] | [owner] |
+| Financial impact | [cost/revenue/fraud range] | [Material / Not material / Under evaluation] | [owner] |
+| Reputation and market impact | [customer/regulator/market exposure] | [Material / Not material / Under evaluation] | [owner] |
+| Legal/disclosure decision | [counsel/disclosure committee record] | [Determination and Form 8-K deadline if material] | [owner] |
+
 ### Eradication and Recovery
 - **Root Cause:** [Description of initial access vector and exploitation path]
 - **Eradication Actions:** [List of removal actions taken]
 - **Recovery Actions:** [List of restoration actions taken or planned]
+- **Backup/Snapshot Integrity Gate:** [Immutable/offline evidence, binary scan, sandbox restore result, approval status]
 - **Enhanced Monitoring:** [Description of increased monitoring posture]
 
 ### Stakeholder Notifications
-| Stakeholder | Notified | Timestamp | Method |
-|---|---|---|---|
-| [Executive / Legal / Regulator / Customer / Insurance] | [Yes / No / Pending] | [timestamp] | [Email / Phone / Portal] |
+| Stakeholder | Notified | Timestamp | Method | Privilege / Handling |
+|---|---|---|---|---|
+| [Executive / Legal / Regulator / Customer / Insurance] | [Yes / No / Pending] | [timestamp] | [Email / Phone / Portal] | [Privileged / Standard / Restricted] |
 
 ### Escalation Decisions
 [Document any escalation triggers hit and actions taken]
@@ -466,7 +507,11 @@ Reconnecting systems to the network before thoroughly removing all persistence m
 
 ### Pitfall 5: Neglecting Regulatory Notification Deadlines
 
-Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
+Breach notification regulations impose strict timelines that do not wait for perfect certainty. GDPR requires notification within 72 hours of becoming aware of a personal data breach, while the SEC Form 8-K Item 1.05 deadline runs four business days from the materiality determination. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track privacy, sector, state, contractual, insurance, and SEC disclosure clocks separately, and involve legal counsel early.
+
+### Pitfall 6: Treating SaaS Token Theft Like Host Compromise Only
+
+In cloud-native incidents, the attacker may keep exfiltrating through valid OAuth grants, refresh tokens, API keys, or service-account credentials after the responder isolates a laptop or workload. Always validate identity-provider session state, SaaS audit logs, token issuance, mailbox/storage forwarding rules, and third-party app grants before declaring containment complete.
 
 ---
 
