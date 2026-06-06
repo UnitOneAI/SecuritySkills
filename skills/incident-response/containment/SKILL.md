@@ -103,22 +103,24 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 
 | Strategy | Method | Use When | Limitations |
 |----------|--------|----------|-------------|
-| **Port shutdown** | Disable switchport or cloud security group ingress/egress | Single host compromise, not business-critical | Disrupts all services on the host |
+| **Port shutdown** | Disable switchport or physical interface | Single host compromise, not business-critical | Disrupts all services on the host |
 | **VLAN isolation** | Move host to quarantine VLAN with restricted routing | Need to maintain some connectivity for evidence collection | Requires network team coordination |
-| **Firewall rule** | Block specific IPs, ports, or protocols at perimeter or host firewall | Known C2 infrastructure, specific attack vector | Attacker may use alternate C2 channels |
-| **DNS sinkholing** | Redirect malicious domains to controlled IP via internal DNS | C2 communication via domain names | Ineffective if attacker uses direct IP communication |
-| **Cloud security group lockdown** | Remove all inbound/outbound rules except management access | Cloud instance compromise | May disrupt dependent services |
-| **VPN/remote access revocation** | Disable VPN accounts, revoke remote access tokens | Compromised remote access credentials | Disrupts legitimate remote users on same system |
+| **Firewall / Proxy rule** | Block specific IPs, ports, or protocols at perimeter or host firewall | Known C2 infrastructure, specific attack vector | Attacker may use alternate C2 or proxy bypass channels |
+| **DNS sinkholing** | Redirect malicious domains to controlled IP via internal DNS | C2 communication via domain names | Ineffective if attacker uses direct IP, DoH, or DoT |
+| **Cloud SG/NSG lockdown** | Detach old groups, attach isolation group, verify route/NACL | Cloud instance or workload compromise | Must verify attachment to effective path |
+| **Kubernetes CNI block** | Deploy NetworkPolicy blocking all ingress/egress | Container/Pod compromise | CNI must actually enforce the policy |
+| **VPN/remote access block** | Disable VPN accounts, revoke remote access tokens | Compromised remote access | Disrupts legitimate remote users |
 
 **Credential revocation strategies:**
 
 | Strategy | Method | Use When | Scope |
 |----------|--------|----------|-------|
-| **Password reset** | Force password change for compromised accounts | Credential theft confirmed or suspected | Individual accounts |
-| **Session invalidation** | Revoke all active sessions and tokens for affected accounts | Session hijacking, token theft | Individual accounts |
+| **Password reset** | Force password change for compromised accounts | Credential theft confirmed or suspected | Identity provider |
+| **Session & Token revocation** | Revoke active IdP sessions, refresh tokens, and downstream SaaS sessions | Session hijacking, token theft | Identity provider + SaaS apps |
+| **App Grant / OAuth revocation** | Review and revoke malicious OAuth app consents | Illicit consent grants, app abuse | Identity provider |
 | **API key rotation** | Generate new API keys, revoke old keys | API key exposure or misuse | Specific services |
-| **Certificate revocation** | Revoke and reissue TLS/mTLS certificates | Certificate compromise, CA compromise | Services using the certificate |
-| **Service account reset** | Reset service account passwords and regenerate keys | Lateral movement via service accounts | Downstream services may break |
+| **Certificate / SSH key revocation** | Revoke and reissue TLS/mTLS certificates or SSH keys | Certificate compromise, key theft | Services or hosts using the credential |
+| **Service principal reset** | Reset service principal secrets and regenerate keys | Lateral movement via service accounts | Downstream services may break |
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
 
@@ -201,20 +203,39 @@ Wiper and destructive malware require a distinct containment approach from ranso
 
 **Key difference from ransomware containment:** Do not attempt to "monitor and observe" a wiper in progress. Every second of observation is data permanently destroyed. Aggressive, immediate containment is always the correct posture for confirmed wiper activity.
 
-### Step 5: Containment Validation
+### Step 5: Containment Validation & Effective Enforcement Evidence
 
-After implementing containment, verify effectiveness before proceeding to eradication.
+After implementing containment, verify effectiveness before proceeding to eradication. An action being "sent" or a ticket being "resolved" is not sufficient. You must collect **Effective Enforcement Evidence** from the provider or endpoint.
 
-**Validation checklist:**
+#### Network Containment Evidence
+| Target Asset | Control Plane | Enforcement Point | Attachment/Scope Proof | Protocol Coverage | State | Telemetry Source | Result |
+|---|---|---|---|---|---|---|---|
+| [Instance/VM ID] | [e.g., AWS EC2] | [e.g., Security Group] | [Verified attached to ENI] | [All Egress/Ingress Deny] | [Active] | [VPC Flow Logs] | [Blocked connections observed] |
+| [Pod/Namespace] | [e.g., Kubernetes] | [e.g., NetworkPolicy] | [CNI plugin enforcement verified] | [Ingress/Egress Deny] | [Applied] | [Cilium/Calico logs] | [Dropped packets observed] |
 
-| Check | Method | Expected Result |
-|-------|--------|----------------|
-| C2 communication blocked | Monitor network traffic for C2 indicators | No outbound connections to known C2 IPs/domains |
-| Lateral movement blocked | Monitor authentication logs and network flows between segments | No unauthorized cross-segment authentication |
-| Compromised credentials revoked | Attempt authentication with known-compromised credentials | Authentication fails |
-| Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
-| Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
-| Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+#### Identity Containment Evidence
+| Target Identity | Control Plane | Enforcement Point | Scope Proof | State | Telemetry Source | Result |
+|---|---|---|---|---|---|---|
+| [User/Service] | [e.g., Entra ID] | [Password & Sessions] | [Password changed, Refresh tokens revoked] | [Revoked] | [Sign-in Logs] | [Active sessions terminated] |
+| [OAuth App] | [e.g., Google Workspace] | [App Grants] | [Specific app ID revoked] | [Revoked] | [Audit Logs] | [Token refresh failures] |
+
+#### DNS Containment Evidence
+| Target Asset | Control Plane | Enforcement Point | Scope Proof | State | Telemetry Source | Result |
+|---|---|---|---|---|---|---|
+| [Endpoint/Subnet] | [e.g., Internal DNS] | [e.g., DNS RPZ] | [Endpoint uses this resolver path, no DoH/DoT bypass] | [Active] | [DNS Query Logs] | [Sinkhole IP returned for C2] |
+
+#### EDR Containment Evidence
+| Target Asset | Control Plane | Enforcement Point | Scope Proof | State | Telemetry Source | Result |
+|---|---|---|---|---|---|---|
+| [Hostname] | [e.g., CrowdStrike] | [Agent Isolation] | [Exceptions mapped correctly] | [Acknowledged by endpoint] | [EDR Console] | [Endpoint offline to non-mgmt traffic] |
+
+#### Fallback and Escalation Criteria
+
+If primary containment validation is pending or fails, immediately trigger fallback criteria:
+- **EDR Isolation Pending / Endpoint Offline:** Fall back to Network Containment (switchport disable, cloud SG isolation, or VPN disconnect).
+- **Cloud Rule Not Attached / Telemetry Unavailable:** Escalate to broader subnet/VPC isolation or physically power down the instance if critical.
+- **DNS Sinkhole Bypassed (e.g., DoH in use):** Fall back to Egress Filtering at the firewall dropping all port 443 traffic to unknown destinations.
+- **Session Revocation Failed:** Disable the account entirely rather than just resetting the password and clearing tokens.
 
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
@@ -289,10 +310,13 @@ threat severity and business criticality, and expected impact on operations.]
 |---|---|---|---|
 | [Service] | [Description of disruption] | [Workaround if any] | [Yes/No -- requires escalation] |
 
-### Containment Validation Checklist
-| Check | Result | Timestamp |
-|---|---|---|
-| [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+### Effective Enforcement Evidence
+| Containment Action | Target Asset | Enforcement Point | Scope/State Proof | Telemetry Source | Result/Timestamp |
+|---|---|---|---|---|---|
+| [Action Name] | [Asset ID] | [Control Plane/Tool] | [Proof of Attachment/Revocation] | [Log Source] | [Pass/Fail/Pending - Timestamp] |
+
+### Fallback Actions Activated
+- [List any fallback actions triggered due to pending/failed primary containment]
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]
