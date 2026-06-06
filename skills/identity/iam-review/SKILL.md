@@ -156,6 +156,53 @@ IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-
 
 ---
 
+### Step 2A: Token and Session Assurance
+
+**Objective:** Verify that authentication strength remains enforceable after the initial sign-in by reviewing token issuance, refresh-token revocation, device-code flow controls, MFA fatigue protections, sign-in risk policy, and continuous access evaluation evidence.
+
+**NIST SP 800-63B Reference:** Section 5.2.3 — reauthentication; AAL2/AAL3 phishing-resistant authenticator guidance
+**NIST SP 800-207 Reference:** Tenet 3 — access is granted on a per-session basis; Tenet 6 — authentication and authorization are dynamic and strictly enforced
+**CIS Controls v8 Reference:** Control 6.3 — Require MFA for Externally-Exposed Applications; Control 6.4 — Require MFA for Remote Network Access; Control 6.7 — Centralize Access Control
+
+#### Review Checklist
+
+```
+IAM-TOKEN-01: Device-code flow is enabled without an approved client list, monitoring, or compensating controls
+IAM-TOKEN-02: MFA push approvals lack number matching, phishing-resistant factors, or repeated-denial / fatigue detection
+IAM-TOKEN-03: Sign-in risk and risky-user policies are report-only, partial, or missing enforcement evidence
+IAM-TOKEN-04: Refresh tokens and persistent browser sessions remain valid after user disablement, role removal, password reset, or incident revocation
+IAM-TOKEN-05: Continuous Access Evaluation coverage is assumed but not proven for the resources under review
+IAM-TOKEN-06: Session lifetime, sign-in frequency, or remembered-device settings exceed the data and privilege risk
+IAM-TOKEN-07: Legacy authentication, app passwords, or unmanaged OAuth grants can bypass the reviewed MFA and risk policy
+IAM-TOKEN-08: Post-revocation validation is missing, so the review cannot prove blocked token replay or denied resource access
+```
+
+**Evidence gate:** Treat token and session controls as acceptable only when the review includes policy configuration and recent validation evidence. A tenant-wide claim such as "MFA enabled", "CAE supported", or "tokens revoked" is supporting context; it does not replace proof of enforcement mode, scope denominator, affected resource coverage, and a post-revocation access test.
+
+**Platform-specific checks:**
+
+| Platform | Check | What to verify |
+|---|---|---|
+| **AWS** | IAM Identity Center settings, CloudTrail, and STS session policy | Session duration, MFA context for role assumption, revoked Identity Center sessions, unexpected long-lived access keys, and denied access after permission-set removal |
+| **Azure / Entra ID** | Conditional Access, Authentication methods, Identity Protection, Sign-in logs | Number matching / phishing-resistant MFA, device-code flow restrictions, risk policy enforcement mode, refresh-token revocation, CAE resource coverage, sign-in frequency, and legacy auth blocks |
+| **Azure / Entra ID** | App registrations and Enterprise Apps | OAuth consent scope, app-password exposure, service-principal token lifetime, delegated permission grant revocation, and post-revocation token replay result |
+| **GCP** | Cloud Identity session controls, Admin logs, OAuth app access control | 2-Step Verification enforcement, context-aware access, session length, OAuth app trust level, token revocation evidence, and blocked access after user suspension or group removal |
+| **Okta / IdP** | Risk engine, MFA policy, system log | Device-code or CLI app policy, push fatigue signals, step-up rules, session revocation event, and denied downstream app access |
+
+**Severity Classification:**
+
+| Finding | Severity | Rationale |
+|---|---|---|
+| Refresh tokens remain valid after account disablement or incident revocation | **Critical** | A compromised session can survive the identity or access removal event |
+| Device-code phishing path lacks monitoring or approved-client restriction | **High** | Attackers can obtain valid tokens without the expected interactive sign-in trail |
+| MFA fatigue controls are absent for privileged or externally exposed access | **High** | Repeated push approvals can bypass user intent despite nominal MFA coverage |
+| CAE or risk policy is report-only for sensitive resources | **Medium** | Access may persist after risk changes until token expiry or manual intervention |
+| Post-revocation validation evidence is missing | **Low** | Governance gap that weakens confidence in revocation controls |
+
+**Output requirement:** For every token or session assurance finding, include grant type, affected users or apps, MFA assurance, risk policy mode, refresh-token revocation timestamp, session invalidation timestamp, CAE-covered resources, post-revocation test result, evidence owner, and next validation date.
+
+---
+
 ### Step 3: Least Privilege Audit
 
 **Objective:** Identify over-permissioned accounts and enforce least privilege.
@@ -405,6 +452,7 @@ For each finding, produce a row with:
 
 ### Findings by Category
 - Authentication (Step 2): [count]
+- Token / Session Assurance (Step 2A): [count]
 - Least Privilege (Step 3): [count]
 - Service Accounts (Step 4): [count]
 - Stale Accounts (Step 5): [count]
