@@ -58,6 +58,9 @@ Before conducting the PIR, gather or confirm:
 - [ ] **Existing controls** -- Documentation of security controls that were in place at the time of the incident (detection rules, access controls, network segmentation, patching cadence).
 - [ ] **Previous PIR reports** -- Any prior post-incident reviews for similar incident types, to identify recurring patterns.
 - [ ] **Metrics data** -- Timestamps needed to compute MTTD, MTTR, and MTTC (see Step 4).
+- [ ] **Near-miss evidence** -- For blocked attempts, evidence that no compromise occurred, the control that blocked the attempt, recurrence count, and timestamps for attempt, detection, and block.
+- [ ] **Response action decision records** -- Containment/recovery actions taken, expected benefit, expected side effects, rollback criteria, break-glass owner, and whether evidence collection or operations were affected.
+- [ ] **Legal/privacy notification data** -- For suspected personal-data, regulated-data, customer, or contractual impact, timestamps for legal/privacy engagement, regulatory assessment, notification decision, deadline, and current status.
 
 ---
 
@@ -186,6 +189,26 @@ Organize contributing factors into categories to ensure comprehensive analysis:
 
 Compute the following metrics for the incident. These metrics enable trend analysis across incidents and benchmark against industry data.
 
+Before computing durations, classify the metric mode:
+
+- **Confirmed compromise** -- Initial compromise, detection, containment, and recovery timestamps are supported by evidence. Compute MTTD, MTTC, MTTR, dwell time, and escalation time.
+- **Near miss / blocked attempt** -- Evidence shows the attempted attack was blocked before production compromise or data exposure. Do not force compromise-to-detection or recovery metrics. Mark MTTD, dwell time, and MTTR as `Not applicable` with evidence, then compute near-miss metrics instead.
+- **Uncertain compromise** -- Compromise may have occurred but the timestamp is unknown or only bounded by a range. Report confidence, source, earliest/latest possible timestamps, and avoid pretending an exact mean exists.
+
+#### Near-Miss Metrics
+
+Use these metrics when no compromise or recovery timestamp applies:
+
+| Metric | Formula | What It Measures |
+|--------|---------|-----------------|
+| **Attempt Detection Time** | Detection - First Attempt | Time from first attempted abuse to detection or alerting |
+| **Time to Block** | Block - First Attempt | Time from first attempted abuse to effective prevention/containment by control |
+| **Control That Blocked Attempt** | Named preventive/detective control | Which control prevented escalation into an incident |
+| **Recurrence Count** | Similar blocked attempts in last 12 months | Whether the same attack pattern is recurring |
+| **False-Negative Review** | Manual review outcome | Whether any related attempts bypassed detection or prevention |
+
+Near-miss PIRs are complete only when they explain why compromise/recovery metrics are not applicable and document the evidence supporting that conclusion. A blocked credential-stuffing attempt, for example, should not be penalized for missing a recovery timestamp if no production asset was compromised.
+
 #### Mean Time to Detect (MTTD)
 
 ```
@@ -251,7 +274,36 @@ Map the incident to specific control failures -- what should have prevented, det
 | **Process gap** | IR playbook did not cover the incident type or was outdated | Update IR playbooks; conduct tabletop exercises; review annually |
 | **Communication failure** | Stakeholders were not notified, or notification was delayed | Formalize escalation matrix; automate notifications; test communication procedures |
 
-### Step 6: Lessons Learned and Remediation Plan
+### Step 6: Response Action Impact Review
+
+Review whether response actions introduced avoidable operational, forensic, customer, or recovery harm. NIST post-incident questions explicitly ask whether any response steps inhibited recovery; the PIR must capture that evidence without blaming responders for risk-based decisions.
+
+| Action | Expected Benefit | Side Effect / Harm | Evidence Impact | Rollback Criteria | Break-Glass Owner | PIR Finding |
+|---|---|---|---|---|---|---|
+| [Containment or recovery action] | [Risk reduced] | [Operational/customer/evidence impact] | [None / delayed / degraded / lost] | [Documented condition] | [Owner/team] | [No issue / follow-up needed] |
+
+**Classification guidance:**
+
+- Do not mark an action as bad solely because it caused impact. Some containment choices intentionally trade availability for risk reduction.
+- Flag a PIR finding when the expected side effect was not documented, the action lacked rollback criteria, responder access was blocked without break-glass ownership, or evidence collection was delayed/degraded without an explicit decision record.
+- Record when the action worked as intended and the side effect was accepted by the incident commander or business owner.
+
+### Step 7: Legal and Privacy Notification Clock
+
+For suspected personal-data, regulated-data, customer, payment, healthcare, contractual, or cross-border exposure, track the notification clock explicitly. If legal/privacy review is not applicable, state why.
+
+| Clock Field | Required Evidence |
+|---|---|
+| **Potentially Regulated Data** | Data category, system, jurisdiction, and confidence |
+| **Legal/Privacy Engaged At** | Timestamp and communication source |
+| **Regulatory Assessment Started At** | Timestamp, owner, and assessment record |
+| **Notification Decision** | Notify / no-notify / pending, with rationale |
+| **Decision Deadline** | Regulatory, contractual, customer, or internal SLA deadline |
+| **Current Status** | On time / late / blocked / not applicable |
+
+Flag a PIR finding when legal/privacy engagement, regulatory assessment, notification decision, or deadline tracking is missing for a plausible data-exposure incident.
+
+### Step 8: Lessons Learned and Remediation Plan
 
 Convert analysis findings into specific, measurable, assignable, and time-bound remediation actions.
 
@@ -335,6 +387,16 @@ root cause, and the number/priority of remediation actions identified.]
 | MTTR (Detection to Recovery) | [duration] | [comparison to org average] |
 | Escalation Time | [duration] | [SLA target] |
 
+### Near-Miss Metrics
+| Metric | Value | Evidence / Applicability |
+|---|---|---|
+| Attempt Detection Time | [duration or "Not applicable"] | [source] |
+| Time to Block | [duration or "Not applicable"] | [source] |
+| Control That Blocked Attempt | [control name] | [evidence] |
+| Recurrence Count | [count] | [lookback window/source] |
+| False-Negative Review | [complete/incomplete/not applicable] | [evidence] |
+| Compromise/Recovery Metrics Applicability | [Applicable / Not applicable / Uncertain] | [why] |
+
 ### Root Cause Analysis
 **Method:** [5 Whys / Fishbone / Both]
 
@@ -352,6 +414,21 @@ root cause, and the number/priority of remediation actions identified.]
 
 ### What Could Be Improved
 - [Gap or failure identified during retrospective]
+
+### Response Action Impact Review
+| Action | Expected Benefit | Side Effect / Harm | Evidence Impact | Rollback Criteria | Break-Glass Owner | PIR Finding |
+|---|---|---|---|---|---|---|
+| [Action] | [Benefit] | [Impact or "None documented"] | [Impact] | [Criteria] | [Owner] | [Finding/status] |
+
+### Legal and Privacy Notification Clock
+| Field | Value | Evidence |
+|---|---|---|
+| Potentially Regulated Data | [Data category / "None identified"] | [source] |
+| Legal/Privacy Engaged At | [timestamp / "Not applicable"] | [source] |
+| Regulatory Assessment Started At | [timestamp / "Not applicable"] | [source] |
+| Notification Decision | [notify/no-notify/pending/not applicable] | [rationale] |
+| Decision Deadline | [timestamp/SLA/not applicable] | [basis] |
+| Current Status | [on time/late/blocked/not applicable] | [source] |
 
 ### Remediation Plan
 | ID | Finding | Action | Owner | Priority | Deadline | Ticket |
@@ -419,6 +496,14 @@ Documenting lessons learned and remediation actions in a PIR report that is then
 ### Pitfall 5: Waiting Too Long to Conduct the PIR
 
 NIST recommends conducting the PIR within several days of incident closure. Waiting weeks or months causes participants to forget critical details, misremember the sequence of events, and lose the emotional context that drives honest reflection. Schedule the PIR meeting before the incident is closed, ideally within 3-5 business days of recovery completion.
+
+### Pitfall 6: Forcing Compromise Metrics onto Near Misses
+
+A near miss can be a valid PIR even when initial compromise and recovery timestamps are not applicable. Forcing MTTD or MTTR in a blocked-attempt case creates false findings and hides the more useful questions: which control blocked the attempt, how quickly did detection and blocking happen, whether similar attempts are recurring, and whether any related activity bypassed controls.
+
+### Pitfall 7: Omitting Response-Induced Harm and Notification Clocks
+
+Containment can unintentionally delay recovery, block responder access, or degrade forensic evidence. The PIR should evaluate whether those tradeoffs were documented, owned, and reversible. For suspected data exposure, the PIR should also track when legal/privacy teams were engaged and when notification obligations were assessed; otherwise the organization may miss regulatory or contractual deadlines despite a technically complete response.
 
 ---
 
