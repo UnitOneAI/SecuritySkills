@@ -63,6 +63,12 @@ Identify every point where user-supplied or externally sourced content reaches t
 
 **Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
 
+Also record multimodal and workflow-risk context:
+
+- **Source modality**: text, image, audio, video, document, OCR output, transcript, tool output, or agent-to-agent message.
+- **Workflow risk tier**: external agentic, external read-only, internal agentic, or internal read-only.
+- **Control rationale**: whether the workflow can invoke tools, write memory, mutate state, access sensitive data, or reach external users. Internal read-only summarization over trusted data may justify lighter controls than an external tool-using agent, but the rationale must be explicit.
+
 ---
 
 ## Step 2: Identify Direct Injection Vectors
@@ -86,6 +92,8 @@ For each user input channel identified in Step 1, determine whether an attacker 
 
 For each external content source identified in Step 1, determine whether an adversary could plant instructions in that source that the LLM would later follow. Examine:
 
+- **Cross-agent context handoffs** - Messages, task summaries, memory entries, tool outputs, browser observations, OCR text, or delegated-agent responses can carry poisoned instructions from one agent into another. Treat agent-to-agent context as untrusted unless a policy gateway or verifier strips instructions and binds the allowed task.
+
 - **RAG pipeline inputs** — Documents, web pages, or knowledge base entries that are retrieved and inserted into the LLM context. Can an attacker contribute content to these sources?
 - **Email and messaging integrations** — If the LLM processes emails or messages, an attacker can send a message containing hidden instructions.
 - **Web browsing and scraping** — If the LLM fetches web content, any page it visits could contain injected instructions (including in HTML comments, hidden text, or metadata).
@@ -97,6 +105,7 @@ For each external content source identified in Step 1, determine whether an adve
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
 - Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
+- Agent orchestration code that passes untrusted tool output, retrieved markdown, screenshots, OCR text, or prior-agent summaries into a later agent as if it were trusted instruction.
 
 ---
 
@@ -151,6 +160,23 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 - Are those constraints enforced only through prompt instructions or also through output validation?
 - Does the application handle edge cases where the model might produce disallowed content?
 
+### 4.6 Multimodal Injection
+
+The attacker embeds instructions in images, audio, video frames, OCR text, captions, spectrogram-like content, metadata, or transcript artifacts that are later interpreted by a multimodal model or preprocessing pipeline. These payloads can bypass text-only sanitizers because the dangerous instruction is not present in the original request body as plain text.
+
+**What to evaluate:**
+- Are image, audio, video, screenshot, and document previews treated as untrusted instruction-bearing content before they reach the model?
+- Does the system run OCR, speech-to-text, captioning, or vision-language extraction, and are those outputs clearly marked as data rather than developer or system instructions?
+- Are hidden or low-contrast image text, document metadata, alt text, subtitles, and audio transcripts included in model context without provenance?
+- Are multimodal uploads allowed to influence tool calls, memory writes, retrieval queries, or downstream agent instructions?
+- Are there benign multimodal workflows, such as internal read-only summarization of trusted logs or approved diagrams, where missing heavyweight gateway evidence should be recorded as a control gap or informational risk instead of an automatic vulnerability?
+
+**Evidence to request:**
+- File type and source inventory for multimodal inputs.
+- OCR/transcription/captioning pipeline details and trust labels.
+- Tests that include benign images/audio and adversarial instruction-bearing fixtures.
+- Controls that prevent multimodal-derived instructions from changing tool arguments, system prompts, memory, or authorization decisions.
+
 ---
 
 ## Step 5: Defense Evaluation
@@ -202,6 +228,28 @@ Evaluate which of the following mitigations are implemented and how effectively.
   - **AgentDojo** -- Evaluates agent robustness against injection attacks across diverse tool-use scenarios with realistic adversarial content.
   - **fabraix/playground** (https://github.com/fabraix/playground) -- Open-source library of AI agent exploit PoCs that can serve as a test harness for validating direct and indirect injection defenses against published attack patterns.
 
+### 5.8 LLM Gateway / AI Firewall Evidence
+
+For external-facing, agentic, or high-impact LLM workflows, request evidence of a dedicated policy layer before and after the model. This may be an LLM gateway, AI firewall, guardrails framework, model router policy engine, or custom verifier. Do not accept "the system prompt tells the model not to leak data" as firewall evidence.
+
+**What to evaluate:**
+- Is there a control point that inspects user input, retrieved content, multimodal-derived text, tool arguments, and model output before sensitive actions occur?
+- Does the gateway enforce tenant, role, data-classification, tool-scope, and destination policies outside the model's natural-language judgment?
+- Are policy decisions logged with enough context to investigate prompt injection attempts without storing unnecessary sensitive data?
+- Does the gateway cover multimodal preprocessing outputs and cross-agent/tool-output context, not just raw chat text?
+- Are fallback models, streaming responses, retries, and error paths routed through the same controls?
+
+**False-positive calibration:**
+- If the workflow is internal-only, read-only, uses trusted inputs, has no tool access, and cannot expose sensitive data, missing gateway evidence should usually be a control-gap or informational finding rather than a Critical vulnerability.
+- If the workflow is internet-facing, processes untrusted files or web/RAG content, can call tools, can write memory, or can access sensitive data, missing gateway/firewall evidence is at least a significant defense gap and may raise the severity of demonstrated injection findings.
+
+### 5.9 Cross-Agent and Tool-Output Taint Controls
+
+- Are outputs from one agent, model, tool, browser session, OCR job, or retriever labeled as untrusted data before another agent processes them?
+- Does the system strip or quarantine instructions found in delegated-agent summaries, tool stdout/stderr, retrieved markdown, issue comments, or browser-rendered hidden text?
+- Are downstream agents given a bounded task contract and allowed capability set, or can upstream content rewrite their goals?
+- Is persistent memory protected from untrusted content that asks future agents to alter priorities, leak secrets, or call tools?
+
 ---
 
 ## Step 6: Report Findings
@@ -244,6 +292,9 @@ Each finding should be assigned a severity based on potential impact:
 - Description: [What the vulnerability is and why it matters]
 - Evidence: [Code pattern or architectural observation that demonstrates the issue]
 - Recommendation: [Specific defensive measure to implement]
+- Extended category when applicable: [Multimodal Injection | Cross-Agent Injection | Gateway Control Gap]
+- Source modality: [text / image / audio / video / document / OCR / transcript / tool output / agent message]
+- Workflow risk tier: [external agentic / external read-only / internal agentic / internal read-only]
 
 ### Defense Posture Summary
 [Table summarizing which defenses from Step 5 are present, partially present, or absent]
@@ -274,6 +325,12 @@ Each finding should be assigned a severity based on potential impact:
 4. **Granting the LLM excessive tool access.** Applications that give the LLM access to powerful tools (file system writes, email sending, database modifications, code execution) without independent authorization checks create high-severity privilege escalation risk. Every tool the LLM can invoke should have its own authorization gate that does not depend on the LLM's judgment.
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
+
+6. **Testing only text and ignoring multimodal inputs.** Image text, audio transcripts, captions, screenshots, document metadata, and OCR output can carry instructions that never appear in the original text field. Multimodal applications need benign and adversarial fixtures for each accepted modality.
+
+7. **Treating a guardrails product name as proof of coverage.** A gateway, AI firewall, or guardrails framework only helps if it is actually on the path for raw input, retrieved content, multimodal-derived text, tool arguments, streaming output, retries, fallbacks, and cross-agent handoffs. Ask for architecture evidence and logs, not just a dependency name.
+
+8. **Over-severity for trusted internal read-only workflows.** Missing a heavyweight LLM firewall in an internal, read-only, trusted-data summarizer is usually a control maturity gap. Reserve Critical or High findings for demonstrated injection paths that can change behavior, expose sensitive data, call tools, write memory, or affect external users.
 
 ---
 
