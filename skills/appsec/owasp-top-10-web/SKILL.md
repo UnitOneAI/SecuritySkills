@@ -66,6 +66,7 @@ Before including any finding in the report, apply the following verification gat
    - An `innerHTML` assignment with a static string literal is NOT an XSS vulnerability.
    - A `req.params.id` used with proper ORM methods and authorization middleware is NOT an IDOR.
    - An `exec()` call on a hardcoded string with no user input is NOT command injection.
+   - A structured log call with fixed event names and framework-escaped fields is NOT log injection.
 4. **One finding per distinct vulnerability.** Do not report multiple findings for the same underlying vulnerability pattern appearing in related code paths. Consolidate variants (e.g., two SQL injection points in the same query builder) into a single finding with multiple locations noted.
 5. **Match findings to ground-truth severity.** Only report findings at severity levels proportional to actual exploitable impact. Infrastructure-level observations (missing headers, missing tooling, general architectural gaps) that lack a specific exploitable code path should be omitted or downgraded to Informational.
 
@@ -516,6 +517,9 @@ curl.*\|.*sh|curl.*\|.*bash|wget.*\|.*sh|pip install.*--trusted-host
 - Logs stored only locally with no centralized aggregation or monitoring.
 - No alerting on suspicious patterns (brute-force attempts, impossible travel, privilege escalation).
 - Log injection vulnerabilities (user input written to logs without sanitization, enabling log forging).
+- Line-oriented logs that concatenate user-controlled values without neutralizing CR/LF or other control characters.
+- Structured JSON logs that merge attacker-controlled objects into reserved audit fields (`event`, `level`, `user_id`, `outcome`, `source_ip`, `trace_id`).
+- Security-relevant events logged without investigation context: actor, action, resource, outcome, source IP/device, timestamp, and correlation/request ID.
 
 **CWE Mappings:**
 
@@ -535,14 +539,37 @@ logger\.|log\.|console\.log|logging\.|Log\.|syslog|winston|bunyan|pino|log4j|NLo
 # Sensitive data in logs
 log.*password|log.*token|log.*secret|log.*credit_card|log.*ssn|logger.*api_key
 # Log injection
-log.*req\.body|log.*request\.getParameter|logger\.info\(.*\+.*req
+log.*req\.body|log.*request\.getParameter|logger\.(info|warn|error)\(.*\+.*req
+# CRLF / control-character log forging
+logger\.(info|warn|error)\(.*(req|request|params|body|query).*\\n|replace\(.*\\n|replace\(.*\\r
+# Structured-log reserved field overwrite
+logger\.(info|warn|error)\(\{.*\.\.\.(req\.body|request\.body|body|params)
+event\s*:\s*req\.|level\s*:\s*req\.|outcome\s*:\s*req\.|user_id\s*:\s*req\.
 ```
+
+**A09 log-forging evidence gates:**
+
+```
+LOG-FORGE-01: User-controlled log text reaches line-oriented logs without CR/LF/control-character neutralization
+LOG-FORGE-02: Untrusted objects are spread/merged into structured logs and can overwrite reserved audit fields
+LOG-FORGE-03: Security events lack required audit context (actor, action, resource, outcome, source, timestamp, correlation ID)
+LOG-FORGE-04: Logs sanitize injection characters but still include secrets, bearer tokens, session IDs, or full payment/PII values
+LOG-FORGE-05: Log escaping behavior is assumed but not evidenced for the deployed logger/sink format
+```
+
+**False-positive boundaries:**
+
+- Do not report static log messages or fixed event names with no attacker-controlled values.
+- Do not report framework-escaped structured logs when reserved fields are fixed and untrusted values are confined to data fields.
+- Treat test-only or local debug logs as informational unless they are shipped, indexed, or reachable in production.
+- Confirm the actual sink format. A JSON logger that escapes newlines may be safe against line forging, while a text formatter or downstream parser may not be.
 
 **Mitigations:**
 
 - Log all authentication events, access control failures, input validation failures, and high-value business transactions.
-- Use structured logging (JSON) with consistent fields: timestamp, event type, user ID, source IP, resource, outcome.
-- Sanitize log inputs to prevent log injection (encode newlines and control characters).
+- Use structured logging (JSON) with consistent reserved fields: timestamp, event type, user ID, source IP, resource, outcome, and correlation/request ID.
+- Sanitize log inputs to prevent log injection (encode or strip CR, LF, tabs, and other control characters before line-oriented sinks).
+- Do not spread or merge untrusted request objects into structured log records; map only allowlisted data fields so attackers cannot overwrite `event`, `level`, `outcome`, or identity fields.
 - Never log credentials, tokens, full credit card numbers, or other secrets; mask or redact sensitive fields.
 - Ship logs to a centralized, tamper-evident logging system (SIEM, ELK, Splunk, CloudWatch).
 - Configure alerts for anomalous patterns: repeated auth failures, privilege escalation, unusual data access volumes.
