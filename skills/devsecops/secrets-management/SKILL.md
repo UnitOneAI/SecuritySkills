@@ -6,14 +6,15 @@ description: >
   Key Management). Auto-invoked when reviewing secret handling patterns, vault
   configurations, .env files, or credential rotation policies. Produces a secrets
   management assessment covering detection patterns, rotation automation, vault
-  integration, and agent-specific credential handling.
+  integration, push protection bypass governance, and agent-specific credential
+  handling.
 tags: [devsecops, secrets, vault, rotation]
 role: [security-engineer, devsecops]
 phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -193,6 +194,35 @@ Verify that at least one secret detection tool is configured and integrated:
 - Allowlist entries are documented with justification (false positive suppression must not create blind spots).
 
 **Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+
+---
+
+#### 2.4 Push Protection Bypass Governance
+
+If the repository or organization uses hosted secret scanning with push protection, review whether bypasses are governed rather than treated as successful detections.
+
+**What to verify:**
+
+- Push protection is enabled at the repository, organization, or enterprise scope for covered repositories.
+- Bypass events are reviewed from secret scanning alerts and audit logs, including actor, reason, repository, secret type, commit, and timestamp.
+- Bypass reasons are triaged differently: "false positive" and "used in tests" still require evidence that the value is non-sensitive or safely scoped; "I'll fix it later" requires an open remediation ticket and owner.
+- Delegated bypass is configured for sensitive repositories so ordinary contributors request approval instead of self-bypassing.
+- Bypass reviewers are limited to security managers, repository administrators, or explicitly approved teams/roles.
+- Approved bypasses require expiration or follow-up evidence, such as revocation, rotation, test-token proof, or allowlist rule update.
+- Bypass metrics are monitored for repeat offenders, noisy rules, repositories with high bypass rates, and secrets that remain open after bypass.
+
+**Evidence to request:**
+
+| Evidence | Purpose |
+|----------|---------|
+| Push protection policy export or repository security settings | Confirms push protection is enabled at the expected scope. |
+| Push protection bypass alerts | Shows whether bypassed secrets became open, closed, false-positive, or test-token alerts. |
+| Audit log entries for bypass events | Proves actor, time, repository, and reason for each bypass. |
+| Delegated bypass configuration | Confirms bypass approval is restricted to approved reviewers. |
+| Remediation tickets for "fix later" bypasses | Proves bypassed real secrets are revoked, rotated, or removed. |
+| Test-token or false-positive evidence | Prevents closed bypass alerts from hiding real credentials. |
+
+**Finding classification:** Push protection disabled on repositories that can contain production secrets is **High**. Contributors allowed to self-bypass production secrets without delegated review is **Medium**. "Fix later" bypasses without revocation or rotation evidence are **High**.
 
 ---
 
@@ -381,6 +411,12 @@ spec:
 | Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
 | detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
 
+### Push Protection Bypass Governance
+
+| Scope | Push Protection | Delegated Bypass | Bypass Alerts Reviewed | Fix-Later Tickets | Residual Risk |
+|-------|-----------------|------------------|------------------------|-------------------|---------------|
+| <repo/org> | Enabled/Disabled | Enabled/Disabled | Yes/No | <count/link> | <risk> |
+
 ### Secrets Inventory (by type, NOT values)
 
 | Secret Type | Storage Method | Rotation Period | Automated | Last Rotated |
@@ -442,6 +478,8 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Treating push protection bypasses as harmless because an alert exists.** A bypass means a detected secret was allowed through. Review bypass reason, actor, audit log, delegated approval, and remediation evidence. Closed alerts for "used in tests" or "false positive" still need proof that the value is not a reusable production credential.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -464,6 +502,8 @@ This skill processes configuration files and code that may contain secret values
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
+- GitHub push protection: https://docs.github.com/en/code-security/secret-scanning/introduction/about-push-protection
+- GitHub delegated bypass for push protection: https://docs.github.com/en/code-security/secret-scanning/using-advanced-secret-scanning-and-push-protection-features/delegated-bypass-for-push-protection
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
 
@@ -471,5 +511,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.1.0** -- Add push protection bypass governance checks, delegated bypass evidence, bypass alert review, and reporting fields.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
