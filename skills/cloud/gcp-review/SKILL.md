@@ -3,11 +3,12 @@ name: gcp-review
 description: >
   Performs a GCP security posture review against the CIS Google Cloud Platform
   Foundation Benchmark v2.0.0. Auto-invoked when reviewing GCP infrastructure,
-  IAM bindings, VPC firewall rules, Cloud Audit Logs, or GCS bucket security.
-  Walks through all seven benchmark sections, evaluates each recommendation,
-  and produces a prioritized findings report with remediation guidance mapped
-  to specific CIS control IDs.
-tags: [cloud, gcp, cis-benchmark]
+  IAM bindings, VPC firewall rules, Cloud Audit Logs, GCS bucket security, or
+  Security Command Center findings and mute rules. Walks through all seven
+  benchmark sections, evaluates each recommendation, and produces a prioritized
+  findings report with remediation guidance mapped to specific CIS control IDs
+  plus operational SCC evidence checks.
+tags: [cloud, gcp, cis-benchmark, security-command-center]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
@@ -54,6 +55,8 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - IAM policy bindings and org policy definitions
 - VPC and firewall rule definitions
 - Cloud Audit Logs configuration
+- Security Command Center findings and mute rule exports, when live environment
+  evidence is available
 
 ---
 
@@ -88,7 +91,23 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Security Command Center Findings and Mute Rule Review
+
+When Security Command Center evidence is available, review active findings and mute rules as operational validation for the CIS assessment. Do not treat a muted finding as resolved: an active muted finding still has `state="ACTIVE"` until the underlying issue is remediated.
+
+Evaluate:
+
+- Active findings by source, category, severity, state, age, asset, and owner.
+- Static mute rules for scope, justification, owner, and compensating control evidence.
+- Dynamic mute rules for explicit expiration time, business justification, and review cadence.
+- Bulk mute activity for filters that suppress broad categories, high-severity findings, or production assets.
+- Whether the final report distinguishes raw active findings from post-mute dashboards or compliance scores.
+
+Use the Security Command Center section in [benchmark-checklist.md](benchmark-checklist.md) for command examples and failure conditions.
+
+---
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -138,6 +157,15 @@ Produce the final report using the structure defined in the Output Format sectio
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
 
+### Security Command Center Findings and Mute Rules
+
+| Check | Status | Severity | Evidence | Required Action |
+|-------|--------|----------|----------|-----------------|
+| SCC-GCP-01 Active findings reviewed | Pass/Fail/Not Evaluable | High/Medium/Low | <finding export or query> | <action> |
+| SCC-GCP-02 Static mute rule governance | Pass/Fail/Not Evaluable | High/Medium/Low | <mute rule export> | <action> |
+| SCC-GCP-03 Dynamic mute rule expiry | Pass/Fail/Not Evaluable | High/Medium/Low | <mute rule export> | <action> |
+| SCC-GCP-04 Bulk mute traceability | Pass/Fail/Not Evaluable | High/Medium/Low | <audit/change record> | <action> |
+
 ### Detailed Findings
 
 #### [CIS X.Y] <Recommendation Title>
@@ -178,6 +206,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 5 | Storage | Public bucket access, uniform bucket-level access |
 | 6 | Cloud SQL | MySQL/PostgreSQL/SQL Server database flags, SSL enforcement, authorized networks, public IP, automated backups |
 | 7 | BigQuery | Public dataset access, CMEK encryption for tables and datasets |
+| SCC | Operational Validation | Active findings, muted active findings, static and dynamic mute rule governance, broad bulk mute filters |
 
 ### CIS Profile Levels
 
@@ -194,6 +223,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Muted SCC findings are not remediated findings.** Security Command Center hides muted findings from default views, but the underlying issue can remain active. Always inspect raw active findings and mute rule scope before relying on dashboard summaries.
 
 ---
 
@@ -219,6 +249,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
+- Google Cloud Security Command Center Findings: https://cloud.google.com/security-command-center/docs/how-to-api-list-findings
+- Google Cloud Security Command Center Mute Rules: https://cloud.google.com/security-command-center/docs/how-to-mute-findings
+- gcloud Security Command Center muteconfigs: https://cloud.google.com/sdk/gcloud/reference/scc/muteconfigs/list
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
 ---

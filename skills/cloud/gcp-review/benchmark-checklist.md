@@ -295,6 +295,110 @@ resource "google_project_service" {
 
 ---
 
+## Security Command Center Findings and Mute Rules -- Operational Validation
+
+These checks supplement the CIS benchmark with live Security Command Center (SCC)
+evidence. Record them separately from CIS pass/fail scoring.
+
+### SCC-GCP-01 -- Active Findings Are Reviewed Before Mute State or Dashboard Rollups
+
+Use raw finding exports to identify unresolved issues before relying on SCC dashboard
+totals, compliance scores, or filtered default views.
+
+**Evidence commands:**
+
+```bash
+# Organization scope
+gcloud scc findings list organizations/ORG_ID \
+  --location=global \
+  --filter='state="ACTIVE"' \
+  --field-mask='finding.category,finding.severity,finding.state,finding.mute,finding.event_time,finding.resource_name' \
+  --format=json
+
+# Folder or project scope
+gcloud scc findings list folders/FOLDER_ID --location=global --filter='state="ACTIVE"'
+gcloud scc findings list projects/PROJECT_ID --location=global --filter='state="ACTIVE"'
+```
+
+**Fail if:**
+
+- Only muted-filtered dashboards or aggregate compliance scores are reviewed.
+- High or critical active findings have no owner, ticket, accepted risk, or remediation date.
+- Findings are grouped only by severity without reviewing category, source, asset, and age.
+
+### SCC-GCP-02 -- Static Mute Rules Have Narrow Scope and Risk Acceptance
+
+Static mute rules suppress matching future findings indefinitely. Review each rule for
+specific filters, owner, business justification, and compensating controls.
+
+**Evidence command:**
+
+```bash
+gcloud scc muteconfigs list \
+  --organization=ORG_ID \
+  --location=global \
+  --format='table(name,type,filter,description,updateTime)'
+```
+
+Use `--folder=FOLDER_ID` or `--project=PROJECT_ID` when the mute rule is scoped below
+the organization.
+
+**Fail if:**
+
+- A static rule mutes broad categories, severities, or production assets without a
+  documented risk acceptance.
+- The description does not identify the owner, reason, review date, or compensating
+  control.
+- Static and dynamic mute rules overlap without documenting static-rule precedence.
+
+### SCC-GCP-03 -- Dynamic Mute Rules Expire or Are Periodically Reviewed
+
+Dynamic mute rules can mute existing and future findings temporarily when an
+expiration time is configured. Treat indefinite dynamic rules like standing
+exceptions unless a review cadence is documented.
+
+**Evidence command:**
+
+```bash
+gcloud scc muteconfigs list \
+  --organization=ORG_ID \
+  --location=global \
+  --filter='type="DYNAMIC"' \
+  --format=json
+```
+
+**Fail if:**
+
+- Temporary business exceptions use dynamic mute rules without `expiryTime`.
+- Expired or near-expiry rules have no renewal approval trail.
+- Dynamic rules are used to suppress high or critical findings without explicit
+  remediation tracking.
+
+### SCC-GCP-04 -- Bulk Muting Is Traceable and Limited
+
+Bulk mute operations can statically mute many existing findings. Review audit logs,
+change tickets, or command history for broad filters and emergency suppressions.
+
+**Evidence to request:**
+
+```bash
+# Request the change record or audit evidence for bulk operations such as:
+gcloud scc findings bulk-mute \
+  --organization=ORG_ID \
+  --location=global \
+  --filter='category="OPEN_FIREWALL" AND severity="LOW"' \
+  --mute-state=MUTED
+```
+
+**Fail if:**
+
+- Bulk mute filters include high or critical findings without named approval.
+- Bulk muting is used instead of creating a narrow rule for a known false positive.
+- Reset procedures are missing for findings that should return to `UNDEFINED` mute
+  state after the exception ends.
+
+---
+
 ## Section 3 -- Networking
 
 Evaluate network configurations against CIS GCP v2.0.0 Section 3 recommendations.
