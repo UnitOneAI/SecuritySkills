@@ -154,6 +154,35 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Verify risk treatment decisions are documented and implemented
 - Ensure residual risk is accepted at appropriate management level
 
+#### Recognized Security Practices Evidence Overlay (HITECH Section 13412)
+
+Public Law 116-321 amended the HITECH Act to require OCR to consider whether a
+Covered Entity or Business Associate has adequately demonstrated recognized
+security practices that were in place for the prior 12 months when OCR makes
+certain Security Rule enforcement, audit, or remedy determinations. This does not
+replace Security Rule compliance, but it is material evidence during OCR review.
+
+**What to verify:**
+
+- [ ] Recognized security practices are mapped to an accepted framework or practice set (for example NIST, 405(d), or other HHS-recognized cybersecurity practices).
+- [ ] Evidence demonstrates the practices were in place for at least the prior 12 months, not only designed recently.
+- [ ] Artifacts show operational use: policies, control configurations, tickets, logs, meeting records, risk register updates, and remediation tracking.
+- [ ] The evidence ties practices to ePHI confidentiality, integrity, and availability risks identified in the HIPAA risk analysis.
+- [ ] Gaps, exceptions, and compensating measures are documented with owners and target dates.
+- [ ] The organization can produce the evidence package during an OCR investigation, compliance review, or audit without relying on verbal assertions.
+
+**What to look for:**
+
+```
+HIPAA-RSP-01: No documented recognized security practices evidence package exists
+HIPAA-RSP-02: Practices are asserted but not mapped to NIST, 405(d), or another recognized practice set
+HIPAA-RSP-03: Evidence does not cover the prior 12-month period
+HIPAA-RSP-04: Evidence is limited to policy documents with no operational artifacts
+HIPAA-RSP-05: Practices are not tied back to ePHI risk analysis findings or remediation tracking
+```
+
+**Finding classification:** No recognized security practices evidence package is **Partial Compliance** if Security Rule controls otherwise exist, and **Non-Compliance** when it masks unresolved risk analysis or risk management gaps. Missing 12-month operating evidence is **Partial Compliance** until the organization can demonstrate sustained operation.
+
 **164.308(a)(1)(ii)(C) — Sanction Policy (R)**
 - Apply appropriate sanctions against workforce members who fail to comply with security policies and procedures
 - Verify policy exists, is communicated, and has been applied
@@ -426,6 +455,7 @@ Assess:
 - **Non-Compliance Findings**: [count]
 - **Partial Compliance Findings**: [count]
 - **Last Risk Analysis Date**: [date or "None performed"]
+- **Recognized Security Practices Evidence**: [12-month package complete / partial / absent]
 
 ## ePHI Inventory Summary
 [Systems, data types, storage locations, transmission paths]
@@ -462,6 +492,9 @@ Assess:
 
 ## Risk Analysis Gap Summary
 [Specific deficiencies in the organization's risk analysis per 164.308(a)(1)(ii)(A)]
+
+## Recognized Security Practices Evidence
+[Framework/practice set mapping, 12-month operating evidence, gaps/exceptions, and OCR-ready evidence package status]
 
 ## Remediation Roadmap
 
@@ -592,6 +625,7 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - 45 CFR Part 164, Subpart C — Security Standards for the Protection of Electronic Protected Health Information
 - 45 CFR Part 164, Subpart D — Notification in the Case of Breach of Unsecured Protected Health Information
 - HHS OCR HIPAA Security Rule Guidance Material (hhs.gov/hipaa/for-professionals/security/guidance)
+- HHS OCR Recognized Security Practices Guidance (Public Law 116-321 / HITECH Section 13412): https://www.hhs.gov/ocr/privacy/hipaa/administrative/securityrule/securityruleguidance.html
 - HHS OCR HIPAA Audit Protocol (2016 revision)
 - NIST SP 800-66 Rev. 2 — Implementing the Health Insurance Portability and Accountability Act (HIPAA) Security Rule: A Cybersecurity Resource Guide (February 2024)
 - HHS OCR Breach Portal and Resolution Agreements archive
