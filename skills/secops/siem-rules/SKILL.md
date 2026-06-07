@@ -57,6 +57,8 @@ Before beginning, gather or confirm:
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
+- [ ] **Deployment context:** Rule identifier, deployment target, owner, source-control path, and environment (dev/test/prod).
+- [ ] **Validation evidence:** True-positive test data, false-positive review window, exported rule metadata, and rollback plan.
 
 ---
 
@@ -456,7 +458,43 @@ Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
 
-### Step 5: Detection Rule Lifecycle Management
+### Step 5: Deployment Metadata and Alert Validation Evidence
+
+Before a detection rule is marked **Active**, collect evidence that the deployed rule matches the reviewed query and produces the expected alert behavior.
+
+#### SIEM Deployment Evidence Gates
+
+| Gate ID | Evidence Required | Why It Matters |
+|---------|-------------------|----------------|
+| SIEM-DEPLOY-01 | Stable rule ID, rule name, owner, response playbook link, and production deployment target (Sentinel workspace/resource group or Splunk app/search head). | Prevents an approved query from becoming an unowned or untraceable production alert. |
+| SIEM-DEPLOY-02 | Source-control reference for the reviewed query: repository path, commit SHA or tag, and query hash/checksum. | Confirms the deployed query is the reviewed version and supports later rollback. |
+| SIEM-DEPLOY-03 | Exported SIEM rule metadata showing severity, ATT&CK technique, schedule, lookback period, suppression/grouping, entity mappings, and enabled/disabled state. | Catches drift between the query draft and the actual alert configuration. |
+| SIEM-DEPLOY-04 | True-positive validation result from a safe simulation, replayed fixture, controlled test event, or documented historical event. | Shows the rule fires on the intended behavior in the target platform. |
+| SIEM-DEPLOY-05 | False-positive review over the agreed baseline window, with sample benign matches and tuning decision rationale. | Prevents promotion of noisy rules that will be disabled by analysts. |
+| SIEM-DEPLOY-06 | Alert delivery evidence showing the alert reached the intended queue, case system, webhook, or analyst workflow with the expected entities. | Verifies the detection creates an actionable operational signal. |
+| SIEM-DEPLOY-07 | Rollback or disable procedure, including the prior rule version and the person/team authorized to roll back. | Reduces risk when a promoted rule floods the queue or breaks downstream automation. |
+| SIEM-DEPLOY-08 | Post-deployment monitoring window with execution time, result volume, alert count, and first review date. | Establishes early health checks before the rule is treated as stable coverage. |
+
+**Do not accept as deployment proof:** a query pasted in a ticket without exported rule metadata, a screenshot that omits schedule/entity mappings, or a successful ad hoc search that never reaches the alert queue.
+
+#### Platform-Specific Metadata Checks
+
+| Platform | Metadata to Verify |
+|----------|--------------------|
+| Microsoft Sentinel | Analytics rule GUID, workspace/resource group, query frequency, query period, suppression, incident creation, entity mappings, tactics/techniques, automation rule/playbook linkage, and rule export date. |
+| Splunk Enterprise Security | Saved search name, app context, search owner, cron schedule, dispatch earliest/latest time, notable event action, risk object mapping, throttling, adaptive response actions, and search head cluster deployment status. |
+
+#### Promotion Decision
+
+Use this decision table before changing a rule from **Testing** to **Active**:
+
+| Condition | Promotion Decision |
+|-----------|--------------------|
+| Reviewed query and deployed rule metadata match, TP validation passes, FP volume is within tolerance, and alert delivery is verified. | Promote to Active. |
+| Query works in search mode but exported rule metadata is missing, alert routing is unverified, or entity mappings are incomplete. | Keep in Testing. |
+| TP validation fails, FP volume exceeds the analyst capacity target, or rollback ownership is unknown. | Return to Draft or Tuning. |
+
+### Step 6: Detection Rule Lifecycle Management
 
 **Lifecycle stages:**
 
@@ -522,6 +560,10 @@ Produce SIEM rule deliverables in this structure:
 | Severity | [High / Medium / Low / Informational] |
 | Data Source | [Table/Index name] |
 | Status | [Draft / Testing / Active] |
+| Rule ID | [SIEM rule GUID / saved search name] |
+| Owner | [Team or person responsible] |
+| Source Control | [Repository path and commit SHA] |
+| Deployment Target | [Workspace, app, search head, or environment] |
 
 ### Detection Query
 [Full KQL or SPL query]
@@ -548,7 +590,13 @@ Produce SIEM rule deliverables in this structure:
 - [Specific tuning recommendations]
 
 ### Validation
-- [How to test the rule produces a true positive]
+| Evidence Type | Result | Notes |
+|---------------|--------|-------|
+| True-positive test | [Pass/Fail] | [Simulation, replay, fixture, or historical event used] |
+| False-positive review | [Pass/Fail] | [Baseline window and benign samples reviewed] |
+| Alert delivery | [Pass/Fail] | [Queue, case system, webhook, or analyst workflow verified] |
+| Metadata match | [Pass/Fail] | [Exported rule metadata matches reviewed query, schedule, entities, and severity] |
+| Rollback readiness | [Pass/Fail] | [Disable/revert owner and prior version identified] |
 ```
 
 ---
@@ -631,6 +679,10 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 ### Pitfall 5: Failing to Suppress Duplicate Alerts
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
+
+### Pitfall 6: Treating Search Results as Deployed Alert Evidence
+
+A successful ad hoc KQL or SPL search does not prove the production alert is configured correctly. Analysts also need exported rule metadata, alert routing proof, entity mapping evidence, owner assignment, and rollback readiness. Without those artifacts, the reviewed query can drift from the active rule or fail silently before reaching the analyst queue.
 
 ---
 
