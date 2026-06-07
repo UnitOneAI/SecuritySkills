@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -62,6 +62,7 @@ Before beginning evidence collection, gather or confirm:
 - [ ] **Cloud provider access** -- IAM permissions for snapshot creation, log export, and API access (if cloud environment).
 - [ ] **Time synchronization** -- NTP configuration of affected systems; UTC timestamps preferred.
 - [ ] **Encryption status** -- BitLocker, LUKS, FileVault, or cloud-managed encryption on affected volumes.
+- [ ] **Encryption acquisition feasibility** -- Recovery key escrow location, key ID/version, accessor role, unlock/decrypt test evidence, and whether acquisition must occur while the system is powered on.
 
 ---
 
@@ -221,6 +222,28 @@ ls -latr /tmp /var/tmp /dev/shm
 
 Create a forensically sound disk image -- a bit-for-bit copy that preserves all data including deleted files, slack space, and unallocated areas.
 
+#### 4a: Encryption Feasibility Gate
+
+Before scheduling powered-off disk imaging, prove that encrypted volumes can be acquired and later examined. Treat "recovery key available" as a claim, not evidence.
+
+| Gate ID | Required Evidence | Pass Condition | If Missing |
+|---------|-------------------|----------------|------------|
+| FVE-ESCROW-01 | Recovery key ID, escrow system, accessor role, retrieval timestamp, and case authorization | Key is escrowed outside the affected endpoint/user session and retrievable by the forensic role | Do not power off solely for imaging; preserve volatile data and plan live/logical acquisition |
+| FVE-ESCROW-02 | Test unlock/decrypt result on a forensic workstation, recovery environment, or copied snapshot | The key unlocks the target volume or copied evidence without altering the original | Mark full-disk acquisition blocked until validated |
+| FVE-ESCROW-03 | Protector inventory (`manage-bde`, `fdesetup`, `cryptsetup luksDump`, MDM/EDR inventory) | Offline-capable protector exists or a powered-on branch is selected | Capture memory, hibernation/pagefile, mounted-volume metadata, and logical artifacts before shutdown |
+| FVE-ESCROW-04 | Key custody independence | Key access does not depend on the compromised user account, local device storage, or a disabled containment identity | Coordinate legal/IT recovery path before containment disables access |
+| FVE-ESCROW-05 | Cloud KMS/grant evidence for encrypted snapshots | Forensic role can decrypt, copy, or re-encrypt the snapshot in an evidence account | Snapshot is not complete evidence; collect logs/config and fix KMS access |
+
+**Platform-specific checks:**
+
+- **BitLocker:** Record protector types and IDs. A TPM-only protector without an escrowed numerical recovery password means powered-off offline imaging may be unreadable; capture memory and live logical evidence before shutdown.
+- **FileVault:** Verify institutional recovery key, MDM escrow, or authorized recovery path. If only a personal iCloud recovery path exists, do not assume enterprise access.
+- **LUKS:** Record LUKS header backup status, keyslots, and network-unlock dependencies such as Clevis/Tang. Containment may break network unlock.
+- **Partial encryption:** Identify which partitions or volumes are encrypted. Hash and document readable and unreadable segments separately.
+- **Cloud-managed encryption:** A snapshot ID alone is not proof of acquisition. Validate KMS key policy, grants, forensic role decrypt/copy permissions, and copied snapshot hash or provider integrity metadata.
+
+**Powered-on branch:** If offline unlock evidence is missing and the system is still running, prioritize memory, mounted-volume metadata, logical collection of critical artifacts, hibernation/pagefile/swap, and key/protector inventory before any shutdown or reboot.
+
 **Forensic imaging principles:**
 - Always write to a SEPARATE destination drive -- never write to the evidence drive
 - Use write blockers (hardware or software) when connecting evidence drives
@@ -298,6 +321,11 @@ Cloud environments require different acquisition techniques because direct hardw
 # Create EBS volume snapshot (preserves disk state)
 aws ec2 create-snapshot --volume-id vol-XXXX --description "Forensic snapshot IR-YYYY-NNNN"
 
+# Confirm encrypted snapshot can be used by the forensic role/account
+aws ec2 describe-snapshots --snapshot-ids snap-XXXX --query 'Snapshots[0].KmsKeyId'
+aws kms describe-key --key-id [kms-key-id]
+aws kms list-grants --key-id [kms-key-id]
+
 # Export CloudTrail logs for the investigation period
 aws cloudtrail lookup-events --start-time YYYY-MM-DDT00:00:00Z --end-time YYYY-MM-DDT23:59:59Z
 
@@ -317,6 +345,10 @@ aws ec2 describe-instances --instance-ids i-XXXX --output json > instance_meta_[
 # Create managed disk snapshot
 az snapshot create --resource-group [RG] --source [disk-id] --name forensic-snap-[YYYYMMDD]
 
+# Confirm disk encryption set / Key Vault access for forensic identity
+az snapshot show --resource-group [RG] --name forensic-snap-[YYYYMMDD] --query encryption
+az keyvault key show --vault-name [vault] --name [key]
+
 # Export Azure Activity Log
 az monitor activity-log list --start-time YYYY-MM-DDT00:00:00Z --end-time YYYY-MM-DDT23:59:59Z
 
@@ -328,6 +360,10 @@ az monitor activity-log list --start-time YYYY-MM-DDT00:00:00Z --end-time YYYY-M
 # Create persistent disk snapshot
 gcloud compute disks snapshot [disk-name] --zone [zone] --snapshot-names forensic-snap-[YYYYMMDD]
 
+# Confirm CMEK access for forensic service account when customer-managed keys are used
+gcloud compute snapshots describe forensic-snap-[YYYYMMDD] --format=json
+gcloud kms keys get-iam-policy [key] --keyring [keyring] --location [location]
+
 # Export Cloud Audit Logs
 gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-DDT23:59:59Z"'
 ```
@@ -338,6 +374,7 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- Encrypted snapshots require decrypt/copy permissions at analysis time. Record KMS key IDs, grants, key policy, forensic principal, and copied snapshot/resource hash or provider integrity metadata.
 
 ---
 
@@ -360,7 +397,7 @@ Produce the evidence collection report with these exact sections:
 ```markdown
 ## Forensic Evidence Collection Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** forensics-checklist v1.0.0
+**Skill:** forensics-checklist v1.0.1
 **Frameworks:** NIST SP 800-86, RFC 3227
 **Examiner:** [Name or "AI-assisted -- human examiner required for court-admissible evidence"]
 
@@ -385,6 +422,11 @@ the order of collection, and any evidence that could not be obtained.]
 | 5 | Remote logging data | [Yes/No] | [Notes] |
 | 6 | Physical configuration | [Yes/No] | [Notes] |
 | 7 | Archival media | [Yes/No/N/A] | [Notes] |
+
+### Encryption Feasibility
+| Evidence Source | Encryption Status | Escrow / Key Evidence | Unlock or Decrypt Test | Acquisition Branch |
+|---|---|---|---|---|
+| [Disk/Volume/Snapshot] | [BitLocker/FileVault/LUKS/KMS/None] | [Key ID, escrow location, accessor role] | [Pass/Fail/Not tested] | [Offline image / Live logical / Cloud snapshot copy / Blocked] |
 
 ### Chain of Custody
 [Include chain of custody form for each evidence item]
@@ -461,6 +503,10 @@ Applying traditional forensic methods to cloud environments without adaptation l
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
 
+### Pitfall 6: Planning Disk Imaging Without Proving Encryption Access
+
+Full-volume encryption can turn a complete-looking acquisition plan into an unusable evidence set. BitLocker TPM-only protectors, FileVault keys not escrowed to the organization, LUKS network unlock dependencies, and cloud snapshots encrypted with inaccessible KMS keys all require a go/no-go check before shutdown or snapshot acceptance. If unlock/decrypt evidence is missing, branch to powered-on volatile capture and live logical collection instead of promising an offline full-disk image.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -487,3 +533,9 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
 9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
 10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+11. **Microsoft BitLocker recovery guide** -- https://learn.microsoft.com/windows/security/operating-system-security/data-protection/bitlocker/recovery-overview
+12. **Apple Platform Deployment -- FileVault management** -- https://support.apple.com/guide/deployment/manage-filevault-dep0a2cb7686/web
+13. **cryptsetup FAQ** -- https://gitlab.com/cryptsetup/cryptsetup/-/wikis/FrequentlyAskedQuestions
+14. **AWS KMS key policies** -- https://docs.aws.amazon.com/kms/latest/developerguide/key-policies.html
+15. **Azure Disk Encryption and customer-managed keys** -- https://learn.microsoft.com/azure/virtual-machines/disk-encryption
+16. **Google Cloud CMEK for Compute Engine** -- https://cloud.google.com/compute/docs/disks/customer-managed-encryption
