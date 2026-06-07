@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -58,6 +58,9 @@ Before conducting the PIR, gather or confirm:
 - [ ] **Existing controls** -- Documentation of security controls that were in place at the time of the incident (detection rules, access controls, network segmentation, patching cadence).
 - [ ] **Previous PIR reports** -- Any prior post-incident reviews for similar incident types, to identify recurring patterns.
 - [ ] **Metrics data** -- Timestamps needed to compute MTTD, MTTR, and MTTC (see Step 4).
+- [ ] **Blast radius data** -- Affected systems, users, business processes, data records, revenue/service impact, and regulatory notification scope.
+- [ ] **Detection engineering outcomes** -- Detection rules that fired, failed, were tuned, or must be created; ATT&CK techniques observed and current coverage status.
+- [ ] **Communication and escalation evidence** -- Escalation matrix in effect, notification timestamps, legal/privacy notification deadlines, and cross-team handoff notes.
 
 ---
 
@@ -149,6 +152,30 @@ Root Cause: [Systemic root cause statement]
 - Stop when you reach a cause that is within the organization's control to change
 - If the chain branches (multiple contributing factors at one level), follow each branch
 - Avoid stopping at "human error" -- always ask what system condition enabled the error
+- Do not stop at a proximate cause if fixing that one instance would not prevent recurrence of the same class of incident
+- Classify the root cause scope as single-instance, team-pattern, or org-wide, and record recurrence likelihood
+- Require recurrence-prevention evidence: the proposed fix must address the process, governance, automation, or control condition that allowed the failure pattern to exist
+
+#### Root Cause Depth and Scope Scoring
+
+Use this gate before accepting the RCA as complete.
+
+| Score | RCA Depth | Evidence Required | Example |
+|-------|-----------|-------------------|---------|
+| 0 | Symptom only | Describes impact or attacker action only | "Exploit happened" |
+| 1 | Proximate technical cause | Identifies vulnerable component or missed alert | "Struts was unpatched" |
+| 2 | Process/control gap | Identifies why the control failed | "System was excluded from patch SLA" |
+| 3 | Governance pattern | Explains why the process allowed recurring gaps | "CMDB classification lacks automated discovery and owner attestation" |
+| 4 | Recurrence-prevention evidence | Links org-wide fix, owner, verification, and coverage scope | "Discovery reconciles all internet-facing Struts assets weekly and blocks SLA downgrade without owner approval" |
+
+**Required RCA fields:**
+
+| Field | Allowed Values | Purpose |
+|-------|----------------|---------|
+| `root_cause_scope` | Single-instance / Team-pattern / Org-wide / Third-party shared-control | Shows whether remediation must go beyond one asset or team |
+| `recurrence_likelihood` | Low / Medium / High / Unknown | Prevents shallow closure when the pattern still exists elsewhere |
+| `recurrence_prevention_evidence` | Control, automation, governance, or verification proof | Shows how the same class of incident will be prevented or detected earlier |
+| `residual_pattern_risk` | None / Accepted / Open / Unknown | Captures remaining similar assets, repos, teams, vendors, or regions still exposed |
 
 #### Method 2: Fishbone (Ishikawa) Diagram
 
@@ -228,6 +255,19 @@ MTTR measures the total response duration from detection through return to norma
 | **Notification Time** | Notification - Detection | Time from detection to stakeholder/regulatory notification |
 | **Recurrence Rate** | Count of similar incidents in last 12 months | Whether root causes from prior incidents were effectively addressed |
 
+#### Blast Radius Metrics
+
+Quantify impact separately from speed metrics. A fast response to a wide-impact incident should not be scored the same as a fast response to a contained sandbox event.
+
+| Metric | What to Capture | Notes |
+|--------|-----------------|-------|
+| Affected systems | Count and criticality of hosts, cloud resources, accounts, containers, or applications | Separate production, customer-facing, identity, and non-production assets |
+| Affected users/accounts | Number and privilege level of users, service accounts, or API principals | Flag privileged, break-glass, and third-party accounts |
+| Data impact | Records/files/tables/mailboxes accessed, modified, encrypted, or exfiltrated | Include confidence level and evidence source |
+| Business process impact | Revenue, operations, customer support, fulfillment, legal, or safety processes disrupted | Capture duration and affected business owner |
+| Regulatory impact | Notification requirement, jurisdiction, deadline, and owner | Include privacy/legal counsel assessment where applicable |
+| Geographic/vendor scope | Regions, cloud accounts, subsidiaries, vendors, or MSSPs involved | Useful for multi-jurisdiction and shared-responsibility incidents |
+
 ### Step 5: Control Failure Mapping
 
 Map the incident to specific control failures -- what should have prevented, detected, or limited the incident but did not.
@@ -251,7 +291,33 @@ Map the incident to specific control failures -- what should have prevented, det
 | **Process gap** | IR playbook did not cover the incident type or was outdated | Update IR playbooks; conduct tabletop exercises; review annually |
 | **Communication failure** | Stakeholders were not notified, or notification was delayed | Formalize escalation matrix; automate notifications; test communication procedures |
 
-### Step 6: Lessons Learned and Remediation Plan
+### Step 6: Detection Engineering Feedback Loop
+
+Translate incident evidence into verifiable detection work. NIST SP 800-61 Rev 2 Section 3.4.2 recommends using collected incident data to improve detection capability.
+
+| Feedback Item | Required Evidence | Output |
+|---------------|-------------------|--------|
+| Rules that fired | Rule name, source, timestamp, ATT&CK mapping, fidelity | Preserve rules that worked and document why |
+| Rules that missed | Observed TTP, missing data source, missing logic, or noisy threshold | Create detection backlog item |
+| Rules tuned | Before/after threshold, query/change ID, expected false-positive impact | Track tuning as remediation |
+| New rules created | Rule name, owner, test dataset, deployment status | Verify coverage before closure |
+| Coverage map | ATT&CK techniques observed vs. detected vs. missed | Shows residual detection gaps |
+
+Do not close the PIR with only "detection rule updates required: yes/no" when detective controls contributed to the incident. Record the specific rule creation/tuning work and its validation evidence.
+
+### Step 7: Communication and Coordination Assessment
+
+Evaluate whether escalation and communication paths worked, not just whether messages were sent.
+
+| Assessment Area | Evidence to Review | Finding Pattern |
+|-----------------|-------------------|-----------------|
+| Escalation matrix accuracy | On-call roster, system owner, legal/privacy/security contacts | Outdated owner, missing contact, wrong severity path |
+| Notification SLA compliance | Detection, confirmation, escalation, regulatory notification timestamps | Late internal or external notification |
+| Cross-team handoff quality | SOC-to-IR, IR-to-platform, IR-to-legal, vendor/MSSP handoff notes | Delay, missing authority, duplicate work, unclear owner |
+| Third-party coordination | MSSP/vendor ticket IDs, contract SLA, evidence handoff scope | Shared-control gaps or evidence not delivered |
+| Communication artifacts | Status pages, exec updates, customer notices, legal templates | Inconsistent or incomplete messaging |
+
+### Step 8: Lessons Learned and Remediation Plan
 
 Convert analysis findings into specific, measurable, assignable, and time-bound remediation actions.
 
@@ -302,7 +368,7 @@ Produce the post-incident review report with these exact sections:
 ## Post-Incident Review: [Incident ID]
 **Date of Review:** [YYYY-MM-DD]
 **Date of Incident:** [YYYY-MM-DD]
-**Skill:** post-incident-review v1.0.0
+**Skill:** post-incident-review v1.0.1
 **Framework:** NIST SP 800-61 Rev 2
 **PIR Facilitator:** [Name or "AI-assisted -- human facilitator required"]
 
@@ -335,6 +401,15 @@ root cause, and the number/priority of remediation actions identified.]
 | MTTR (Detection to Recovery) | [duration] | [comparison to org average] |
 | Escalation Time | [duration] | [SLA target] |
 
+### Blast Radius
+| Metric | Value | Evidence Source | Confidence |
+|---|---|---|---|
+| Affected Systems | [count + criticality] | [CMDB/EDR/cloud inventory] | [High/Medium/Low] |
+| Affected Users/Accounts | [count + privilege level] | [IAM/IdP/logs] | [High/Medium/Low] |
+| Data Impact | [records/files/tables/mailboxes] | [forensics/DLP/logs] | [High/Medium/Low] |
+| Business Process Impact | [process + duration] | [business owner/status logs] | [High/Medium/Low] |
+| Regulatory Notification Scope | [jurisdiction/deadline/owner] | [legal/privacy assessment] | [High/Medium/Low] |
+
 ### Root Cause Analysis
 **Method:** [5 Whys / Fishbone / Both]
 
@@ -342,10 +417,31 @@ root cause, and the number/priority of remediation actions identified.]
 
 **Root Cause Statement:** [1-2 sentence definitive statement of the systemic root cause]
 
+| RCA Quality Field | Value |
+|---|---|
+| Root Cause Depth Score | [0-4] |
+| Root Cause Scope | [Single-instance / Team-pattern / Org-wide / Third-party shared-control] |
+| Recurrence Likelihood | [Low / Medium / High / Unknown] |
+| Recurrence Prevention Evidence | [Control/governance/automation/verification evidence] |
+| Residual Pattern Risk | [None / Accepted / Open / Unknown] |
+
 ### Control Failure Mapping
 | Control Category | Expected Control | Status | Failure Mode | Improvement |
 |---|---|---|---|---|
 | [Preventive/Detective/Corrective] | [Control] | [Status] | [Why it failed] | [Improvement] |
+
+### Detection Engineering Feedback Loop
+| Item | ATT&CK Technique | Action | Owner | Validation Evidence | Status |
+|---|---|---|---|---|---|
+| [Rule fired/missed/tuned/created] | [Txxxx] | [Create/tune/retain/deprecate] | [team] | [test dataset/query/deployment proof] | [Open/Done] |
+
+### Communication and Coordination Assessment
+| Area | Result | Evidence | Improvement |
+|---|---|---|---|
+| Escalation Matrix Accuracy | [Pass/Fail/Partial] | [source] | [action] |
+| Notification SLA Compliance | [Pass/Fail/Partial] | [timestamps] | [action] |
+| Cross-Team Handoff Quality | [Pass/Fail/Partial] | [handoff notes] | [action] |
+| Third-Party / MSSP Coordination | [Pass/Fail/Partial/N/A] | [ticket/SLA] | [action] |
 
 ### What Went Well
 - [Strength identified during retrospective]
@@ -419,6 +515,14 @@ Documenting lessons learned and remediation actions in a PIR report that is then
 ### Pitfall 5: Waiting Too Long to Conduct the PIR
 
 NIST recommends conducting the PIR within several days of incident closure. Waiting weeks or months causes participants to forget critical details, misremember the sequence of events, and lose the emotional context that drives honest reflection. Schedule the PIR meeting before the incident is closed, ideally within 3-5 business days of recovery completion.
+
+### Pitfall 6: Treating Proximate Cause as Root Cause
+
+Fixing one CMDB entry, one vulnerable server, or one missed ticket may prevent a repeat on that exact asset while leaving the same pattern exposed elsewhere. Score RCA depth, record the scope of the root cause, and require recurrence-prevention evidence before considering the PIR complete.
+
+### Pitfall 7: Reporting Response Speed Without Blast Radius
+
+MTTD, MTTC, and MTTR are incomplete without impact scale. A short MTTR for a data exposure affecting thousands of records is not equivalent to a short MTTR for a single isolated test system. Always include blast radius metrics and confidence levels.
 
 ---
 
