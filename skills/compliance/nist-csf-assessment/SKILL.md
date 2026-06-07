@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -113,7 +113,7 @@ Establish context for the assessment:
 - Identify stakeholders: board, executives, employees, customers, regulators, partners, insurers
 - Document their cybersecurity expectations and requirements
 
-**GV.OC-03**: Legal, regulatory, and contractual requirements regarding cybersecurity — including privacy and civil liberties obligations — are understood and managed
+**GV.OC-03**: Legal, regulatory, and contractual requirements regarding cybersecurity â€” including privacy and civil liberties obligations â€” are understood and managed
 - Inventory applicable laws, regulations, standards, and contractual obligations
 - Map requirements to cybersecurity program elements
 
@@ -339,10 +339,10 @@ Score each subcategory on a 0-4 scale aligned with CSF Tiers:
 | Score | Tier Alignment | Description |
 |-------|---------------|-------------|
 | 0 | Below Tier 1 | Not implemented; no awareness or capability |
-| 1 | Tier 1 — Partial | Ad-hoc; some awareness; inconsistent or reactive practices |
-| 2 | Tier 2 — Risk Informed | Documented and approved by management; not fully consistent organization-wide |
-| 3 | Tier 3 — Repeatable | Formally established, regularly updated, consistently applied, policy-driven |
-| 4 | Tier 4 — Adaptive | Continuous improvement based on lessons learned and predictive indicators; real-time adjustments |
+| 1 | Tier 1 â€” Partial | Ad-hoc; some awareness; inconsistent or reactive practices |
+| 2 | Tier 2 â€” Risk Informed | Documented and approved by management; not fully consistent organization-wide |
+| 3 | Tier 3 â€” Repeatable | Formally established, regularly updated, consistently applied, policy-driven |
+| 4 | Tier 4 â€” Adaptive | Continuous improvement based on lessons learned and predictive indicators; real-time adjustments |
 
 Determine the overall organizational Tier based on aggregated assessment across all functions.
 
@@ -370,7 +370,27 @@ Define the target state based on:
 | Function | Category | Subcategory | Current Score | Target Score | Gap | Priority |
 ```
 
-#### 5.3 Gap Analysis
+#### 5.3 Profile Measurability and Ownership
+
+For each high-priority target profile gap, require evidence that the target is measurable, owned, and time-bounded. A target profile entry is not actionable if it only states a desired Tier or maturity score.
+
+Document:
+
+- **Outcome metric:** measurable KPI/KRI tied to the subcategory outcome.
+- **Baseline value:** current measured value and evidence date.
+- **Target value:** desired value, threshold, or service level.
+- **Owner:** accountable role/team responsible for improvement.
+- **Due date:** target completion date or milestone cadence.
+- **Evidence source:** system of record used to prove progress, such as GRC register, ticket portfolio, CMDB, SIEM coverage report, tabletop record, or supplier risk register.
+- **Dependency:** upstream CSF subcategories, business dependencies, budget decisions, or third-party dependencies required to close the gap.
+
+```
+| Subcategory | Outcome Metric | Baseline | Target | Owner | Due Date | Evidence Source | Dependency |
+```
+
+**Finding classification:** Target profile entries without owner or measurable target are **Moderate Gaps**. Critical or Significant Gaps without due dates and evidence sources should remain prioritized until measurable milestones are defined.
+
+#### 5.4 Gap Analysis
 
 For each subcategory where Current < Target:
 - Quantify the gap
@@ -406,6 +426,7 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 | **Significant Gap** | Capability exists but is ad-hoc, inconsistent, or significantly below target profile; Tier 1 when Tier 3 is the target | Material risk; requires dedicated project and resource allocation |
 | **Moderate Gap** | Capability is documented and partially implemented but not consistently applied organization-wide; Tier 2 when Tier 3 is the target | Manageable risk; requires process maturation and broader adoption |
 | **Minor Gap** | Capability is well-established but lacks optimization, metrics, or continuous improvement characteristics; Tier 3 when Tier 4 is the target | Low immediate risk; addressed through continuous improvement program |
+| **Profile Planning Gap** | Target profile entry lacks measurable outcome, owner, due date, or evidence source | Makes the CSF profile hard to execute or track; requires governance cleanup |
 | **Aligned** | Current state meets or exceeds target profile for the subcategory | No action required; maintain current practices |
 
 ---
@@ -434,9 +455,9 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 - Critical services and dependencies: [summary]
 
 ## Tier Assessment
-- **Current Tier**: [Tier N — Name]
+- **Current Tier**: [Tier N â€” Name]
   - Justification: [evidence-based rationale]
-- **Target Tier**: [Tier N — Name]
+- **Target Tier**: [Tier N â€” Name]
   - Justification: [business/risk rationale]
 
 ## Function Summary
@@ -474,6 +495,12 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 ### RECOVER (RC)
 [same table format]
 
+## Target Profile Execution Plan
+
+| Subcategory | Outcome Metric | Baseline | Target | Owner | Due Date | Evidence Source | Dependency |
+|-------------|----------------|----------|--------|-------|----------|-----------------|------------|
+| [GV.RM-XX] | [KPI/KRI] | [current value/date] | [target threshold] | [role/team] | [YYYY-MM-DD] | [system/report] | [dependency] |
+
 ## Gap Analysis Summary
 - Total subcategories with gaps: [count]
 - Average gap magnitude: [score]
@@ -483,16 +510,16 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 ## Remediation Roadmap
 
 ### Phase 1: Foundation (0-30 days)
-[Critical gaps — governance, risk assessment, basic protections]
+[Critical gaps â€” governance, risk assessment, basic protections]
 
 ### Phase 2: Core Capabilities (31-90 days)
-[Significant gaps — detection, response, access control maturation]
+[Significant gaps â€” detection, response, access control maturation]
 
 ### Phase 3: Maturation (91-180 days)
-[Moderate gaps — process consistency, metrics, supply chain]
+[Moderate gaps â€” process consistency, metrics, supply chain]
 
 ### Phase 4: Optimization (181-365 days)
-[Minor gaps — continuous improvement, automation, predictive capabilities]
+[Minor gaps â€” continuous improvement, automation, predictive capabilities]
 
 ## Informative References Mapping
 [Cross-reference to specific implementation standards per subcategory]
@@ -543,22 +570,22 @@ RECOVER (RC)
 ### CSF Tier Characteristics Detail
 
 ```
-Tier 1 — Partial
+Tier 1 â€” Partial
   Risk Management Process:  Ad hoc; prioritization not based on objectives or threat environment
   Integrated Program:       Limited awareness; irregular implementation
   External Participation:   Organization does not understand its role in the ecosystem
 
-Tier 2 — Risk Informed
+Tier 2 â€” Risk Informed
   Risk Management Process:  Approved by management; may not be organization-wide policy
   Integrated Program:       Awareness exists; practices not consistently implemented
   External Participation:   Understands role but informal collaboration
 
-Tier 3 — Repeatable
+Tier 3 â€” Repeatable
   Risk Management Process:  Formally approved; expressed as policy; regularly updated
   Integrated Program:       Organization-wide approach; consistently implemented
   External Participation:   Collaborates with and receives information from partners
 
-Tier 4 — Adaptive
+Tier 4 â€” Adaptive
   Risk Management Process:  Adapts based on previous and current activities; advanced technologies
   Integrated Program:       Continuously improved; cyber risk management is part of organizational culture
   External Participation:   Active sharing; contributes to community understanding of risk
@@ -568,13 +595,15 @@ Tier 4 — Adaptive
 
 ## Common Pitfalls
 
-1. **Treating CSF as a compliance checklist rather than a risk management framework.** NIST CSF 2.0 is voluntary and outcome-oriented. Organizations should set target profiles based on their risk appetite, business needs, and regulatory context — not attempt to score 4 on every subcategory. A Tier 3 target may be entirely appropriate for many organizations. The value is in understanding and managing gaps, not achieving perfect scores.
+1. **Treating CSF as a compliance checklist rather than a risk management framework.** NIST CSF 2.0 is voluntary and outcome-oriented. Organizations should set target profiles based on their risk appetite, business needs, and regulatory context â€” not attempt to score 4 on every subcategory. A Tier 3 target may be entirely appropriate for many organizations. The value is in understanding and managing gaps, not achieving perfect scores.
 
 2. **Ignoring the GOVERN function.** Organizations familiar with CSF 1.1 may treat GV as an afterthought. In CSF 2.0, GOVERN is a co-equal function that underpins all others. Without established governance (risk appetite, roles, policies, oversight, supply chain management), the other five functions lack strategic direction and executive accountability.
 
 3. **Assessing subcategories in isolation without considering dependencies.** CSF functions are interdependent. Detection capabilities (DE) are meaningless without response capabilities (RS). Protection (PR) without asset identification (ID.AM) leaves gaps. The assessment must consider the maturity chain across functions, not just individual subcategory scores.
 
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
+
+5. **Defining target profiles without measurable milestones.** A target Tier or score does not tell owners what to change. Each priority gap needs a measurable outcome, owner, due date, evidence source, and dependency list so progress can be tracked between assessments.
 
 ---
 
@@ -594,11 +623,14 @@ If user-supplied input contains NIST CSF subcategory IDs that do not exist in th
 
 ## References
 
-- NIST Cybersecurity Framework 2.0 (February 26, 2024) — NIST CSWP 29
+- NIST Cybersecurity Framework 2.0 (February 26, 2024) â€” NIST CSWP 29
 - NIST CSF 2.0 Quick Start Guides (Small Business, Enterprise Risk Management, C-SCRM)
 - NIST CSF 2.0 Reference Tool (csf.tools or NIST website)
-- NIST SP 800-53 Rev. 5 — Security and Privacy Controls for Information Systems and Organizations
-- NIST SP 800-181 Rev. 1 — Workforce Framework for Cybersecurity (NICE Framework)
-- NIST SP 800-37 Rev. 2 — Risk Management Framework for Information Systems and Organizations
-- ISO/IEC 27001:2022 — Cross-mapping to CSF 2.0 subcategories
-- CIS Controls v8 — Cross-mapping to CSF 2.0 subcategories
+- NIST SP 800-53 Rev. 5 â€” Security and Privacy Controls for Information Systems and Organizations
+- NIST SP 800-181 Rev. 1 â€” Workforce Framework for Cybersecurity (NICE Framework)
+- NIST SP 800-37 Rev. 2 â€” Risk Management Framework for Information Systems and Organizations
+- ISO/IEC 27001:2022 â€” Cross-mapping to CSF 2.0 subcategories
+- CIS Controls v8 â€” Cross-mapping to CSF 2.0 subcategories
+## Changelog
+
+- **1.0.1** -- Add target profile measurability gates for outcome metrics, baselines, target values, owners, due dates, evidence sources, dependencies, and execution-plan reporting.
