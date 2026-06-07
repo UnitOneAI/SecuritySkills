@@ -180,6 +180,25 @@ Deeply nested or highly complex queries can exhaust server resources (API4:2023)
 - **Maximum query depth** (e.g., 5-10 levels depending on schema complexity).
 - **Query complexity scoring** -- assign cost weights to fields and reject queries exceeding a threshold.
 - **Batch query limits** -- restrict the number of queries in a single request (query batching/aliasing).
+- **Alias limits** -- cap aliases globally and for sensitive resolvers so one HTTP request cannot hide many expensive or credential-sensitive operations.
+- **Persisted-query enforcement** -- reject unknown hashes and raw query documents when production policy is persisted-query-only.
+
+### GraphQL Operation-Control Evidence Gates
+
+Do not report GraphQL resource-consumption risk from query shape alone. Preserve the enforcement evidence that proves whether a query is bounded or exploitable:
+
+| Evidence Item | Safe Signal | Finding When Missing |
+|---|---|---|
+| Operation count per HTTP request | JSON batch arrays disabled or capped at 1 unless explicitly justified | Batched operations can bypass endpoint rate limits |
+| Alias count | Global alias cap and per-sensitive-resolver cap documented | Alias fan-out can multiply resolver calls inside one request |
+| Depth limit | Enforced maximum depth with production config path or gateway policy | Nested traversal can exhaust CPU, DB, or downstream APIs |
+| Complexity budget | Enforced request budget with rejection behavior and logs | Expensive documents can execute without cost accounting |
+| Resolver cost overrides | High-fan-out fields such as search, exports, reports, and connections have calibrated costs | Default field cost underprices DB fan-out or third-party calls |
+| Persisted query policy | Unknown hashes rejected and raw documents blocked in persisted-only environments | Attackers can submit arbitrary expensive documents |
+| Subscription limits | Per-connection subscription count, lifetime, and event fan-out caps | Long-lived operations bypass per-request accounting |
+| Federation parity | Router and subgraphs enforce compatible auth and cost controls | Subgraphs can bypass router-only limits or authorization |
+
+If a benign query is bounded by these controls, record the controls and avoid escalating it as unrestricted consumption. If a control is claimed but no config, test, log, or gateway policy evidence exists, report the missing evidence rather than assuming protection.
 
 ### Field-Level Authorization
 
@@ -198,6 +217,30 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 ```
 
 **Mitigation:** Count aliased operations against rate limits. Limit the number of aliases per request.
+
+### Persisted Query Bypass
+
+```yaml
+prod_policy:
+  persisted_queries_required: true
+observed_behavior:
+  unknown_sha256_hash: accepted_raw_query
+  introspection: disabled
+```
+
+**Mitigation:** In persisted-query-only production environments, reject unknown hashes and raw query documents before parsing or executing the document. Disabling introspection is not sufficient if arbitrary query bodies are still accepted.
+
+### Resolver Cost Underpricing
+
+```yaml
+complexity_plugin: enabled
+resolver_costs:
+  User.orders: default_1
+  Search.results: default_1
+  Report.exportUrl: default_1
+```
+
+**Mitigation:** Assign explicit costs to resolvers that fan out to databases, exports, third-party APIs, or nested connections. Validate the cost matrix with representative production queries and logs.
 
 ---
 
