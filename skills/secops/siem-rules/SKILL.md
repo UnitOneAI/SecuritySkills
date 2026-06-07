@@ -456,6 +456,25 @@ Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
 
+#### Production query equivalence checks
+
+Rules frequently change behavior between review and production when saved-search
+settings, Splunk macros, lookup tables, accelerated data models, or Sentinel
+watchlists are not part of the reviewed artifact. Before promoting a rule, verify
+that the query under review is equivalent to the query the scheduler will run.
+
+| Check | Evidence to capture | Red flag |
+|-------|---------------------|----------|
+| **Expanded query text** | Exported saved-search or analytics-rule query after macro/parameter expansion | Reviewer approved a source query, but production runs a different expanded query |
+| **Lookup/watchlist version** | Lookup file name, watchlist name, version or last-modified timestamp, owner, and refresh cadence | Allowlist or threat-intel lookup is stale, manually edited, or not deployed to production |
+| **Data-model acceleration** | Splunk CIM data model, acceleration status, summary range, and latest build time | `tstats` query depends on acceleration that is disabled, lagging, or scoped to the wrong index |
+| **Summary index/materialized view** | Upstream summary search, schedule, backfill window, and last successful run | Detection reads pre-aggregated data that omits recent or late-arriving events |
+| **Runtime principal** | Service account, app/workspace context, permissions, and accessible indexes/tables | Reviewer ran with broader access than the scheduled rule account |
+| **Suppression and grouping settings** | Event grouping, suppression duration, alert throttling key, and incident creation settings | Query finds events but production settings collapse or suppress distinct entities |
+
+Treat missing equivalence evidence as a deployment blocker for P1/P2 detections
+and as a required remediation item for lower-priority detections.
+
 ### Step 5: Detection Rule Lifecycle Management
 
 **Lifecycle stages:**
@@ -549,6 +568,7 @@ Produce SIEM rule deliverables in this structure:
 
 ### Validation
 - [How to test the rule produces a true positive]
+- [How the reviewed query matches the scheduled production query, including macros, lookups/watchlists, acceleration, summaries, runtime principal, and suppression/grouping settings]
 ```
 
 ---
