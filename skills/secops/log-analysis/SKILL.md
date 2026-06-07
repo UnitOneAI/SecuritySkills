@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -120,6 +120,37 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | Azure Activity Log | Azure | Resource operations -- create, delete, modify at the control plane | Cloud Service (DS0025) |
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
+| Kubernetes audit logs | Kubernetes | API server requests -- create, update, patch, delete, exec, attach, portforward, impersonation | Cloud Service (DS0025), Pod Creation (DS0019), Command Execution (DS0017) |
+
+#### Kubernetes Audit Event Evidence
+
+Kubernetes audit logs are API-server records, not generic JSON application logs. Preserve the fields that define who acted, what object was touched, whether the request succeeded, and whether the action was interactive.
+
+| Field | Why It Matters |
+|---|---|
+| `verb` | Distinguishes reads from `create`, `update`, `patch`, `delete`, `bind`, `escalate`, and `impersonate` activity |
+| `stage` | Prefer `ResponseComplete` for final outcome; use `ResponseStarted` for long-running `exec`, `attach`, and `portforward` streams |
+| `user`, `groups`, `impersonatedUser` | Preserves direct and delegated identity context |
+| `sourceIPs`, `userAgent` | Separates controllers/operators from kubectl, CI systems, dashboards, and unusual clients |
+| `objectRef`, `requestURI` | Captures resource, subresource, namespace, name, and API group |
+| `responseStatus.code` | Separates allowed access from denied probing and failed requests |
+| Audit policy level | Explains whether request/response bodies are available or intentionally omitted |
+
+High-signal Kubernetes audit patterns include:
+
+- `pods/exec`, `pods/attach`, and `pods/portforward` activity in production namespaces.
+- `get`, `list`, or `watch` against `secrets` by unusual users, workloads, or source IPs.
+- RBAC changes to `clusterroles`, `clusterrolebindings`, `roles`, or `rolebindings`.
+- Use of `impersonatedUser`, especially into service accounts or privileged groups.
+- Repeated `401` / `403` responses against sensitive resources, which may indicate RBAC probing.
+- Creation or patching of pods with privileged settings, host namespaces, hostPath volumes, or unexpected service accounts.
+
+False-positive guards:
+
+- Kubernetes controllers and operators normally issue frequent `create`, `update`, and `patch` events. Baseline by `user.username`, `groups`, `userAgent`, namespace, and `objectRef`.
+- Denied events are not successful compromise. Treat them as reconnaissance or probing unless followed by allowed access.
+- Audit policy level controls available detail. Do not assume missing request bodies mean missing collection if the policy intentionally logs metadata only.
+- Managed Kubernetes services may rename fields when forwarding to cloud logging. Map provider-specific field names back to Kubernetes `verb`, `user`, `objectRef`, `stage`, and `responseStatus`.
 
 ### Step 2: Critical Windows Event IDs
 
@@ -451,6 +482,10 @@ A single Event ID can have very different meanings depending on the context. Eve
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
+### Pitfall 6: Treating Kubernetes Audit Events as Generic JSON
+
+Kubernetes audit events encode authorization outcome and resource semantics in fields such as `verb`, `stage`, `objectRef`, `responseStatus`, and `impersonatedUser`. Collapsing those fields into a generic message loses the distinction between denied probing and allowed access, between controller reconciliation and human `kubectl` activity, and between a normal `create` request and an interactive `pods/exec` session.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -478,3 +513,8 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+12. **Kubernetes Auditing** -- https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/
+13. **Kubernetes kube-apiserver Audit Configuration v1** -- https://kubernetes.io/docs/reference/config-api/apiserver-audit.v1/
+14. **Kubernetes User Impersonation** -- https://kubernetes.io/docs/reference/access-authn-authz/user-impersonation/
+15. **MITRE ATT&CK T1609 -- Container Administration Command** -- https://attack.mitre.org/techniques/T1609/
+
