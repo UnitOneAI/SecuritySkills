@@ -45,7 +45,7 @@ Before examining any code, establish the review boundary.
 ## Step 2: Input Validation and Injection Review
 
 **ASVS Reference:** V5 -- Validation, Sanitization and Encoding
-**CWE Coverage:** CWE-79 (XSS), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
+**CWE Coverage:** CWE-79 (XSS), CWE-94 (Code Injection), CWE-1336 (Improper Neutralization of Special Elements Used in a Template Engine), CWE-89 (SQL Injection), CWE-78 (OS Command Injection), CWE-22 (Path Traversal), CWE-77 (Command Injection), CWE-20 (Improper Input Validation)
 
 ### 2.1 Controls to Verify
 
@@ -60,6 +60,20 @@ Before examining any code, establish the review boundary.
 | V5.3.7 | The application protects against LDAP injection |
 | V5.3.8 | The application protects against OS command injection |
 | V5.5.1 | Serialized objects use integrity checks or encryption to prevent hostile object creation |
+
+### 2.2A Template and Context-Escaping Evidence Gates
+
+Treat templating engines as interpreters. Do not collapse all template rendering into a single "XSS sanitized" decision; split the review into server-side template injection (SSTI), template sandbox posture, and output-context escaping.
+
+Require explicit evidence before marking a template-rendering path safe:
+
+- [ ] Template source is fixed, allowlisted, or loaded from a trusted template directory; user input is never passed to APIs such as `from_string`, `Template(...)`, `compile`, `render_inline`, or equivalent dynamic template constructors.
+- [ ] If user-authored templates are an intended feature, the engine runs in a restricted sandbox and tests prove dangerous globals, filters, helpers, loaders, includes, imports, and file/network/process access are unavailable.
+- [ ] Autoescape is enabled for HTML templates and has not been disabled globally, per-template, or through unsafe filters.
+- [ ] Escaping is verified for the exact sink context: HTML body, attribute, URL, CSS, JavaScript string, JSON-in-script, Markdown-to-HTML, and HTML email body.
+- [ ] Any bypass primitive such as `mark_safe`, `safe`, `raw`, triple-stash output, `dangerouslySetInnerHTML`, or direct HTML email insertion is justified by upstream sanitization and by a restricted allowed-tag/attribute policy.
+- [ ] Template context excludes secrets and authority-bearing objects such as app config, request/session objects, database handles, tokens, filesystem helpers, or admin-only service clients.
+- [ ] Benign patterns such as `render_template("profile.html", bio=bleach.clean(user.bio))` are only treated as safe when autoescape status, sanitizer policy, and sink context are documented.
 
 ### 2.2 Vulnerable Patterns by Language
 
@@ -80,6 +94,21 @@ app.get('/search', (req, res) => {
 });
 ```
 Remediation: Use a templating engine with auto-escaping enabled, or explicitly escape with a library such as `he` or `DOMPurify`.
+
+**Python -- Server-Side Template Injection (CWE-1336)**
+```python
+# VULNERABLE: user controls the template source and receives privileged context
+template = env.from_string(request.json["template"])
+return template.render(user=current_user, config=current_app.config)
+```
+Remediation: Load templates by trusted name from a fixed directory. If user-authored templates are required, use a sandboxed environment, remove dangerous globals/loaders, and pass only the minimum safe data context.
+
+**Django/Flask -- Unsafe Context Escape Override (CWE-79)**
+```python
+# VULNERABLE: user HTML is marked safe before entering an HTML email body
+return render("email.html", {"cta": mark_safe(user_supplied_html)})
+```
+Remediation: Avoid safe/raw overrides for user-controlled data. Sanitize with an allowlist appropriate to the output context and keep autoescape enabled.
 
 **Go -- OS Command Injection (CWE-78)**
 ```go
@@ -107,6 +136,8 @@ Remediation: Canonicalize the resolved path and verify it remains within the exp
 - [ ] Every point where user input enters the system is identified.
 - [ ] All SQL queries use parameterized statements or a query builder -- no string concatenation.
 - [ ] HTML output is encoded contextually (HTML body, attribute, JavaScript, URL).
+- [ ] Template source, loaders, includes, helpers, and globals are trusted or sandboxed before rendering user-controlled data.
+- [ ] Safe/raw HTML escape overrides are justified with sanitizer policy evidence and the exact browser/email context.
 - [ ] OS commands, if unavoidable, use allowlisted arguments and avoid shell interpretation.
 - [ ] File path operations validate and canonicalize against a base directory.
 - [ ] Regular expressions used for validation are anchored (`^...$`) and tested for ReDoS.
