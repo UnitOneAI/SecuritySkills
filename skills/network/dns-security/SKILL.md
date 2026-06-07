@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -294,13 +294,76 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
+### Step 7: Authoritative Delegation Integrity Review
+
+DNSSEC-focused checks are not enough to prove authoritative DNS is safe or available. For each delegated public or internal zone, verify parent/child delegation consistency, glue accuracy, authoritative behavior, and zone transfer restrictions.
+
+#### 7.1 Parent and Child NS Consistency
+
+For each zone, compare:
+
+- **Parent/TLD delegation NS set:** NS records returned by the parent zone.
+- **Child apex NS set:** NS records served authoritatively at the zone apex.
+- **Migration window:** Document any planned NS mismatch, expected cutover time, and rollback owner.
+
+Flag parent/child NS mismatches outside a documented migration window. A DNSSEC-valid zone can still be operationally unsafe if resolvers are delegated to stale or unintended nameservers.
+
+#### 7.2 Glue and Address Record Integrity
+
+For in-bailiwick nameservers, verify:
+
+- Parent glue A and AAAA records match intended authoritative server addresses.
+- Child-side A and AAAA records for the nameserver names are consistent with parent glue or have documented reason for drift.
+- Stale glue does not point to uncontrolled, decommissioned, or third-party IP space.
+- IPv4 and IPv6 paths are both checked; do not accept IPv4-only evidence when AAAA glue or AAAA nameserver records exist.
+
+#### 7.3 Lame Nameserver and SOA Replication Checks
+
+For every delegated nameserver, verify:
+
+- It returns authoritative answers (`AA` flag) for the delegated zone.
+- It returns the expected SOA record for the zone apex.
+- SOA serials are consistent across primary and secondary nameservers or differ only within the documented replication window.
+- UDP and TCP port 53 are reachable as expected from relevant resolver paths.
+- No delegated nameserver returns REFUSED, SERVFAIL, recursion-only answers, stale zones, or no zone data.
+
+#### 7.4 Delegated Nameserver Ownership and Takeover Risk
+
+Review every delegated NS hostname:
+
+- Confirm the organization controls the nameserver hostname or has an active contract with the DNS provider.
+- Check for dangling cloud/third-party DNS hostnames, expired provider zones, abandoned secondary DNS services, or nameservers under domains the organization no longer controls.
+- Confirm registrar and DNS provider account ownership are known and recoverable.
+
+#### 7.5 Zone Transfer Restrictions
+
+Verify AXFR/IXFR behavior:
+
+- Public AXFR must be denied from unauthorized sources.
+- IXFR/AXFR must be restricted to approved secondary nameservers using ACLs and, where supported, TSIG.
+- Transfer logs or configuration evidence should show allowed secondaries and denied unauthorized transfer attempts.
+
+#### 7.6 Delegation Finding IDs
+
+Use these finding/check IDs for delegation integrity gaps:
+
+| ID | Trigger | Severity Guidance |
+|----|---------|-------------------|
+| DNS-DELEG-01 | Parent NS set and child apex NS set differ outside a documented migration window. | Medium; High if it sends material traffic to unintended or uncontrolled nameservers. |
+| DNS-DELEG-02 | In-bailiwick glue is stale, missing, inconsistent, IPv4/IPv6-incomplete, or points to uncontrolled IP space. | High if uncontrolled; Medium if stale but still controlled. |
+| DNS-DELEG-03 | Delegated nameserver is lame, non-authoritative, returns wrong SOA, or has material SOA serial drift. | High for multiple lame servers or weak redundancy; Medium for isolated drift. |
+| DNS-DELEG-04 | Delegated NS hostname is dangling, abandoned, third-party-unverified, or outside confirmed organizational control. | High; Critical if takeover is practical and zone traffic can be hijacked. |
+| DNS-DELEG-05 | AXFR/IXFR is publicly exposed or not restricted to approved secondaries. | High; Critical if sensitive internal records are exposed. |
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; practical delegated nameserver takeover risk; public AXFR exposing sensitive internal records. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; stale glue to uncontrolled IP space; multiple lame delegated nameservers; public AXFR exposure. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; parent/child NS mismatch outside migration window; isolated lame nameserver with healthy redundancy; SOA serial drift beyond expected replication window. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -327,6 +390,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### Authoritative Delegation Integrity
+
+| Zone | Parent NS Set | Child Apex NS Set | Glue A/AAAA Status | Delegated NS Authoritative? | SOA Serial Consistency | NS Ownership Evidence | AXFR/IXFR Restricted | Status |
+|------|---------------|-------------------|--------------------|-----------------------------|------------------------|-----------------------|----------------------|--------|
+| example.com | Match/Mismatch | Match/Mismatch | Valid/Stale/Missing/Uncontrolled | All/Partial/None | Consistent/Drift | Registrar/provider/account evidence | Yes/No | Pass/Fail/Not Evaluable |
 
 ### Findings
 
@@ -384,6 +453,8 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Treating DNSSEC or resolver security as proof of authoritative delegation health.** A zone can be signed and still have parent/child NS mismatch, stale glue, lame delegated nameservers, SOA replication drift, dangling third-party NS hostnames, or public AXFR. Always validate the delegation path from the parent zone through every delegated nameserver.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -413,4 +484,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Added authoritative delegation integrity gates for parent/child NS consistency, glue A/AAAA records, lame nameservers, SOA serial drift, delegated NS ownership, and AXFR/IXFR restrictions.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
