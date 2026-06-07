@@ -127,6 +127,50 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 
 ---
 
+### Step 1A: Source Freshness and Reconciliation Evidence
+
+**Objective:** Confirm that the access review population is based on current, complete, and reconcilable entitlement sources before certifiers approve or revoke access.
+
+**NIST SP 800-53 Reference:** AC-2(1) -- Automated System Account Management; AC-2(4) -- Automated Audit Actions; AC-6(7) -- Review of User Privileges
+**CIS Controls v8 Reference:** Control 5.1 -- Establish and Maintain an Inventory of Accounts; Control 6.7 -- Centralize Access Control
+
+Access reviews fail when the IGA export, IdP group inventory, SaaS entitlement snapshot, or HRIS worker feed is stale. A clean certification campaign is not meaningful if the source extract missed suspended users, failed SCIM deltas, manually-created local accounts, or entitlements granted after the campaign snapshot.
+
+For every system in scope, collect source metadata before reviewing entitlement decisions:
+
+| Source | Required Evidence | Freshness Target |
+|---|---|---|
+| HRIS worker feed | Export timestamp, active/terminated status counts, job/manager fields present | <= 24 hours before campaign launch |
+| IdP / directory groups | Group export timestamp, nested/dynamic group expansion method, sync job status | <= 24 hours before campaign launch |
+| SaaS / application entitlements | Native app export timestamp, SCIM provisioning status, local-account count | <= 48 hours before campaign launch |
+| Cloud IAM / infrastructure | Policy binding export timestamp, service account owner mapping, last activity signal | <= 48 hours before campaign launch |
+| Review platform / IGA | Campaign snapshot timestamp, connector sync status, extract checksum or run ID | Same day as campaign launch |
+
+**What to look for:**
+
+```
+AR-SRC-01: Review launched from stale entitlement export beyond the defined freshness target
+AR-SRC-02: HRIS-to-IdP reconciliation missing or mismatched active/terminated worker counts
+AR-SRC-03: SCIM connector failed or last successful sync timestamp is missing before campaign launch
+AR-SRC-04: Native application local accounts not reconciled against IdP-managed accounts
+AR-SRC-05: Nested or dynamic group expansion method undocumented, causing hidden entitlements
+AR-SRC-06: Manual entitlement grants after campaign snapshot not included in reviewer queue
+AR-SRC-07: Extract lacks checksum, run ID, or immutable storage reference for audit replay
+AR-SRC-08: Source-owner attestation missing for entitlement feeds outside centralized IGA
+```
+
+**Reconciliation checks:**
+
+1. Compare HRIS active users to IdP active users, then investigate identities present in IdP but absent from HRIS.
+2. Compare IdP-assigned application users to native SaaS users, then identify local-only accounts and disabled-but-still-entitled accounts.
+3. Compare campaign snapshot timestamp to the latest privilege grant/change timestamp; add a delta review for any changes after the snapshot.
+4. Verify SCIM and directory connector success logs before the campaign launches; failed or partial syncs should block certification.
+5. Store evidence with a checksum, export run ID, immutable object version, or IGA connector sync ID so the same population can be replayed during audit.
+
+**Finding classification:** Stale or unreconciled sources covering privileged or production access are **High**. Stale standard-user evidence is **Medium**. Missing checksums/run IDs are **Medium** unless the population cannot be reproduced, then **High**.
+
+---
+
 ### Step 2: Entitlement Review and Certification
 
 **Objective:** Validate that every entitlement is appropriate, necessary, and approved.
@@ -346,6 +390,7 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 
 ### Findings by Category
 - Review Scope & Cadence (Step 1): [count]
+- Source Freshness & Reconciliation (Step 1A): [count]
 - Entitlement Certification (Step 2): [count]
 - Orphaned Accounts (Step 3): [count]
 - Role Explosion (Step 4): [count]
@@ -401,6 +446,7 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
 7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+8. **Freshness assumed from campaign date** -- A campaign can launch today using a week-old HRIS, IdP, or SaaS extract. Require source timestamps, connector success logs, and delta reconciliation before treating the review population as complete.
 
 ---
 
@@ -443,4 +489,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-07 | Added source freshness and reconciliation evidence gates for HRIS, IdP, SCIM, SaaS, and IGA campaign snapshots |
 | 1.0.0 | 2025-03-06 | Initial release |
