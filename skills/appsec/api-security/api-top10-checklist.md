@@ -281,7 +281,11 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] Rate limiting is configured for all endpoints, with stricter limits on expensive operations.
 - [ ] Pagination has a maximum page size enforced server-side.
 - [ ] Request body size limits are configured.
-- [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
+- [ ] GraphQL queries have depth limits, complexity limits, batch restrictions, alias limits, and operation-count limits.
+- [ ] GraphQL persisted-query or safelist policy rejects unknown hashes and raw query documents when enabled.
+- [ ] GraphQL resolver cost weights are calibrated for database fan-out, search, export, and third-party API calls.
+- [ ] GraphQL subscriptions or live queries have connection, duration, and event-rate controls.
+- [ ] GraphQL federation routers and subgraphs enforce equivalent auth, depth, complexity, and rate limits.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
 

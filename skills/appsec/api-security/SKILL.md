@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -38,6 +38,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **For GraphQL APIs, capture operation-control evidence** -- Depth limit, complexity budget, alias count, batch operation limit, persisted-query policy, introspection policy, subscription limits, resolver cost overrides, and federation/subgraph enforcement.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -92,7 +93,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -129,6 +130,18 @@ The final review output must be structured as follows:
 - **Status:** Open
 
 [Repeat for each finding]
+
+### GraphQL Operation Controls
+| Control | Evidence | Status |
+|---|---|---|
+| Operation/batch limit | [max operations per request, batch behavior] | [Pass / Gap / Not Evaluable] |
+| Alias limit and resolver throttling | [alias cap, duplicate resolver accounting, sensitive resolver limits] | [Pass / Gap / Not Evaluable] |
+| Depth and complexity | [max depth, max complexity, timeout, rejection evidence] | [Pass / Gap / Not Evaluable] |
+| Resolver cost overrides | [high-cost fields and configured weights] | [Pass / Gap / Not Evaluable] |
+| Persisted-query/safelist enforcement | [unknown hash and raw document behavior] | [Pass / Gap / Not Evaluable] |
+| Introspection/playground exposure | [environment and auth requirements] | [Pass / Gap / Not Evaluable] |
+| Subscription/live query controls | [connection cap, idle timeout, event rate] | [Pass / Gap / Not Evaluable] |
+| Federation/subgraph parity | [router/subgraph limit and auth propagation evidence] | [Pass / Gap / Not Evaluable] |
 ```
 
 ---
@@ -198,6 +211,42 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 ```
 
 **Mitigation:** Count aliased operations against rate limits. Limit the number of aliases per request.
+
+### GraphQL Operation-Control Evidence Gates
+
+For GraphQL APIs, do not treat "depth limit enabled" or "introspection disabled" as sufficient evidence. Record the runtime controls that bound execution cost, sensitive resolver fan-out, and accepted document sources.
+
+**Minimum evidence to collect:**
+
+| Evidence Gate | Required Proof | Failure Mode |
+|---|---|---|
+| Operation and batch count | Maximum operations per HTTP request, JSON-array batch handling, named-operation selection behavior | One HTTP request can execute many sensitive operations |
+| Alias and field fan-out | Alias limit, duplicate sensitive resolver accounting, per-resolver throttling for login/search/export mutations | Aliases bypass endpoint rate limits or brute-force controls |
+| Depth and complexity | Configured max depth, max complexity, timeout, rejection status, and logging of rejected queries | Limits exist in code but are disabled, too high, or not enforced in production |
+| Resolver cost overrides | Cost matrix for database fan-out, search, export, third-party API, and nested connection fields | Expensive resolvers keep default cost and understate actual resource use |
+| Persisted query / safelist enforcement | Production policy, unknown-hash rejection, raw document rejection, rollout exceptions | Production accepts arbitrary raw GraphQL documents despite persisted-only policy |
+| Introspection and playground exposure | Environment-specific introspection/playground policy and authentication requirements | Introspection disabled but playground/raw query endpoint remains exposed |
+| Subscription and live query controls | Connection limits, per-user subscription caps, idle timeout, max event rate, backpressure behavior | Long-lived operations bypass per-request accounting |
+| Federation / subgraph parity | Router and subgraph limits, auth propagation, cost/depth enforcement at both layers | Supergraph enforces limits but subgraphs can be queried or overloaded directly |
+
+**What to look for:**
+
+```
+GQL-OPS-01: GraphQL batching or multiple operations per request bypasses rate limits
+GQL-OPS-02: Alias fan-out is not counted against sensitive resolver throttles
+GQL-OPS-03: Depth or complexity limits are missing, disabled, or not evidenced in production
+GQL-OPS-04: Expensive resolvers use default cost weights
+GQL-OPS-05: Persisted-query/safelist policy can be bypassed with raw query documents
+GQL-OPS-06: Introspection is disabled but playground/raw query access remains exposed
+GQL-OPS-07: Subscriptions or live queries lack connection, duration, and event-rate limits
+GQL-OPS-08: Federation router and subgraph limits are inconsistent or subgraphs are directly reachable
+```
+
+**False-positive guardrails:**
+
+- Do not flag a bounded GraphQL endpoint solely because it supports aliases or variables; require evidence that aliases, operations, and resolver cost are unbounded or not enforced.
+- Do not require persisted queries for every internal-only GraphQL API if raw documents are authenticated, rate-limited, complexity-scored, logged, and not reachable from untrusted clients.
+- Do not downgrade resolver authorization based only on parent-object checks; verify whether nested fields, fragments, aliases, DataLoader batches, and federation entity resolvers reuse the same policy.
 
 ---
 
