@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -156,7 +156,47 @@ dnssec
 
 ---
 
-### Step 3: Encrypted DNS Transport Review
+### Step 3: Delegation and Authoritative Availability Integrity
+
+Validate that public authoritative delegation is consistent between the parent zone and child zone, and that every advertised nameserver actually serves the zone.
+
+**For each public authoritative zone, verify:**
+
+- **Parent NS set:** NS records returned by the parent/TLD match the intended authoritative nameserver set.
+- **Child apex NS set:** NS records at the zone apex match the parent delegation or have a documented migration window.
+- **Glue records:** in-bailiwick nameservers have A/AAAA glue at the parent, and glue addresses match authoritative host records.
+- **Lame delegation:** every delegated nameserver responds authoritatively for the zone with the AA flag and a valid SOA.
+- **SOA consistency:** SOA serials are consistent across authoritative nameservers, or lag is within the documented secondary replication window.
+- **Dangling nameservers:** delegated NS hostnames do not point to expired domains, deprovisioned cloud DNS zones, parked records, or third-party providers no longer controlled by the organization.
+- **IPv4/IPv6 parity:** both A and AAAA glue/address paths are tested; IPv6-only failures are not hidden by successful IPv4 answers.
+- **Zone transfer exposure:** AXFR/IXFR is restricted to authorized secondaries and not available from arbitrary clients.
+
+**Example commands to collect evidence:**
+
+```bash
+# Parent/TLD delegation
+dig +short NS example.com @$(dig +short NS com. | head -1)
+
+# Child apex NS and SOA from each authoritative server
+for ns in $(dig +short NS example.com); do
+  dig +norecurse +noall +answer NS example.com @$ns
+  dig +norecurse +noall +answer SOA example.com @$ns
+done
+
+# Glue/address parity for in-bailiwick nameservers
+dig +trace NS example.com
+dig +short A ns1.example.com
+dig +short AAAA ns1.example.com
+
+# Zone transfer check
+dig AXFR example.com @ns1.example.com
+```
+
+**Finding classification:** Lame delegation for multiple authoritative nameservers is **High**. Parent/child NS mismatch outside a documented migration window is **Medium**. Inconsistent or stale glue that sends resolvers to uncontrolled IPs is **High**. AXFR exposed publicly is **High**. Single lame nameserver with sufficient healthy redundancy is **Medium**.
+
+---
+
+### Step 4: Encrypted DNS Transport Review
 
 Evaluate whether DNS queries are protected in transit.
 
@@ -194,7 +234,7 @@ forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
 
 ---
 
-### Step 4: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
+### Step 5: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
 
 CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (Response Policy Zones, defined by ISC) is the standard mechanism for DNS-based filtering on recursive resolvers.
 
@@ -237,7 +277,7 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ---
 
-### Step 5: DNS Exfiltration and Tunneling Detection Patterns
+### Step 6: DNS Exfiltration and Tunneling Detection Patterns
 
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
@@ -286,7 +326,7 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
-### Step 6: Domain Categorization and Newly Registered Domain (NRD) Blocking
+### Step 7: Domain Categorization and Newly Registered Domain (NRD) Blocking
 
 - **NRD blocking:** Domains registered within the past 30 days are disproportionately associated with phishing and malware. CIS Control 9.2 supports blocking or flagging NRDs.
 - **DGA detection:** Domain Generation Algorithms produce random-appearing domain names. Detection relies on entropy analysis and machine learning classifiers integrated into protective DNS services.
@@ -299,8 +339,8 @@ abcdef0123456789.dnscat.example.com TXT
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; lame delegation across multiple authoritative nameservers; public AXFR exposure. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; parent/child NS mismatch; stale glue; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -321,6 +361,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Zone | Signed | Algorithm | Key Sizes | DS in Parent | NSEC Version | Status |
 |------|--------|-----------|-----------|--------------|-------------|--------|
 | example.com | Yes/No | 13/8/15 | KSK:2048/ZSK:1024 | Yes/No | NSEC3 | Pass/Fail |
+
+### Delegation Integrity
+
+| Zone | Parent NS Match | Glue Valid | Lame NS | SOA Consistent | AXFR Restricted | Status |
+|------|-----------------|------------|---------|----------------|-----------------|--------|
+| example.com | Yes/No | Yes/No/N/A | <count/list> | Yes/No | Yes/No | Pass/Fail |
 
 ### Resolver Security
 
@@ -362,7 +408,7 @@ abcdef0123456789.dnscat.example.com TXT
 | 3 | Securing DNS Transactions | TSIG for zone transfers, ACLs on recursive queries |
 | 4 | DNSSEC for Authoritative Servers | Zone signing, key management, algorithm selection, NSEC3 |
 | 5 | DNSSEC for Recursive Resolvers | Validation enablement, trust anchor management, NTA policy |
-| 6 | Securing DNS Infrastructure | Restricting zone transfers, hiding version strings, rate limiting |
+| 6 | Securing DNS Infrastructure | Restricting zone transfers, hiding version strings, rate limiting, authoritative delegation health |
 
 ### CIS Controls v8
 
@@ -384,6 +430,8 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Checking only recursive resolver answers for authoritative health.** Recursive caches can hide broken delegation, stale glue, or lame nameservers. Query the parent delegation and each authoritative server directly with `+norecurse`.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -403,6 +451,8 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
+- RFC 1034 -- Domain Names - Concepts and Facilities: https://datatracker.ietf.org/doc/html/rfc1034
+- RFC 1035 -- Domain Names - Implementation and Specification: https://datatracker.ietf.org/doc/html/rfc1035
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
@@ -414,3 +464,4 @@ This skill processes DNS configuration files that may contain user-supplied zone
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
+- **1.0.1** -- Add delegation integrity checks for parent/child NS consistency, glue records, lame nameservers, SOA consistency, dangling nameservers, IPv4/IPv6 parity, and AXFR exposure.
