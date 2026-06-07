@@ -208,6 +208,43 @@ resource "google_logging_project_sink" {
 }
 ```
 
+**Additional evidence gates:**
+
+- Verify the sink is created at the required scope (`google_logging_project_sink`, `google_logging_folder_sink`, or `google_logging_organization_sink`). A project sink does not cover sibling projects or folder/organization activity.
+- Review `filter` and `exclusions` blocks. Treat broad exclusions of `cloudaudit.googleapis.com`, `activity`, `data_access`, IAM policy changes, KMS activity, VPC firewall changes, or Cloud SQL audit events as failures unless explicitly risk-accepted.
+- Review `_Default` bucket exclusions (`google_logging_project_exclusion`, `google_logging_folder_exclusion`, `google_logging_organization_exclusion`) because logs can be dropped before security teams notice gaps in local retention.
+- Capture the sink writer identity and verify the destination grants only the minimum writer permission required.
+- Confirm a recent audit event is observable at the destination, or mark export validation as Not Evaluable.
+
+```hcl
+resource "google_logging_project_sink" "audit_archive" {
+  name                   = "audit-archive"
+  destination            = "storage.googleapis.com/${google_storage_bucket.audit_logs.name}"
+  filter                 = "logName:cloudaudit.googleapis.com"
+  unique_writer_identity = true
+}
+
+resource "google_storage_bucket_iam_member" "audit_sink_writer" {
+  bucket = google_storage_bucket.audit_logs.name
+  role   = "roles/storage.objectCreator"
+  member = google_logging_project_sink.audit_archive.writer_identity
+}
+```
+
+**Fail examples:**
+
+```hcl
+resource "google_logging_project_sink" "partial" {
+  destination = "storage.googleapis.com/${google_storage_bucket.logs.name}"
+  filter      = "severity>=ERROR" # Drops routine IAM/Admin Activity audit events
+
+  exclusions {
+    name   = "drop-data-access"
+    filter = "logName:cloudaudit.googleapis.com%2Fdata_access"
+  }
+}
+```
+
 ### CIS 2.3 -- Ensure that Retention Policies on Cloud Storage Buckets Used for Exporting Logs Are Configured Using Bucket Lock
 
 ```hcl
@@ -215,6 +252,30 @@ resource "google_storage_bucket" {
   retention_policy {
     retention_period = 2678400  # 31 days minimum
     is_locked        = true     # Bucket Lock enabled
+  }
+}
+```
+
+**Additional evidence gates:**
+
+- Verify the logging destination bucket has `retention_policy.is_locked = true`; a retention period without lock can be shortened later.
+- Verify public or broad reader/admin grants are absent from the log destination bucket.
+- If organization policy requires customer-managed keys, verify the bucket default KMS key is configured and key IAM is restricted.
+- Verify log writers cannot delete or overwrite objects; prefer append-only permissions such as `roles/storage.objectCreator`.
+
+```hcl
+resource "google_storage_bucket" "audit_logs" {
+  name                        = "example-audit-logs"
+  location                    = "US"
+  uniform_bucket_level_access = true
+
+  retention_policy {
+    retention_period = 2678400
+    is_locked        = true
+  }
+
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.audit_logs.id
   }
 }
 ```
