@@ -405,9 +405,84 @@ resource "azurerm_monitor_diagnostic_setting" {
 }
 ```
 
+**Additional evidence gates:**
+
+- Verify the target resource is the subscription for Activity Log diagnostics and each in-scope resource for resource diagnostics.
+- Verify at least one durable destination is configured: Log Analytics workspace, Event Hub, or Storage Account.
+- Verify destination access is limited to security/operations roles and the diagnostic pipeline writer.
+- Verify a recent Activity Log event is visible at the destination, or mark live export validation as Not Evaluable.
+
 #### CIS 5.1.2 -- Ensure Diagnostic Setting captures appropriate categories
 
 Verify that Administrative, Security, ServiceHealth, Alert, Recommendation, Policy, Autoscale, and ResourceHealth categories are enabled.
+
+```hcl
+resource "azurerm_monitor_diagnostic_setting" "subscription_activity" {
+  name               = "send-activity-logs"
+  target_resource_id = "/subscriptions/${var.subscription_id}"
+
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.security.id
+
+  enabled_log {
+    category = "Administrative"
+  }
+  enabled_log {
+    category = "Security"
+  }
+  enabled_log {
+    category = "ServiceHealth"
+  }
+  enabled_log {
+    category = "Alert"
+  }
+  enabled_log {
+    category = "Recommendation"
+  }
+  enabled_log {
+    category = "Policy"
+  }
+  enabled_log {
+    category = "Autoscale"
+  }
+  enabled_log {
+    category = "ResourceHealth"
+  }
+}
+```
+
+For resource-level diagnostics, prefer `category_group = "allLogs"` where supported, or enumerate required categories explicitly. Treat disabled security-relevant categories as failures unless the resource type does not emit them.
+
+```hcl
+resource "azurerm_monitor_diagnostic_setting" "key_vault" {
+  name                       = "send-keyvault-audit"
+  target_resource_id         = azurerm_key_vault.example.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.security.id
+
+  enabled_log {
+    category = "AuditEvent"
+  }
+
+  metric {
+    category = "AllMetrics"
+    enabled  = true
+  }
+}
+```
+
+**Fail examples:**
+
+```hcl
+resource "azurerm_monitor_diagnostic_setting" "partial" {
+  name                       = "partial-activity"
+  target_resource_id         = "/subscriptions/${var.subscription_id}"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.security.id
+
+  enabled_log {
+    category = "Administrative"
+  }
+  # Missing Security, Policy, ServiceHealth, Alert, Recommendation, Autoscale, ResourceHealth
+}
+```
 
 #### CIS 5.1.3 -- Ensure the storage container storing the activity logs is not publicly accessible
 
@@ -416,6 +491,21 @@ Check storage account access level for the diagnostic logs container.
 #### CIS 5.1.4 -- Ensure the storage account containing the container with activity logs is encrypted with a Customer Managed Key
 
 Cross-reference the diagnostics storage account with CMK encryption.
+
+**Retention and destination hardening checks:**
+
+- For Log Analytics destinations, verify workspace retention meets policy and is not left at an insufficient default.
+- For Storage Account destinations, verify public access is disabled, CMK is enabled where required, and lifecycle/immutability policy satisfies the audit retention window.
+- For Event Hub destinations, verify authorization rules are least privilege and downstream consumers retain logs long enough for investigations.
+
+```hcl
+resource "azurerm_log_analytics_workspace" "security" {
+  name              = "law-security"
+  location          = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+  retention_in_days = 365
+}
+```
 
 #### CIS 5.1.5 -- Ensure that logging for Azure Key Vault is 'Enabled'
 
