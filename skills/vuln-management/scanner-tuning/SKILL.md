@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -50,6 +50,7 @@ Before starting, collect or confirm:
 - [ ] **Authentication status:** Are scans currently authenticated (credentialed) or unauthenticated?
 - [ ] **False positive examples:** Specific findings suspected or confirmed as false positives, with evidence
 - [ ] **Scan frequency:** Current scan schedule and any performance constraints
+- [ ] **Production safety constraints:** Change window, target owner, fragile systems, account lockout thresholds, API quotas, and abort contacts
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
 - [ ] **Compliance requirements:** Whether scans must meet specific compliance mandates (PCI ASV, DISA STIG, CIS Benchmark)
 - [ ] **Multi-scanner context:** If using multiple scanners, which ones and how results are currently correlated
@@ -138,6 +139,34 @@ Configure or optimize scan policies to balance detection coverage, accuracy, and
 | **Time-based exclusions** | Systems that cannot be scanned during business hours | Scan scheduling adjustment (see Step 6) |
 | **Credential exclusions** | Systems where credentialed scanning is not permitted by policy | Documented reason; accept reduced detection accuracy |
 
+##### 2d. Production Scan Safety Gate
+
+Before recommending any production scan policy, verify that the scan can run without creating avoidable operational impact. Disabling explicitly dangerous plugins is necessary but not sufficient: credentialed checks, web crawling, API enumeration, and high-concurrency probes can still cause account lockouts, service degradation, quota exhaustion, or state changes.
+
+| Safety Control | Required Evidence | Failure Mode Prevented |
+|---|---|---|
+| **Target owner approval** | Change ticket, maintenance window, escalation contact | Uncoordinated scan during business-critical activity |
+| **Canary scan** | Successful pre-flight against representative hosts/apps | Fleet-wide failure from untested credentials or plugin set |
+| **Lockout-safe authentication** | AD/IdP lockout thresholds, retry limits, credential success-rate threshold | Service account lockout, password-spray alerting, scanner source block |
+| **State-changing web/API controls** | Test tenant, safe account, route/method allowlist, destructive action blocklist | DAST crawl disabling users, sending transactions, rotating keys, mutating records |
+| **Target health monitoring** | CPU/load, application 5xx rate, queue depth, DB connections, EDR crash/restart signals | Scanner-induced outage or degraded service |
+| **Abort thresholds** | Stop conditions for auth failures, error rates, latency, health checks, IDS/IPS blocks | Scan continues after it is clearly harming targets |
+| **Allowlist governance** | Time-bound scanner exception, owner, expiry, compensating SIEM monitoring | Scanner allowlist hides real impact or becomes permanent bypass |
+| **Fragile system handling** | Passive assessment, vendor-approved profile, or explicit risk acceptance | Legacy SCADA, medical, lab, appliance, or OT systems crash under active probes |
+| **Cloud/API quota budget** | Rate limit, retry budget, provider quota headroom, backoff settings | API throttling, cost spikes, or control-plane denial of service |
+
+**Production scan safety findings:**
+
+```
+SCAN-SAFE-01: No lockout-safe retry limits for authenticated scan credentials
+SCAN-SAFE-02: Production DAST crawl can submit state-changing actions
+SCAN-SAFE-03: Scan policy lacks target-health monitoring and abort thresholds
+SCAN-SAFE-04: Scanner source allowlist has no expiry, owner, or compensating monitoring
+SCAN-SAFE-05: Fragile or regulated systems lack passive or vendor-approved scan profile
+SCAN-SAFE-06: Cloud/API scans have no quota-aware rate limit or retry budget
+SCAN-SAFE-07: No canary scan before broad production rollout
+```
+
 ### Step 3: Authenticated vs. Unauthenticated Scanning
 
 Evaluate and configure credential-based (authenticated) scanning for improved accuracy.
@@ -175,6 +204,7 @@ Authentication Configuration:
 - Cloud/API Auth:      [API key with read-only role | N/A]
 - Credential Rotation: [Every N days]
 - Last Verification:   [YYYY-MM-DD, success rate: [N]%]
+- Lockout Guardrails:  [Max retries, failure threshold, abort action]
 ```
 
 ### Step 4: Severity Override Criteria
@@ -322,6 +352,17 @@ Highlight the most impactful tuning recommendations.]
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
 | Port Range | [Current range] | [Recommended range] | [Priority] |
 
+### Production Scan Safety
+
+| Control | Current State | Risk | Required Evidence | Owner |
+|---|---|---|---|---|
+| Auth retry / lockout limits | [Configured / Missing] | [Risk] | [AD/IdP policy, canary result] | [Owner] |
+| State-changing web/API actions | [Controlled / Uncontrolled] | [Risk] | [route allowlist, test tenant, rollback plan] | [Owner] |
+| Health and abort thresholds | [Configured / Missing] | [Risk] | [CPU/5xx/error/lockout thresholds, escalation path] | [Owner] |
+| Scanner allowlists | [Time-bound / Permanent / None] | [Risk] | [exception ticket, SIEM monitoring, expiry] | [Owner] |
+| Fragile system handling | [Passive / Vendor profile / Active scan / Excluded] | [Risk] | [vendor guidance or risk acceptance] | [Owner] |
+| Cloud/API quota controls | [Configured / Missing / N/A] | [Risk] | [rate limits, retry budget, quota headroom] | [Owner] |
+
 ### False Positive Analysis
 
 | Plugin/Check ID | CVE ID | FP Pattern | Affected Assets | Evidence | Recommendation |
@@ -398,6 +439,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 4. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
+
+6. **Assuming non-DoS credentialed scans are production-safe.** Account lockouts, scanner allowlist side effects, state-changing web crawls, API quota exhaustion, and fragile endpoint load can still create outages. Require canary scans, target-health monitoring, and abort thresholds before broad production runs.
 
 ---
 
