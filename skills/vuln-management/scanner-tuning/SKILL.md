@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -50,6 +50,7 @@ Before starting, collect or confirm:
 - [ ] **Authentication status:** Are scans currently authenticated (credentialed) or unauthenticated?
 - [ ] **False positive examples:** Specific findings suspected or confirmed as false positives, with evidence
 - [ ] **Scan frequency:** Current scan schedule and any performance constraints
+- [ ] **Coverage freshness:** Last successful scan per in-scope asset, maximum allowed scan age, maintenance blackout dates, exclusion expiry, and authenticated scan success rate.
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
 - [ ] **Compliance requirements:** Whether scans must meet specific compliance mandates (PCI ASV, DISA STIG, CIS Benchmark)
 - [ ] **Multi-scanner context:** If using multiple scanners, which ones and how results are currently correlated
@@ -57,6 +58,35 @@ Before starting, collect or confirm:
 ---
 
 ## Process
+
+### Step 0: Coverage Freshness Gate
+
+Before suppressing findings, tuning false positives, or approving severity overrides, prove that the scanner is observing the intended scope recently and successfully.
+
+| Gate ID | Required Evidence | Pass Condition | If Missing |
+|---|---|---|---|
+| SCAN-COV-01 | Last successful scan timestamp for every in-scope asset | Each asset scanned within policy max age (for example 7 or 14 days) | Do not accept suppressions for stale or unscanned assets |
+| SCAN-COV-02 | Exclusion list with reason, owner, and expiry | Every exclusion has a business owner, expiry date, and alternate assessment method | Treat no-expiry exclusions as coverage gaps or risk acceptances |
+| SCAN-COV-03 | Maintenance blackout calendar and missed-scan backlog | Blackouts are time-bound and missed assets are automatically queued for make-up scans | Require compensating telemetry and make-up schedule |
+| SCAN-COV-04 | Authenticated scan success rate by platform | Success rate meets threshold (commonly >= 90%) before validating version-based false positives | Block FP classification that depends on local package evidence |
+| SCAN-COV-05 | Container/image scan overlap with deployed artifacts | Rebuilt images are scanned per-build or before tag expiration; registry scan observes deployed digests | Treat weekly registry success as insufficient if images expire faster |
+
+**Coverage freshness record:**
+
+```
+Coverage Freshness:
+- Policy max scan age:        [N days]
+- Assets in scope:            [N]
+- Assets scanned in window:   [N] ([%])
+- Stale/unscanned assets:     [N] ([list or ticket reference])
+- Auth success rate:          [N%] overall; [N%] Windows; [N%] Linux; [N%] network devices
+- Active exclusions:          [N] (with expiry: [N], without expiry: [N])
+- Blackout period reviewed:   [date range]
+- Make-up scans scheduled:    [Yes/No, ticket IDs]
+- Compensating telemetry:     [EDR/SBOM/admission controller/WAF/passive scan/N/A]
+```
+
+If SCAN-COV gates fail, the scanner program may still be operational, but tuning decisions must be scoped only to assets with fresh, successful, sufficiently authenticated evidence.
 
 ### Step 1: False Positive Identification and Classification
 
@@ -80,6 +110,7 @@ Systematically identify and classify false positives in scan results to establis
 
 For each suspected false positive:
 
+0. **Check coverage freshness:** Confirm SCAN-COV gates pass for the affected asset and scanner policy. A stale or unauthenticated result cannot prove a false positive that depends on current package, configuration, or runtime state.
 1. **Reproduce:** Attempt to validate the finding independently (manual verification, second scanner, authenticated re-scan)
 2. **Classify:** Determine the false positive pattern from the table above
 3. **Document:** Record the CVE/plugin ID, affected asset, evidence of false positive, and verification method
@@ -137,6 +168,8 @@ Configure or optimize scan policies to balance detection coverage, accuracy, and
 | **Plugin exclusions** | Confirmed persistent false positive across all assets for a specific plugin | False positive evidence for at least 3 scan cycles; periodic re-evaluation (quarterly) |
 | **Time-based exclusions** | Systems that cannot be scanned during business hours | Scan scheduling adjustment (see Step 6) |
 | **Credential exclusions** | Systems where credentialed scanning is not permitted by policy | Documented reason; accept reduced detection accuracy |
+| **Maintenance blackout** | Change freeze, holiday freeze, OT/ICS moratorium, or incident stabilization window | Expiry date, make-up scan date, compensating telemetry, explicit owner |
+| **Recurring operational tag** | Assets tagged as active change, fragile, blue/green inactive, or geo-restricted | Expiry, automated re-evaluation, risk acceptance if exclusion repeats |
 
 ### Step 3: Authenticated vs. Unauthenticated Scanning
 
@@ -163,6 +196,7 @@ Evaluate and configure credential-based (authenticated) scanning for improved ac
 3. **Vault integration:** Store scan credentials in an enterprise secret management solution, not in the scanner's local credential store
 4. **Per-platform credentials:** Maintain separate credentials for Windows (local admin or domain account), Linux/Unix (root or sudo-enabled account), network devices (read-only SNMP community/SSH), databases (read-only DB account), and VMware/cloud APIs
 5. **Credential verification:** Run a credential verification scan before full scan to confirm authentication success across all targets
+6. **Threshold gate:** Do not rely on authenticated-only evidence for FP classification or severity downgrade unless authenticated scan success meets the policy threshold for the affected platform and asset class.
 
 ```
 Authentication Configuration:
@@ -199,6 +233,7 @@ Define criteria for overriding scanner-assigned severity ratings when they do no
 2. **Document both the original and overridden severity:** Maintain traceability from scanner-native severity to adjusted severity
 3. **Review overrides quarterly:** Severity overrides must be re-evaluated as deployment context changes (e.g., system moved from internal to internet-facing)
 4. **Override scope:** Overrides apply to a specific CVE + asset combination, not globally to a CVE across all assets
+5. **Freshness prerequisite:** Do not downgrade or suppress based on environmental context when the affected asset has not been scanned within the policy max age or is excluded without compensating evidence.
 
 ```
 Severity Override Record:
@@ -281,6 +316,17 @@ Configure scan schedules to balance coverage, freshness, and operational impact.
 4. **Monitor scan duration:** Track scan completion times; investigate if scans consistently exceed expected duration (may indicate network issues, target instability, or policy misconfiguration)
 5. **Retain scan history:** Maintain at least 13 months of scan results for trend analysis and compliance evidence
 
+#### Maintenance Blackout and Drift Handling
+
+| Scenario | Required Control |
+|---|---|
+| Change freeze or holiday blackout | Pre-approved blackout window, owner, expiry, make-up scan within SLA |
+| OT/ICS moratorium | Passive vulnerability monitoring, vendor advisory tracking, compensating segmentation evidence |
+| Blue/green deployment | Confirm both active and inactive colors are scanned before promotion or within max age |
+| Geo-fenced engines | Confirm each region has a local scan window and engine coverage |
+| Credential rotation failure | Alert on auth success drop, rerun credential verification, and block auth-dependent tuning |
+| Fast container rebuilds | Scan per build or admission; compare deployed digest overlap with last scan |
+
 ---
 
 ## Findings Classification
@@ -303,7 +349,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.0
+**Skill:** scanner-tuning v1.0.1
 **Frameworks:** CVSS 4.0, CWE
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
 
@@ -321,6 +367,17 @@ Highlight the most impactful tuning recommendations.]
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
 | Port Range | [Current range] | [Recommended range] | [Priority] |
+
+### Coverage Freshness
+
+| Metric | Value | Threshold | Status |
+|---|---|---|---|
+| Assets scanned within max age | [N/N, %] | [>= target] | [Pass/Fail] |
+| Stale/unscanned assets | [N] | [0 or accepted] | [Pass/Fail] |
+| Authenticated scan success rate | [N%] | [>= 90% or policy] | [Pass/Fail] |
+| Active exclusions without expiry | [N] | [0] | [Pass/Fail] |
+| Blackout make-up scans scheduled | [Yes/No] | [Yes] | [Pass/Fail] |
+| Container deployed-digest scan overlap | [N%] | [policy] | [Pass/Fail/N/A] |
 
 ### False Positive Analysis
 
@@ -398,6 +455,12 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 4. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
+
+6. **Tuning stale scan results.** A clean-looking policy with many suppressions is not reliable if assets have not been scanned recently. Always evaluate coverage freshness before accepting FP rates, severity overrides, or tuning success metrics.
+
+7. **Ignoring blackout debt.** Maintenance blackouts, change freezes, and OT moratoriums are sometimes necessary, but every skipped scan creates debt. Record the owner, expiry, make-up scan, and compensating telemetry.
+
+8. **Trusting credentialed scan status without success rate.** "Authenticated scanning enabled" is not the same as authenticated scanning working. Track auth success by platform and block auth-dependent false-positive decisions when credentials fail.
 
 ---
 
