@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -91,7 +91,33 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
-### Step 11: Compile Assessment Report
+### Step 11: Diagnostic Pipeline Integrity Review
+
+For CIS Section 5 logging and monitoring checks, do not mark a subscription or resource as passing from the existence of `azurerm_monitor_diagnostic_setting` alone. Prove the full diagnostic pipeline for each in-scope subscription and critical resource type.
+
+Verify:
+
+- **Resource coverage:** Activity Log diagnostics cover each subscription, and resource diagnostics cover in-scope Key Vault, Storage, SQL, NSG, App Service, and other critical resource instances.
+- **Category and category-group coverage:** Security-relevant categories such as `Administrative`, `Security`, `Policy`, `ServiceHealth`, `ResourceHealth`, Key Vault `AuditEvent`, and supported `category_group = "allLogs"` or equivalent are enabled. Partial category lists must not pass when supported category groups are expected.
+- **Destination evidence:** Logs route to an approved Log Analytics workspace, Storage Account, or Event Hub with the destination resource ID recorded.
+- **Retention evidence:** Destination retention meets the environment requirement. Record Log Analytics retention, Storage lifecycle/immutability retention, or Event Hub downstream consumer retention. If retention cannot be proven, mark the item `Not Evaluable`.
+- **Destination hardening:** Diagnostic destinations are not public or broadly readable, and storage destinations use private access, CMK, immutability/retention lock, or equivalent controls where policy requires them.
+- **Authorization evidence:** Event Hub authorization rules, Storage access, and Log Analytics roles are scoped to the minimum required principals for log writers and readers.
+- **Sample delivery:** Retain evidence of at least one sample Activity Log or resource log such as Key Vault `AuditEvent` arriving at the destination for the reviewed period, or mark sample delivery `Not Evaluable`.
+
+Use these finding/check IDs when the diagnostic pipeline is incomplete:
+
+| ID | Trigger | Severity Guidance |
+|----|---------|-------------------|
+| AZ-DIAG-01 | Diagnostic settings exist only at subscription scope and omit required critical resource diagnostics. | High for production/regulated critical services; Medium otherwise. |
+| AZ-DIAG-02 | Required category, category group, or security-relevant resource log is missing. | High for missing security categories or Key Vault `AuditEvent`; Medium for partial category coverage. |
+| AZ-DIAG-03 | Destination retention or downstream consumer retention is missing, below requirement, or not evidenced. | Medium; High where regulated retention is required. |
+| AZ-DIAG-04 | Diagnostic destination is public, broadly readable, lacks required CMK/private access, or lacks retention lock where policy requires it. | High. |
+| AZ-DIAG-05 | No sample Activity Log or resource log delivery evidence is available for the destination. | Medium; `Not Evaluable` if no runtime evidence is provided. |
+
+---
+
+### Step 12: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -102,8 +128,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Immediate risk of data breach or unauthorized access | NSGs open to 0.0.0.0/0 on RDP/SSH, SQL databases publicly accessible, Defender for Cloud disabled |
-| **High** | Significant security gap that materially weakens posture | Missing MFA enforcement, storage accounts with public access, Key Vault without purge protection |
-| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2 |
+| **High** | Significant security gap that materially weakens posture | Missing MFA enforcement, storage accounts with public access, Key Vault without purge protection, missing diagnostics for critical resources, diagnostic destination broadly readable |
+| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2, diagnostic retention/sample delivery not evidenced |
 | **Low** | Hardening recommendation or defense-in-depth measure | HTTP/2 not enabled, FTP not fully disabled, missing CMK on non-sensitive storage |
 | **Informational** | Best practice observation, no direct security impact | Naming conventions, tag policies, documentation gaps |
 
@@ -154,6 +180,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Diagnostic Pipeline Evidence
+
+| Scope / Resource | Required Categories | Enabled Categories | Destination | Retention Evidence | Destination Hardening | Sample Delivery | Status |
+|------------------|---------------------|--------------------|-------------|--------------------|-----------------------|-----------------|--------|
+| <subscription or resource ID> | <required categories/category groups> | <enabled categories/category groups> | <Log Analytics / Storage / Event Hub ID> | <retention setting or Not Evaluable> | <private access, CMK, RBAC, lock> | <sample log evidence or Not Evaluable> | Pass / Fail / Not Evaluable |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y.Z -- <action item>
@@ -200,6 +232,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Treating any diagnostic setting as full logging coverage.** A single subscription Activity Log diagnostic setting does not prove Key Vault, Storage, SQL, NSG, App Service, or other resource logs are exported. Verify category coverage, destination hardening, retention, and sample delivery for each in-scope resource.
 
 ---
 
@@ -231,4 +264,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added diagnostic pipeline integrity gates for resource coverage, category/category-group coverage, destination retention, destination hardening, authorization evidence, and sample log delivery.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.

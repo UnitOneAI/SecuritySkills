@@ -396,7 +396,7 @@ Evaluate logging configurations against Section 5 recommendations.
 
 #### CIS 5.1.1 -- Ensure that a 'Diagnostic Setting' exists
 
-Check for diagnostic settings on subscriptions:
+Check for diagnostic settings on subscriptions and critical resources. Subscription Activity Log diagnostics are necessary but not sufficient for resource-level services such as Key Vault, Storage, SQL, NSGs, and App Service.
 
 ```hcl
 resource "azurerm_monitor_diagnostic_setting" {
@@ -405,17 +405,89 @@ resource "azurerm_monitor_diagnostic_setting" {
 }
 ```
 
+**Coverage checks:**
+
+- Subscription Activity Log diagnostic setting targets each in-scope subscription.
+- Resource diagnostic settings target each in-scope critical resource instance, not only the subscription.
+- Resource IDs are explicit or generated from a complete inventory; do not accept one example diagnostic setting as proof for all resources.
+
 #### CIS 5.1.2 -- Ensure Diagnostic Setting captures appropriate categories
 
 Verify that Administrative, Security, ServiceHealth, Alert, Recommendation, Policy, Autoscale, and ResourceHealth categories are enabled.
+
+For resources that support category groups, prefer `category_group = "allLogs"` or explicitly prove every required security category is enabled:
+
+```hcl
+resource "azurerm_monitor_diagnostic_setting" "key_vault" {
+  target_resource_id         = azurerm_key_vault.example.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.security.id
+
+  enabled_log {
+    category = "AuditEvent"
+  }
+}
+
+resource "azurerm_monitor_diagnostic_setting" "resource_all_logs" {
+  target_resource_id         = azurerm_storage_account.example.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.security.id
+
+  enabled_log {
+    category_group = "allLogs"
+  }
+}
+```
+
+**Failure patterns:**
+
+```hcl
+# BAD: Diagnostic setting exists, but no enabled_log block is present.
+resource "azurerm_monitor_diagnostic_setting" "bad_exists_only" {
+  target_resource_id         = azurerm_key_vault.example.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.security.id
+}
+
+# BAD: Key Vault diagnostics omit AuditEvent.
+resource "azurerm_monitor_diagnostic_setting" "bad_key_vault_partial" {
+  target_resource_id         = azurerm_key_vault.example.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.security.id
+
+  enabled_log {
+    category = "AzurePolicyEvaluationDetails"
+  }
+}
+```
 
 #### CIS 5.1.3 -- Ensure the storage container storing the activity logs is not publicly accessible
 
 Check storage account access level for the diagnostic logs container.
 
+For Storage destinations, cross-reference the diagnostic destination with account public access, network rules, container ACLs, and reader role assignments. Flag public containers, `allow_nested_items_to_be_public = true`, default network access `Allow`, or broad `Storage Blob Data Reader` assignments.
+
 #### CIS 5.1.4 -- Ensure the storage account containing the container with activity logs is encrypted with a Customer Managed Key
 
 Cross-reference the diagnostics storage account with CMK encryption.
+
+Where policy requires CMK/private access/immutability, check:
+
+```hcl
+resource "azurerm_storage_account_customer_managed_key" "diagnostic_logs" {
+  storage_account_id = azurerm_storage_account.diag.id
+  key_vault_id       = azurerm_key_vault.security.id
+  key_name           = azurerm_key_vault_key.logs.name
+}
+
+resource "azurerm_storage_management_policy" "diagnostic_retention" {
+  storage_account_id = azurerm_storage_account.diag.id
+  rule {
+    enabled = true
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 365
+      }
+    }
+  }
+}
+```
 
 #### CIS 5.1.5 -- Ensure that logging for Azure Key Vault is 'Enabled'
 
@@ -427,6 +499,26 @@ resource "azurerm_monitor_diagnostic_setting" {
   }
 }
 ```
+
+#### Diagnostic Destination Retention and Delivery Evidence
+
+For every diagnostic setting, record one destination and prove retention:
+
+| Destination Type | Evidence to Require |
+|------------------|---------------------|
+| Log Analytics | Workspace ID, `retention_in_days`, table retention if overridden, reader roles |
+| Storage Account | Account/container ID, network/public access state, CMK if required, lifecycle or immutability policy |
+| Event Hub | Event Hub namespace/topic, authorization rule scope, downstream SIEM/consumer retention evidence |
+
+If runtime output is available, require a sample event at the destination for the reviewed period:
+
+- Activity Log sample for subscription diagnostics.
+- Key Vault `AuditEvent` sample for Key Vault diagnostics.
+- Storage, SQL, NSG, App Service, or other resource log sample for resource diagnostics.
+
+If no sample event or destination retention evidence is available, mark the diagnostic control `Not Evaluable` rather than passing from IaC intent alone.
+
+**Finding IDs:** Use `AZ-DIAG-01` through `AZ-DIAG-05` from `SKILL.md` for missing resource coverage, category gaps, retention gaps, destination hardening gaps, and missing sample delivery.
 
 ### CIS 5.2 -- Activity Log Alerts
 
