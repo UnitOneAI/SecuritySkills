@@ -6,14 +6,14 @@ description: >
   Firewall Policy). Auto-invoked when reviewing firewall configurations, ACLs,
   or network security policies. Produces a prioritized findings report covering
   overly permissive rules, shadowed rules, logging gaps, and egress filtering
-  deficiencies.
+  deficiencies, with explicit hit-counter freshness evidence for unused rules.
 tags: [network, firewall, segmentation]
 role: [security-engineer]
 phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -189,8 +189,22 @@ Rules with zero hit counts over an extended period (30+ days) indicate stale pol
 - Last-hit timestamps where available.
 - Rules referencing decommissioned IP addresses, subnets, or services.
 - Rules with comments referencing past projects or temporary access.
+- Counter baseline timestamp, firewall uptime, policy install time, and HA failover or reload events that could reset counters.
+- Flow logs or SIEM evidence for rules marked unused but protecting seasonal, failover, disaster recovery, or batch traffic.
+- Change ticket, owner, expiry date, and rollback plan before recommending removal of a zero-hit production rule.
 
-**Finding classification:** Unused rules present for 90+ days are **Medium**. Rules referencing decommissioned resources are **High** (may indicate orphaned access paths).
+**Evidence to collect:**
+
+| Evidence | Purpose |
+|----------|---------|
+| Rule hit count and last-hit timestamp | Determines whether the rule has matched traffic during the review window. |
+| Counter baseline or device uptime | Proves zero-hit data covers the intended period and was not reset yesterday. |
+| Policy install / commit timestamp | Identifies rules that are too new to classify as unused. |
+| HA failover, reload, or reboot history | Explains counter resets that would make hit counts unreliable. |
+| Flow log / SIEM query for the same source, destination, and port | Confirms whether traffic exists outside the firewall counter view. |
+| Rule owner and change ticket | Prevents removal of emergency, seasonal, or approved temporary access without review. |
+
+**Finding classification:** Unused rules present for 90+ days are **Medium**. Rules referencing decommissioned resources are **High** (may indicate orphaned access paths). Zero-hit rules without reliable counter-baseline evidence are **Medium** until the review window is proven.
 
 ---
 
@@ -310,6 +324,11 @@ Produce the final report using the following structure.
 | Shadowed Rule | Position | Shadowing Rule | Position | Impact |
 |---------------|----------|----------------|----------|--------|
 
+### Unused Rule Evidence
+| Rule | Hit Count | Last Hit | Counter Baseline | Owner / Ticket | Evidence Quality | Disposition |
+|------|-----------|----------|------------------|----------------|------------------|-------------|
+| <rule id> | <count> | <timestamp/none> | <uptime/install/failover evidence> | <owner/ticket> | Reliable/Weak/Not Evaluable | Remove/Keep/Monitor |
+
 ### Egress Filtering Status
 | Protocol/Port | Restricted | Authorized Destinations |
 |---------------|-----------|------------------------|
@@ -357,7 +376,7 @@ Produce the final report using the following structure.
 
 3. **Ignoring IPv6 rules.** Many environments have parallel IPv4 and IPv6 rule bases (ip6tables, IPv6 security group rules). If IPv6 is not explicitly disabled at the interface level, an unmanaged IPv6 rule base can bypass all IPv4 firewall controls.
 
-4. **Assuming hit count of zero means the rule is unused.** Hit counters reset on firewall reload or failover. Verify the counter baseline timestamp before recommending rule removal. Cross-reference with SIEM/flow data where available.
+4. **Assuming hit count of zero means the rule is unused.** Hit counters reset on firewall reload, policy install, device reboot, or HA failover. Verify the counter baseline timestamp before recommending rule removal. Cross-reference with SIEM/flow data where available, and classify zero-hit evidence as weak when the counter window is shorter than the review period.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
@@ -386,4 +405,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.1.0** -- Added hit-counter freshness evidence requirements for unused rule review, including counter baseline, failover/reset history, owner/ticket, and output table fields.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
