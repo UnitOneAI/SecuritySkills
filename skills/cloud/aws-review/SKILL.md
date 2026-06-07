@@ -99,6 +99,38 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Step 6b: IAM Access Analyzer Finding Review
+
+CIS 1.20 checks whether IAM Access Analyzer is enabled, but an enabled analyzer
+is not enough evidence that external, internal, or unused access findings are
+being reviewed and remediated. When Access Analyzer configuration or exports are
+available, collect analyzer scope, finding status, and archive-rule evidence.
+
+**What to verify:**
+
+- [ ] External access analyzers exist for the intended account or organization trust boundary in each required region.
+- [ ] Unused access analyzers are enabled where the organization relies on Access Analyzer for unused roles, access keys, passwords, or unused permissions review.
+- [ ] Active findings are exported or summarized by analyzer, finding type, resource, principal, and age.
+- [ ] Archived findings have documented business justification and owner, not only broad archive rules.
+- [ ] Archive rules do not automatically hide public access or unapproved cross-account access.
+- [ ] Resolved findings are tied to policy changes, resource changes, or explicit access removal.
+
+**What to look for:**
+
+```
+AWS-AA-01: Access Analyzer exists, but active external-access findings are not reviewed
+AWS-AA-02: Archive rules are broad enough to suppress public or unapproved cross-account findings
+AWS-AA-03: Unused access analyzer is absent where unused role/key/permission review is expected
+AWS-AA-04: Archived findings lack owner, approval, or business justification
+AWS-AA-05: Resolved findings are not tied to a policy or resource change that removed the access
+```
+
+Do not mark CIS 1.20 as fully effective based only on an `aws_accessanalyzer_analyzer`
+resource when finding review, archive rules, and unused-access coverage are not
+available.
+
+---
+
 ### Step 7: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
@@ -163,6 +195,12 @@ Produce the final report using the structure defined in the Output Format sectio
 1. **[Critical]** CIS X.Y -- <action item>
 2. **[High]** CIS X.Y -- <action item>
 3. ...
+
+### IAM Access Analyzer Findings
+
+| Analyzer | Scope | Finding Type | Active | Archived | Resolved | Oldest Active Finding | Notes |
+|----------|-------|--------------|--------|----------|----------|-----------------------|-------|
+| <name> | <account/org> | <external/internal/unused> | <N> | <N> | <N> | <age> | <archive-rule or remediation notes> |
 
 ### Summary
 - Critical findings: <N>
