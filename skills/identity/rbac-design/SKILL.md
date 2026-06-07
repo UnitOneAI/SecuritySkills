@@ -286,6 +286,42 @@ Effect:      Permit
 Obligations: log_access(subject.id, resource.id, timestamp)
 ```
 
+#### Policy Precedence and Conflict Resolution
+
+Hybrid RBAC/ABAC systems often have multiple permit and deny rules that can match the
+same request. The authorization design must define how the PDP combines those
+decisions before the PEP enforces them. A broad role permit must not silently
+override high-risk deny conditions such as account suspension, tenant mismatch,
+data classification limits, device non-compliance, or expired break-glass access.
+
+**What to verify:**
+
+- [ ] A policy combining algorithm is documented (deny-overrides, permit-overrides,
+      first-applicable, priority order, or a platform-specific equivalent).
+- [ ] Requests with no matching permit, incomplete policy evaluation, or ambiguous
+      PDP results default to deny.
+- [ ] High-risk deny rules override broad role permits unless an approved
+      break-glass path explicitly says otherwise.
+- [ ] Missing or stale PIP attributes fail closed for sensitive resources and
+      privileged actions.
+- [ ] First-match or priority-ordered policies have versioned ordering,
+      reviewer approval, and regression tests for rule reordering.
+- [ ] Break-glass overrides require ticket/reference, expiry, approval, and audit
+      obligations before they can bypass normal denies.
+- [ ] Application code, API gateways, PDPs, and database row-level-security rules
+      use the same precedence model or document intentional differences.
+
+**Conflict test cases to require:**
+
+| Test case | Expected decision | Evidence |
+|---|---|---|
+| Suspended user has a broad reader/admin role | Deny | Negative policy test or PDP decision log |
+| Tenant admin requests another tenant's resource | Deny | Tenant-boundary test with mismatched tenant IDs |
+| No policy rule matches the request | Deny | Default-deny test or PDP decision trace |
+| Device compliance or risk attribute is missing | Deny for sensitive action | PIP outage or missing-attribute simulation |
+| Break-glass role bypasses a normal deny | Permit only with required obligations | Test proving ticket, expiry, approval, and audit log |
+| Policy order changes | No privilege expansion | Regression test comparing old and new decision matrix |
+
 **What to look for in existing ABAC implementations:**
 
 ```
@@ -297,6 +333,13 @@ RBAC-ABAC-05: Environment attributes (time, location, risk) not utilized
 RBAC-ABAC-06: ABAC policies not testable — no simulation or dry-run capability
 RBAC-ABAC-07: Policy conflicts not detected — overlapping permit/deny without resolution order
 RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
+RBAC-PREC-01: No documented policy combining algorithm for overlapping permit/deny rules
+RBAC-PREC-02: Requests with no matching permit, partial evaluation, or ambiguous PDP result do not default to deny
+RBAC-PREC-03: High-risk deny rules can be bypassed by broad role permits
+RBAC-PREC-04: Missing PIP attributes fail open for sensitive resources or privileged actions
+RBAC-PREC-05: First-match or priority-ordered policies lack ordering regression tests
+RBAC-PREC-06: Break-glass overrides bypass denies without ticket, expiry, approval, and audit obligations
+RBAC-PREC-07: Enforcement layers use inconsistent precedence models (app, gateway, PDP, database RLS)
 ```
 
 ---
@@ -380,6 +423,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - NIST RBAC Level: [RBAC0 / RBAC1 / RBAC2 / RBAC3]
 - ABAC Adoption: [None / Partial / Full]
 - Centralized PDP: [Yes / No / Partial]
+- Policy Precedence Model: [deny-overrides / permit-overrides / first-applicable / priority order / undocumented]
 
 ### Findings by Category
 - Authorization State (Step 1): [count]
@@ -391,6 +435,15 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 
 ### Detailed Findings
 [Findings table]
+
+### Policy Conflict Test Evidence
+| Scenario | Expected Decision | Evidence Source | Result |
+|---|---|---|---|
+| Suspended or disabled subject with broad role grant | Deny | [test/log/policy trace] | [pass/fail/not tested] |
+| Cross-tenant resource request by tenant admin | Deny | [test/log/policy trace] | [pass/fail/not tested] |
+| No matching permit or ambiguous PDP result | Deny | [test/log/policy trace] | [pass/fail/not tested] |
+| Missing device/risk/classification attribute | Deny for sensitive action | [test/log/policy trace] | [pass/fail/not tested] |
+| Break-glass override | Permit only with obligations | [test/log/policy trace] | [pass/fail/not tested] |
 
 ### Design Recommendations
 [Architecture diagram or pattern with framework justification]
