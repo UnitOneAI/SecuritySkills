@@ -6,7 +6,8 @@ description: >
   Key Management). Auto-invoked when reviewing secret handling patterns, vault
   configurations, .env files, or credential rotation policies. Produces a secrets
   management assessment covering detection patterns, rotation automation, vault
-  integration, and agent-specific credential handling.
+  integration, bootstrap identity, recovery paths, and agent-specific credential
+  handling.
 tags: [devsecops, secrets, vault, rotation]
 role: [security-engineer, devsecops]
 phase: [build, operate]
@@ -85,9 +86,17 @@ Use Glob and Grep to locate files that commonly contain or reference secrets.
 
 # Vault and secrets manager configurations
 **/vault*
+**/vault/**/*.hcl
+**/vault/**/*.json
 **/*-secret*
 **/external-secrets*
 **/sealed-secrets*
+**/workload-identity*
+**/oidc*
+**/federation*
+**/break-glass*
+**/breakglass*
+**/recovery*
 
 # CI/CD configuration (may reference secrets)
 **/.github/workflows/*.yml
@@ -352,13 +361,75 @@ spec:
 
 ---
 
+### Step 5.5: Bootstrap Secret-Zero and Recovery Evidence
+
+Centralized secret storage does not remove the need for an initial bootstrap identity. Review how the first credential is obtained, scoped, rotated, and recovered after compromise.
+
+#### 5.5.1 Secret-Zero Source and Constraints
+
+Inventory every bootstrap path that allows a workload, pipeline, or agent to retrieve secrets from Vault or a cloud secrets manager.
+
+**Safe patterns to verify:**
+
+- OIDC or workload identity federation is used instead of a long-lived bootstrap token.
+- Trust policy is constrained by issuer, audience, repository/project, branch or tag, environment, namespace, and service account where applicable.
+- The bootstrap identity can retrieve only the specific secret paths needed by the workload.
+- Bootstrap material is not baked into container images, VM images, repo files, Terraform state, CI variables, or runbooks.
+
+**Risky patterns to flag:**
+
+```sh
+# BAD: long-lived bootstrap token read from disk and used to fetch all secrets
+VAULT_TOKEN=$(cat /var/run/bootstrap-token)
+vault kv get -format=json secret/prod/*
+```
+
+```yaml
+# BAD: unconstrained workload identity condition
+workload_identity:
+  enabled: true
+  allowed_repositories: ["*"]
+  allowed_branches: ["*"]
+  vault_policy: "prod-read-all"
+```
+
+**Finding classification:** Long-lived bootstrap material that can retrieve broad secret paths is **High**. Bootstrap credentials baked into images or committed files are **Critical** if still valid. Workload identity without issuer/audience/subject constraints is **High**.
+
+#### 5.5.2 Bootstrap Token TTL, Rotation, and Revocation
+
+For each bootstrap mechanism, verify:
+
+- Token TTL matches the bootstrap window and is not reused as a runtime credential.
+- Failed bootstrap attempts trigger logging, alerting, and revocation where supported.
+- Bootstrap credentials rotate automatically after image build, deploy, or incident recovery.
+- Vault AppRole secret IDs, Kubernetes service account tokens, and CI OIDC sessions are single-use or short-lived where feasible.
+- Audit logs show which workload identity retrieved which secret path.
+
+**Finding classification:** Bootstrap token TTL exceeding the deployment window by more than 10x is **Medium**. No revocation path after failed bootstrap or suspected compromise is **High**.
+
+#### 5.5.3 Recovery and Break-Glass Custody
+
+Break-glass credentials are secrets and must be reviewed as such.
+
+Verify:
+
+- Break-glass credentials are stored in a dedicated emergency access system or sealed escrow, not in PDFs, tickets, wikis, or shared drives.
+- Access requires dual control or explicit approval, and every retrieval is logged.
+- The runbook names an owner, test cadence, expiration/rotation cadence, and post-use rotation steps.
+- Recovery drills prove the credential works without exposing the value in logs or screenshots.
+- Post-incident recovery includes revocation of old bootstrap tokens and re-seeding of workload identities.
+
+**Finding classification:** Break-glass passwords in documents, screenshots, or tickets are **Critical** if usable. Missing owner/test/rotation evidence is **High** for production systems and **Medium** for lower environments.
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed; valid bootstrap or break-glass credentials stored in images, docs, tickets, or repo files. |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; unconstrained bootstrap identity; broad secret-zero policy; missing break-glass owner/test/rotation evidence; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; missing bootstrap revocation evidence; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -388,6 +459,13 @@ spec:
 | DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
+
+### Bootstrap and Recovery Evidence
+
+| Workload/Pipeline | Bootstrap Method | Constraints Verified | TTL | Secret Scope | Recovery Evidence |
+|-------------------|------------------|----------------------|-----|--------------|-------------------|
+| deploy-prod | GitHub OIDC to Vault JWT auth | repo, branch, environment, audience | 15m | `secret/prod/payments/*` | dual-control break-glass tested quarterly |
+| legacy-worker | file-mounted bootstrap token | none | 30d | `secret/prod/*` | runbook password, no owner |
 
 ### Findings
 
@@ -442,6 +520,12 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Treating workload identity as automatically safe.** OIDC and workload identity federation are only safe when trust policies are constrained. A wildcard repository, branch, namespace, or service account can become a broad secret-zero path.
+
+6. **Centralizing secrets but ignoring the first credential.** Vault, cloud secret managers, and External Secrets still need an initial identity. Reviewers must verify how that bootstrap identity is delivered, scoped, expired, and revoked.
+
+7. **Break-glass credentials without recovery drills.** A sealed emergency credential that is never tested may fail during an incident; a tested credential that is not rotated after use becomes a long-lived backdoor.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -465,11 +549,16 @@ This skill processes configuration files and code that may contain secret values
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
+- HashiCorp Vault AppRole Auth Method: https://developer.hashicorp.com/vault/docs/auth/approle
+- HashiCorp Vault JWT/OIDC Auth Method: https://developer.hashicorp.com/vault/docs/auth/jwt
+- GitHub Actions OIDC Hardening: https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect
+- Kubernetes Service Account Tokens: https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/
 - External Secrets Operator: https://external-secrets.io/
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Add bootstrap secret-zero and break-glass recovery evidence gates.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
