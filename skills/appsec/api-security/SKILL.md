@@ -41,6 +41,23 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
+### Cross-Protocol Evidence Gates
+
+Mixed API estates often combine REST routes, GraphQL resolvers, gRPC services, API gateways, and generated clients. Before assigning a finding or marking an area clean, collect evidence from the implementation layer that enforces the control, then map it back to the published contract.
+
+| Gate | Evidence Required | Applies To | Prevents |
+|---|---|---|---|
+| **API-EVID-01 Route/operation parity** | Published OpenAPI paths, GraphQL schema fields, gRPC proto services, gateway routes, and code handlers are cross-checked for undocumented or orphaned operations. | API9, all styles | Shadow API findings based only on one inventory source. |
+| **API-EVID-02 Authentication enforcement point** | Each operation has evidence of the concrete authenticator or interceptor used at the route, resolver, service, or gateway layer. | API2, REST, GraphQL, gRPC | Assuming inherited authentication without a verified enforcement point. |
+| **API-EVID-03 Object authorization path** | Object identifiers are traced from request input to data access and matched to ownership, tenancy, or relationship checks. | API1, REST, GraphQL, gRPC | BOLA misses where controller-level auth exists but data access is unscoped. |
+| **API-EVID-04 Function authorization path** | Privileged operations are traced to role, permission, policy, or ABAC checks at the callable operation. | API5, all styles | Confusing route grouping or naming with actual role enforcement. |
+| **API-EVID-05 Property exposure and mutation controls** | Response serializers, schema projections, DTOs, mass-assignment binders, and GraphQL field resolvers are reviewed together. | API3, REST, GraphQL | Missing excessive exposure or mass assignment through generated models. |
+| **API-EVID-06 Cost and abuse controls** | Rate limits, pagination caps, query depth, batch size, export limits, and business-flow counters are tied to the expensive operation they protect. | API4, API6, all styles | Counting only gateway throttles while resolver/service costs remain unlimited. |
+| **API-EVID-07 Upstream consumption boundary** | Webhooks, third-party callbacks, internal service responses, schema validation, mTLS/TLS validation, retries, and timeout handling are reviewed. | API7, API10 | Trusting upstream API responses or callback URLs without validation evidence. |
+| **API-EVID-08 Deployment-context controls** | Environment-specific gateway, CORS, debug endpoint, versioning, and deprecation settings are checked against production configuration. | API8, API9 | Treating local or sample config as production evidence. |
+
+When a required evidence source is unavailable, mark that control as **Inconclusive** and explain the missing artifact. Reserve **Mitigated** for controls with implementation-level evidence, not documentation-only intent.
+
 ---
 
 ## Steps 2-11: OWASP API Security Top 10:2023 Evaluation (API1-API10)
@@ -67,7 +84,8 @@ Each finding produced by this review must include the following fields:
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
 | **Remediation** | Specific fix with code example where possible |
-| **Status** | Open, Mitigated, Accepted Risk, False Positive |
+| **Status** | Open, Mitigated, Accepted Risk, False Positive, or Inconclusive |
+| **Evidence Gate(s)** | API-EVID identifier(s) that support the finding or missing-control conclusion |
 
 ### Severity Definitions
 
@@ -93,6 +111,19 @@ The final review output must be structured as follows:
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
 **Reviewer:** AI Agent -- api-security skill v1.0.0
+
+### Cross-Protocol Evidence Matrix
+
+| Evidence Gate | REST | GraphQL | gRPC | Gateway/Edge | Status | Artifact Reviewed |
+|---|---:|---:|---:|---:|---|---|
+| API-EVID-01 Route/operation parity | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [spec/schema/proto/routes] |
+| API-EVID-02 Authentication enforcement point | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [middleware/interceptor/config] |
+| API-EVID-03 Object authorization path | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [handler/resolver/service/data access] |
+| API-EVID-04 Function authorization path | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [policy/role check] |
+| API-EVID-05 Property exposure and mutation controls | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [serializer/schema/DTO/binder] |
+| API-EVID-06 Cost and abuse controls | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [rate/depth/batch/export limit] |
+| API-EVID-07 Upstream consumption boundary | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [webhook/client/timeout/TLS validation] |
+| API-EVID-08 Deployment-context controls | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Y/N/NA] | [Pass/Fail/Inconclusive] | [production gateway/config] |
 
 ### Summary
 
@@ -127,6 +158,7 @@ The final review output must be structured as follows:
   ```
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
+- **Evidence Gate(s):** API-EVID-[NN]
 
 [Repeat for each finding]
 ```
@@ -213,7 +245,9 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
-6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+6. **Reviewing the API contract without the callable implementation.** OpenAPI, GraphQL schemas, proto files, and gateway routes describe intent. The security conclusion comes from matching those contracts to the middleware, resolver, service, serializer, and data-access code that actually enforces the control.
+
+7. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
 ---
 
