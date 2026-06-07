@@ -208,6 +208,56 @@ resource "google_logging_project_sink" {
 }
 ```
 
+**Export integrity evidence gates:**
+
+| Gate | Pass Evidence | Fail / Not Evaluable Pattern |
+|------|---------------|------------------------------|
+| Sink scope | Project, folder, or organization sink scope matches the environment's audit boundary | Project-only sink for regulated folder/org activity without separate higher-scope export |
+| Filter completeness | Empty filter, or a documented allowlist that still includes Admin Activity, IAM policy, KMS, VPC firewall, Cloud SQL, GCS IAM, and Data Access events required by policy | Filters such as `severity>=ERROR` or narrow service filters that drop routine audit events |
+| Sink exclusions | No sink exclusion removes security-relevant audit logs, or exclusions are documented and risk-accepted | `google_logging_*_exclusion` drops Data Access, KMS, IAM, VPC firewall, Cloud SQL, or GCS IAM evidence |
+| `_Default` exclusions | Default bucket exclusions are reviewed when local retention is part of the evidence chain | `_Default` bucket exclusions remove audit records before retention/export assumptions are verified |
+| Destination IAM | Sink writer identity has least privilege to write logs only; readers/admins are scoped to logging/security roles | Broad `roles/storage.admin`, `roles/bigquery.admin`, or public/allUsers access on the destination |
+| Destination proof | At least one security-relevant audit event is observed at the destination, or the report marks this Not Evaluable | Sink exists in IaC but no destination sample/event query is reviewed |
+
+**Grep patterns:**
+
+```text
+google_logging_project_sink
+google_logging_folder_sink
+google_logging_organization_sink
+google_logging_.*_exclusion
+exclusion
+_Default
+roles/storage.admin
+roles/bigquery.admin
+allUsers
+allAuthenticatedUsers
+```
+
+**Problematic examples:**
+
+```hcl
+# BAD: drops routine Admin Activity / IAM events
+resource "google_logging_project_sink" "security_logs" {
+  destination = "storage.googleapis.com/${google_storage_bucket.logs.name}"
+  filter      = "severity>=ERROR"
+}
+
+# BAD: removes data-access evidence needed for investigations
+resource "google_logging_project_exclusion" "drop_data_access" {
+  name        = "drop-data-access"
+  filter      = "protoPayload.serviceName=\"storage.googleapis.com\""
+  description = "Reduce logging volume"
+}
+
+# BAD: broad destination administration instead of sink-writer-only access
+resource "google_storage_bucket_iam_member" "sink_admin" {
+  bucket = google_storage_bucket.logs.name
+  role   = "roles/storage.admin"
+  member = google_logging_project_sink.security_logs.writer_identity
+}
+```
+
 ### CIS 2.3 -- Ensure that Retention Policies on Cloud Storage Buckets Used for Exporting Logs Are Configured Using Bucket Lock
 
 ```hcl
@@ -218,6 +268,36 @@ resource "google_storage_bucket" {
   }
 }
 ```
+
+For GCS log destinations, require `retention_policy.is_locked = true` and a retention period consistent with policy or regulatory requirements. For non-GCS destinations, record equivalent immutability evidence such as BigQuery table expiration controls, Pub/Sub downstream retention, SIEM/archive WORM controls, or vendor retention-lock settings. If CMEK or default KMS is required by organizational policy, verify the destination key configuration and key IAM separately from the sink.
+
+**Additional Terraform patterns:**
+
+```hcl
+# GOOD: locked GCS retention for exported logs
+resource "google_storage_bucket" "logs" {
+  name = "prod-security-logs"
+
+  retention_policy {
+    retention_period = 2678400
+    is_locked        = true
+  }
+
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.log_archive.id
+  }
+}
+
+# REVIEW: BigQuery destination needs retention/expiration evidence
+resource "google_logging_project_sink" "bq_logs" {
+  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.logs.dataset_id}"
+}
+```
+
+**Finding classification:**
+
+- **High** if production or regulated projects lack durable export for security-relevant audit events, security-relevant events are excluded from export, or destination IAM grants broad read/admin access.
+- **Medium** if retention is present but not locked, destination retention is not evidenced, CMEK/default KMS is missing where policy requires it, or no destination sample event was reviewed.
 
 ### CIS 2.4 -- Ensure Log Metric Filter and Alerts Exist for Project Ownership Assignments/Changes
 

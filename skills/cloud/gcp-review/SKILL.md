@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -86,6 +86,8 @@ Evaluate all GCP configurations against CIS GCP v2.0.0 Sections 1 through 7, cov
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, grep patterns, and configuration examples for all seven sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
 
+For Section 2 logging controls, do not stop at the existence of audit logging or a log sink resource. Verify the complete audit-log export path: sink scope, sink filters and exclusions, `_Default` bucket exclusions, destination IAM, retention lock or equivalent immutability, CMEK/default KMS where policy requires it, and a sample security-relevant audit event observed at the destination or explicitly marked Not Evaluable.
+
 ---
 
 ### Step 9: Compile Assessment Report
@@ -150,6 +152,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Logging Export Integrity
+
+| Scope | Sink | Filter / Exclusions | Destination | Destination IAM | Retention / Lock | CMEK / KMS | Sample Event at Destination | Status |
+|-------|------|---------------------|-------------|-----------------|------------------|------------|-----------------------------|--------|
+| project/folder/org | <sink name> | <all logs or documented filter> | <bucket/topic/dataset> | <least privilege evidence> | <duration + locked/equivalent> | <key evidence or N/A> | <event id/query or Not Evaluable> | Pass/Fail/Not Evaluable |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -193,7 +201,8 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **VPC flow logs must be per-subnet.** CIS 3.8 requires flow logs on every subnet, not just the VPC. Each `google_compute_subnetwork` must have a `log_config` block.
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
-6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+6. **Assuming log export works because a sink exists.** A `google_logging_*_sink` resource is only the start of the evidence chain. Review sink filters, exclusions, `_Default` bucket exclusions, destination IAM, retention immutability, CMEK requirements, and at least one destination-observed audit event before marking logging export controls healthy.
+7. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
 
 ---
 
@@ -217,6 +226,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
+- Google Cloud aggregated sinks and exclusions: https://cloud.google.com/logging/docs/export/aggregated_sinks
+- Google Cloud log bucket retention: https://cloud.google.com/logging/docs/buckets
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
@@ -225,4 +236,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.1.0** -- Add logging export integrity gates for sink scope, exclusions, destination IAM, retention, CMEK, and destination sample-event evidence.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
