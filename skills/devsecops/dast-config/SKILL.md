@@ -329,6 +329,35 @@ env:
 
 **Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**.
 
+#### 4.2 Recorded Flow and State Freshness
+
+Recorded browser flows, HAR files, Postman collections, and seed fixtures are
+often used to reach authenticated or multi-step application states. Treat these
+artifacts as part of the DAST configuration because stale or unsafe recordings can
+make scans silently skip protected paths, replay one-time tokens, or mutate shared
+test data.
+
+**What to verify:**
+
+- [ ] Recorded flows are regenerated or validated against the deployed build before use.
+- [ ] CSRF tokens, OAuth state/nonce values, MFA/OTP codes, signed URLs, and reset links are not replayed from static recordings.
+- [ ] Seed data is isolated per scan run or restored after active scanning.
+- [ ] State-changing requests have idempotent fixtures or explicit exclusions when they cannot be made safe.
+- [ ] Multi-role scans use separate users and do not reuse cookies, bearer tokens, or browser storage between roles.
+- [ ] The scanner fails loudly when a recorded flow cannot reach the expected authenticated state.
+
+**What to look for:**
+
+```
+DAST-STATE-01: HAR/Postman/browser recording contains static CSRF, OAuth state, nonce, OTP, or reset-link values
+DAST-STATE-02: Recorded flow has no build/version freshness check before reuse
+DAST-STATE-03: Active scan mutates shared staging data without reset, snapshot restore, or disposable fixtures
+DAST-STATE-04: Multi-role scan reuses cookies, local storage, bearer tokens, or browser context across users
+DAST-STATE-05: Scanner continues after a recorded login or setup flow fails to reach the expected state
+```
+
+**Finding classification:** Static replay of one-time authentication or CSRF material is **High**. Shared mutable seed data without reset is **High** for active scans. Missing recorded-flow freshness checks are **Medium**.
+
 ---
 
 ### Step 5: CI/CD DAST Integration
@@ -518,6 +547,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
+| Recorded flow/state safety | Yes/No | <HAR/Postman/browser flow freshness, token replay, seed data reset> |
 | Results deduplication | Yes/No | <dedup method> |
 
 ### Findings
