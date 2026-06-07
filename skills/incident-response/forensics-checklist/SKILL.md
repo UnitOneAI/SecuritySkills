@@ -332,12 +332,44 @@ gcloud compute disks snapshot [disk-name] --zone [zone] --snapshot-names forensi
 gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-DDT23:59:59Z"'
 ```
 
+#### 6a: Ephemeral Cloud Workload Evidence
+
+Ephemeral workloads disappear or mutate faster than disks and audit logs. A cloud disk snapshot plus provider audit log export is not complete evidence for a Kubernetes pod, managed container task, serverless function, or container image tag incident unless workload-level state is also preserved.
+
+**Kubernetes and managed container workloads:**
+- Preserve pod or task specs, events, current logs, previous container logs, container statuses, restart counts, termination reasons, and exit codes.
+- Record immutable image digests, not only mutable tags such as `latest` or `prod`.
+- Record namespace/project, node, service account, owner references, labels, annotations, mounted volumes, ConfigMap and Secret references, environment variables, command/entrypoint, network policy, and relevant admission/audit events.
+- For EKS, AKS, GKE, ECS, Fargate, Cloud Run, and similar services, capture deployment/task/revision metadata and provider control-plane events because traditional host disk imaging may not exist.
+
+**Example Kubernetes capture commands:**
+```
+kubectl get pod [pod] -n [namespace] -o yaml > pod_[pod]_[timestamp].yaml
+kubectl describe pod [pod] -n [namespace] > pod_[pod]_[timestamp]_describe.txt
+kubectl logs [pod] -n [namespace] --all-containers --timestamps > pod_[pod]_logs_[timestamp].txt
+kubectl logs [pod] -n [namespace] --all-containers --previous --timestamps > pod_[pod]_previous_logs_[timestamp].txt
+kubectl get events -n [namespace] --sort-by=.lastTimestamp > namespace_[namespace]_events_[timestamp].txt
+kubectl get deploy,rs,sts,ds,job,cronjob -n [namespace] -o yaml > workload_owners_[namespace]_[timestamp].yaml
+kubectl get networkpolicy -n [namespace] -o yaml > networkpolicy_[namespace]_[timestamp].yaml
+```
+
+**Serverless workloads:**
+- Preserve immutable function version or revision, alias mapping, deployment package hash or source revision, runtime, layers/extensions, environment and secret references, execution role/service account, trigger/event source mapping, invocation logs, error logs, and provider audit logs.
+- Treat mutable aliases such as `prod`, `$LATEST`, or traffic-splitting revisions as pointers, not evidence. Record the exact version or revision that handled the suspicious invocation.
+- Record deployment history and who/what changed the alias, trigger, environment, image, or package during the investigation window.
+
+**Explicit findings to raise:**
+- The report relies on a disk snapshot alone for an ephemeral workload.
+- A container tag or function alias is recorded without an immutable digest, version, revision, or package hash.
+- Pod/task/function logs, previous logs, events, container statuses, triggers, or deployment history were not preserved before eviction, scale-down, redeploy, or log rotation.
+
 **Cloud forensic considerations:**
 - Snapshots are not bitstream images -- they capture allocated blocks only, not unallocated space or slack
 - Enable VPC Flow Logs, CloudTrail (with log file validation), and audit logging BEFORE incidents occur
 - Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- Ephemeral workloads require workload-level evidence gates; mutable tags, aliases, and control-plane snapshots are insufficient without immutable workload identity and runtime state.
 
 ---
 
@@ -401,6 +433,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### Ephemeral Cloud Workload Evidence (if applicable)
+| Workload Type | Resource | Immutable Identity | Runtime State | Logs/Events | Control Plane Evidence | Gap |
+|---|---|---|---|---|---|---|
+| [Kubernetes pod / ECS task / Cloud Run revision / Lambda function] | [name/id] | [image digest / version / revision / package hash] | [pod spec/status/env/volumes/triggers] | [current logs / previous logs / events / invocation logs] | [audit/deploy/alias/owner refs] | [missing evidence or N/A] |
 ```
 
 ---
@@ -457,6 +494,10 @@ Disk imaging on a live system can take hours. During that time, volatile evidenc
 
 Applying traditional forensic methods to cloud environments without adaptation leads to evidence gaps. EBS snapshots do not capture unallocated disk space. Serverless environments have no persistent disk. Cloud provider logs have limited retention periods and may not be enabled by default. VPC Flow Logs capture IP-level metadata, not packet content. Understand the evidence limitations of each cloud service and ensure logging is enabled before an incident occurs.
 
+### Pitfall 4a: Treating Mutable Ephemeral Workloads as Preserved Evidence
+
+Kubernetes pods can be evicted, containers can restart, serverless aliases can move to a new version, and managed container tags can be retargeted while the incident is still being investigated. A report that records only a disk snapshot, provider audit logs, `latest` image tag, or `prod` function alias can miss the exact workload that executed. Preserve pod/task/function specs, immutable image digests or function versions, previous logs, events, runtime status, trigger mappings, and deployment history before scale-down, redeploy, eviction, or log rotation destroys that evidence.
+
 ### Pitfall 5: Overwriting Evidence with Collection Activity
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
@@ -487,3 +528,5 @@ This skill processes forensic artifacts, log files, memory dumps, and system con
 8. **ACSC Digital Forensics Guide** -- https://www.cyber.gov.au/resources-business-and-government/essential-cyber-security/publications/digital-forensics
 9. **SWGDE Best Practices for Computer Forensics** -- https://www.swgde.org/documents
 10. **AWS Security Incident Response Guide** -- https://docs.aws.amazon.com/whitepapers/latest/aws-security-incident-response-guide/
+11. **Kubernetes Pods** -- https://kubernetes.io/docs/concepts/workloads/pods/
+12. **AWS Lambda Function Versions** -- https://docs.aws.amazon.com/lambda/latest/dg/configuration-versions.html
