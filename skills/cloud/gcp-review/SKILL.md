@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -88,7 +88,22 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Logging Export Integrity Evidence
+
+When evaluating Section 2 logging controls, confirm that audit logs are not only enabled but also exported to a durable, protected destination. Treat the following as required evidence before marking log sink and retention controls as passed:
+
+- **Sink scope:** project, folder, or organization sink, with explicit note when project-level sinks leave folder/org logs uncovered.
+- **Sink filter and exclusions:** sink `filter`, `exclusions`, and any `_Default` bucket exclusions that could drop Admin Activity, Data Access, IAM, KMS, VPC firewall, or Cloud SQL audit events.
+- **Destination hardening:** GCS logging bucket, BigQuery dataset, Pub/Sub topic, or SIEM destination with least-privilege writer IAM for the sink service account.
+- **Retention protection:** locked retention policy for GCS log buckets or equivalent retention/immutability controls for non-GCS destinations.
+- **Encryption and access:** CMEK/default KMS key where required by policy, restricted viewer access, and separation between log writers and log readers/admins.
+- **Export test evidence:** recent sample audit event present at the destination, or a documented reason why live export validation is not available.
+
+**Finding classification:** Logging enabled without durable export is **High** for regulated or production projects. Sink exclusions that remove security-relevant audit events are **High**. Logging buckets without locked retention are **Medium**. Sink destinations writable or readable by broad principals are **High**.
+
+---
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -100,8 +115,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Immediate risk of data breach or unauthorized access | Public GCS buckets, firewall rules allowing 0.0.0.0/0 on SSH/RDP, Cloud SQL with public IP and no SSL, user-managed SA keys with admin roles |
-| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs |
-| **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, Shielded VM not enabled, uniform bucket access not set |
+| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, audit log sinks with security-event exclusions, no VPC flow logs, instances with public IPs |
+| **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, logging buckets without locked retention, Shielded VM not enabled, uniform bucket access not set |
 | **Low** | Hardening recommendation or defense-in-depth measure | OS Login not enabled, serial port access not explicitly disabled, BigQuery tables without CMEK |
 | **Informational** | Best practice observation, no direct security impact | Default network still exists (non-production), naming conventions, documentation gaps |
 
@@ -138,6 +153,17 @@ Produce the final report using the structure defined in the Output Format sectio
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
 
+### Logging Export Integrity
+
+| Control | Status | Evidence |
+|---------|--------|----------|
+| Audit log sink scope | Pass/Fail/Not Evaluable | <project/folder/org sink and covered resources> |
+| Security-event exclusions | Pass/Fail/Not Evaluable | <sink exclusions and _Default bucket exclusions reviewed> |
+| Destination retention | Pass/Fail/Not Evaluable | <bucket lock, dataset retention, SIEM retention, or gap> |
+| Destination IAM | Pass/Fail/Not Evaluable | <sink writer principal and viewer/admin bindings> |
+| CMEK/encryption | Pass/Fail/Not Evaluable | <KMS key or default encryption evidence> |
+| Export validation | Pass/Fail/Not Evaluable | <sample audit event observed at destination> |
+
 ### Detailed Findings
 
 #### [CIS X.Y] <Recommendation Title>
@@ -172,7 +198,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Section | Domain | Key Focus Areas |
 |---------|--------|-----------------|
 | 1 | Identity and Access Management | Corporate credentials, MFA, service account keys, admin privileges, SA role assignments, KMS key access, API key restrictions, Essential Contacts |
-| 2 | Logging and Monitoring | Cloud Audit Logs (admin/data read/write), log sinks, bucket lock retention, metric filters and alerts (8 categories), DNS logging, Cloud Asset Inventory |
+| 2 | Logging and Monitoring | Cloud Audit Logs (admin/data read/write), log sinks, sink exclusions, destination IAM, bucket lock retention, metric filters and alerts (8 categories), DNS logging, Cloud Asset Inventory |
 | 3 | Networking | Default network removal, legacy networks, DNSSEC, firewall rules (SSH/RDP from internet), VPC flow logs, SSL policies, IAP-only access |
 | 4 | Virtual Machines | Default service accounts, access scopes, project SSH key blocking, OS Login, serial port, IP forwarding, CMEK disks, Shielded VM, public IPs, Confidential Computing |
 | 5 | Storage | Public bucket access, uniform bucket-level access |
@@ -194,6 +220,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Passing logging controls based only on `google_project_iam_audit_config`.** Audit logs can be enabled but then dropped by sink filters, sink exclusions, `_Default` bucket exclusions, or short retention on the destination. Always verify the export path and destination controls.
 
 ---
 
@@ -217,6 +244,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
+- Google Cloud Log Router Sinks and Exclusions: https://cloud.google.com/logging/docs/routing/overview
+- Google Cloud Log Storage Retention: https://cloud.google.com/logging/docs/storage
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
@@ -226,3 +255,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+- **1.0.1** -- Add logging export integrity evidence for sink scope, exclusions, destination IAM, retention, CMEK, and sample export validation.
