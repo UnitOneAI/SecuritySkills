@@ -99,6 +99,49 @@ CUSTODY LOG:
 - Compute and record cryptographic hashes (SHA-256 minimum) at collection time and verify at each transfer
 - Maintain a continuous, unbroken record from collection through final disposition
 
+### Step 1b: Record Time Source and Clock Skew
+
+Forensic timelines fail when evidence from endpoints, cloud logs, identity
+providers, and collection workstations use different clocks or time zones.
+Before collecting or correlating evidence, document the time basis for each
+source so later analysis can normalize timestamps without rewriting the original
+evidence.
+
+**Timestamp normalization record:**
+
+```
+TIME SOURCE RECORD
+==================
+Evidence ID:             [EVD-NNNN]
+Source System/Service:   [hostname, cloud service, IdP, SIEM, SaaS tenant]
+Source Time Zone:        [UTC / local TZ / unknown]
+Source Clock Value:      [YYYY-MM-DD HH:MM:SS plus timezone]
+Collector Clock Value:   [YYYY-MM-DD HH:MM:SS UTC]
+Observed Clock Offset:   [+/- seconds or "unknown"]
+Time Sync Source:        [NTP server, cloud provider, domain controller, manual, unknown]
+Timestamp Fields:        [event_time, ingestion_time, processing_time, etc.]
+Normalization Applied:   [none / offset noted only / derived UTC timeline copy]
+```
+
+**What to verify:**
+
+- [ ] The collector workstation clock is synchronized and recorded before acquisition.
+- [ ] Each evidence source records timezone, clock value, and known or estimated offset from UTC.
+- [ ] Original timestamps are preserved unchanged; any normalized timeline is a derived analysis artifact.
+- [ ] Event time is distinguished from ingestion time, processing time, and export time for SIEM, SaaS, and cloud logs.
+- [ ] Large or unknown clock skew is called out before making sequence-of-events conclusions.
+- [ ] Time corrections are documented with the method and confidence level used.
+
+**What to look for:**
+
+```
+FOR-TIME-01: Evidence source timezone or UTC offset is unknown
+FOR-TIME-02: Collector clock was not recorded or synchronized before acquisition
+FOR-TIME-03: Event time is mixed with ingestion/export time in the investigation timeline
+FOR-TIME-04: Original evidence timestamps were modified instead of preserving a derived normalized copy
+FOR-TIME-05: Clock skew is ignored when reconstructing attacker or responder actions across systems
+```
+
 ### Step 2: Collect Evidence in Order of Volatility (RFC 3227)
 
 RFC 3227 Section 2.1 defines the order of volatility -- evidence sources ranked from most volatile (shortest lifespan) to least volatile. Collect in this order to minimize evidence loss.
@@ -393,6 +436,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Evidence ID | Acquisition Hash | Verification Hash | Match |
 |---|---|---|---|
 | EVD-0001 | [hash] | [hash] | [YES/NO] |
+
+### Timestamp Normalization
+| Evidence ID | Source Time Zone | Clock Offset | Time Sync Source | Normalization Applied |
+|---|---|---|---|---|
+| EVD-0001 | [UTC/local/unknown] | [+/- seconds] | [NTP/cloud/DC/unknown] | [none/derived timeline] |
 
 ### Evidence Gaps
 [List any evidence that could not be collected and the reason]
