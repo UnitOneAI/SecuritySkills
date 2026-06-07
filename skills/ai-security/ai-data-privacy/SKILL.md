@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -180,7 +180,53 @@ Grep: "metadata_filter|access_control|permission|authorization|tenant" in **/*.{
 
 ---
 
-### Step 3 -- Data Retention Policies
+### Step 3 -- Streaming and Telemetry Privacy Boundaries
+
+Assess whether personal data can leak before final redaction through streaming responses, callbacks, tool traces, retrieval traces, or GenAI observability exports.
+
+**What to look for in code and configuration:**
+
+- SSE, WebSocket, callback, or async token streaming paths that write raw model deltas before a final output redaction pass.
+- Framework callbacks, tracing middleware, prompt-management tools, or LLMOps dashboards that capture raw prompts, completions, retrieved context, tool arguments, or tool results.
+- OpenTelemetry, APM, or provider dashboard exports that include content-bearing GenAI span attributes or events rather than metadata-only telemetry.
+- RAG retrieval snippets, vector search results, and prompt templates stored in traces outside the primary application retention and access-control boundary.
+- Tool-call arguments or function results containing PII, PHI, secrets, customer identifiers, or regulated data persisted to logs/traces before redaction.
+- Different tracing behavior across development, staging, and production, especially when non-production systems use production data copies.
+- Replay buffers, CDN logs, browser debugging queues, or server-side stream buffers that retain raw streamed chunks after the response completes.
+
+**Detection methods using allowed tools:**
+
+```
+# Find streaming response boundaries
+Grep: "stream|SSE|EventSource|ReadableStream|res.write|response.write|WebSocket|socket.emit" in **/*.{py,ts,js}
+Grep: "for await|aiter|delta|chunk|on_token|on_llm_new_token" in **/*.{py,ts,js}
+
+# Find GenAI tracing and callback capture points
+Grep: "OpenTelemetry|opentelemetry|tracer|span|set_attribute|add_event|LangSmith|Langfuse|Helicone|Phoenix" in **/*.{py,ts,js,yaml,yml}
+Grep: "callback|callbacks|trace|observability|prompt_log|completion_log|tool.call|tool_args" in **/*.{py,ts,js,yaml,yml}
+
+# Check whether content is redacted before export
+Grep: "redact|mask|scrub|sanitize|pii|presidio|filter" in **/*.{py,ts,js}
+Grep: "gen_ai.prompt|gen_ai.completion|rag.context|retrieved_context|tool.result|tool.args" in **/*.{py,ts,js,yaml,yml}
+```
+
+**Boundary rule:** A privacy control only counts if it runs before the content crosses the boundary being assessed. Final-response redaction does not protect token chunks already streamed to clients. Application database retention does not control raw prompts exported to an APM vendor. Provider zero-data-retention settings do not cover separate framework callbacks that store prompts in a debugging dashboard.
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Raw PII/PHI streamed to clients before final redaction | Critical |
+| Raw prompts, completions, RAG snippets, or tool arguments exported to traces without DPA/retention/access-control evidence | High |
+| Framework callbacks capture raw content before application redaction | High |
+| Tool-call arguments/results containing PII are logged without redaction | High |
+| Streaming redaction is not incremental/stateful, allowing PII split across chunks to bypass filters | Medium |
+| GenAI telemetry settings are unknown or differ across environments with production-like data | Medium |
+| Telemetry stores only hashes, token counts, model IDs, latency, and redacted snippets | Informational |
+
+---
+
+### Step 4 -- Data Retention Policies
 
 Assess whether AI-specific data stores have appropriate retention policies, deletion mechanisms, and lifecycle management.
 
@@ -240,7 +286,7 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 
 ---
 
-### Step 4 -- Model Memorization Risk Assessment
+### Step 5 -- Model Memorization Risk Assessment
 
 Evaluate the risk that models deployed in the system have memorized and can reproduce personal data from their training corpus.
 
@@ -288,7 +334,7 @@ Grep: "dedup|deduplicate|exact_match|near_duplicate|minhash|simhash" in **/*.py
 
 ---
 
-### Step 5 -- EU AI Act Data Governance Requirements
+### Step 6 -- EU AI Act Data Governance Requirements
 
 Assess compliance with the EU AI Act's data governance requirements for AI systems deployed in or affecting EU residents.
 
@@ -338,7 +384,7 @@ Glob: **/technical_documentation*
 
 ---
 
-### Step 6 -- Consent Management for AI Training Data
+### Step 7 -- Consent Management for AI Training Data
 
 Assess whether consent mechanisms for AI training data usage are implemented, enforceable, and aligned with regulatory requirements.
 
@@ -411,7 +457,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | Streaming/Telemetry | Data Retention | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -429,6 +475,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 |---|---|---|---|
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
+| Streaming and telemetry boundaries | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
@@ -453,6 +500,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | GDPR | Art. 5, 6, 13, 17, 22, 25, 35 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, DPIA |
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
+| OpenTelemetry GenAI Semantic Conventions | GenAI spans/events | GenAI telemetry attributes and events that may carry prompts, completions, tool calls, and usage metadata |
 
 **NIST AI RMF 1.0:** The AI Risk Management Framework organizes risk management into four functions: GOVERN (policies, roles, culture), MAP (context, risk identification), MEASURE (risk analysis and tracking), and MANAGE (risk response and monitoring). Privacy is addressed across all four functions, with MAP 5.1 and MEASURE 2.9 providing the most direct privacy risk guidance. Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework)
 
@@ -472,6 +520,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
+6. **Redacting only the final answer while streaming or tracing raw content.** Streaming applications can leak PII one token at a time before the final response is assembled and filtered. Agent frameworks can also export prompts, retrieved documents, tool arguments, and raw completions to traces before application-level redaction runs. Treat each stream write, callback, trace event, provider dashboard, and replay buffer as a separate privacy boundary.
+
 ---
 
 ## References
@@ -484,6 +534,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - Carlini, N. et al. (2021). "Extracting Training Data from Large Language Models." USENIX Security Symposium. arXiv:2012.07805
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
 - Ippolito, D. et al. (2023). "Preventing Verbatim Memorization in Language Models Gives a False Sense of Privacy." arXiv:2210.17546
+- OpenTelemetry Semantic Conventions for Generative AI Systems -- https://opentelemetry.io/docs/specs/semconv/gen-ai/
 - Microsoft Presidio (PII detection and anonymization) -- https://github.com/microsoft/presidio
 - NIST SP 800-188, De-Identifying Government Datasets -- https://csrc.nist.gov/publications/detail/sp/800-188/final
 - Article 29 Working Party, Guidelines on Data Protection Impact Assessment (WP 248) -- https://ec.europa.eu/newsroom/article29/items/611236
