@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -25,7 +25,7 @@ argument-hint: "[target-file-or-directory]"
 
 A structured, repeatable process for evaluating secrets management practices against the OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for Key Management). This skill covers secret detection patterns, rotation automation, vault and cloud secrets manager integration, agent-specific credential handling, .env file exposure, and git history secret leaks. All findings reference framework controls with severity ratings and actionable remediation.
 
-**Important:** This skill analyzes detection patterns and configuration practices. It never extracts, logs, or displays actual secret values. All regex patterns shown are for detection tooling configuration, not for secret extraction.
+**Important:** This skill analyzes detection patterns and configuration practices. It never extracts, logs, or displays actual secret values. All regex patterns shown are for detection tooling configuration, not for secret extraction. Separate actual secret exposure findings from control gaps such as missing scanners, missing pre-commit hooks, or missing platform evidence.
 
 ---
 
@@ -173,16 +173,18 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
-#### 2.3 Detection Tool Configuration Review
+#### 2.3 Detection Tool Configuration and Platform Coverage Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
-| Tool | Configuration File | CI Integration |
-|------|-------------------|----------------|
-| **Gitleaks** | `.gitleaks.toml` | GitHub Actions, GitLab CI |
-| **TruffleHog** | Command-line or `.trufflehog.yml` | Pre-commit hook, CI |
-| **detect-secrets** | `.secrets.baseline` | Pre-commit hook, CI |
-| **git-secrets** | `.git/hooks/pre-commit` | Git hook |
+| Tool or Platform | Evidence Source | Coverage to Confirm |
+|------------------|-----------------|---------------------|
+| **Gitleaks** | `.gitleaks.toml`, CI logs, scheduled workflow | Current tree, pull requests, git history |
+| **TruffleHog** | Command-line config, `.trufflehog.yml`, CI logs | Current tree, git history, verified secrets where supported |
+| **detect-secrets** | `.secrets.baseline`, pre-commit config | Baseline audit status, new-secret prevention |
+| **git-secrets** | `.git/hooks/pre-commit`, bootstrap scripts | Developer pre-commit prevention |
+| **GitHub Secret Protection** | Repository, organization, or enterprise security settings; exported alert data | Repository pushes, pull requests, known provider patterns, custom patterns, validity checks when available |
+| **GitLab Secret Detection** | Project or group security configuration; pipeline evidence | Merge requests, default branch scans, custom analyzer configuration |
 
 **What to verify:**
 
@@ -191,8 +193,23 @@ Verify that at least one secret detection tool is configured and integrated:
 - Baseline file is maintained (for detect-secrets).
 - Custom rules cover organization-specific secret formats.
 - Allowlist entries are documented with justification (false positive suppression must not create blind spots).
+- Platform-native scanner status is recorded before declaring scanner absence. A repository can be protected by GitHub or GitLab settings even when no local `.gitleaks.toml`, `.trufflehog.yml`, or `.secrets.baseline` is committed.
+- Alert surface is declared: repository files, git history, pull requests, issues, discussions, wiki, release assets, and secret gists are separate evidence surfaces. Only report surfaces you can actually evaluate.
+- Secret validity and remediation state are captured when alert metadata supports it: `active`, `inactive`, `revoked`, `rotated`, `unknown`, `provider-notified`, and `purged-from-history`.
 
-**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+**Finding classification:** Missing scanner evidence is a **control gap**, not an actual secret exposure finding. Do not classify "no tooling deployed" as Critical unless an actual active or unrotated secret is also present.
+
+Use this split:
+
+- **Secret exposure finding:** a credential, key, token, certificate, or secret-bearing artifact is actually present or confirmed in scanner alerts. Severity depends on validity, environment, scope, and remediation state.
+- **Secrets control gap:** scanner absence, pre-commit absence, missing platform evidence, stale baseline, missing history scan, or undocumented allowlists. Severity is usually High or Medium based on repository sensitivity, but it must not increase the count of leaked-secret findings.
+
+Control-gap severity guidance:
+
+- **High:** no repo-visible scanner and no platform-native scanner evidence for a repository that stores production configuration, deployment code, CI secrets, or secret-adjacent artifacts.
+- **Medium:** CI detection exists but pre-commit or push protection is absent; history scanning is absent; allowlists lack owner, expiry, or justification.
+- **Low:** scanner is present but evidence is incomplete, stale, or missing coverage notes for a non-production repository.
+- **Not Evaluable:** platform-native scanner status cannot be viewed. Record the evidence gap instead of assuming scanner absence.
 
 ---
 
@@ -224,7 +241,7 @@ secrets:
     external: true
 ```
 
-**Finding classification:** Committed .env file with actual secrets in git history is **Critical**. .env not in .gitignore is **High**. .env in Docker build context without .dockerignore exclusion is **High**.
+**Exposure/control-gap classification:** A committed `.env` file with actual production secrets is **Critical**. A committed `.env` file with unknown-validity secrets is **High** until validity and rotation are confirmed. Missing `.env` ignore rules or `.dockerignore` exclusions are **control gaps** when no actual secret is committed; escalate severity based on whether production secrets are likely to enter the build or repository.
 
 ---
 
@@ -236,7 +253,7 @@ Secrets removed from current files may still exist in git history. Verify:
 - If a secret was committed historically and rotated, the rotation is confirmed (not just file deletion).
 - BFG Repo Cleaner or `git filter-repo` has been used to purge high-sensitivity secrets from history when warranted.
 
-**Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is **High**.
+**Finding classification:** Known unrotated secrets in git history are **Critical**. Rotated historical secrets are **High** or **Medium** depending on purge status, blast radius, and provider validity. No git history scanning capability is a **control gap**; record it separately unless a historical secret is actually found.
 
 ---
 
@@ -273,7 +290,7 @@ resource "vault_audit" "syslog" {
 }
 ```
 
-**Finding classification:** No centralized secrets manager (secrets in config files or environment variables only) is **High**. Secrets manager deployed but audit logging disabled is **High**.
+**Exposure/control-gap classification:** Secrets stored only in source-controlled config files are secret exposure findings if real credentials are present. Environment-variable-only or config-file-only storage without source exposure is a **control gap**. No centralized secrets manager is usually **High** for production systems and **Medium** for lower-risk systems. Secrets manager deployed but audit logging disabled is a **High** control gap.
 
 ---
 
@@ -296,7 +313,7 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 - Rotation events are logged and monitored.
 - Failed rotations trigger alerts.
 
-**Finding classification:** No rotation for secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**.
+**Exposure/control-gap classification:** Active secrets that exceed policy lifetime and remain broadly usable are **High** exposure findings, or **Critical** when they are also committed or leaked. Missing rotation automation, manual-only rotation, or unmonitored rotation are **control gaps** and should be recorded separately from leaked-secret findings.
 
 ---
 
@@ -348,18 +365,20 @@ spec:
     kind: SecretStore
 ```
 
-**Finding classification:** Agents using long-lived static credentials is **High**. No JIT credential mechanism for automated systems is **Medium**. Token TTL exceeding 10x task duration is **Medium**.
+**Exposure/control-gap classification:** Agents using long-lived static credentials with broad production scope are **High** exposure-risk findings. No JIT credential mechanism for automated systems and token TTL exceeding 10x task duration are **Medium** control gaps unless an actual static credential is also exposed.
 
 ---
 
 ## Findings Classification
 
-| Severity | Definition |
-|----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
-| **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
+Classify results in two buckets. Do not mix control maturity gaps with confirmed secret exposure.
+
+| Severity | Secret Exposure Findings | Secrets Control Gaps |
+|----------|--------------------------|----------------------|
+| **Critical** | Active production secret, private key, signing key, cloud credential, CI deploy token, or unrotated credential is committed in current code, logs, release assets, or git history. | Not used for scanner absence alone. Escalate only when a control failure has already resulted in active or unrotated exposure. |
+| **High** | Production `.env` with actual secrets committed; rotated but still broadly accessible historical secret; secret in CI logs; long-lived static agent credential with broad scope. | No repo-visible scanner and no platform-native scanner evidence for a production or deployment repository; no git history scan for a repo with prior exposure indicators; audit logging disabled on a vault. |
+| **Medium** | Development or low-scope secret with unknown validity; plaintext environment-secret dependency where source exposure is not confirmed; manual rotation with stale evidence. | Detection in CI only; no pre-commit or push protection; excessive allowlists without owner/expiry; rotation configured but not monitored; token TTL mismatch. |
+| **Low** | Placeholder-like values needing documentation cleanup; development-only sample secret patterns that are clearly invalid and non-sensitive. | Missing secret type documentation; incomplete scanner coverage notes; naming convention inconsistencies. |
 
 ---
 
@@ -376,10 +395,18 @@ spec:
 
 ### Secret Detection Tooling Status
 
-| Tool | Deployed | Pre-commit | CI Pipeline | History Scan | Custom Rules |
-|------|----------|-----------|-------------|--------------|-------------|
-| Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
-| detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
+| Tool or Platform | Deployed | Evidence Source | Pre-commit or Push Protection | CI Pipeline | History Scan | Custom Rules | Status |
+|------------------|----------|-----------------|-------------------------------|-------------|--------------|--------------|--------|
+| Gitleaks | Yes/No | file/CI/export | Yes/No/N/A | Yes/No | Yes/No | Yes/No | OK/Gap/Not Evaluable |
+| GitHub Secret Protection | Yes/No/Unknown | settings/export/API | Yes/No/Unknown | N/A | Yes/No/Unknown | Yes/No/Unknown | OK/Gap/Not Evaluable |
+| GitLab Secret Detection | Yes/No/Unknown | settings/pipeline/export | Yes/No/Unknown | Yes/No | Yes/No/Unknown | Yes/No/Unknown | OK/Gap/Not Evaluable |
+| detect-secrets | Yes/No | file/CI/export | Yes/No | Yes/No | N/A | Yes/No | OK/Gap/Not Evaluable |
+
+### Secrets Control Gaps (not leaked-secret findings)
+
+| Gap ID | Control Gap | Evidence | Severity | Rationale | Remediation |
+|--------|-------------|----------|----------|-----------|-------------|
+| CG-001 | <scanner/pre-commit/platform/history gap> | <observed evidence or Not Evaluable> | High/Medium/Low | <why this is a control gap, not a confirmed leak> | <concrete control improvement> |
 
 ### Secrets Inventory (by type, NOT values)
 
@@ -393,6 +420,9 @@ spec:
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
+- **Category:** Secret Exposure / Control Gap
+- **Validity State:** active / inactive / revoked / rotated / unknown / not-applicable
+- **Remediation State:** open / rotated / provider-notified / purged-from-history / accepted-risk
 - **Control Reference:** OWASP Secrets Mgmt / NIST SP 800-57 Section X
 - **File:** <path to config file>
 - **Description:** <what was found -- NEVER include actual secret values>
@@ -415,6 +445,7 @@ spec:
 | Secret Types | API keys, passwords, certificates, encryption keys, SSH keys, OAuth tokens |
 | Storage | Never in source code; use dedicated secrets manager |
 | Detection | Pre-commit hooks + CI scanning + periodic full-repo scans |
+| Platform Scanning | Record repository or organization-native secret scanning and push-protection evidence before declaring scanner absence |
 | Rotation | Automate rotation; define maximum secret lifetime |
 | Access Control | Least privilege; audit all secret access; separate secrets by environment |
 | Incident Response | Immediate rotation on exposure; revoke, rotate, re-deploy |
@@ -442,6 +473,12 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Counting missing scanner evidence as a leaked secret.** Scanner absence is important, but it is a control gap until a real credential, key, token, certificate, or secret-bearing artifact is found. Report the gap in the tooling table and remediation plan instead of inflating the exposure findings count.
+
+6. **Assuming repository files are the whole scanning surface.** Platform-native scanners may cover pull requests, push protection, custom patterns, validity checks, or organization-wide settings that are not visible as files in the repository. Mark these surfaces as OK, Gap, or Not Evaluable based on evidence.
+
+7. **Reporting a secret without validity or remediation state.** A revoked historical token, an active production deploy key, and an unknown-status sample credential require different severity, ownership, and remediation actions.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -464,6 +501,8 @@ This skill processes configuration files and code that may contain secret values
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
+- GitHub Secret Scanning and Push Protection: https://docs.github.com/en/code-security/secret-scanning
+- GitLab Secret Detection: https://docs.gitlab.com/user/application_security/secret_detection/
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
 
@@ -471,5 +510,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Separate actual secret exposure findings from scanner/control gaps; add platform-native scanner status, validity/remediation states, and control-gap output.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
