@@ -182,6 +182,20 @@ resource "azurerm_security_center_contact" {
 }
 ```
 
+### Defender for Cloud Recommendation Exemptions
+
+Review exemptions that suppress Defender for Cloud recommendations:
+
+```
+az policy exemption list --scope <subscription-or-management-group-scope>
+az graph query -q "securityresources | where type =~ 'microsoft.security/assessments'"
+```
+
+Verify each exemption has a narrow scope, owner, justification, expiry date, and
+compensating-control evidence. Do not rely only on post-exemption secure-score or
+compliance percentages when raw Defender recommendations still show unhealthy
+resources.
+
 ---
 
 ## Section 3 -- Storage Accounts

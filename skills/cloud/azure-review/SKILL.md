@@ -88,6 +88,39 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 10b: Defender for Cloud Exemption Governance
+
+Defender for Cloud recommendations can be exempted through Defender for Cloud or
+Azure Policy. Exemptions may be appropriate for accepted risk or already
+mitigated resources, but they can also hide unresolved CIS failures and reduce
+secure-score visibility. When Defender for Cloud or Azure Policy exports are
+available, review exemptions as part of the posture assessment.
+
+**What to verify:**
+
+- [ ] Recommendation exemptions are exported for the subscription or management group scope under review.
+- [ ] Each exemption has an owner, justification, category, expiry date, and linked risk acceptance or compensating control.
+- [ ] Exemptions are scoped narrowly to specific resources, resource groups, or subscriptions rather than broad management groups unless justified.
+- [ ] Expired exemptions are removed or renewed through an approval workflow.
+- [ ] Exemptions for high-impact CIS or regulatory recommendations have compensating evidence.
+- [ ] Defender recommendation health is reviewed both before and after applying exemptions.
+
+**What to look for:**
+
+```
+AZ-DEF-EXEMPT-01: Defender recommendation exemptions exist without owner or justification
+AZ-DEF-EXEMPT-02: Exemption scope is broader than the affected resource set
+AZ-DEF-EXEMPT-03: Expired exemptions still suppress recommendations
+AZ-DEF-EXEMPT-04: High-risk recommendations are exempted without compensating-control evidence
+AZ-DEF-EXEMPT-05: Assessment reports use post-exemption compliance only and omit raw recommendation state
+```
+
+Treat unmanaged Defender for Cloud exemptions as a **Medium** governance finding,
+or **High** when they suppress critical/high CIS, regulatory, or internet-exposed
+resource recommendations.
+
+---
+
 
 ---
 
@@ -159,6 +192,12 @@ Produce the final report using the structure defined in the Output Format sectio
 1. **[Critical]** CIS X.Y.Z -- <action item>
 2. **[High]** CIS X.Y.Z -- <action item>
 3. ...
+
+### Defender for Cloud Exemptions
+
+| Scope | Recommendation | Exempted Resources | Owner | Expiry | Justification | Compensating Evidence |
+|-------|----------------|--------------------|-------|--------|---------------|-----------------------|
+| <subscription/resource> | <recommendation> | <count/list> | <owner> | <date/none> | <reason> | <evidence> |
 
 ### Summary
 - Critical findings: <N>
