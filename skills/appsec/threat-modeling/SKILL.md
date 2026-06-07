@@ -13,7 +13,7 @@ phase: [design, review]
 frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,7 +22,7 @@ injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
 
-# Threat Modeling Skill — STRIDE Methodology
+# Threat Modeling Skill â€” STRIDE Methodology
 
 ## 1. When to Use
 
@@ -30,28 +30,28 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 Invoke this skill whenever any of the following conditions are met:
 
-- **New service or microservice design** — A new component is being introduced into the architecture and needs threat analysis before implementation begins.
-- **Architecture review** — An existing system is undergoing redesign, migration, or significant refactoring (e.g., monolith-to-microservices, on-prem-to-cloud).
-- **PRD with infrastructure implications** — A product requirements document describes features that involve new data stores, external integrations, authentication changes, or network topology modifications.
-- **API design** — New or modified API endpoints are being defined, especially those that accept user input, handle authentication tokens, or expose sensitive data.
-- **Pre-launch security review** — A system is approaching production deployment and requires a structured assessment of threats before go-live.
-- **Compliance-driven review** — Regulatory requirements (SOC 2, PCI DSS, HIPAA, FedRAMP) mandate documented threat analysis.
-- **Incident post-mortem** — A security incident has occurred and the team needs to re-evaluate the threat landscape to prevent recurrence.
+- **New service or microservice design** â€” A new component is being introduced into the architecture and needs threat analysis before implementation begins.
+- **Architecture review** â€” An existing system is undergoing redesign, migration, or significant refactoring (e.g., monolith-to-microservices, on-prem-to-cloud).
+- **PRD with infrastructure implications** â€” A product requirements document describes features that involve new data stores, external integrations, authentication changes, or network topology modifications.
+- **API design** â€” New or modified API endpoints are being defined, especially those that accept user input, handle authentication tokens, or expose sensitive data.
+- **Pre-launch security review** â€” A system is approaching production deployment and requires a structured assessment of threats before go-live.
+- **Compliance-driven review** â€” Regulatory requirements (SOC 2, PCI DSS, HIPAA, FedRAMP) mandate documented threat analysis.
+- **Incident post-mortem** â€” A security incident has occurred and the team needs to re-evaluate the threat landscape to prevent recurrence.
 
 ## 2. Context the Agent Needs
 
 Before beginning the threat model, gather the following. Mark each item as obtained or missing and proceed with what is available, noting gaps as assumptions.
 
-- [ ] **System description** — High-level purpose, business context, and intended users.
-- [ ] **Component inventory** — Services, databases, message queues, caches, CDNs, third-party APIs, serverless functions, and any other runtime components.
-- [ ] **Data flow descriptions** — How data moves between components, including protocols (HTTPS, gRPC, AMQP), serialization formats (JSON, Protobuf), and transport security (TLS version, mTLS).
-- [ ] **Trust boundaries** — Where authentication and authorization are enforced; boundaries between internal networks, DMZs, public internet, third-party services, and user devices.
-- [ ] **Authentication and authorization mechanisms** — OAuth 2.0 flows, API keys, JWTs, SAML, RBAC/ABAC policies, service-to-service identity (SPIFFE/mTLS).
-- [ ] **Data classification** — What data is stored or processed (PII, PHI, financial data, credentials, secrets) and its sensitivity level.
-- [ ] **Threat actor profiles** — External attackers, malicious insiders, compromised supply chain, nation-state actors, automated bots.
-- [ ] **Compliance and regulatory requirements** — Applicable standards (SOC 2, PCI DSS, HIPAA, GDPR, FedRAMP).
-- [ ] **Existing security controls** — WAF, IDS/IPS, SIEM, secret management (Vault, AWS Secrets Manager), encryption at rest and in transit.
-- [ ] **Deployment environment** — Cloud provider (AWS, GCP, Azure), Kubernetes, serverless, on-premises, hybrid.
+- [ ] **System description** â€” High-level purpose, business context, and intended users.
+- [ ] **Component inventory** â€” Services, databases, message queues, caches, CDNs, third-party APIs, serverless functions, and any other runtime components.
+- [ ] **Data flow descriptions** â€” How data moves between components, including protocols (HTTPS, gRPC, AMQP), serialization formats (JSON, Protobuf), and transport security (TLS version, mTLS).
+- [ ] **Trust boundaries** â€” Where authentication and authorization are enforced; boundaries between internal networks, DMZs, public internet, third-party services, and user devices.
+- [ ] **Authentication and authorization mechanisms** â€” OAuth 2.0 flows, API keys, JWTs, SAML, RBAC/ABAC policies, service-to-service identity (SPIFFE/mTLS).
+- [ ] **Data classification** â€” What data is stored or processed (PII, PHI, financial data, credentials, secrets) and its sensitivity level.
+- [ ] **Threat actor profiles** â€” External attackers, malicious insiders, compromised supply chain, nation-state actors, automated bots.
+- [ ] **Compliance and regulatory requirements** â€” Applicable standards (SOC 2, PCI DSS, HIPAA, GDPR, FedRAMP).
+- [ ] **Existing security controls** â€” WAF, IDS/IPS, SIEM, secret management (Vault, AWS Secrets Manager), encryption at rest and in transit.
+- [ ] **Deployment environment** â€” Cloud provider (AWS, GCP, Azure), Kubernetes, serverless, on-premises, hybrid.
 
 ## 3. Process
 
@@ -153,12 +153,12 @@ Construct a Data Flow Diagram (DFD) that captures processes, data stores, data f
 
 Use this checklist to identify trust boundaries that are often missed:
 
-- [ ] **Inter-service boundaries** — Services owned by different teams or deployed from different repositories
-- [ ] **Container/pod boundaries** — Between containers in the same pod, between pods, between namespaces
-- [ ] **Network segment boundaries** — VPC, subnet, security group, and firewall rule boundaries
-- [ ] **Cloud account/subscription boundaries** — Cross-account access, shared services, peered VPCs
-- [ ] **CI/CD pipeline boundaries** — Between source control, build system, artifact registry, and deployment target
-- [ ] **Third-party SDK/library boundaries** — Between your code and vendor SDKs, open-source packages, or embedded interpreters
+- [ ] **Inter-service boundaries** â€” Services owned by different teams or deployed from different repositories
+- [ ] **Container/pod boundaries** â€” Between containers in the same pod, between pods, between namespaces
+- [ ] **Network segment boundaries** â€” VPC, subnet, security group, and firewall rule boundaries
+- [ ] **Cloud account/subscription boundaries** â€” Cross-account access, shared services, peered VPCs
+- [ ] **CI/CD pipeline boundaries** â€” Between source control, build system, artifact registry, and deployment target
+- [ ] **Third-party SDK/library boundaries** â€” Between your code and vendor SDKs, open-source packages, or embedded interpreters
 
 For each data flow crossing a trust boundary, document:
 1. Source and destination components
@@ -182,11 +182,53 @@ Every data flow in the DFD must be annotated with the following properties:
 
 Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
 
+#### Extended Flow Annotation for Modern Architectures
+
+Add these fields for every DFD flow, especially event-driven, serverless, service-mesh, CI/CD, and local IPC flows.
+
+| Property | Values / Examples |
+|----------|------------------|
+| Trust model | `direct`, `mediated`, `sidecar`, `local_trust`, `in_process`, `third_party_sdk` |
+| Communication type | `network`, `event_bus`, `queue`, `stream`, `webhook`, `ipc_socket`, `shared_volume`, `shared_memory`, `localhost`, `in_process` |
+| Authorization / policy point | API gateway, service mesh policy, queue policy, topic policy, IAM role, library sandbox, none |
+| Delegation / impersonation context | End-user token forwarded, service-to-service only, on-behalf-of flow, none |
+| Artifact integrity | SLSA provenance, Sigstore/cosign signature, digest pinning, immutable tag, registry policy, none |
+
+**Trust model classification:**
+
+| Trust Model | Meaning | Modeling Guidance |
+|---|---|---|
+| `direct` | Source and destination authenticate each other point-to-point | Model both endpoints and the direct transport/auth boundary |
+| `mediated` | Producer and consumer trust a broker, queue, event bus, or relay | Model producer-to-broker and broker-to-consumer separately, then record end-to-end data classification and policy continuity |
+| `sidecar` | Inline proxy or mesh sidecar enforces mTLS/authz outside app code | Include the sidecar or gateway as a process/security boundary, not just application containers |
+| `local_trust` | Flow relies on same-host, same-pod, kernel, or filesystem isolation | Record namespace, pod, user, volume, socket, and container isolation context |
+| `in_process` | Vendor SDK/plugin/library executes inside the process | Record sandboxing, capability limits, dependency trust, and supply-chain controls |
+
+**CI/CD and artifact boundary evidence:**
+
+| Evidence Field | Strong Evidence | Weak Evidence |
+|---|---|---|
+| `build_provenance` | SLSA/in-toto provenance tied to source commit and builder identity | Build log only |
+| `artifact_signature` | Sigstore/cosign or equivalent signature verified before deploy | Unsigned artifact or signature not verified |
+| `registry_integrity` | Digest pinning, immutable tags, retention policy, scoped push identities | Mutable `latest` tags or shared push credentials |
+| `pipeline_identity` | OIDC short-lived credentials with claim-bound trust policy | Long-lived registry/API token |
+| `deployment_verification` | Runtime deploys by digest/signature/provenance policy | Deploy by mutable tag or unchecked artifact name |
+
+**Example flow fixtures:**
+
+| Pattern | Required Modeling Notes |
+|---|---|
+| Event bus / queue | Producer -> broker, broker policy, queue/topic policy, consumer identity, DLQ/replay permissions, end-to-end data classification |
+| Serverless async | Function role, event source policy, resource-based invocation policy, retry/TTL/DLQ behavior, no direct function-to-function trust unless policy proves it |
+| Service mesh sidecar | Workload identity, mTLS mode, trust domain, sidecar/gateway enforcement point, application container plaintext leg if present |
+| Shared volume / IPC | Container/user namespace, volume permissions, socket owner, file lifecycle, sidecar privilege, pod escape or log tampering risk |
+| Third-party SDK | In-process privileges, outbound network ability, data access, sandbox/capability model, package provenance |
+
 ### Step 4: Apply STRIDE per Element
 
 For every component and data flow identified in the DFD, systematically ask the following questions organized by STRIDE category.
 
-#### S — Spoofing (Authentication Threats)
+#### S â€” Spoofing (Authentication Threats)
 
 Threat: An attacker pretends to be another user, service, or system component.
 
@@ -198,7 +240,7 @@ Threat: An attacker pretends to be another user, service, or system component.
 | Are API keys rotated and scoped appropriately? | Leaked long-lived API key |
 | Is multi-factor authentication enforced for privileged accounts? | Admin account takeover |
 
-#### T — Tampering (Integrity Threats)
+#### T â€” Tampering (Integrity Threats)
 
 Threat: An attacker modifies data, code, or configuration without authorization.
 
@@ -210,7 +252,7 @@ Threat: An attacker modifies data, code, or configuration without authorization.
 | Are configuration files protected from unauthorized modification? | Writable config in production containers |
 | Is input validated and sanitized before processing? | XSS, command injection, deserialization attacks |
 
-#### R — Repudiation (Audit and Accountability Threats)
+#### R â€” Repudiation (Audit and Accountability Threats)
 
 Threat: A user or system denies performing an action, and the system cannot prove otherwise.
 
@@ -222,7 +264,7 @@ Threat: A user or system denies performing an action, and the system cannot prov
 | Do transactions include non-repudiation controls (digital signatures)? | Disputed financial transactions |
 | Is there sufficient log detail to reconstruct the sequence of events? | Logs missing source IP, user ID, or action detail |
 
-#### I — Information Disclosure (Confidentiality Threats)
+#### I â€” Information Disclosure (Confidentiality Threats)
 
 Threat: Sensitive data is exposed to unauthorized parties.
 
@@ -234,7 +276,7 @@ Threat: Sensitive data is exposed to unauthorized parties.
 | Are secrets stored in environment variables or dedicated vaults? | Hardcoded credentials in source code |
 | Is access to data stores restricted by least-privilege IAM policies? | Over-permissive S3 bucket policy |
 
-#### D — Denial of Service (Availability Threats)
+#### D â€” Denial of Service (Availability Threats)
 
 Threat: An attacker makes the system unavailable to legitimate users.
 
@@ -246,7 +288,7 @@ Threat: An attacker makes the system unavailable to legitimate users.
 | Is the system resilient to dependency failures (circuit breakers)? | Cascading failure from downstream outage |
 | Are there auto-scaling policies and DDoS mitigation services? | Sustained DDoS overwhelms fixed capacity |
 
-#### E — Elevation of Privilege (Authorization Threats)
+#### E â€” Elevation of Privilege (Authorization Threats)
 
 Threat: An attacker gains access to resources or actions beyond their authorized scope.
 
@@ -303,12 +345,12 @@ Map each identified threat to the corresponding MITRE ATT&CK Enterprise techniqu
 
 | STRIDE Category | Common ATT&CK Techniques |
 |----------------|--------------------------|
-| **Spoofing** | T1078 — Valid Accounts, T1134 — Access Token Manipulation, T1556 — Modify Authentication Process, T1528 — Steal Application Access Token, T1539 — Steal Web Session Cookie |
-| **Tampering** | T1565 — Data Manipulation, T1195 — Supply Chain Compromise, T1059 — Command and Scripting Interpreter, T1190 — Exploit Public-Facing Application, T1210 — Exploitation of Remote Services |
-| **Repudiation** | T1070 — Indicator Removal, T1070.001 — Clear Windows Event Logs, T1070.002 — Clear Linux or Mac System Logs, T1562 — Impair Defenses, T1562.001 — Disable or Modify Tools |
-| **Information Disclosure** | T1530 — Data from Cloud Storage, T1552 — Unsecured Credentials, T1552.001 — Credentials In Files, T1040 — Network Sniffing, T1557 — Adversary-in-the-Middle, T1119 — Automated Collection |
-| **Denial of Service** | T1498 — Network Denial of Service, T1499 — Endpoint Denial of Service, T1499.003 — Application Exhaustion Flood, T1499.004 — Application or System Exploitation, T1489 — Service Stop |
-| **Elevation of Privilege** | T1068 — Exploitation for Privilege Escalation, T1548 — Abuse Elevation Control Mechanism, T1611 — Escape to Host, T1053 — Scheduled Task/Job, T1055 — Process Injection |
+| **Spoofing** | T1078 â€” Valid Accounts, T1134 â€” Access Token Manipulation, T1556 â€” Modify Authentication Process, T1528 â€” Steal Application Access Token, T1539 â€” Steal Web Session Cookie |
+| **Tampering** | T1565 â€” Data Manipulation, T1195 â€” Supply Chain Compromise, T1059 â€” Command and Scripting Interpreter, T1190 â€” Exploit Public-Facing Application, T1210 â€” Exploitation of Remote Services |
+| **Repudiation** | T1070 â€” Indicator Removal, T1070.001 â€” Clear Windows Event Logs, T1070.002 â€” Clear Linux or Mac System Logs, T1562 â€” Impair Defenses, T1562.001 â€” Disable or Modify Tools |
+| **Information Disclosure** | T1530 â€” Data from Cloud Storage, T1552 â€” Unsecured Credentials, T1552.001 â€” Credentials In Files, T1040 â€” Network Sniffing, T1557 â€” Adversary-in-the-Middle, T1119 â€” Automated Collection |
+| **Denial of Service** | T1498 â€” Network Denial of Service, T1499 â€” Endpoint Denial of Service, T1499.003 â€” Application Exhaustion Flood, T1499.004 â€” Application or System Exploitation, T1489 â€” Service Stop |
+| **Elevation of Privilege** | T1068 â€” Exploitation for Privilege Escalation, T1548 â€” Abuse Elevation Control Mechanism, T1611 â€” Escape to Host, T1053 â€” Scheduled Task/Job, T1055 â€” Process Injection |
 
 ### Step 8: Risk Rating
 
@@ -362,11 +404,11 @@ Use a **Likelihood x Impact** matrix to assign a risk rating to each threat. Thi
 
 Rank mitigations using the following prioritization criteria:
 
-1. **Risk reduction** — Prioritize mitigations that address Critical and High risks first.
-2. **Blast radius** — Prefer controls that protect multiple assets or reduce impact across several threat vectors.
-3. **Implementation cost** — Factor in engineering effort, operational overhead, and third-party costs.
-4. **Defense in depth** — Ensure mitigations span multiple layers (network, application, data, identity).
-5. **Compliance alignment** — Prefer mitigations that simultaneously satisfy regulatory requirements.
+1. **Risk reduction** â€” Prioritize mitigations that address Critical and High risks first.
+2. **Blast radius** â€” Prefer controls that protect multiple assets or reduce impact across several threat vectors.
+3. **Implementation cost** â€” Factor in engineering effort, operational overhead, and third-party costs.
+4. **Defense in depth** â€” Ensure mitigations span multiple layers (network, application, data, identity).
+5. **Compliance alignment** â€” Prefer mitigations that simultaneously satisfy regulatory requirements.
 
 **Mitigation Categories:**
 
@@ -387,18 +429,32 @@ Rank mitigations using the following prioritization criteria:
 | P3 | Low | Minor risk; defense-in-depth gap or informational finding. Requires non-trivial attack chain. | Remediate within 90 days |
 | P4 | Informational | Best-practice recommendation or hardening suggestion. No direct exploitability demonstrated. | Backlog / next planning cycle |
 
-## 5. Output Format — Threat Register
+## 5. Output Format â€” Threat Register
 
 Produce the threat register as a structured table. Each row represents one identified threat.
 
 | Threat ID | STRIDE Category | Description | Affected Component | ATT&CK TTP | Likelihood | Impact | Severity | Mitigation | Owner | Status |
 |-----------|----------------|-------------|-------------------|-------------|------------|--------|----------|------------|-------|--------|
-| TM-001 | Spoofing | Credential stuffing attack against login endpoint due to missing rate limiting and absent MFA | Auth Service `/api/v1/login` | T1078 — Valid Accounts | High | High | Critical | Implement rate limiting (max 10 attempts/min), enforce MFA for all users, deploy credential breach detection | Auth Team | Open |
-| TM-002 | Tampering | SQL injection in search parameter allows unauthorized data modification | Search Service `/api/v1/search?q=` | T1190 — Exploit Public-Facing Application | Medium | High | High | Use parameterized queries, implement input validation, deploy WAF SQL injection rules | Backend Team | Open |
-| TM-003 | Repudiation | Admin actions on user accounts not logged, preventing forensic reconstruction | Admin Dashboard | T1070 — Indicator Removal | Medium | Medium | Medium | Implement immutable audit logging for all admin actions with centralized log aggregation | Platform Team | Open |
-| TM-004 | Information Disclosure | API error responses include stack traces and internal service names in production | All API endpoints | T1552 — Unsecured Credentials | High | Medium | High | Implement generic error responses in production, route detailed errors to logging only | Backend Team | Open |
-| TM-005 | Denial of Service | Unbounded file upload allows resource exhaustion via large payload submission | File Upload `/api/v1/upload` | T1499.003 — Application Exhaustion Flood | High | Medium | High | Enforce max file size (10MB), implement request timeout, add rate limiting per user | Storage Team | Open |
-| TM-006 | Elevation of Privilege | IDOR vulnerability allows regular users to access other users' records by modifying resource ID | User Profile `/api/v1/users/{id}` | T1068 — Exploitation for Privilege Escalation | High | High | Critical | Implement object-level authorization checks, validate resource ownership at service layer | Backend Team | Open |
+| TM-001 | Spoofing | Credential stuffing attack against login endpoint due to missing rate limiting and absent MFA | Auth Service `/api/v1/login` | T1078 â€” Valid Accounts | High | High | Critical | Implement rate limiting (max 10 attempts/min), enforce MFA for all users, deploy credential breach detection | Auth Team | Open |
+| TM-002 | Tampering | SQL injection in search parameter allows unauthorized data modification | Search Service `/api/v1/search?q=` | T1190 â€” Exploit Public-Facing Application | Medium | High | High | Use parameterized queries, implement input validation, deploy WAF SQL injection rules | Backend Team | Open |
+| TM-003 | Repudiation | Admin actions on user accounts not logged, preventing forensic reconstruction | Admin Dashboard | T1070 â€” Indicator Removal | Medium | Medium | Medium | Implement immutable audit logging for all admin actions with centralized log aggregation | Platform Team | Open |
+| TM-004 | Information Disclosure | API error responses include stack traces and internal service names in production | All API endpoints | T1552 â€” Unsecured Credentials | High | Medium | High | Implement generic error responses in production, route detailed errors to logging only | Backend Team | Open |
+| TM-005 | Denial of Service | Unbounded file upload allows resource exhaustion via large payload submission | File Upload `/api/v1/upload` | T1499.003 â€” Application Exhaustion Flood | High | Medium | High | Enforce max file size (10MB), implement request timeout, add rate limiting per user | Storage Team | Open |
+| TM-006 | Elevation of Privilege | IDOR vulnerability allows regular users to access other users' records by modifying resource ID | User Profile `/api/v1/users/{id}` | T1068 â€” Exploitation for Privilege Escalation | High | High | Critical | Implement object-level authorization checks, validate resource ownership at service layer | Backend Team | Open |
+
+### DFD Flow Annotation Appendix
+
+| Flow ID | Source | Destination | Trust Model | Communication Type | Auth / Policy Point | Data Class | Failure Mode | Artifact Integrity |
+|---|---|---|---|---|---|---|---|---|
+| DF-001 | [producer] | [broker/consumer] | [direct/mediated/sidecar/local_trust/in_process] | [network/event_bus/ipc_socket/shared_volume/in_process] | [mechanism] | [class] | [fail-closed/fail-open] | [SLSA/signature/digest/none/N/A] |
+
+### CI/CD Artifact Integrity Summary
+
+| Boundary | Provenance | Signature | Registry Integrity | Deployment Verification | Gap |
+|---|---|---|---|---|---|
+| Source -> Build | [SLSA/in-toto/log only] | [N/A] | [N/A] | [N/A] | [gap] |
+| Build -> Registry | [provenance] | [cosign/Sigstore/none] | [immutable tag/digest/shared token] | [N/A] | [gap] |
+| Registry -> Runtime | [provenance verified/not verified] | [verified/not verified] | [digest/tag] | [policy] | [gap] |
 
 ## 6. Framework Reference
 
@@ -415,19 +471,19 @@ STRIDE is a threat classification model developed by Loren Kohnfelder and Praeri
 | Denial of Service | Availability | Denying or degrading service to valid users |
 | Elevation of Privilege | Authorization | Gaining capabilities beyond those that were legitimately granted |
 
-STRIDE is typically applied "per element" — meaning each component in the data flow diagram is analyzed against all six categories. External entities are most susceptible to Spoofing and Repudiation; data flows to Tampering and Information Disclosure; data stores to Tampering, Information Disclosure, and Denial of Service; processes to all six categories.
+STRIDE is typically applied "per element" â€” meaning each component in the data flow diagram is analyzed against all six categories. External entities are most susceptible to Spoofing and Repudiation; data flows to Tampering and Information Disclosure; data stores to Tampering, Information Disclosure, and Denial of Service; processes to all six categories.
 
 ### PASTA (Process for Attack Simulation and Threat Analysis)
 
 PASTA is a 7-stage, risk-centric threat modeling methodology that complements STRIDE by adding business impact analysis and multi-stage attack simulation:
 
-1. **Define Objectives** — Align threat model scope with business goals and risk appetite.
-2. **Define Technical Scope** — Inventory technical components, dependencies, and infrastructure.
-3. **Application Decomposition** — Produce DFDs, trust boundaries, and entry points (overlaps with Steps 1 and 3 above).
-4. **Threat Analysis** — Identify threat actors and intelligence (aligns with Step 2 actor profiles above).
-5. **Vulnerability Analysis** — Map known CVEs and weakness patterns to components.
-6. **Attack Simulation** — Model multi-stage attack trees showing how an adversary chains vulnerabilities across components to reach an objective. This is PASTA's key addition over STRIDE — it models realistic attack paths rather than isolated per-element threats.
-7. **Risk and Impact Analysis** — Quantify business impact (revenue loss, regulatory fines, reputational damage) and prioritize residual risk.
+1. **Define Objectives** â€” Align threat model scope with business goals and risk appetite.
+2. **Define Technical Scope** â€” Inventory technical components, dependencies, and infrastructure.
+3. **Application Decomposition** â€” Produce DFDs, trust boundaries, and entry points (overlaps with Steps 1 and 3 above).
+4. **Threat Analysis** â€” Identify threat actors and intelligence (aligns with Step 2 actor profiles above).
+5. **Vulnerability Analysis** â€” Map known CVEs and weakness patterns to components.
+6. **Attack Simulation** â€” Model multi-stage attack trees showing how an adversary chains vulnerabilities across components to reach an objective. This is PASTA's key addition over STRIDE â€” it models realistic attack paths rather than isolated per-element threats.
+7. **Risk and Impact Analysis** â€” Quantify business impact (revenue loss, regulatory fines, reputational damage) and prioritize residual risk.
 
 When running this skill, use STRIDE for systematic per-element threat identification (Step 4) and layer in PASTA stages 5-7 when the threat model requires attack chain simulation or business impact quantification beyond what the STRIDE risk matrix provides.
 
@@ -435,13 +491,13 @@ When running this skill, use STRIDE for systematic per-element threat identifica
 
 MITRE ATT&CK (Adversarial Tactics, Techniques, and Common Knowledge) is a globally recognized knowledge base of adversary behavior based on real-world observations. It organizes techniques under tactical categories representing the adversary's objectives during an attack lifecycle:
 
-- **Initial Access** (TA0001) — Techniques for gaining a foothold (T1190 Exploit Public-Facing Application, T1195 Supply Chain Compromise)
-- **Persistence** (TA0003) — Techniques for maintaining access (T1053 Scheduled Task/Job, T1556 Modify Authentication Process)
-- **Privilege Escalation** (TA0004) — Techniques for gaining higher-level permissions (T1068 Exploitation for Privilege Escalation, T1548 Abuse Elevation Control Mechanism)
-- **Defense Evasion** (TA0005) — Techniques for avoiding detection (T1070 Indicator Removal, T1562 Impair Defenses)
-- **Credential Access** (TA0006) — Techniques for stealing credentials (T1528 Steal Application Access Token, T1539 Steal Web Session Cookie, T1552 Unsecured Credentials)
-- **Collection** (TA0009) — Techniques for gathering data (T1119 Automated Collection, T1530 Data from Cloud Storage)
-- **Impact** (TA0040) — Techniques for disruption or destruction (T1489 Service Stop, T1498 Network Denial of Service, T1499 Endpoint Denial of Service, T1565 Data Manipulation)
+- **Initial Access** (TA0001) â€” Techniques for gaining a foothold (T1190 Exploit Public-Facing Application, T1195 Supply Chain Compromise)
+- **Persistence** (TA0003) â€” Techniques for maintaining access (T1053 Scheduled Task/Job, T1556 Modify Authentication Process)
+- **Privilege Escalation** (TA0004) â€” Techniques for gaining higher-level permissions (T1068 Exploitation for Privilege Escalation, T1548 Abuse Elevation Control Mechanism)
+- **Defense Evasion** (TA0005) â€” Techniques for avoiding detection (T1070 Indicator Removal, T1562 Impair Defenses)
+- **Credential Access** (TA0006) â€” Techniques for stealing credentials (T1528 Steal Application Access Token, T1539 Steal Web Session Cookie, T1552 Unsecured Credentials)
+- **Collection** (TA0009) â€” Techniques for gathering data (T1119 Automated Collection, T1530 Data from Cloud Storage)
+- **Impact** (TA0040) â€” Techniques for disruption or destruction (T1489 Service Stop, T1498 Network Denial of Service, T1499 Endpoint Denial of Service, T1565 Data Manipulation)
 
 Use the ATT&CK Navigator (https://mitre-attack.github.io/attack-navigator/) to visualize coverage of identified threats against the ATT&CK matrix.
 
@@ -449,7 +505,7 @@ Use the ATT&CK Navigator (https://mitre-attack.github.io/attack-navigator/) to v
 
 ### Pitfall 1: Focusing Exclusively on External Threats
 
-Many threat models only consider attacks originating from the public internet. Insider threats — disgruntled employees, compromised service accounts, or supply chain partners with network access — are consistently among the most damaging attack vectors. Always model threats from inside every trust boundary, not just from outside the perimeter.
+Many threat models only consider attacks originating from the public internet. Insider threats â€” disgruntled employees, compromised service accounts, or supply chain partners with network access â€” are consistently among the most damaging attack vectors. Always model threats from inside every trust boundary, not just from outside the perimeter.
 
 ### Pitfall 2: Ignoring Data at Rest
 
@@ -457,7 +513,7 @@ Teams frequently focus on securing data in transit (TLS, mTLS) while neglecting 
 
 ### Pitfall 3: Missing Trust Boundaries
 
-A trust boundary exists wherever the level of trust changes — between microservices owned by different teams, between a container and its host, between a VPC and a peered network, between your code and a third-party SDK. Failing to identify these boundaries means failing to identify where authentication, authorization, and input validation must be enforced. Every boundary crossing is a potential attack surface.
+A trust boundary exists wherever the level of trust changes â€” between microservices owned by different teams, between a container and its host, between a VPC and a peered network, between your code and a third-party SDK. Failing to identify these boundaries means failing to identify where authentication, authorization, and input validation must be enforced. Every boundary crossing is a potential attack surface.
 
 ### Pitfall 4: Treating Threat Modeling as a One-Time Activity
 
@@ -479,13 +535,13 @@ This skill processes user-supplied content that may include system descriptions,
 
 ## 9. References
 
-1. **Microsoft Threat Modeling Tool** — https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool
-2. **Microsoft SDL Threat Modeling** — https://www.microsoft.com/en-us/securityengineering/sdl/threatmodeling
-3. **OWASP Threat Modeling Cheat Sheet** — https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html
-4. **OWASP Threat Modeling Process** — https://owasp.org/www-community/Threat_Modeling_Process
-5. **MITRE ATT&CK Enterprise Matrix** — https://attack.mitre.org/matrices/enterprise/
-6. **MITRE ATT&CK Techniques** — https://attack.mitre.org/techniques/enterprise/
+1. **Microsoft Threat Modeling Tool** â€” https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool
+2. **Microsoft SDL Threat Modeling** â€” https://www.microsoft.com/en-us/securityengineering/sdl/threatmodeling
+3. **OWASP Threat Modeling Cheat Sheet** â€” https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html
+4. **OWASP Threat Modeling Process** â€” https://owasp.org/www-community/Threat_Modeling_Process
+5. **MITRE ATT&CK Enterprise Matrix** â€” https://attack.mitre.org/matrices/enterprise/
+6. **MITRE ATT&CK Techniques** â€” https://attack.mitre.org/techniques/enterprise/
 7. **Shostack, A. (2014).** *Threat Modeling: Designing for Security.* Wiley.
-8. **NIST SP 800-154** — Guide to Data-Centric System Threat Modeling — https://csrc.nist.gov/publications/detail/sp/800-154/draft
-9. **STRIDE Original Paper** — Kohnfelder, L. & Garg, P. (1999). "The Threats to Our Products." Microsoft Internal Document.
-10. **OWASP Risk Rating Methodology** — https://owasp.org/www-community/OWASP_Risk_Rating_Methodology
+8. **NIST SP 800-154** â€” Guide to Data-Centric System Threat Modeling â€” https://csrc.nist.gov/publications/detail/sp/800-154/draft
+9. **STRIDE Original Paper** â€” Kohnfelder, L. & Garg, P. (1999). "The Threats to Our Products." Microsoft Internal Document.
+10. **OWASP Risk Rating Methodology** â€” https://owasp.org/www-community/OWASP_Risk_Rating_Methodology
