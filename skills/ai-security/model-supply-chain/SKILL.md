@@ -98,6 +98,21 @@ Determine where every model artifact originates and whether its authenticity and
 - Models loaded from shared network drives, team Slack channels, or email attachments with no integrity verification.
 - Absence of SLSA provenance attestations or Sigstore signatures for model artifacts.
 - Models identified only by name ("llama-2-7b") without specifying the exact source organization, revision, or checksum.
+- Model code loaded with `trust_remote_code=True` or equivalent dynamic loader options without pinning, code review, and sandboxed execution evidence.
+- Internal mirrors or promotion registries that copy upstream artifacts without preserving the upstream commit, manifest digest, signature, and final deployment artifact digest.
+
+**Promotion registry and final-artifact evidence gates:**
+
+Do not automatically classify every non-original publisher as High risk. Distinguish arbitrary mirrors from controlled promotion registries by requiring the following evidence:
+
+- [ ] The upstream source is pinned to an immutable commit hash or registry revision, not a branch, tag, or floating "latest" alias.
+- [ ] The imported artifact set is restricted by allowlist (`allow_patterns`, manifest entries, or equivalent) and excludes executable model repo code unless separately approved.
+- [ ] A signed SLSA, in-toto, Sigstore, Cosign, or equivalent attestation links the internal artifact digest back to the upstream revision and import workflow identity.
+- [ ] CI verifies the final deployment artifact digest, not only the source model directory, so conversion, quantization, packaging, and adapter merge steps cannot silently alter the shipped model.
+- [ ] Write access to the internal model registry is restricted, audited, and separated from ordinary model consumers.
+- [ ] Any `trust_remote_code=True`, custom model class, tokenizer plugin, conversion script, or post-download hook has an explicit code-review record and is disabled in production unless required.
+
+When these gates are present, record the third-party or internal-mirror source as a lower-severity controlled provenance dependency instead of a default High finding. When any gate is missing, report the missing evidence directly rather than only saying "third-party source."
 
 **Detection methods using allowed tools:**
 
@@ -111,6 +126,11 @@ Grep: "sha256|checksum|hash|verify|digest|signature|sigstore|cosign" in **/*.{py
 
 # Check for pinned model versions
 Grep: "revision=|commit_hash|model_version" in **/*.{py,yaml,yml,json}
+
+# Check for remote-code execution and final artifact provenance
+Grep: "trust_remote_code|custom_code|auto_map|AutoModel|AutoTokenizer" in **/*.{py,json,yaml,yml}
+Grep: "slsa|in-toto|attestation|predicate|subject.digest|cosign|sigstore" in **/*.{json,yaml,yml,sh,md}
+Grep: "quantize|convert|merge_adapter|merge_lora|export_onnx|gguf" in **/*.{py,sh,yaml,yml}
 
 # Find model artifact storage
 Glob: **/*.{pt,bin,safetensors,pkl,onnx,pb,h5,gguf,ggml}
@@ -128,6 +148,9 @@ Glob: **/config.json
 | No checksum or signature verification on model download | High |
 | Model source unpinned (no commit hash, revision, or version lock) | High |
 | Model pulled from unverified third-party source (not the original publisher) | High |
+| `trust_remote_code=True` or custom model code without review and sandbox evidence | High |
+| Final deployable artifact digest is not tied to the signed import or build attestation | High |
+| Internal promotion registry has pinned upstream revision, signed provenance, final artifact digest verification, and restricted write access | Low or Informational |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
 
