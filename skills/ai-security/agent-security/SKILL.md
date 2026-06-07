@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -79,6 +79,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Agent architecture diagram | Design docs, README, infrastructure code | Maps trust boundaries, delegation chains, tool surface |
 | Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters |
 | Permission/IAM configuration | Cloud IAM, role definitions, service account configs, .env files | Reveals whether least-privilege is enforced |
+| Connector manifests and OAuth grants | MCP server configs, SaaS connector settings, OAuth app registrations, consent screens, token broker logs | Shows delegated permissions, approved resources, consent provenance, and remote tool trust boundaries |
 | Human approval gate implementation | Workflow code, UI code, approval service configs | Determines if HITL is architecturally sound or bypassable |
 | Agent identity and credential management | Auth middleware, secret managers, token configs | Exposes credential scope and rotation practices |
 | Multi-agent communication protocol | Message bus configs, inter-agent APIs, shared state stores | Identifies trust boundary violations |
@@ -193,6 +194,58 @@ Evaluate whether the agent architecture is designed from the ground up around le
 | Secrets | No direct access; tools broker secret access | Agent can read all env vars including secrets |
 | Compute | Hard limits on tokens, time, memory | No limits; agent runs until it decides to stop |
 | Self-modification | Immutable config at runtime | Agent can modify its own tools or prompts |
+
+#### MCP and Connector Security Review
+
+For agent systems that use Model Context Protocol (MCP) servers, SaaS connectors, browser extensions, or delegated OAuth applications, evaluate the connector boundary as part of least privilege. A connector can silently expand an agent's authority even when the local tool registry looks narrow.
+
+**What to look for in code and configuration:**
+
+- **Connector manifest inventory:** Are all MCP servers, remote tools, and SaaS connectors documented with owner, purpose, data classes, allowed operations, and approval status?
+- **OAuth scope minimization:** Do delegated tokens request the smallest scopes needed for the task? Are broad scopes such as repository-wide write, email send, calendar write, or file delete justified per connector?
+- **Resource binding:** Are OAuth tokens bound to the intended protected resource or tenant using resource indicators, audience checks, or equivalent controls?
+- **Consent provenance:** Can the system show who approved a connector, which scopes were approved, when approval occurred, and which agent/workflow can use that grant?
+- **Token lifecycle:** Are connector tokens short-lived, refresh tokens protected by a broker, and revocation events propagated to active agent sessions?
+- **Remote server trust:** Are remote MCP servers pinned to approved origins, TLS endpoints, and expected metadata? Are unexpected tool schema changes reviewed before use?
+- **Tool schema drift:** Does the system record tool schema versions and fail closed when a remote connector adds new side-effecting tools or changes parameters?
+- **Cross-connector aggregation:** Can one workflow combine individually limited connectors into a broader action chain, such as reading a document store and sending results through email or chat?
+
+**Detection methods using allowed tools:**
+
+```
+# Find MCP and connector configuration
+Grep: "mcpServers|model_context_protocol|connector|integration|oauth|scopes|consent" in **/*.{json,yaml,yml,ts,js,py,md}
+
+# Find delegated token handling and revocation paths
+Grep: "refresh_token|access_token|token_broker|revoke|introspect|expires_in|audience|resource" in **/*.{ts,js,py,yaml,yml}
+
+# Find remote tool allowlists and schema version controls
+Grep: "allowed_tools|tool_schema|schema_version|trusted_origin|allowlist|denylist|remote_tool" in **/*.{ts,js,py,json,yaml,yml}
+```
+
+**MCP / connector boundary checklist:**
+
+| Control | Desired State | Common Violation |
+|---|---|---|
+| Manifest inventory | Every connector has owner, purpose, approved tools, data classes, and risk tier | Ad hoc connector entries with no owner or approval evidence |
+| OAuth scopes | Scopes are task-specific and reviewed per connector | Broad delegated scopes granted once and reused by every agent workflow |
+| Resource binding | Tokens are audience/resource-bound to the intended service or tenant | Bearer tokens usable against unintended resources |
+| Consent evidence | User/admin consent is logged with scopes, approver, timestamp, and workflow | No record of who approved connector access or which scopes were accepted |
+| Token lifecycle | Short-lived access, brokered refresh, revocation propagation to sessions | Long-lived connector tokens remain usable after consent withdrawal |
+| Remote tool trust | Approved MCP origins and schema versions are pinned or reviewed | Remote server can add new side-effecting tools without approval |
+| Aggregation control | Cross-connector action chains are risk-scored and gated | Agent can combine read and send connectors into an exfiltration path |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Connector tokens grant write/send/delete scopes without documented task justification | Critical |
+| Remote MCP server can introduce new side-effecting tools without review or fail-closed behavior | Critical |
+| No consent provenance for delegated connector access | High |
+| OAuth tokens are not audience/resource-bound to the intended service or tenant | High |
+| Connector revocation does not terminate active agent sessions or cached credentials | High |
+| Tool schema versions are not logged, pinned, or reviewed before production use | Medium |
+| Cross-connector aggregation risk is not modeled for workflows that read sensitive data and send external messages | Medium |
 
 **What constitutes a finding:**
 
@@ -492,6 +545,12 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+## MCP / Connector Boundary Inventory
+
+| Connector / MCP Server | Owner | Approved Tools | OAuth Scopes / Grants | Protected Resource / Tenant | Consent Evidence | Token TTL / Revocation | Schema Version |
+|---|---|---|---|---|---|---|---|
+| [name] | [owner/team] | [tool names] | [scopes] | [resource/tenant] | [approver, timestamp, ticket] | [TTL, revocation path] | [version/hash] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
 
@@ -515,6 +574,7 @@ Glob: **/security_architecture*
 |---|---|---|---|
 | Permission Model | [rating] | [one-line summary] | [priority] |
 | Least-Privilege Design | [rating] | [one-line summary] | [priority] |
+| MCP / Connector Boundaries | [rating] | [one-line summary] | [priority] |
 | HITL Gate Placement | [rating] | [one-line summary] | [priority] |
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
 | Audit Trail Completeness | [rating] | [one-line summary] | [priority] |
@@ -550,6 +610,9 @@ Glob: **/security_architecture*
 | NIST AI RMF 1.0 | MANAGE 2.2 | Risk response mechanisms including containment |
 | NIST AI RMF 1.0 | MANAGE 2.4 | Mechanisms for tracking and responding to AI risks |
 | NIST AI RMF 1.0 | MANAGE 4.1 | Incident tracking, response, and recovery |
+| OAuth 2.0 Security BCP | RFC 9700 | Security best current practice for OAuth 2.0 clients, authorization servers, and protected resources |
+| OAuth 2.0 Resource Indicators | RFC 8707 | Resource parameter for binding access token requests to intended protected resources |
+| OAuth 2.0 Protected Resource Metadata | RFC 9728 | Metadata for protected resource capabilities, supported scopes, authorization servers, and signed metadata |
 
 **OWASP Agentic AI Threats:** These threat categories are maintained by the OWASP GenAI Security Project working group. The AG01-AG10 numbering and scope used here reflect the documented threat areas. Verify current numbering and content against the latest published version at [genai.owasp.org](https://genai.owasp.org).
 
@@ -587,3 +650,7 @@ Glob: **/security_architecture*
 12. Sequential Tool Attack Chains and Context Amnesia in Agentic AI (2026) -- arXiv:2603.12644
 13. Confused-Deputy Attacks and Cascading Failures in Long-Horizon Agent Workflows (2026) -- arXiv:2603.12230
 14. fabraix/playground -- Open-source AI agent red-team exploit library for validating agent permission boundaries and tool-use attack surface -- https://github.com/fabraix/playground
+15. Model Context Protocol Authorization Specification -- https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization
+16. RFC 9700 -- Best Current Practice for OAuth 2.0 Security -- https://datatracker.ietf.org/doc/html/rfc9700
+17. RFC 8707 -- Resource Indicators for OAuth 2.0 -- https://datatracker.ietf.org/doc/html/rfc8707
+18. RFC 9728 -- OAuth 2.0 Protected Resource Metadata -- https://datatracker.ietf.org/doc/html/rfc9728
