@@ -1,19 +1,20 @@
 ---
 name: dns-security
 description: >
-  Performs a structured DNS security review against NIST SP 800-81 Rev 2
+  Performs a structured DNS security review against NIST SP 800-81 Rev. 3
   (Secure Domain Name System Deployment Guide) and CIS Controls v8 (Control 9.2
   -- Use DNS Filtering Services). Auto-invoked when reviewing DNS configurations,
   DNSSEC deployment, or investigating DNS-based exfiltration and tunneling
   indicators. Produces a DNS security assessment covering DNSSEC validation,
-  protective DNS, and exfiltration detection patterns.
-tags: [network, dns, dnssec, exfiltration]
+  protective DNS, encrypted DNS, DNS logging, zero trust alignment, and
+  exfiltration detection patterns.
+tags: [network, dns, dnssec, exfiltration, protective-dns]
 role: [security-engineer]
 phase: [operate]
-frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
+frameworks: [NIST-SP-800-81-Rev3, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +24,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DNS Security Review
 
-A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev. 3 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, protective DNS services, DNS logging, DNS exfiltration detection, and DNS as a security control in zero trust or defense-in-depth architectures. All findings are mapped to framework controls with severity ratings and actionable remediation.
 
 ---
 
@@ -42,7 +43,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2 Section 2 identifies three primary DNS threat categories: DNS cache poisoning, DNS-based denial of service, and unauthorized zone data modification. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
+DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev. 3 supersedes Rev. 2 and reframes DNS as both critical infrastructure and a security control for zero trust and defense-in-depth programs. It emphasizes protective DNS, encrypted DNS, DNS logging, DNSSEC, and secure authoritative and recursive service operations. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
 
 ---
 
@@ -61,10 +62,17 @@ Use Glob and Grep to locate DNS server configurations, resolver settings, and re
 **/bind/**
 **/zones/**
 
-# Systemd-resolved / resolvconf
+# Recursive resolvers and stub resolver tooling
 **/resolved.conf
 **/resolv.conf
 **/resolvconf/**
+**/unbound*
+**/dnsmasq*
+**/kresd*
+**/knot-resolver*
+**/pdns*
+**/powerdns*
+**/stubby*
 
 # Cloud DNS
 **/*.tf           # Terraform (aws_route53_zone, google_dns_managed_zone, azurerm_dns_zone)
@@ -88,28 +96,28 @@ Use Glob and Grep to locate DNS server configurations, resolver settings, and re
 
 Categorize discovered configurations:
 - **Authoritative servers:** BIND, PowerDNS, Route53 hosted zones, Cloud DNS zones.
-- **Recursive resolvers:** Unbound, BIND (recursion enabled), CoreDNS, systemd-resolved.
+- **Recursive resolvers:** Unbound, BIND (recursion enabled), CoreDNS, Knot Resolver, PowerDNS Recursor, dnsmasq, systemd-resolved.
 - **Protective DNS / filtering:** RPZ, Pi-hole, Cisco Umbrella, Cloudflare Gateway, Quad9.
 - **Client settings:** resolv.conf, DHCP-distributed resolver addresses.
 
 ---
 
-### Step 2: DNSSEC Deployment Review (NIST SP 800-81 Rev 2, Sections 4 and 5)
+### Step 2: DNSSEC Deployment Review (NIST SP 800-81 Rev. 3, Sections 3.8 and 4.2.5-4.2.6)
 
-NIST SP 800-81 Rev 2 Section 4 covers DNSSEC for authoritative servers (zone signing) and Section 5 covers DNSSEC for recursive resolvers (validation).
+NIST SP 800-81 Rev. 3 covers DNSSEC for authoritative services in Section 3.8 and DNSSEC validation and trust anchor maintenance for recursive and forwarding services in Sections 4.2.5 and 4.2.6.
 
-#### 2.1 Authoritative Zone Signing (Section 4)
+#### 2.1 Authoritative Zone Signing (Section 3.8)
 
 For each authoritative zone, verify:
 
 - **Zone is signed:** RRSIG, DNSKEY, NSEC/NSEC3 records are present in zone files.
-- **Algorithm strength:** RSA keys must be at least 2048-bit. ECDSA P-256 (Algorithm 13) or Ed25519 (Algorithm 15) are preferred per NIST SP 800-81 Rev 2 Section 4.3.
+- **Algorithm strength:** Review algorithms against current DNSSEC key guidance and migration planning in NIST SP 800-81 Rev. 3 Section 3.8.
 - **Key management:**
   - Key Signing Key (KSK) and Zone Signing Key (ZSK) are separate.
   - KSK rollover procedure is documented and tested.
-  - ZSK rotation occurs at defined intervals (NIST recommends ZSK rotation every 1-3 months).
+  - ZSK rotation occurs at defined intervals based on the organization's key-management policy.
 - **DS record in parent:** A DS record matching the KSK is published in the parent zone.
-- **NSEC vs. NSEC3:** NSEC3 is preferred to prevent zone enumeration (NIST SP 800-81 Rev 2 Section 4.4).
+- **Authenticated denial of existence:** Review NSEC, NSEC3, or compact denial-of-existence choices against NIST SP 800-81 Rev. 3 Sections 3.8.3 and 3.8.4.
 
 **Patterns to check in zone files:**
 
@@ -130,7 +138,7 @@ inline-signing yes
 
 ---
 
-#### 2.2 Recursive Resolver DNSSEC Validation (Section 5)
+#### 2.2 Recursive Resolver DNSSEC Validation (Sections 4.2.5 and 4.2.6)
 
 For each recursive resolver, verify:
 
@@ -156,7 +164,7 @@ dnssec
 
 ---
 
-### Step 3: Encrypted DNS Transport Review
+### Step 3: Encrypted DNS Transport Review (NIST SP 800-81 Rev. 3, Section 4.2.1)
 
 Evaluate whether DNS queries are protected in transit.
 
@@ -166,6 +174,7 @@ Evaluate whether DNS queries are protected in transit.
 |-----------|------|----------|----------|
 | DNS over TLS (DoT) | 853 | RFC 7858 | Resolver-to-resolver, client-to-resolver (enterprise) |
 | DNS over HTTPS (DoH) | 443 | RFC 8484 | Client-to-resolver (privacy-focused, browser-level) |
+| DNS over QUIC (DoQ) | 853/UDP | RFC 9250 | Low-latency encrypted DNS where supported by resolver policy |
 
 **What to verify:**
 
@@ -174,6 +183,7 @@ Evaluate whether DNS queries are protected in transit.
 - **DoH bypass risk:** Browsers (Firefox, Chrome) may use built-in DoH providers, bypassing corporate DNS filtering. Verify that:
   - Canary domain `use-application-dns.net` resolves to NXDOMAIN (signals browsers to disable built-in DoH).
   - Network policy blocks known public DoH endpoints if corporate DNS filtering is required.
+- **DoQ bypass risk:** UDP/853 is reviewed alongside TCP/853 so DNS over QUIC cannot bypass enterprise resolver policy.
 
 **Patterns to check:**
 
@@ -194,7 +204,7 @@ forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
 
 ---
 
-### Step 4: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
+### Step 4: Protective DNS, Response Policy Zones, and Filtering (NIST SP 800-81 Rev. 3, Section 2.1; CIS Control 9.2)
 
 CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (Response Policy Zones, defined by ISC) is the standard mechanism for DNS-based filtering on recursive resolvers.
 
@@ -237,7 +247,23 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ---
 
-### Step 5: DNS Exfiltration and Tunneling Detection Patterns
+### Step 5: DNS Logging and Monitoring (NIST SP 800-81 Rev. 3, Section 2.1.1)
+
+NIST SP 800-81 Rev. 3 treats DNS telemetry as part of the organization's security strategy. DNS logging supports threat intelligence, detection engineering, and digital forensics and incident response.
+
+**What to verify:**
+
+- Query and response logs include source, timestamp, queried name, query type, response code, policy action, and resolver or forwarder identity.
+- Logs cover recursive resolvers, forwarding services, protective DNS enforcement points, and cloud DNS logging where applicable.
+- DNS logs are forwarded to the SIEM or data lake with retention aligned to incident response and regulatory needs.
+- Access to DNS logs is restricted because logs can expose browsing behavior, internal hostnames, service discovery, and incident-sensitive indicators.
+- Evidence includes log source, collection timestamp, retention period, and a sample query or alert proving ingestion.
+
+**Finding classification:** No DNS logging on enterprise resolvers is **High**. Logging without SIEM forwarding or retention evidence is **Medium**. DNS logs with broad access and no privacy controls are **Medium**.
+
+---
+
+### Step 6: DNS Exfiltration and Tunneling Detection Patterns
 
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
@@ -286,7 +312,7 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
-### Step 6: Domain Categorization and Newly Registered Domain (NRD) Blocking
+### Step 7: Domain Categorization and Newly Registered Domain (NRD) Blocking
 
 - **NRD blocking:** Domains registered within the past 30 days are disproportionately associated with phishing and malware. CIS Control 9.2 supports blocking or flagging NRDs.
 - **DGA detection:** Domain Generation Algorithms produce random-appearing domain names. Detection relies on entropy analysis and machine learning classifiers integrated into protective DNS services.
@@ -314,7 +340,11 @@ abcdef0123456789.dnscat.example.com TXT
 - DNS infrastructure reviewed: <authoritative servers, resolvers, protective DNS>
 - Configuration files analyzed: <list of file paths>
 - Date: <assessment date>
-- Frameworks applied: NIST SP 800-81 Rev 2, CIS Controls v8 (9.2)
+- Frameworks applied: NIST SP 800-81 Rev. 3, CIS Controls v8 (9.2)
+- Publication URL: https://doi.org/10.6028/NIST.SP.800-81r3
+- Legacy Rev. 2 baseline requested: Yes/No
+- Legacy baseline justification: <required if Rev. 2 is used>
+- Evidence collection timestamp: <timestamp or Not Evaluable>
 
 ### DNSSEC Status
 
@@ -324,9 +354,18 @@ abcdef0123456789.dnscat.example.com TXT
 
 ### Resolver Security
 
-| Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
-|----------|-------------------|--------------------|--------------|--------------|
-| ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+| Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging | Trust Anchor Evidence |
+|----------|-------------------|--------------------|--------------|---------------|-----------------------|
+| ns1      | Enabled/Disabled  | DoT/DoH/DoQ/Plaintext | Yes/No    | Yes/No       | <source/date>         |
+
+### Protective DNS and Logging
+
+| Control | Status | Evidence Source | Freshness | Gaps |
+|---------|--------|-----------------|-----------|------|
+| Protective DNS filtering | Deployed/Partial/Not Deployed | <config/log sample> | <date> | <gap> |
+| Encrypted DNS policy | Deployed/Partial/Not Deployed | <resolver/client policy> | <date> | <gap> |
+| DNS logging and SIEM forwarding | Deployed/Partial/Not Deployed | <log source/sample> | <date> | <gap> |
+| Public resolver bypass controls | Deployed/Partial/Not Deployed | <egress or endpoint policy> | <date> | <gap> |
 
 ### Findings
 
@@ -343,6 +382,8 @@ abcdef0123456789.dnscat.example.com TXT
 - Entropy-based detection: <Deployed / Not deployed>
 - Volumetric thresholds: <Configured / Not configured>
 - SIEM integration: <Yes / No>
+- DNS log retention: <duration>
+- Source coverage: <recursive/protective/cloud/client>
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -354,15 +395,19 @@ abcdef0123456789.dnscat.example.com TXT
 
 ## Framework Reference
 
-### NIST SP 800-81 Rev 2
+### NIST SP 800-81 Rev. 3
 
 | Section | Topic | Key Requirements |
 |---------|-------|-----------------|
-| 2 | DNS Threats | Cache poisoning, unauthorized zone modification, DDoS |
-| 3 | Securing DNS Transactions | TSIG for zone transfers, ACLs on recursive queries |
-| 4 | DNSSEC for Authoritative Servers | Zone signing, key management, algorithm selection, NSEC3 |
-| 5 | DNSSEC for Recursive Resolvers | Validation enablement, trust anchor management, NTA policy |
-| 6 | Securing DNS Infrastructure | Restricting zone transfers, hiding version strings, rate limiting |
+| 1.2 | DNS in cyber resiliency, defense-in-depth, and zero trust | DNS as a security control, policy enforcement point, and telemetry source |
+| 2.1 | Protective DNS capabilities | Threat intelligence, telemetry, name resolution filtering, DFIR support |
+| 2.2 | Secure DNS protocol operations | DNS integrity, encrypted DNS, DNS hygiene, best practices |
+| 2.3 | DNS service design | Dedicated DNS services, resiliency, high availability, protective DNS ecosystem interoperability |
+| 3 | Managing threats to authoritative services | Zone transfer restrictions, lame delegations, dynamic update security, DNSSEC key considerations |
+| 3.8 | DNSSEC for authoritative services | Key considerations, RRSIG validity, denial of existence, algorithm migration, authoritative time |
+| 4 | Managing threats to recursive/forwarding services | Resolver abuse prevention, encrypted DNS, public resolver restrictions, QNAME minimization, exfiltration detection |
+| 4.2.5-4.2.6 | Recursive DNSSEC validation | DNSSEC validation enablement and trust anchor maintenance |
+| 5 | Managing threats to stub resolvers | Client-side resolver behavior and encrypted DNS enforcement considerations |
 
 ### CIS Controls v8
 
@@ -384,6 +429,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Using Rev. 2 section references for current audits.** NIST SP 800-81 Rev. 3 significantly changed the structure and emphasis of the guide. If a legacy Rev. 2 baseline is intentionally used, record the justification; otherwise, map findings to Rev. 3 sections.
+
+6. **Treating DNS logs as low-sensitivity telemetry.** DNS logs can reveal user activity, internal service names, and incident indicators. Restrict access and document retention before exporting them broadly.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -399,12 +448,14 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## References
 
-- NIST SP 800-81 Rev 2, Secure Domain Name System (DNS) Deployment Guide: https://csrc.nist.gov/publications/detail/sp/800-81/2/final
-- NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
+- NIST SP 800-81 Rev. 3, Secure Domain Name System (DNS) Deployment Guide: https://csrc.nist.gov/pubs/sp/800/81/r3/final
+- NIST SP 800-81 Rev. 3 DOI: https://doi.org/10.6028/NIST.SP.800-81r3
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
+- RFC 5011 -- Automated Updates of DNS Security Trust Anchors: https://datatracker.ietf.org/doc/html/rfc5011
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
+- RFC 9250 -- DNS over Dedicated QUIC Connections: https://datatracker.ietf.org/doc/html/rfc9250
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
@@ -413,4 +464,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
+- **1.1.0** -- Refreshed baseline to NIST SP 800-81 Rev. 3, adding revision-aware reporting, protective DNS/logging emphasis, DoQ coverage, expanded resolver discovery, and zero trust alignment.
+- **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev. 2 and CIS Controls v8 Control 9.2 for DNS security review.
