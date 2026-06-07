@@ -1,0 +1,71 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "metadata": {
+    "timestamp": "2026-06-01T10:00:00Z",
+    "component": {
+      "type": "application",
+      "name": "traceable-app",
+      "version": "5.1.0",
+      "bom-ref": "pkg:app/traceable-app@5.1.0"
+    },
+    "authors": [
+      {
+        "name": "Example Security Team"
+      }
+    ],
+    "tools": [
+      {
+        "vendor": "anchore",
+        "name": "syft",
+        "version": "1.27.1"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "api-framework",
+      "version": "3.4.0",
+      "bom-ref": "pkg:npm/api-framework@3.4.0",
+      "purl": "pkg:npm/api-framework@3.4.0",
+      "supplier": {
+        "name": "Example Framework Maintainers"
+      }
+    },
+    {
+      "type": "library",
+      "name": "json-parser",
+      "version": "2.0.0",
+      "bom-ref": "pkg:npm/json-parser@2.0.0",
+      "purl": "pkg:npm/json-parser@2.0.0",
+      "supplier": {
+        "name": "Example Parser Maintainers"
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:app/traceable-app@5.1.0",
+      "dependsOn": [
+        "pkg:npm/api-framework@3.4.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/api-framework@3.4.0",
+      "dependsOn": [
+        "pkg:npm/json-parser@2.0.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/json-parser@2.0.0",
+      "dependsOn": []
+    }
+  ],
+  "externalReferences": [
+    {
+      "type": "build-system",
+      "url": "https://rekor.sigstore.dev/api/v1/log/entries/example"
+    }
+  ]
+}

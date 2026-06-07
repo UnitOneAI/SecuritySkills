@@ -1,0 +1,54 @@
+{
+  "document": {
+    "category": "csaf_vex",
+    "csaf_version": "2.0",
+    "title": "Consumer Verified VEX for Example Product",
+    "tracking": {
+      "id": "EXAMPLE-VEX-2026-21626",
+      "status": "final",
+      "version": "2",
+      "initial_release_date": "2026-05-20T00:00:00Z",
+      "current_release_date": "2026-06-01T00:00:00Z"
+    }
+  },
+  "product_tree": {
+    "branches": [
+      {
+        "category": "product_name",
+        "name": "Example Product",
+        "product": {
+          "name": "Example Product 5.1.0",
+          "product_id": "example-product-5.1.0"
+        }
+      }
+    ]
+  },
+  "vulnerabilities": [
+    {
+      "cve": "CVE-2024-21626",
+      "product_status": {
+        "known_not_affected": [
+          "example-product-5.1.0"
+        ]
+      },
+      "flags": [
+        {
+          "label": "component_not_present",
+          "product_ids": [
+            "example-product-5.1.0"
+          ]
+        }
+      ],
+      "notes": [
+        {
+          "category": "description",
+          "text": "Consumer verification confirmed the affected runc package is not present in the deployed container image SBOM."
+        },
+        {
+          "category": "details",
+          "text": "Verification status: consumer_verified. Verification date: 2026-06-01. Evidence: deployed image SBOM and runtime package inventory."
+        }
+      ]
+    }
+  ]
+}

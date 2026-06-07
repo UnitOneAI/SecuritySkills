@@ -1,0 +1,52 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "metadata": {
+    "timestamp": "2025-06-01T10:00:00Z",
+    "component": {
+      "type": "application",
+      "name": "flat-inventory-app",
+      "version": "4.2.0",
+      "bom-ref": "pkg:app/flat-inventory-app@4.2.0"
+    },
+    "authors": [
+      {
+        "name": "Example Security Team"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "web-framework",
+      "version": "2.1.0",
+      "bom-ref": "pkg:npm/web-framework@2.1.0",
+      "purl": "pkg:npm/web-framework@2.1.0",
+      "supplier": {
+        "name": "Example Framework Maintainers"
+      }
+    },
+    {
+      "type": "library",
+      "name": "deep-transitive-parser",
+      "version": "1.0.3",
+      "bom-ref": "pkg:npm/deep-transitive-parser@1.0.3",
+      "purl": "pkg:npm/deep-transitive-parser@1.0.3",
+      "supplier": {
+        "name": "Example Parser Maintainers"
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:app/flat-inventory-app@4.2.0",
+      "dependsOn": [
+        "pkg:npm/web-framework@2.1.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/deep-transitive-parser@1.0.3",
+      "dependsOn": []
+    }
+  ]
+}

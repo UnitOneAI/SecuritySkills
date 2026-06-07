@@ -1,0 +1,64 @@
+{
+  "document": {
+    "category": "csaf_vex",
+    "csaf_version": "2.0",
+    "title": "Vendor VEX for Example Product",
+    "tracking": {
+      "id": "EXAMPLE-VEX-2024-3094",
+      "status": "final",
+      "version": "1",
+      "initial_release_date": "2025-01-15T00:00:00Z",
+      "current_release_date": "2025-01-15T00:00:00Z"
+    }
+  },
+  "product_tree": {
+    "branches": [
+      {
+        "category": "product_name",
+        "name": "Example Product",
+        "product": {
+          "name": "Example Product 4.2.0",
+          "product_id": "example-product-4.2.0"
+        }
+      }
+    ]
+  },
+  "vulnerabilities": [
+    {
+      "cve": "CVE-2024-3094",
+      "product_status": {
+        "known_not_affected": [
+          "example-product-4.2.0"
+        ]
+      },
+      "threats": [
+        {
+          "category": "impact",
+          "details": "Vendor states vulnerable code is not in the execute path, but no consumer verification evidence is present."
+        }
+      ],
+      "flags": [
+        {
+          "label": "vulnerable_code_not_in_execute_path",
+          "product_ids": [
+            "example-product-4.2.0"
+          ]
+        }
+      ]
+    },
+    {
+      "cve": "CVE-2025-9999",
+      "product_status": {
+        "under_investigation": [
+          "example-product-4.2.0"
+        ]
+      },
+      "notes": [
+        {
+          "category": "description",
+          "text": "Investigation has exceeded 30 days and has no published SLA."
+        }
+      ]
+    }
+  ]
+}

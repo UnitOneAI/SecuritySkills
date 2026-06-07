@@ -2,18 +2,18 @@
 name: sbom-analysis
 description: >
   Analyzes Software Bills of Materials (SBOMs) for completeness against NTIA
-  minimum elements, interprets VEX status documents, performs transitive
-  dependency risk analysis, and detects license conflicts. Supports CycloneDX 1.5
-  and SPDX 2.3 formats with CSAF-based VEX correlation. Auto-invoked when SBOM
-  files are shared, supply chain risk questions arise, or VEX documents require
-  interpretation.
+  minimum elements, dependency graph traceability, VEX status credibility,
+  transitive dependency risk, SBOM freshness, provenance trustworthiness, and
+  license conflicts. Supports CycloneDX 1.5 and SPDX 2.3 formats with CSAF-based
+  VEX correlation. Auto-invoked when SBOM files are shared, supply chain risk
+  questions arise, or VEX documents require interpretation.
 tags: [vuln-management, sbom, supply-chain]
 role: [security-engineer, appsec-engineer]
 phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -26,7 +26,7 @@ argument-hint: "[target-file-or-directory]"
 > **Frameworks:** CycloneDX 1.5 (OWASP), SPDX 2.3 (Linux Foundation / ISO 5962), VEX via CSAF 2.0 (OASIS), NTIA SBOM Minimum Elements
 > **Role:** Security Engineer, AppSec Engineer
 > **Time:** 20-40 min
-> **Output:** SBOM completeness assessment, VEX status summary, dependency risk analysis, and license conflict report
+> **Output:** SBOM completeness assessment, dependency graph traceability, VEX status credibility, freshness/trustworthiness, dependency risk analysis, and license conflict report
 
 ---
 
@@ -124,14 +124,37 @@ NTIA Completeness Assessment:
 - Overall Completeness:       [Complete | Partial -- list gaps | Incomplete]
 ```
 
+#### Dependency Graph Completeness
+
+Do not treat a flat list of components as a complete SBOM if transitive components cannot be traced back to the top-level product or direct dependencies. Add a `graph_completeness` dimension to the NTIA assessment: NTIA requires a "Dependency Relationship" element, but useful vulnerability triage also requires graph traceability across dependency depth.
+
+For CycloneDX, build graph completeness from `dependencies[].ref` and `dependencies[].dependsOn`. For SPDX, use `relationships[]` with `DEPENDS_ON`, `DEPENDENCY_OF`, `CONTAINS`, and package root relationships.
+
+```
+Dependency Graph Completeness:
+- Root Component Identified:     [Yes | No]
+- Traceable Components:          [N/N] ([%]) reachable from root/direct dependencies
+- Orphan Components:             [N] listed but not connected to dependency graph
+- Max Traceable Depth:           [N levels]
+- Flat-List Indicator:           [Yes | No] -- transitive components listed but depth <= 1
+- Graph Completeness Rating:     [Complete Graph | Partial Graph | Flat List | Missing Graph]
+```
+
+| Rating | Criteria |
+|---|---|
+| **Complete Graph** | Root/direct components identified and >= 95% of components are reachable through dependency relationships |
+| **Partial Graph** | 70-94% of components are reachable, or root exists but some transitive branches are disconnected |
+| **Flat List** | Components are listed and may have relationships, but depth is <= 1 and transitive parent-child traceability is absent |
+| **Missing Graph** | No usable dependency relationship graph exists |
+
 #### Completeness Thresholds
 
 | Rating | Criteria |
 |---|---|
-| **Complete** | All 7 NTIA elements present for 100% of components |
-| **Substantially Complete** | All 7 elements present for >= 90% of components; gaps documented |
-| **Partial** | 5-6 elements present for majority of components; significant gaps in supplier or dependency data |
-| **Incomplete** | Fewer than 5 elements consistently present; SBOM not suitable for compliance or risk assessment |
+| **Complete** | All 7 NTIA elements present for 100% of components and graph completeness is Complete Graph |
+| **Substantially Complete** | All 7 elements present for >= 90% of components; gaps documented; graph completeness is Complete Graph or Partial Graph |
+| **Partial** | 5-6 elements present for majority of components, significant supplier/dependency gaps, or graph completeness is Flat List |
+| **Incomplete** | Fewer than 5 elements consistently present, graph completeness is Missing Graph, or SBOM is not suitable for compliance or risk assessment |
 
 ### Step 3: VEX Status Interpretation
 
@@ -170,6 +193,35 @@ VEX Assessment:
 - Under Investigation: [N] (monitor for updates)
 ```
 
+#### VEX Credibility and Staleness
+
+Assess whether each VEX conclusion is evidence-backed for the consumer's environment. A vendor-attested "Not Affected" status can be correct, but it is weaker than a status independently verified against the consumer's SBOM, deployment path, call graph, or runtime configuration.
+
+| Verification Status | Evidence Required | Residual Risk |
+|---|---|---|
+| **consumer_verified** | Consumer verified the justification with SBOM, code, call-graph, runtime, or deployment evidence | Low |
+| **third_party_verified** | Independent third party validated the VEX conclusion and scope | Low to Medium |
+| **vendor_attested** | Vendor provided a valid VEX status and justification, but consumer did not independently verify assumptions | Medium |
+| **not_verified** | Missing, vague, expired, or unsupported justification | High |
+
+For each VEX entry, record:
+
+```
+VEX Credibility:
+- CVE / Component:          [CVE-ID / package@version]
+- Status / Justification:   [status / CSAF justification]
+- Verification Status:      [consumer_verified | third_party_verified | vendor_attested | not_verified]
+- Verification Evidence:    [SBOM match | code path review | runtime config | vendor statement | none]
+- Verification Date:        [date | missing]
+- Stale Investigation:      [Yes | No | N/A]
+- Next Action:              [accept | independently verify | remediate | apply compensating controls]
+```
+
+Flag stale VEX entries when:
+- `Under Investigation` is older than the vendor's stated SLA or older than 30 days when no SLA is provided.
+- `Not Affected` relies on `vulnerable_code_not_in_execute_path`, `vulnerable_code_cannot_be_controlled_by_adversary`, or `inline_mitigations_already_exist` without consumer or third-party verification for critical systems.
+- The VEX product/version does not exactly match the SBOM product/version under review.
+
 ### Step 4: Transitive Dependency Analysis
 
 Analyze the dependency tree to identify risk concentration in transitive (indirect) dependencies.
@@ -203,7 +255,45 @@ Transitive Dependency Analysis:
 - Stale Dependencies:       [N] components with no update in >= 18 months
 ```
 
-### Step 5: License Conflict Detection
+### Step 5: SBOM Freshness and Trustworthiness
+
+Evaluate whether the SBOM is current enough and trustworthy enough to support procurement, compliance, or incident-response decisions. A schema-valid SBOM can still be stale, generated from the wrong build, or unauthenticated.
+
+1. **Compare timestamps:** Check SBOM timestamp against software release date, latest available release, deployment date, and last vulnerability scan.
+2. **Assess version lag:** Identify whether the SBOM describes the deployed version or an older/unreleased build.
+3. **Check generation evidence:** Identify tool name/version, generation method, and whether the SBOM was generated from source, build artifacts, container image, or runtime inventory.
+4. **Check provenance and signing:** Look for SLSA provenance, in-toto attestations, Sigstore/cosign signatures, or other signer identity evidence.
+5. **Cross-check multi-SBOM compositions:** If the product has subcomponent SBOMs, verify that composition data links each sub-SBOM to the parent product and version.
+
+```
+SBOM Freshness and Trustworthiness:
+- SBOM Timestamp:             [date]
+- Software Version Covered:   [version]
+- Latest/Deployed Version:    [version | unknown]
+- SBOM Age Category:          [Current | Aging | Stale | Unknown]
+- CVE Scan Currency:          [Current | Aging | Stale | Missing]
+- Generation Tool:            [tool@version | unknown]
+- Generation Source:          [source | build artifact | container image | runtime | unknown]
+- Provenance Evidence:        [SLSA/in-toto/Sigstore/cosign/none]
+- Signer Identity:            [identity | missing]
+- Trustworthiness Rating:     [High | Medium | Low | Unknown]
+```
+
+| Freshness Rating | Criteria |
+|---|---|
+| **Current** | SBOM generated for the deployed/latest release and vulnerability scan is <= 30 days old |
+| **Aging** | SBOM is 31-90 days old or one minor release behind; use with caution |
+| **Stale** | SBOM is > 90 days old, multiple releases behind, or older than the deployed artifact |
+| **Unknown** | Timestamp, covered version, or deployment mapping is missing |
+
+| Trustworthiness Rating | Criteria |
+|---|---|
+| **High** | Generated from build artifact or runtime inventory, signed/attested, signer identity verified, and version matches deployment |
+| **Medium** | Generated by a named tool with version and matches software version, but provenance/signing is absent |
+| **Low** | Generated from source-only or manual inventory, unsigned, or inconsistent with deployed artifact/version |
+| **Unknown** | Generation source, tool, signer, or version binding cannot be determined |
+
+### Step 6: License Conflict Detection
 
 Analyze component licenses for conflicts, compliance risks, and policy violations.
 
@@ -245,10 +335,10 @@ Classify the overall SBOM analysis into one of the following states:
 
 | Classification | Definition | Criteria |
 |---|---|---|
-| **Critical Supply Chain Risk** | SBOM reveals high-risk supply chain exposure | Known exploited CVEs in dependencies, incomplete SBOM with missing critical elements, or license conflicts blocking distribution |
-| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, multiple stale transitive dependencies, or VEX "Under Investigation" for critical components |
-| **Acceptable** | SBOM meets minimum requirements with minor gaps | NTIA completeness >= 90%, no critical/high CVEs in dependencies, minor license issues documented |
-| **Strong** | SBOM is comprehensive and low-risk | NTIA 100% complete, all VEX statuses resolved, no critical dependency risks, clean license posture |
+| **Critical Supply Chain Risk** | SBOM reveals high-risk supply chain exposure | Known exploited CVEs in dependencies, incomplete SBOM with missing critical elements, Missing Graph for dependency relationships, stale critical VEX entries, or license conflicts blocking distribution |
+| **Elevated Risk** | SBOM has notable gaps or concerning findings | NTIA completeness < 90%, Flat List graph, multiple stale transitive dependencies, vendor-attested-only "Not Affected" VEX for critical components, stale SBOM, missing provenance, or VEX "Under Investigation" for critical components |
+| **Acceptable** | SBOM meets minimum requirements with minor gaps | NTIA completeness >= 90%, Complete/Partial Graph, current or aging SBOM, no critical/high CVEs in dependencies, VEX statuses resolved or verified, minor license issues documented |
+| **Strong** | SBOM is comprehensive and low-risk | NTIA 100% complete, Complete Graph, current SBOM with strong provenance/signing, all VEX statuses consumer/third-party verified or fixed, no critical dependency risks, clean license posture |
 
 ---
 
@@ -259,7 +349,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## SBOM Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** sbom-analysis v1.0.0
+**Skill:** sbom-analysis v1.1.0
 **Frameworks:** CycloneDX 1.5, SPDX 2.3, VEX (CSAF), NTIA Minimum Elements
 **Reviewer:** AI-assisted (human review required for license conflicts and risk decisions)
 
@@ -293,12 +383,27 @@ conflicts), and overall classification.]
 
 **NTIA Completeness Rating:** [Complete / Substantially Complete / Partial / Incomplete]
 
+### Dependency Graph Completeness
+
+| Graph Metric | Value | Notes |
+|---|---|---|
+| Root Component Identified | [Yes/No] | [Root bom-ref/SPDXID or gap] |
+| Traceable Components | [N/N] ([%]) | [Reachable from root/direct dependencies] |
+| Max Traceable Depth | [N] | [Depth calculation notes] |
+| Orphan Components | [N] | [List top examples if present] |
+| Flat-List Indicator | [Yes/No] | [Whether transitive components lack parent-child traceability] |
+
+**Graph Completeness Rating:** [Complete Graph / Partial Graph / Flat List / Missing Graph]
+
 ### VEX Status Summary
 [If VEX documents are provided]
 
-| CVE ID | Component | VEX Status | Justification | Action |
-|---|---|---|---|---|
-| [CVE-ID] | [component] | [Not Affected/Affected/Fixed/Under Investigation] | [justification if Not Affected] | [action] |
+| CVE ID | Component | VEX Status | Justification | Verification Status | Stale? | Action |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [component] | [Not Affected/Affected/Fixed/Under Investigation] | [justification if Not Affected] | [consumer_verified/vendor_attested/etc.] | [Yes/No] | [action] |
+
+**Aggregate VEX Credibility:** [High / Medium / Low / Unknown]
+**VEX Staleness Flags:** [N] entries requiring follow-up
 
 ### Transitive Dependency Risk
 
@@ -309,6 +414,21 @@ conflicts), and overall classification.]
 | Stale Dependencies (>18mo) | [N] | [List components] |
 | High Fan-In Components | [N] | [List components] |
 | Orphan Components | [N] | [List if present] |
+
+### SBOM Freshness and Trustworthiness
+
+| Freshness / Trust Metric | Value | Notes |
+|---|---|---|
+| SBOM Timestamp | [ISO 8601] | [Compared to release/deployment date] |
+| Software Version Covered | [version] | [Matches deployed/latest?] |
+| SBOM Age Category | [Current/Aging/Stale/Unknown] | [Reason] |
+| CVE Scan Currency | [Current/Aging/Stale/Missing] | [Last scan date/source] |
+| Generation Tool | [tool@version/unknown] | [Source of SBOM data] |
+| Generation Source | [source/build artifact/container/runtime/unknown] | [Evidence] |
+| Provenance Evidence | [SLSA/in-toto/Sigstore/cosign/none] | [Signer/attestation details] |
+| Signer Identity | [identity/missing] | [Verification notes] |
+
+**Trustworthiness Rating:** [High / Medium / Low / Unknown]
 
 ### License Analysis
 
@@ -362,6 +482,12 @@ Vulnerability Exploitability eXchange (VEX) is a form of security advisory that 
 - VEX Overview: https://www.cisa.gov/sites/default/files/2023-04/minimum-requirements-for-vex-508c.pdf
 - OpenVEX: https://github.com/openvex/spec
 
+### SLSA / in-toto / Sigstore Provenance
+SBOM trustworthiness improves when the SBOM can be bound to a build artifact, signer identity, and provenance attestation rather than treated as a standalone inventory file. Use these references when evaluating whether an SBOM was generated from the deployed artifact and whether the attestation chain is verifiable.
+- SLSA v1.0: https://slsa.dev/spec/v1.0/
+- in-toto Attestation Framework: https://in-toto.io/
+- Sigstore cosign: https://docs.sigstore.dev/cosign/overview/
+
 ### NTIA SBOM Minimum Elements
 Published by NTIA in July 2021 as part of Executive Order 14028 implementation. Defines the baseline data fields required for an SBOM to be considered useful. The seven elements are: Supplier Name, Component Name, Version, Unique Identifier, Dependency Relationship, Author of SBOM Data, and Timestamp.
 - Report: https://www.ntia.gov/sites/default/files/publications/sbom_minimum_elements_report_0.pdf
@@ -380,6 +506,10 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 4. **Overlooking license implications in SaaS deployments.** AGPL-3.0 triggers copyleft obligations for network use (SaaS), unlike GPL which only triggers on distribution. Organizations running AGPL-licensed components in SaaS products may have unrecognized compliance obligations. Always flag AGPL components regardless of distribution model.
 
 5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
+
+6. **Equating a flat dependency list with a dependency graph.** A flat component inventory can contain every package name and version while still failing to show which direct dependency introduced a vulnerable transitive package. Treat Flat List and Missing Graph states as completeness gaps, even when each component has an identifier and version.
+
+7. **Trusting VEX "Under Investigation" indefinitely.** An investigation status is temporary risk communication, not a durable risk decision. If the vendor's investigation SLA has passed, or if no SLA exists and the status is older than 30 days for a critical component, flag the VEX entry as stale and require follow-up or compensating controls.
 
 ---
 
@@ -404,6 +534,9 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 - CSAF 2.0 (OASIS): https://docs.oasis-open.org/csaf/csaf/v2.0/csaf-v2.0.html
 - CISA VEX Minimum Requirements: https://www.cisa.gov/sites/default/files/2023-04/minimum-requirements-for-vex-508c.pdf
 - OpenVEX Specification: https://github.com/openvex/spec
+- SLSA v1.0 Specification: https://slsa.dev/spec/v1.0/
+- in-toto Attestation Framework: https://in-toto.io/
+- Sigstore cosign Overview: https://docs.sigstore.dev/cosign/overview/
 - Executive Order 14028: https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
 - EU Cyber Resilience Act: https://digital-strategy.ec.europa.eu/en/policies/cyber-resilience-act
 - OSV (Open Source Vulnerability Database): https://osv.dev/
