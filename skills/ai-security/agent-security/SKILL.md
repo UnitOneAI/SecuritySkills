@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -78,8 +78,10 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 |---|---|---|
 | Agent architecture diagram | Design docs, README, infrastructure code | Maps trust boundaries, delegation chains, tool surface |
 | Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters |
+| Tool artifact provenance | MCP server manifests, plugin manifests, package lockfiles, container images, signed release metadata | Determines whether approvals and policies bind to the exact tool artifact that will execute |
 | Permission/IAM configuration | Cloud IAM, role definitions, service account configs, .env files | Reveals whether least-privilege is enforced |
 | Human approval gate implementation | Workflow code, UI code, approval service configs | Determines if HITL is architecturally sound or bypassable |
+| Approval decision records | Approval service database, workflow event logs, signed approval tokens | Shows whether an approval is bound to exact tool identity, artifact digest, arguments, approver, and expiry |
 | Agent identity and credential management | Auth middleware, secret managers, token configs | Exposes credential scope and rotation practices |
 | Multi-agent communication protocol | Message bus configs, inter-agent APIs, shared state stores | Identifies trust boundary violations |
 | Audit logging implementation | Logger configs, log pipeline code, SIEM integration | Determines forensic capability |
@@ -137,8 +139,10 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 - **Dynamic vs. static tool sets:** Can the agent's tool set change at runtime? If an orchestrator dynamically assigns tools, what governs which tools are assigned?
 - **Per-session vs. permanent tool access:** Is tool access scoped to a specific task or session, or does every invocation receive the same broad tool set regardless of the task?
 - **Cross-agent tool sharing:** Can one agent invoke another agent's tools? If so, through what authorization mechanism?
+- **Tool artifact identity:** Are permissions bound to canonical tool identity and provenance (tool name, version, MCP server or plugin identity, schema hash, package/source origin, container image digest), or only to a mutable display name?
+- **Manifest and schema drift:** Can a tool's implementation, schema, command allowlist, or runtime endpoint change after review without revoking prior approvals and policy decisions?
 
-**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), and tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`).
+**Detection methods:** Search for agent/tool definitions (`register_tool`, `add_tool`, `@tool`, `FunctionTool`), permission configs (`service_account`, `iam`, `role_arn`, wildcards in IAM policies), tool scoping logic (`filter_tools`, `permitted_tools`, `enabled_tools`), and provenance checks (`manifest_hash`, `tool_digest`, `schema_hash`, `mcp_server_id`, `plugin_version`, `image_digest`, `lockfile`, `signature`).
 
 **Permission model evaluation matrix:**
 
@@ -150,6 +154,7 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 | Per-task scoping | Tool set varies by task, not globally assigned | Medium -- static over-provisioning |
 | Time-bounded access | Credentials and tool access expire, requiring renewal | Medium -- persistent access risk |
 | Explicit deny | Actions not explicitly permitted are denied by default | High -- fail-open permission model |
+| Artifact-bound authorization | Policies bind to exact tool artifact, schema, and runtime origin | High -- approval or policy can be replayed against a different tool |
 
 **NIST AI RMF mapping:** GOVERN 1.2 (roles and responsibilities for AI actors), MAP 3.5 (impact assessment for AI system capabilities).
 
@@ -162,6 +167,7 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 | Agent has access to tools it never needs for its defined purpose | High |
 | No per-task or per-session tool scoping -- every invocation gets full tool set | High |
 | Tool registration allows runtime tool injection by the agent itself | High |
+| Tool authorization uses mutable names without manifest, schema, version, or artifact digest binding | High |
 | Agent credentials do not expire or rotate | Medium |
 | Tool permissions not documented or reviewed periodically | Medium |
 
@@ -217,11 +223,12 @@ Evaluate the design, placement, and robustness of human approval gates in the ag
 - **Gate placement:** Where in the agent workflow do human approval gates exist? Are they placed before every state-changing action, only before high-risk actions, or not at all?
 - **Gate bypass paths:** Can the agent take an alternative path that avoids the approval gate? Are there fallback modes that skip approval when the approval service is unavailable?
 - **Gate context sufficiency:** When a human is asked to approve an action, do they receive enough context to make a meaningful decision? Or do they see only a summary that hides critical details?
+- **Approval artifact binding:** Does the approval bind to the exact tool artifact and request payload that will execute, including canonical tool identity, MCP server or plugin identity, schema hash, artifact digest, arguments, runtime destination, approver, expiry, and replay nonce?
 - **Cumulative action tracking:** If the agent can take many small actions, does the system track cumulative impact? Can an agent split a dangerous action into multiple individually benign sub-actions that bypass threshold-based gates?
 - **Approval fatigue management:** How many approval requests per session does a human reviewer face? Systems generating hundreds of low-context requests have effectively no human oversight.
 - **Fail-closed design:** If the approval service is unreachable, does the agent halt (fail-closed) or proceed without approval (fail-open)?
 
-**Detection methods:** Search for approval gates (`approve`, `human_in_the_loop`, `hitl`, `require_approval`), bypass paths (`skip_approval`, `auto_approve`, `fail_open`), cumulative tracking (`cumulative`, `session_risk`, `action_count`), and action classification (`risk_level`, `destructive`, `irreversible`, `high_risk`).
+**Detection methods:** Search for approval gates (`approve`, `human_in_the_loop`, `hitl`, `require_approval`), bypass paths (`skip_approval`, `auto_approve`, `fail_open`), cumulative tracking (`cumulative`, `session_risk`, `action_count`), action classification (`risk_level`, `destructive`, `irreversible`, `high_risk`), and approval binding evidence (`approval_id`, `decision_id`, `nonce`, `expires_at`, `tool_digest`, `schema_hash`, `manifest_hash`, `mcp_server_id`, `bound_args`).
 
 **HITL gate design principles:**
 
@@ -234,6 +241,17 @@ Evaluate the design, placement, and robustness of human approval gates in the ag
 | Approval diversity | Critical actions require multiple approvers or multi-channel confirmation | Single click from one reviewer for all actions |
 | Anti-fatigue | Rate-limited approval requests; batch low-risk reviews separately | Hundreds of identical-looking requests per session |
 | Immutable gates | Approval logic in infrastructure, not modifiable by the agent | Approval thresholds stored where the agent can read or modify them |
+| Artifact binding | Approval token binds to exact tool identity, version, schema, artifact digest, arguments, and runtime destination | Approval says "run deploy tool" while the invoked tool, schema, or arguments can change before execution |
+
+**Approval artifact binding gates:**
+
+| Gate Element | Required Binding | Finding If Absent |
+|---|---|---|
+| Tool identity | Canonical tool name, version, MCP server/plugin identity, and runtime endpoint | High -- approval can be replayed against an unintended tool provider |
+| Artifact provenance | Manifest hash, schema hash, package/source origin, container image digest, and signature status where available | High -- reviewed tool artifact can be swapped after approval |
+| Invocation payload | Exact arguments, resource targets, side-effect classification, and cumulative risk state | High -- approved summary can hide dangerous parameters |
+| Decision metadata | Approver identity, approval service decision ID, timestamp, expiry, and replay nonce | Medium -- approval cannot be audited or safely rejected after reuse |
+| Enforcement point | Tool execution layer verifies all bindings immediately before execution | Critical -- UI approval can be bypassed by direct tool invocation |
 
 **What constitutes a finding:**
 
@@ -243,6 +261,7 @@ Evaluate the design, placement, and robustness of human approval gates in the ag
 | Approval gate fails open (agent proceeds on approval service timeout) | Critical |
 | Agent can modify approval thresholds or bypass conditions | Critical |
 | Approval context insufficient for meaningful human decision | High |
+| Approval is based on a natural-language summary without binding exact tool artifact, provenance, and arguments | High |
 | No cumulative risk tracking -- agent can split dangerous actions into small steps | High |
 | Single approval mechanism for all risk levels (no tiered review) | Medium |
 | No approval fatigue management (high volume of undifferentiated requests) | Medium |
@@ -300,12 +319,13 @@ Evaluate whether the audit logging for agent actions is sufficient for incident 
 - **Action logging:** Is every tool invocation logged with: agent identity, timestamp, tool name, full input parameters, output result, session/correlation ID, and the user or trigger that initiated the workflow?
 - **Decision logging:** Is the agent's reasoning captured? For compliance-sensitive decisions, logging only the action without the reasoning makes it impossible to audit why the agent acted as it did.
 - **Prompt/context logging:** Is the prompt (or a hash/summary of it) logged for correlation? Can investigators reconstruct what the agent "saw" when it made a decision?
+- **Tool provenance logging:** Does each tool invocation record the exact tool artifact that executed, including MCP server or plugin identity, tool version, schema hash, manifest hash, package/source origin, image digest, runtime endpoint, and signature status where available?
 - **Log integrity:** Are logs tamper-evident? Can the agent or an attacker who compromises the agent modify or delete its own audit trail?
 - **Log completeness:** Are there code paths where tool invocations occur but logging is skipped (e.g., in error handlers, retry logic, or fallback paths)?
 - **Log retention and access:** Are agent audit logs retained for the required compliance period? Are they accessible to security and compliance teams?
 - **Cross-agent correlation:** In multi-agent systems, can logs be correlated across agents to reconstruct the full action chain for a given workflow?
 
-**Detection methods:** Search for logging implementations (`logger`, `audit`, `emit`), per-invocation fields (`tool_name`, `tool_input`, `correlation_id`, `trace_id`), log integrity (`immutable`, `append_only`, `tamper`), decision logging (`reasoning`, `chain_of_thought`, `rationale`), and SIEM integration (`splunk`, `datadog`, `cloudwatch`, `elasticsearch`).
+**Detection methods:** Search for logging implementations (`logger`, `audit`, `emit`), per-invocation fields (`tool_name`, `tool_input`, `correlation_id`, `trace_id`), provenance fields (`tool_version`, `mcp_server_id`, `plugin_id`, `manifest_hash`, `schema_hash`, `tool_digest`, `image_digest`, `signature_status`), log integrity (`immutable`, `append_only`, `tamper`), decision logging (`reasoning`, `chain_of_thought`, `rationale`), approval records (`approval_id`, `decision_id`, `approver`, `nonce`, `expires_at`), and SIEM integration (`splunk`, `datadog`, `cloudwatch`, `elasticsearch`).
 
 **Audit trail completeness checklist:**
 
@@ -320,6 +340,8 @@ Evaluate whether the audit logging for agent actions is sufficient for incident 
 | Prompt hash or summary | Context reconstruction | No record of what the agent was told to do |
 | Error details | Failure analysis | Errors caught and swallowed silently |
 | Approval decisions (if HITL) | Oversight verification | Approvals not logged or logged without the approver's identity |
+| Tool artifact provenance | Supply-chain and policy verification | Invocation logged by tool name only, with no version, schema, manifest, or artifact digest |
+| Approval binding metadata | Replay and mismatch detection | Approval record lacks decision ID, expiry, nonce, bound arguments, or artifact hash |
 
 **NIST AI RMF mapping:** MANAGE 2.4 (mechanisms for tracking AI risks), MANAGE 4.1 (incident tracking and response), GOVERN 1.2 (roles and responsibilities documented through audit trails).
 
@@ -329,6 +351,7 @@ Evaluate whether the audit logging for agent actions is sufficient for incident 
 |---|---|
 | Tool invocations not logged or logged without full parameters | Critical |
 | Agent can modify or delete its own audit trail | Critical |
+| Audit trail cannot prove which tool artifact, schema, or MCP/plugin server executed | High |
 | No correlation ID to link multi-step agent workflows | High |
 | Agent actions not attributable to specific agent identity (shared identity) | High |
 | No log pipeline to SIEM or centralized log management | High |
@@ -492,6 +515,12 @@ Glob: **/security_architecture*
 |---|---|---|---|---|---|
 | [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
 
+## Tool Artifact and Approval Binding
+
+| Tool | Provider / MCP Server | Version | Schema / Manifest Hash | Approval Binding | Runtime Destination | Gap |
+|---|---|---|---|---|---|---|
+| [tool] | [server/plugin/source] | [version] | [hashes] | [decision ID, args, expiry, nonce] | [endpoint/resource] | [gap] |
+
 ## Architecture Diagram Annotations
 [Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
 
@@ -516,6 +545,7 @@ Glob: **/security_architecture*
 | Permission Model | [rating] | [one-line summary] | [priority] |
 | Least-Privilege Design | [rating] | [one-line summary] | [priority] |
 | HITL Gate Placement | [rating] | [one-line summary] | [priority] |
+| Tool Artifact and Approval Binding | [rating] | [one-line summary] | [priority] |
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
 | Audit Trail Completeness | [rating] | [one-line summary] | [priority] |
 | Rollback Capability | [rating] | [one-line summary] | [priority] |
@@ -563,11 +593,13 @@ Glob: **/security_architecture*
 
 2. **Placing HITL gates where they are convenient, not where they are effective.** Approval gates are frequently placed at the UI layer ("confirm before running this tool") rather than at the infrastructure layer. A UI-level gate can be bypassed if the agent framework has a code path that invokes the tool directly. Effective HITL gates are implemented in the tool execution layer or as a separate approval service that the tool must call before executing, independent of the agent's request path.
 
-3. **Trusting agents because they are "internal."** In multi-agent architectures, teams often skip inter-agent authentication because "both agents are ours." This ignores the primary threat: one agent being compromised via prompt injection and then pivoting to other agents. Inter-agent trust must be authenticated and authorized even within a single organization's infrastructure. A compromised research agent should not be able to instruct an execution agent to deploy code.
+3. **Approving summaries instead of executable facts.** A human approving "run the deployment tool" has not approved the exact tool artifact, schema, target environment, arguments, and MCP or plugin provenance. Approval records must be machine-verifiable at execution time; otherwise a reviewed request can be replaced by a different tool provider, modified schema, or dangerous argument set after approval.
 
-4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
+4. **Trusting agents because they are "internal."** In multi-agent architectures, teams often skip inter-agent authentication because "both agents are ours." This ignores the primary threat: one agent being compromised via prompt injection and then pivoting to other agents. Inter-agent trust must be authenticated and authorized even within a single organization's infrastructure. A compromised research agent should not be able to instruct an execution agent to deploy code.
 
-5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+5. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
+
+6. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
 
 ---
 
