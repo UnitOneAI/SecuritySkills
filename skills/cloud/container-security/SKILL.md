@@ -6,7 +6,9 @@ description: >
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
   hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
+  management, including image signature, provenance, and admission policy
+  enforcement evidence. Produces a prioritized findings report with remediation
+  guidance.
 tags: [cloud, containers, kubernetes, docker]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
@@ -61,6 +63,8 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
+- Image admission policies (Kyverno, Gatekeeper, Ratify, Connaisseur, Sigstore policy-controller) and exception records
+- Registry metadata for image digests, signatures, SBOMs, and SLSA/in-toto provenance attestations
 - Container registry configurations (if available)
 
 ---
@@ -92,6 +96,17 @@ Use Glob to locate all relevant configuration files.
 **/values-*.yaml
 **/kustomization.yaml
 **/kustomization.yml
+**/kyverno/**/*.yaml
+**/gatekeeper/**/*.yaml
+**/policies/**/*.yaml
+**/policy-controller/**/*.yaml
+**/ratify/**/*.yaml
+**/connaisseur/**/*.yaml
+**/.cosign/**
+**/cosign.pub
+**/cosign.key
+**/*.intoto.jsonl
+**/*.attestation
 **/base/**/*.yaml
 **/overlays/**/*.yaml
 **/*-deployment.yaml
@@ -115,6 +130,81 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
+### Step 6.5: Image Trust, Provenance, and Admission Control Evidence
+
+Evaluate whether production workloads can only run images that are immutable, signed, and tied to trustworthy build provenance.
+
+#### 6.5.1 Immutable Image References
+
+For every workload image reference, verify:
+
+- Production workloads pin images by digest (`image: repo/app@sha256:<digest>`), not by mutable tag alone.
+- Tags such as `latest`, branch names, environment names, or date-only tags are not used as the only deployment reference.
+- Helm values and Kustomize overlays cannot override a digest-pinned template with a tag-only image in production.
+- Scanner findings, SBOMs, and admission approvals reference the same image digest deployed to the cluster.
+
+**Finding classification:** Tag-only production image references are **High** when no admission control enforces digest resolution. Use **Critical** when privileged or internet-facing workloads run mutable, unsigned images.
+
+#### 6.5.2 Signature Verification at Admission
+
+Check for enforce-mode admission policy that verifies image signatures before pods are admitted:
+
+```
+# Kyverno
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: verify-image-signatures
+      verifyImages:
+        - imageReferences:
+            - "registry.example.com/prod/*"
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: "https://token.actions.githubusercontent.com"
+                    subject: "https://github.com/example/repo/.github/workflows/release.yml@refs/heads/main"
+
+# Sigstore policy-controller
+apiVersion: policy.sigstore.dev/v1alpha1
+kind: ClusterImagePolicy
+spec:
+  images:
+    - glob: "registry.example.com/prod/**"
+  authorities:
+    - keyless:
+        url: https://fulcio.sigstore.dev
+```
+
+Acceptable controls include Kyverno `verifyImages`, Gatekeeper with a verified-image constraint template, Ratify/Notation, Connaisseur, or Sigstore policy-controller. Confirm policies are set to enforce/deny mode for production namespaces, not audit-only or dry-run mode.
+
+**Finding classification:** No signature verification for production images is **High**. Audit-only signature checks presented as enforcement are **Medium**. Missing issuer/subject restrictions for keyless signatures is **High** because any trusted issuer identity may satisfy the policy.
+
+#### 6.5.3 Provenance and SBOM Linkage
+
+For signed images, verify that review evidence includes:
+
+- SLSA/in-toto provenance attestation tied to the deployed digest.
+- Builder identity and source repository/ref restrictions for release images.
+- SBOM tied to the same digest, with scan results generated after the final image build.
+- Reproducible mapping from deployment manifest to registry digest, SBOM, vulnerability scan, and provenance attestation.
+
+**Finding classification:** Signed images with no provenance or SBOM linkage are **Medium**. Provenance that does not bind to the deployed digest is **High**.
+
+#### 6.5.4 Exceptions and Break-Glass Controls
+
+Review exceptions to image trust policy:
+
+- Exceptions are namespace- or workload-scoped, not cluster-wide.
+- Each exception has an owner, business justification, ticket/reference, and expiration date.
+- Break-glass admission bypasses are logged and forwarded to SIEM or audit storage.
+- Exceptions cannot be declared by workload labels or annotations alone without an external approval record.
+
+**Finding classification:** Cluster-wide or indefinite bypass of image verification is **High**. Workload self-attested exceptions with no external approval are **Medium**.
+
+---
+
 ### Step 7: Compile Assessment Report
 
 
@@ -127,7 +217,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |
-| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
+| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories, unsigned or tag-only production images |
 | **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, secrets as env vars |
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
 | **Informational** | Observation with no direct security impact | Image size optimization, multi-stage build suggestions, label recommendations |
@@ -162,6 +252,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
+| Image Trust & Provenance | NIST 800-190 / SLSA | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
 
 ### Detailed Findings
@@ -185,6 +276,13 @@ Produce the final report using the structure defined in the Output Format sectio
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
 
+### Image Trust and Provenance Matrix
+
+| Workload | Image Reference | Digest Pinned | Signature Verified | Provenance/SBOM Bound to Digest | Exception |
+|----------|-----------------|---------------|--------------------|----------------------------------|-----------|
+| deploy/api | registry.example.com/api@sha256:... | Yes | Enforced | Yes | None |
+| deploy/worker | registry.example.com/worker:latest | No | Audit only | No | Missing expiry |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** <finding> -- <action>
@@ -195,6 +293,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Dockerfiles reviewed: <N>
 - Kubernetes workloads reviewed: <N>
 - Overall Pod Security Standard level: <Privileged / Baseline / Restricted>
+- Image trust enforcement: <Enforced / Audit-only / Not configured>
 - Critical findings: <N>
 - High findings: <N>
 - Medium findings: <N>
@@ -257,6 +356,9 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **`imagePullPolicy: Always` does not make a tag immutable.** It only asks the kubelet to resolve and pull the tag; it does not prove reviewers approved the resulting digest.
+9. **Image signatures must be scoped to identity.** Keyless signature verification without issuer and subject constraints may allow unrelated workflows or repositories to satisfy the policy.
+10. **Provenance must bind to the deployed digest.** An SBOM or SLSA attestation for a tag, base image, or earlier build stage does not prove the final deployed image was reviewed.
 
 ---
 
@@ -288,9 +390,15 @@ Produce the final report using the structure defined in the Output Format sectio
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
+- Sigstore Cosign: https://docs.sigstore.dev/cosign/overview/
+- Kyverno Verify Images: https://kyverno.io/docs/writing-policies/verify-images/
+- Sigstore Policy Controller: https://docs.sigstore.dev/policy-controller/overview/
+- Ratify: https://ratify.dev/docs/overview/
+- SLSA Provenance: https://slsa.dev/spec/v1.0/provenance
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Added image trust, signature verification, provenance binding, and admission exception review gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.
