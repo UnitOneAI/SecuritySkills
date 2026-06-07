@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,12 +56,13 @@ Simon Willison's prompt injection taxonomy further refines these categories by d
 Identify every point where user-supplied or externally sourced content reaches the language model. Produce a complete interaction map covering:
 
 1. **User input channels** — Chat interfaces, form fields, API parameters, file uploads, voice input transcriptions, and any other path where a user directly provides text that is included in an LLM prompt.
-2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
-3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
-4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
-5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
+2. **Multimodal input channels** — Images, screenshots, audio clips, videos, OCR output, speech-to-text transcripts, document previews, and vision/audio model outputs that can carry natural-language instructions outside the plain-text request body.
+3. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
+4. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
+5. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
+6. **Multi-turn and cross-agent context** — How conversation history, agent handoffs, worker results, delegated tasks, and summarized context are managed, and whether an attacker can influence future context through earlier messages or another agent.
 
-**Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
+**Deliverable:** A table or diagram listing each input surface, modality, data type, trust level, parser or model that extracts it, and whether it flows into the system prompt, user prompt, tool arguments, or another agent.
 
 ---
 
@@ -92,11 +93,13 @@ For each external content source identified in Step 1, determine whether an adve
 - **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
 - **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
 - **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Agent-to-agent messages** — Another agent's summary, tool result, or task handoff can carry injected instructions if it is treated as trusted instruction context rather than untrusted data.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
 - RAG retrieval pipelines that do not sanitize or attribute retrieved content
 - Absence of content provenance tracking (the LLM cannot distinguish trusted instructions from retrieved content)
+- Delegated agent outputs or tool observations appended to privileged context without trust labels, requester identity, or allowed-action scope
 
 ---
 
@@ -151,6 +154,37 @@ The attacker bypasses the model's safety guidelines or the application's behavio
 - Are those constraints enforced only through prompt instructions or also through output validation?
 - Does the application handle edge cases where the model might produce disallowed content?
 
+### 4.6 Multimodal Injection
+
+The attacker hides instructions in images, screenshots, audio, video, scanned documents, OCR text, or speech transcripts that are later interpreted by a multimodal model or preprocessing pipeline. These instructions can bypass text-only sanitizers, keyword filters, and prompt assembly reviews.
+
+**What to evaluate:**
+- Are uploaded images, screenshots, and generated previews treated as untrusted instruction-bearing content?
+- Do OCR, captioning, speech-to-text, or vision model outputs preserve source modality and trust labels when passed into the LLM?
+- Are hidden text, low-contrast text, overlay text, steganographic-looking captions, and transcript artifacts reviewed as possible indirect injection vectors?
+- Are multimodal inputs constrained to the intended task (for example extract invoice fields) before their content can affect tool use, authorization decisions, or system behavior?
+- Does the report distinguish benign local summarization over trusted media from external-facing agentic workflows where multimodal guardrails are required?
+
+**What to look for in code:**
+- `image_url`, `input_image`, OCR, captioning, speech-to-text, or video-frame extraction outputs passed directly to an LLM prompt
+- Image or audio uploads that can trigger tool calls, data retrieval, or workflow actions without source-aware review
+- Text-only prompt injection filters applied before media parsing, leaving extracted text unfiltered
+
+### 4.7 Cross-Agent Prompt Injection
+
+The attacker compromises one agent, tool, or external-content processor and uses its output to influence another agent with different privileges or tools. This includes cross-site prompt injection (XSPI), delegated-agent handoffs, and worker-to-orchestrator escalation.
+
+**What to evaluate:**
+- Are agent outputs classified as data with identity, provenance, and allowed-action scope, rather than trusted instructions?
+- Does the receiving agent independently verify requester authority, original user approval, and permitted tool scope?
+- Are delegated tasks bound to a purpose, expiry, and maximum side-effect level?
+- Can a lower-privilege research or retrieval agent cause a higher-privilege executor agent to call tools, disclose data, or rewrite policy?
+
+**What to look for in code:**
+- Agent summaries appended to system/developer messages for another agent
+- Orchestrators that accept arbitrary worker output as instructions
+- Missing capability checks for agent-to-agent requests and tool calls
+
 ---
 
 ## Step 5: Defense Evaluation
@@ -202,6 +236,32 @@ Evaluate which of the following mitigations are implemented and how effectively.
   - **AgentDojo** -- Evaluates agent robustness against injection attacks across diverse tool-use scenarios with realistic adversarial content.
   - **fabraix/playground** (https://github.com/fabraix/playground) -- Open-source library of AI agent exploit PoCs that can serve as a test harness for validating direct and indirect injection defenses against published attack patterns.
 
+### 5.8 LLM Gateway / AI Firewall Evidence
+
+Dedicated gateways, guardrails, and AI firewalls can provide an enforcement layer around model calls, tool calls, and retrieved content. Treat these as architectural controls that need evidence, not as labels.
+
+- **Coverage boundary:** Which requests pass through the gateway (chat, RAG, tool calls, multimodal parsing, agent handoffs), and which paths bypass it?
+- **Policy enforcement:** Are policies enforced before model execution, after model output, and before tool invocation where applicable?
+- **Multimodal support:** Does the control inspect OCR/caption/transcript output and preserve source modality labels?
+- **Action binding:** Are high-risk tool calls checked against the exact tool name, arguments, requester identity, and user approval scope?
+- **Failure mode:** Does the gateway fail closed for unavailable policy services, parse errors, or unsupported modalities?
+- **Telemetry:** Are decisions logged with policy version, model name, source modality, request ID, and reason codes without storing sensitive prompts unnecessarily?
+- **Examples:** NeMo Guardrails, Lakera Guard, PromptArmor, provider-native moderation/guardrail APIs, or internally built policy gateways. Record what they enforce and what remains application-owned.
+
+### 5.9 Multimodal Parsing Constraints
+
+- Are media parsers configured to extract only the fields needed for the task?
+- Are OCR/caption/transcript outputs passed through the same provenance and policy checks as external text?
+- Are low-confidence extractions, hidden text, or contradictory media/text instructions downgraded to data and flagged for review?
+- Are uploaded media files restricted by type, size, frame count, duration, and parser behavior to prevent prompt-injection and resource-exhaustion coupling?
+
+### 5.10 Cross-Agent Trust Boundaries
+
+- Does each agent-to-agent message include sender identity, source trust level, delegated purpose, allowed tools, expiry, and original user authorization?
+- Does the receiving agent verify capability before executing tools or changing policy?
+- Are tool results, web content, and worker summaries separated from instructions in the receiving agent's prompt structure?
+- Are cross-agent requests audited from original user request through final tool call?
+
 ---
 
 ## Step 6: Report Findings
@@ -238,7 +298,9 @@ Each finding should be assigned a severity based on potential impact:
 
 #### Finding [N]: [Title]
 - Category: [Goal Hijacking | Prompt Leaking | Privilege Escalation | Data Exfiltration | Jailbreaking]
-- Vector: [Direct | Indirect]
+- Vector: [Direct | Indirect | Multimodal | Cross-Agent]
+- Source modality: [Text | Image | Audio | Video | Document | Tool Result | Agent Handoff]
+- Control gap: [Prompt-only | Missing Gateway | Unsupported Modality | Missing Capability Check | Missing Provenance]
 - Severity: [Critical | High | Medium | Low | Informational]
 - Location: [file path and line numbers, or architectural component]
 - Description: [What the vulnerability is and why it matters]
@@ -260,6 +322,8 @@ Each finding should be assigned a severity based on potential impact:
 |-----------|-----------|-------------|
 | OWASP Top 10 for LLMs (2025) | LLM01 | Prompt Injection — Direct and indirect manipulation of LLM behavior through crafted input |
 | MITRE ATLAS | AML.T0051 | LLM Prompt Injection — Techniques for crafting inputs that cause LLMs to deviate from intended behavior |
+| MITRE ATLAS | AML.T0051.000 | Direct Prompt Injection — User-provided instructions that manipulate model behavior |
+| MITRE ATLAS | AML.T0051.001 | Indirect Prompt Injection — Malicious instructions delivered through external data sources |
 
 ---
 
@@ -275,12 +339,20 @@ Each finding should be assigned a severity based on potential impact:
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
 
+6. **Applying text-only controls to multimodal inputs.** Image, audio, video, and document previews can contain instructions that appear only after OCR, captioning, or transcription. Run provenance and policy checks after media parsing, and keep modality labels attached to extracted text.
+
+7. **Treating AI gateway presence as proof of enforcement.** A gateway or guardrail product name does not prove coverage. Verify which routes, modalities, tools, agent handoffs, and failure modes are actually enforced.
+
+8. **Letting agent handoffs inherit authority.** A worker agent's summary or tool result should not become a privileged instruction for another agent. Cross-agent messages need sender identity, delegated scope, and capability checks.
+
 ---
 
 ## References
 
 - OWASP Top 10 for Large Language Model Applications (2025), LLM01: Prompt Injection — https://genai.owasp.org
 - MITRE ATLAS, AML.T0051: LLM Prompt Injection — https://atlas.mitre.org
+- MITRE ATLAS, AML.T0051.000 Direct Prompt Injection — https://atlas.mitre.org/techniques/AML.T0051.000
+- MITRE ATLAS, AML.T0051.001 Indirect Prompt Injection — https://atlas.mitre.org/techniques/AML.T0051.001
 - Perez, F. & Ribeiro, I. (2022). "Ignore Previous Prompt: Attack Techniques For Language Models." arXiv:2211.09527.
 - Greshake, K. et al. (2023). "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection." arXiv:2302.12173.
 - Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
