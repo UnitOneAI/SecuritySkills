@@ -112,6 +112,16 @@ System Description Boundary:
 - Data: ___
 ```
 
+#### 1.4 Subservice Organization Scope Matrix
+
+For every critical provider in the system boundary, classify whether it is a vendor, carved-out subservice organization, or included subservice organization. Collecting a vendor SOC 2 report is not enough for readiness; the system description must show which controls are operated by the service organization, which controls are relied on at the provider, and which complementary controls remain the customer's responsibility.
+
+| Provider | System dependency | Data touched | Role | Reporting method | Controls relied on | CUECs/CSOCs mapped | Report period coverage |
+|----------|-------------------|--------------|------|------------------|--------------------|--------------------|------------------------|
+| [AWS/Stripe/Okta/etc.] | [hosting/payment/idp/etc.] | [none/PII/confidential/etc.] | [vendor/carved-out subservice/included subservice] | [carve-out/inclusive/N/A] | [criteria/control areas] | [Yes/No/Partial] | [covered/bridge letter needed/gap] |
+
+Mark vendor-management readiness as provisional when a critical provider has no documented subservice method, no CUEC/CSOC mapping, or a vendor report period that does not cover the observation period.
+
 ---
 
 ### Step 2: Common Criteria Review (CC1-CC9)
@@ -366,8 +376,10 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 3. **Category Summary**: Average maturity score per category with narrative assessment.
 4. **Critical Findings**: List of all criteria scored 0 or 1, with specific gap descriptions and remediation recommendations.
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
-6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
-7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+6. **Subservice Organization Matrix**: Provider role, reporting method, controls relied on, report period coverage, and readiness gaps for every critical service provider.
+7. **CUEC/CSOC Mapping Worksheet**: Complementary User Entity Controls and Complementary Subservice Organization Controls mapped to internal control owners, frequencies, and evidence artifacts.
+8. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
+9. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
 
 ## Prompt Injection Safety Notice
 

@@ -327,17 +327,37 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Is there a vendor management program?
   - Are vendors assessed for security risk before onboarding?
   - Are vendor SOC 2 reports or equivalent assurance reports collected and reviewed?
+  - For each critical service provider, is it classified as a vendor, carved-out subservice organization, or included subservice organization in the system description?
+  - Has the reviewer extracted CUECs and CSOCs from vendor SOC reports and mapped each one to an internal control owner, frequency, and evidence artifact?
+  - Does each vendor report period cover the SOC 2 observation period, or is a bridge letter or other current assurance evidence documented?
+  - Were report opinions, exceptions, relevant criteria, complementary controls, and nested subservice carve-outs reviewed before scoring vendor-management readiness?
 - Evidence to look for:
   - Vendor management policy
   - Vendor risk assessment questionnaires (completed)
   - Vendor SOC 2 report review records
   - Vendor inventory with risk classifications
   - Contract provisions for security requirements (data processing agreements, BAAs)
+  - Subservice organization scope matrix with provider role, data touched, control reliance, and carve-out or inclusive method
+  - CUEC/CSOC extraction worksheet mapped to internal control IDs, owners, frequencies, and evidence artifacts
+  - Vendor report period coverage check, bridge letters, or current assurance alternatives for observation-period gaps
+  - Review notes for vendor report opinion, exceptions, relevant TSC criteria, nested subservice organizations, and residual risks
 - Common gaps:
   - No formal vendor management program
   - Vendor SOC 2 reports are not collected or reviewed
   - No vendor risk assessment performed prior to onboarding
   - Contracts lack security and data protection provisions
+  - Critical providers have vendor SOC 2 PDFs on file but no documented subservice method or system-description treatment
+  - CUECs or CSOCs from vendor reports are not mapped to internal controls, owners, frequencies, or evidence
+  - Vendor report periods do not align with the observation period and no bridge letter or current assurance evidence is retained
+  - Cloud shared-responsibility controls are assumed to be covered by the provider even though customer IAM, logging, encryption, backup, or network controls remain internal responsibilities
+
+**Subservice and complementary-control worksheet:**
+
+| Provider | Role | Method | Report period | Bridge coverage | CUEC/CSOC | Internal control owner | Evidence artifact | Readiness impact |
+|----------|------|--------|---------------|-----------------|-----------|------------------------|-------------------|------------------|
+| [AWS/Stripe/Okta/etc.] | [vendor/carved-out/included] | [N/A/carve-out/inclusive] | [dates] | [none/letter/alternative] | [control text] | [team/person] | [policy/ticket/log/review] | [ready/provisional/gap] |
+
+Score CC9.2 as provisional or incomplete when critical providers lack subservice classification, complementary-control mapping, or report-period coverage, even if annual vendor SOC 2 reports were collected.
 
 ---
 
@@ -553,7 +573,7 @@ After scoring, calculate:
 | CC7.5 | DR plan; BC plan; backup configs; backup restoration test records |
 | CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; segregation of duties evidence |
 | CC9.1 | Risk treatment plans; business impact analysis; risk acceptance sign-off records |
-| CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs |
+| CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records including opinion/exceptions/period/criteria; vendor inventory; subservice organization scope matrix; CUEC/CSOC mapping worksheet; bridge letters or current assurance alternatives; DPAs/BAAs |
 | A1.1 | Capacity monitoring dashboards; auto-scaling configs; capacity planning documentation |
 | A1.2 | Backup policy with RPO/RTO; backup monitoring records; restoration test results; redundancy configs |
 | A1.3 | DR test plan; DR test execution records; DR test findings and remediation |
