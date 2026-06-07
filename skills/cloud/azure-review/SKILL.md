@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -88,10 +88,25 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 11: Diagnostic Pipeline Integrity Evidence
+
+When evaluating Section 5 logging controls, confirm that diagnostic settings are complete, routed to a durable destination, and retained for the required audit window. Treat the following as required evidence before marking logging controls as passed:
+
+- **Scope coverage:** subscription activity logs and resource-level diagnostics for Key Vault, Storage, SQL, Network Security Groups, App Service, and other in-scope services.
+- **Category coverage:** required categories or `category_group = "allLogs"` are enabled, and any disabled category is explicitly marked Not Applicable with justification.
+- **Destination coverage:** Log Analytics workspace, Event Hub, or Storage Account destination is configured; security teams can query or receive the logs.
+- **Retention evidence:** Log Analytics retention, Storage lifecycle/immutability, or Event Hub downstream retention meets policy requirements.
+- **Destination hardening:** diagnostic storage is private, encrypted with CMK when required, and not broadly readable; Event Hub authorization rules and workspace access are least privilege.
+- **Pipeline validation:** a recent Activity Log or Key Vault `AuditEvent` sample is visible at the destination, or export validation is marked Not Evaluable.
+
+**Finding classification:** Diagnostic settings without required security categories are **High**. Diagnostics routed only to a short-retention or broadly accessible destination are **High**. Missing retention evidence is **Medium**. No sample destination validation is **Medium** for production or regulated subscriptions.
 
 ---
 
-### Step 11: Compile Assessment Report
+
+---
+
+### Step 12: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -102,8 +117,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Immediate risk of data breach or unauthorized access | NSGs open to 0.0.0.0/0 on RDP/SSH, SQL databases publicly accessible, Defender for Cloud disabled |
-| **High** | Significant security gap that materially weakens posture | Missing MFA enforcement, storage accounts with public access, Key Vault without purge protection |
-| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, soft delete not enabled, TLS below 1.2 |
+| **High** | Significant security gap that materially weakens posture | Missing MFA enforcement, storage accounts with public access, diagnostic settings missing security categories, Key Vault without purge protection |
+| **Medium** | Control gap that should be addressed in normal cycle | Missing activity log alerts, diagnostic retention not evidenced, soft delete not enabled, TLS below 1.2 |
 | **Low** | Hardening recommendation or defense-in-depth measure | HTTP/2 not enabled, FTP not fully disabled, missing CMK on non-sensitive storage |
 | **Informational** | Best practice observation, no direct security impact | Naming conventions, tag policies, documentation gaps |
 
@@ -142,6 +157,17 @@ Produce the final report using the structure defined in the Output Format sectio
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
 
+### Diagnostic Pipeline Integrity
+
+| Control | Status | Evidence |
+|---------|--------|----------|
+| Subscription activity log diagnostics | Pass/Fail/Not Evaluable | <diagnostic setting target and categories> |
+| Resource diagnostic coverage | Pass/Fail/Not Evaluable | <Key Vault, Storage, SQL, NSG, App Service resources reviewed> |
+| Destination configured | Pass/Fail/Not Evaluable | <workspace, Event Hub, or Storage Account destination> |
+| Destination retention | Pass/Fail/Not Evaluable | <workspace retention, storage immutability/lifecycle, or downstream retention> |
+| Destination access/encryption | Pass/Fail/Not Evaluable | <private access, CMK, RBAC/SAS/Event Hub auth evidence> |
+| Export validation | Pass/Fail/Not Evaluable | <sample activity or AuditEvent log visible at destination> |
+
 ### Detailed Findings
 
 #### [CIS X.Y.Z] <Recommendation Title>
@@ -179,7 +205,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 2 | Microsoft Defender for Cloud | Defender plan enablement (Servers, App Service, SQL, Storage, Containers, Key Vault, DNS, ARM), security contacts, auto-provisioning |
 | 3 | Storage Accounts | HTTPS enforcement, infrastructure encryption, public access, network rules, soft delete, CMK encryption, TLS version |
 | 4 | Database Services | SQL auditing, firewall rules, threat detection, SSL enforcement, TDE, Entra ID admin, Cosmos DB public access |
-| 5 | Logging and Monitoring | Diagnostic settings, activity log alerts (policy, NSG, SQL firewall, public IP), Key Vault logging, Network Watcher |
+| 5 | Logging and Monitoring | Diagnostic settings, diagnostic categories/category groups, destinations, retention, activity log alerts (policy, NSG, SQL firewall, public IP), Key Vault logging, Network Watcher |
 | 6 | Networking | NSG rules (RDP, SSH, UDP, HTTP), flow log retention, traffic analytics |
 | 7 | Virtual Machines | Azure Bastion, managed disks, disk encryption with CMK, approved extensions, endpoint protection |
 | 8 | Key Vault | Key/secret expiration, soft delete, purge protection, RBAC authorization, private endpoints |
@@ -200,6 +226,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Passing diagnostics based only on resource presence.** An `azurerm_monitor_diagnostic_setting` can exist while critical categories are disabled, retention is too short, or the destination is not queryable by security teams. Verify category coverage, destination, retention, and sample delivery.
 
 ---
 
@@ -224,6 +251,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
+- Azure Monitor Diagnostic Settings: https://learn.microsoft.com/en-us/azure/azure-monitor/platform/diagnostic-settings
+- Azure Monitor Logs Retention: https://learn.microsoft.com/en-us/azure/azure-monitor/logs/data-retention-configure
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
@@ -232,3 +261,4 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
+- **1.0.1** -- Add diagnostic pipeline integrity evidence for category coverage, destinations, retention, destination hardening, and sample export validation.
