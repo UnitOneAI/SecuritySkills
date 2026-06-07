@@ -192,9 +192,63 @@ spec:
 
 **Finding classification:** No intra-zone controls (flat east-west within zones) is **High**. Absence of Kubernetes default-deny NetworkPolicy in production namespaces is **High**.
 
+#### 3.2 Service Mesh and Egress Evidence Gates
+
+Service mesh and CNI policy can enforce segmentation at Layer 4-7, but only for enrolled workloads and explicitly controlled egress paths. Verify the mesh, namespace, and egress controls together instead of treating the presence of Istio, Linkerd, Calico, or Cilium as proof of segmentation.
+
+| Gate | Evidence Required | Risk Prevented |
+|---|---|---|
+| **SEG-MESH-01 Mesh enrollment** | Namespace labels, sidecar injection policy, and workload annotations prove production workloads are enrolled in the mesh. | Workloads bypassing mesh policy because sidecars are absent. |
+| **SEG-MESH-02 Strict workload identity** | mTLS mode, SPIFFE/service identity, and peer authentication policy are enforced for east-west traffic. | Plaintext or unauthenticated service-to-service traffic inside trusted zones. |
+| **SEG-MESH-03 Authorization policy coverage** | Istio `AuthorizationPolicy`, Linkerd policy, or equivalent service identity policy covers sensitive service pairs. | Mesh telemetry exists but traffic remains implicitly allowed. |
+| **SEG-MESH-04 Egress allowlist** | Egress gateway, Cilium egress policy, Calico policy, or network policy restricts outbound destinations and ports. | Compromised workloads reaching arbitrary internet or internal destinations. |
+| **SEG-MESH-05 Bypass controls** | `hostNetwork`, privileged pods, init containers, excluded ports/IP ranges, and direct node routing are reviewed. | Sidecar or CNI bypass paths around segmentation controls. |
+| **SEG-MESH-06 Default-deny fallback** | Kubernetes `NetworkPolicy` or CNI global policy enforces deny-by-default when mesh policy is absent or fails. | Namespace-level flat network after mesh misconfiguration or partial rollout. |
+
+**Patterns to check:**
+
+```yaml
+# Istio strict mTLS and service authorization
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+spec:
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/payments/sa/frontend"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/v1/orders/*"]
+```
+
+```yaml
+# Cilium egress default-deny with explicit destination
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+spec:
+  endpointSelector: {}
+  egress:
+    - toFQDNs:
+        - matchName: api.vendor.example
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+```
+
+**Finding classification:** Missing service mesh enrollment or authorization policy for sensitive service pairs is **High**. Unrestricted production egress from sensitive workloads is **High**. Mesh or CNI bypass paths through `hostNetwork`, excluded sidecar ports, or privileged node routing are **High** unless explicitly justified and monitored.
+
 ---
 
-#### 3.2 Micro-Segmentation Readiness Assessment
+#### 3.3 Micro-Segmentation Readiness Assessment
 
 Evaluate the environment's readiness for workload-level segmentation:
 
@@ -300,6 +354,17 @@ Document or verify the existence of a segmentation testing process:
 - Enforcement Mode: <Ready / Partial / Not Ready>
 - Automation: <Ready / Partial / Not Ready>
 - **Overall Readiness:** <Ready / Partial / Not Ready>
+
+### Service Mesh and Egress Evidence
+
+| Evidence Gate | Status | Artifact Reviewed | Finding |
+|---|---|---|---|
+| SEG-MESH-01 Mesh enrollment | Pass / Fail / Not Evaluable | <namespace labels / injection policy> | <finding id> |
+| SEG-MESH-02 Strict workload identity | Pass / Fail / Not Evaluable | <PeerAuthentication / mTLS policy> | <finding id> |
+| SEG-MESH-03 Authorization policy coverage | Pass / Fail / Not Evaluable | <AuthorizationPolicy / service policy> | <finding id> |
+| SEG-MESH-04 Egress allowlist | Pass / Fail / Not Evaluable | <egress gateway / CNI policy> | <finding id> |
+| SEG-MESH-05 Bypass controls | Pass / Fail / Not Evaluable | <hostNetwork / excluded ports / privileged pods> | <finding id> |
+| SEG-MESH-06 Default-deny fallback | Pass / Fail / Not Evaluable | <NetworkPolicy / GlobalNetworkPolicy> | <finding id> |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
