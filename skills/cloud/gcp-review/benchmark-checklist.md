@@ -76,6 +76,99 @@ These roles should be granted at the service account level, not project level.
 
 Check for key rotation mechanisms or expiration policies on service account keys.
 
+### Supplemental IAM Check -- Workload Identity Federation and External OIDC Boundaries
+
+Workload Identity Federation (WIF) is preferred over long-lived service account keys, but an overly broad federation policy can let external workloads impersonate service accounts without a key. Treat WIF as an identity boundary that needs explicit provider, attribute, and service-account binding evidence.
+
+**Grep patterns:**
+
+```
+# Workload Identity Federation provider resources
+google_iam_workload_identity_pool_provider
+workload_identity_pool_provider
+attribute_mapping
+attribute_condition
+
+# External principals and broad principal sets
+principalSet://iam.googleapis.com/.*/attribute.repository/\*
+principalSet://iam.googleapis.com/.*/attribute.owner/\*
+principal://iam.googleapis.com/
+roles/iam.workloadIdentityUser
+roles/iam.serviceAccountTokenCreator
+
+# GitHub Actions / CI OIDC providers
+issuer_uri = "https://token.actions.githubusercontent.com"
+attribute.repository
+attribute.ref
+attribute.workflow
+attribute.actor
+```
+
+**Risk patterns:**
+
+```hcl
+# BAD: GitHub Actions OIDC provider without repository/ref restriction
+resource "google_iam_workload_identity_pool_provider" "github" {
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+  attribute_mapping = {
+    "google.subject" = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+  }
+  # Missing attribute_condition binding the trusted org/repo/ref/workflow
+}
+
+# BAD: Any repository in the provider pool can impersonate the service account
+resource "google_service_account_iam_member" "wif" {
+  service_account_id = google_service_account.deploy.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.pool.name}/attribute.repository/*"
+}
+```
+
+**Evidence to collect:**
+
+- [ ] Provider issuer is the expected external IdP and uses OIDC/SAML settings appropriate for that IdP.
+- [ ] `attribute_mapping` includes stable attributes required for policy decisions, such as `attribute.repository`, `attribute.ref`, `attribute.workflow`, or cloud-specific tenant/application IDs.
+- [ ] `attribute_condition` restricts the trusted organization, repository, branch/tag, workflow, audience, or equivalent IdP claims.
+- [ ] `roles/iam.workloadIdentityUser` bindings are granted on the target service account, not broadly at project level.
+- [ ] `principalSet` members avoid wildcard repository, owner, namespace, or subject patterns unless a documented exception exists.
+- [ ] External principals are not also granted `roles/iam.serviceAccountTokenCreator` without a compensating approval and audit trail.
+- [ ] Audit logs or CI configuration tie the federated identity to the expected workload, branch, and deployment environment.
+
+**Remediation:**
+
+```hcl
+resource "google_iam_workload_identity_pool_provider" "github" {
+  workload_identity_pool_id          = google_iam_workload_identity_pool.ci.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-actions"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+    "attribute.ref"        = "assertion.ref"
+    "attribute.workflow"   = "assertion.workflow"
+  }
+
+  attribute_condition = <<-CEL
+    assertion.repository == "trusted-org/trusted-repo" &&
+    assertion.ref == "refs/heads/main" &&
+    assertion.workflow == "deploy.yml"
+  CEL
+}
+
+resource "google_service_account_iam_member" "github_deploy" {
+  service_account_id = google_service_account.deploy.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.ci.name}/attribute.repository/trusted-org/trusted-repo"
+}
+```
+
 ### CIS 1.8 -- Ensure that Separation of Duties is Enforced While Assigning Service Account Related Roles to Users
 
 Verify that no user has both `iam.serviceAccountUser` and `iam.serviceAccountAdmin` simultaneously.

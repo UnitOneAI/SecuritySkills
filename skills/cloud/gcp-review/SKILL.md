@@ -52,6 +52,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - Access to GCP infrastructure-as-code files (Terraform `.tf`, Deployment Manager `.yaml`/`.jinja`)
 - gcloud CLI output or configuration exports (if reviewing a live environment)
 - IAM policy bindings and org policy definitions
+- Workload Identity Federation pools, providers, external principal bindings, and CI/OIDC trust policy definitions
 - VPC and firewall rule definitions
 - Cloud Audit Logs configuration
 
@@ -100,7 +101,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Immediate risk of data breach or unauthorized access | Public GCS buckets, firewall rules allowing 0.0.0.0/0 on SSH/RDP, Cloud SQL with public IP and no SSL, user-managed SA keys with admin roles |
-| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs |
+| **High** | Significant security gap that materially weakens posture | Default service accounts with broad scopes, missing Cloud Audit Logs, no VPC flow logs, instances with public IPs, broad Workload Identity Federation principal sets |
 | **Medium** | Control gap that should be addressed in normal cycle | Missing log metric filters, DNSSEC not enabled, Shielded VM not enabled, uniform bucket access not set |
 | **Low** | Hardening recommendation or defense-in-depth measure | OS Login not enabled, serial port access not explicitly disabled, BigQuery tables without CMEK |
 | **Informational** | Best practice observation, no direct security impact | Default network still exists (non-production), naming conventions, documentation gaps |
@@ -137,6 +138,16 @@ Produce the final report using the structure defined in the Output Format sectio
 | 5 | Storage | X | Y | Z | nn% |
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
+
+### Identity Federation Evidence
+
+| Control Area | Status | Evidence Reviewed | Risk Notes |
+|---|---|---|---|
+| WIF provider issuer and audience | Pass / Fail / Not Evaluable | `<provider config>` | `<notes>` |
+| Attribute mapping and condition | Pass / Fail / Not Evaluable | `<attribute_mapping / attribute_condition>` | `<notes>` |
+| Service account impersonation binding scope | Pass / Fail / Not Evaluable | `<google_service_account_iam_member>` | `<notes>` |
+| External principal TokenCreator grants | Pass / Fail / Not Evaluable | `<IAM binding>` | `<notes>` |
+| CI workload claim binding | Pass / Fail / Not Evaluable | `<workflow / OIDC claims>` | `<notes>` |
 
 ### Detailed Findings
 
@@ -190,10 +201,11 @@ Produce the final report using the structure defined in the Output Format sectio
 
 1. **Missing org-level policy checks.** Many CIS controls (e.g., 3.1 default network, 5.1 public access) can be enforced via org policies. Check both resource-level configuration and org policy constraints.
 2. **Confusing GCP-managed vs. user-managed service account keys.** CIS 1.4 only flags user-managed keys (created via `google_service_account_key`). Keys automatically managed by GCP services are acceptable.
-3. **VPC flow logs must be per-subnet.** CIS 3.8 requires flow logs on every subnet, not just the VPC. Each `google_compute_subnetwork` must have a `log_config` block.
-4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
-5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
-6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+3. **Treating Workload Identity Federation as automatically safe.** WIF removes long-lived keys, but broad `principalSet` members, missing `attribute_condition`, or project-level impersonation roles can create a keyless privilege escalation path.
+4. **VPC flow logs must be per-subnet.** CIS 3.8 requires flow logs on every subnet, not just the VPC. Each `google_compute_subnetwork` must have a `log_config` block.
+5. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
+6. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
+7. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
 
 ---
 
