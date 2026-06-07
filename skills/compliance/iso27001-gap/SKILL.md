@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -325,15 +325,51 @@ Exclusions are permitted only where the control is genuinely not applicable to t
 
 ### Step 6: Internal Audit Readiness (Clause 9.2)
 
-Assess internal audit program against requirements:
+Assess the internal audit program against Clause 9.2 and related corrective action closure under Clause 10.2. Do not mark internal audit readiness as conforming from an annual calendar, audit checklist, or executive summary alone. Require retained, dated evidence that shows how the audit was planned, sampled, performed, reported, and followed up.
 
-- Audit program planned, taking into account importance of processes and results of previous audits
-- Audit criteria and scope defined for each audit
-- Auditors selected to ensure objectivity and impartiality (auditors do not audit their own work)
-- Results reported to relevant management
-- Documented information retained as evidence
-- Corrective actions taken without undue delay
-- Nonconformities and corrective actions tracked to closure
+#### 6.1 Clause 9.2 Evidence Gates
+
+For each internal audit reviewed, verify all of the following:
+
+- **Audit objective and criteria**: The audit objective is documented, and the criteria identify the applicable ISO 27001 clauses, Annex A controls, policies, procedures, legal obligations, contractual obligations, or SoA entries being tested.
+- **Scope and mapping**: The audit scope identifies covered processes, systems, locations, teams, suppliers, and ISMS boundaries, with mapping to ISO clauses and controls where relevant.
+- **Risk-based priority**: Audit frequency and depth account for process importance, asset or service criticality, risk register entries, material changes, incidents, management review inputs, and previous audit results.
+- **Previous finding linkage**: Prior nonconformities, overdue corrective actions, recurring issues, or weak control areas increase coverage, resampling, or follow-up testing in the next audit cycle.
+- **Sample population and method**: Evidence identifies the population sampled, sample size, selection method, date range, exclusions, and why the sample is representative enough for the audit objective.
+- **Auditor objectivity and impartiality**: Auditor assignment records show the auditor did not audit their own work. For small companies, accept practical independence strategies such as cross-functional peer review, external consultant review, board/advisor review, or documented conflict mitigation; do not accept bare independence assertions.
+- **Conflict check**: Retain evidence of conflict-of-interest review, role separation, or independence rationale for each auditor and audit area.
+- **Evidence provenance**: Captured evidence includes source, owner or custodian, capture date, period covered, in-scope environment, retention location, and any access or integrity constraints.
+- **Management reporting**: Results are reported to relevant management with retained evidence such as report distribution, meeting minutes, action acceptance, or leadership acknowledgement.
+- **Corrective action linkage**: Each nonconformity links to a corrective action record with owner, due date, root cause, action plan, implementation evidence, effectiveness verification, and closure status.
+- **No undue delay**: Corrective actions are prioritized and tracked so material nonconformities are not left open without documented rationale, escalation, and revised target dates.
+
+If any required gate is missing, classify readiness as partial or nonconforming even when an audit schedule and summary report exist.
+
+#### 6.2 Corrective Action Closure Verification (Clause 10.2)
+
+For each internal-audit nonconformity, verify closure evidence before marking it closed:
+
+- Root cause analysis is documented and specific enough to explain why the nonconformity occurred.
+- An accountable owner and due date are assigned.
+- The corrective action addresses the root cause, not only the immediate symptom.
+- Implementation evidence shows what changed and when.
+- Effectiveness evidence shows the fix worked after implementation, such as resampling, control retest, monitoring result, or management confirmation.
+- Closure date, closure approver, and retained evidence location are recorded.
+
+Treat "closed" tickets without root cause, implementation evidence, and effectiveness verification as open or only administratively closed.
+
+#### 6.3 Required Internal Audit Finding IDs
+
+Use these finding/check IDs when the related evidence gate fails:
+
+| ID | Trigger | Clause |
+|----|---------|--------|
+| ISO-AUDIT-01 | Audit program lacks risk-based prioritization, process criticality weighting, or prior-finding linkage. | 9.2 |
+| ISO-AUDIT-02 | Audit criteria or scope are not defined for the audit area being assessed. | 9.2 |
+| ISO-AUDIT-03 | Auditor independence is asserted but not evidenced with role separation, conflict check, or small-company mitigation. | 9.2 |
+| ISO-AUDIT-04 | Sample population, sample period, sample size, selection method, or exclusions are missing. | 9.2 |
+| ISO-AUDIT-05 | Audit results were not reported to relevant management with retained evidence. | 9.2 |
+| ISO-AUDIT-06 | Corrective actions lack owner, due date, root cause, implementation evidence, or effectiveness verification. | 10.2 |
 
 ---
 
@@ -412,6 +448,18 @@ Classify each finding using the following severity levels:
 
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
+
+## Internal Audit Program Evidence
+
+| Audit Area | Criteria | Scope | Risk/Prior Finding Link | Sample Method | Auditor | Independence Evidence | Result | Management Reported | Corrective Action Link |
+|------------|----------|-------|--------------------------|---------------|---------|-----------------------|--------|---------------------|------------------------|
+| [process/control area] | [clauses/controls/policies tested] | [systems/locations/teams/period] | [risk, criticality, previous audit result, or none] | [population, sample size, method, period] | [name/role] | [conflict check, role separation, external review, or mitigation] | [conforming/nonconforming/observation] | [meeting/report/date/audience] | [CAPA/ticket/finding ID] |
+
+## Corrective Action Closure
+
+| Finding | Root Cause | Owner | Due Date | Action Taken | Effectiveness Evidence | Closure Date | Status |
+|---------|------------|-------|----------|--------------|------------------------|--------------|--------|
+| [ISO-AUDIT-* or audit finding] | [cause] | [owner] | [date] | [implemented change] | [retest/resample/monitoring evidence] | [date or open] | [open/in progress/closed] |
 
 ## Prioritized Remediation Roadmap
 
@@ -512,6 +560,8 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 4. **Neglecting the 11 new controls introduced in the 2022 revision.** Organizations transitioning from 2013 often miss that controls like A.5.7 (Threat intelligence), A.5.23 (Cloud services security), A.8.9 (Configuration management), A.8.11 (Data masking), A.8.12 (Data leakage prevention), and A.8.16 (Monitoring activities) require explicit consideration in the SoA even if determined not applicable.
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
+
+6. **Treating an audit calendar and summary as full internal audit readiness.** Clause 9.2 evidence needs defined criteria and scope, risk-based sampling, prior-finding follow-up, objective auditor assignment, management reporting evidence, and retained corrective-action closure proof. In small organizations, lack of a separate audit department is not automatically a failure, but the independence strategy and conflict mitigation still need documented evidence.
 
 ---
 
