@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -416,6 +416,22 @@ image: nginx:latest            # BAD
 
 **Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
 
+For each release artifact, record integrity evidence before marking CICD-SEC-9
+as passing:
+
+```
+| Artifact | Build Run | Digest | Signature | Signing Identity | Provenance | SBOM | Verification Command/Policy | Deployment Reference |
+```
+
+Evidence requirements:
+- Record the immutable artifact digest, not only the mutable tag or filename.
+- Record the signing mechanism and signing identity (for example cosign keyless identity, KMS key, certificate subject, or build service principal).
+- Verify that provenance binds the artifact digest to the source repository, commit SHA, workflow/build config, builder identity, and build timestamp.
+- Verify that the SBOM references the same artifact digest or build run as the signed artifact.
+- Record the verification command, admission policy, or deployment gate that checks signature/provenance before deploy.
+- Treat signing, SBOM generation, and provenance as incomplete if they are generated but never verified by deployment or release tooling.
+- Flag any deployment that references a mutable tag while integrity evidence is tied only to a different digest.
+
 ---
 
 #### CICD-SEC-10: Insufficient Logging and Visibility
@@ -488,7 +504,14 @@ Produce the final report using the following structure:
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
+- **Evidence:** <specific configuration, artifact digest, signature, provenance, SBOM, or policy reference>
 - **Remediation:** <specific fix>
+
+### Artifact Integrity Evidence
+
+| Artifact | Build Run | Digest | Signature | Signing Identity | Provenance | SBOM | Verification Command/Policy | Deployment Reference |
+|----------|-----------|--------|-----------|------------------|------------|------|-----------------------------|----------------------|
+| <image/package> | <run id> | <sha256> | <signature/ref> | <identity> | <attestation> | <sbom ref> | <policy/command> | <deploy ref> |
 
 ### Prioritized Remediation Plan
 
@@ -532,6 +555,14 @@ The final deliverable is a structured assessment report as shown in Step 4 above
 
 ---
 
+## Common Pitfalls
+
+1. **Treating generated attestations as enforced integrity.** A pipeline can produce signatures, SBOMs, and provenance while deployments still pull mutable tags without verification. CICD-SEC-9 should not pass unless release or deployment tooling verifies the artifact digest, signature, provenance, and policy before use.
+
+2. **Mixing evidence from different artifacts or build runs.** A signature for one digest, an SBOM from another build, and a deployment of a mutable tag do not prove integrity. Bind all evidence to the same artifact digest and build run.
+
+---
+
 ## Prompt Injection Safety Notice
 
 This skill processes user-supplied content including CI/CD configuration files, pipeline definitions, and build scripts. The agent must adhere to the following safety constraints:
@@ -557,4 +588,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Added artifact integrity evidence gates for digest, signature, provenance, SBOM, and deployment verification.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
