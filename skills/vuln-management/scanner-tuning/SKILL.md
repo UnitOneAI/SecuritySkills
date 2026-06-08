@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -177,6 +177,53 @@ Authentication Configuration:
 - Last Verification:   [YYYY-MM-DD, success rate: [N]%]
 ```
 
+#### Credential Safety and Lockout Evidence Gate
+
+Credentialed scan coverage is only valid when authentication succeeds and the scan account can safely retrieve the local package, patch, and configuration evidence required by the relevant checks. Treat failed authentication, account lockout risk, and privilege drift as separate evidence states rather than folding them into a clean scan result.
+
+**Credential safety evidence to collect:**
+
+| Evidence | What to Verify |
+|---|---|
+| Dedicated principal | Scanner uses dedicated service accounts or vault/PAM-issued identities, not shared human admin accounts. |
+| Least privilege | Privileges match the scanner's documented local-check requirements; excessive domain, root, cloud, or database privileges are justified and scoped. |
+| Vault/PAM controls | Credential checkout, TTL, rotation, audit log, and emergency revoke evidence are available. |
+| Lockout alignment | Scanner retry, concurrency, failed-login threshold, and schedule are compatible with AD, IdP, PAM, local, and network-device lockout policies. |
+| Authentication denominator | Report separates fully authenticated, partially authenticated, failed authentication, not credentialed, and not evaluable assets. |
+| Abort behavior | Scan policy stops or degrades safely when authentication failure or lockout threshold is exceeded. |
+| Privilege drift review | Scanner account group membership, sudoers, local admin, SNMP, API, and cloud roles are reviewed on a defined cadence. |
+| Secret exposure controls | Scan logs, debug output, plugin output, and exports redact credential material and vault references. |
+
+**Finding triggers:**
+
+| ID | Trigger | Severity Guidance |
+|---|---|---|
+| SCAN-CRED-01 | Failed authentication assets are reported as clean or included in the authenticated success denominator | High because local checks may have been skipped. |
+| SCAN-CRED-02 | Scanner retry/concurrency can exceed lockout thresholds for AD, IdP, PAM, local OS, network device, or database accounts | High; Critical when it can lock production admin or break-glass accounts. |
+| SCAN-CRED-03 | Credentials are shared human accounts, broad domain/admin accounts, or scanner-native stored secrets without vault/PAM or rotation evidence | High |
+| SCAN-CRED-04 | Vault/PAM checkout TTL, rotation, audit, or emergency revoke evidence is missing | Medium; High for privileged credentials. |
+| SCAN-CRED-05 | Credential verification scans are absent, stale, or do not record per-platform success rates | Medium; High for compliance or production coverage claims. |
+| SCAN-CRED-06 | Privilege drift review is missing for scanner accounts, sudoers, local admin groups, cloud roles, or SNMP/API scopes | High |
+| SCAN-CRED-07 | Scan policy continues full local checks after authentication failures instead of marking assets `Not Evaluable` or rerouting to unauthenticated-only evidence | Medium; High when SLA reporting depends on credentialed coverage. |
+| SCAN-CRED-08 | Scan logs, debug output, or exported evidence can expose passwords, SSH keys, API tokens, vault paths, or session material | Critical for exposed secrets; High otherwise. |
+
+**Credential safety output states:**
+
+| State | Meaning | Required Action |
+|---|---|---|
+| Fully Authenticated | Login succeeded and local package/configuration checks ran successfully | Count in authenticated coverage. |
+| Partially Authenticated | Login succeeded but required privilege, package manager, registry, WMI, SSH, sudo, SNMP, API, or database checks failed | Investigate and report missing evidence. |
+| Failed Authentication | Login failed, expired, locked out, denied by policy, or vault checkout failed | Do not count as clean credentialed scan coverage. |
+| Not Credentialed | Asset intentionally scanned without credentials | Track reduced detection accuracy and compensating validation. |
+| Not Evaluable | Scanner could not determine credentialed status or local checks did not produce trustworthy evidence | Re-run with verified credentials or mark coverage gap. |
+
+**False-positive boundaries:**
+
+- A failed credentialed scan is not proof the asset is clean. It proves the scanner could not evaluate local checks.
+- Least privilege does not always mean read-only. Some platforms require elevated local privileges for package or patch inventory; document the minimum required privilege and why.
+- A vault integration alone is not sufficient. Record checkout TTL, rotation, audit, failure handling, and revoke evidence.
+- Lockout risk depends on retry behavior, scan concurrency, account policy, and target count. Review the combined effect rather than any single setting.
+
 ### Step 4: Severity Override Criteria
 
 Define criteria for overriding scanner-assigned severity ratings when they do not reflect actual organizational risk.
@@ -321,6 +368,12 @@ Highlight the most impactful tuning recommendations.]
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
 | Port Range | [Current range] | [Recommended range] | [Priority] |
+
+### Credential Safety Evidence
+
+| Platform / Scope | Credential Source | Auth Success | Failed Auth | Not Evaluable | Lockout Alignment | Vault/PAM Evidence | Privilege Drift Review |
+|---|---|---:|---:|---:|---|---|---|
+| [Windows domain] | [Vault/PAM/native] | [N] | [N] | [N] | [Pass/Fail] | [evidence] | [date] |
 
 ### False Positive Analysis
 
