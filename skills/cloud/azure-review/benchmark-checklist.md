@@ -704,3 +704,107 @@ resource "azurerm_linux_web_app" {
   }
 }
 ```
+
+---
+
+## Supplemental -- Azure Functions HTTP Trigger, Key, and Admin Endpoint Evidence
+
+These checks are not CIS Azure v2.1.0 recommendation IDs. Use them as supplemental evidence when the repository contains Azure Functions resources or function deployment artifacts.
+
+### AZURE-FUNCTIONS-HTTP-AUTH -- Verify HTTP trigger auth levels and upstream authentication
+
+Check `function.json`, code annotations, and infrastructure definitions for HTTP trigger authorization:
+
+```json
+{
+  "bindings": [
+    {
+      "type": "httpTrigger",
+      "authLevel": "anonymous",
+      "methods": ["get", "post"]
+    }
+  ]
+}
+```
+
+Flag production HTTP triggers with `authLevel = "anonymous"` unless evidence shows identity-aware upstream authentication such as App Service Authentication, API Management JWT validation, App Gateway/WAF authentication, or another enforced control before the function.
+
+### AZURE-FUNCTIONS-KEYS -- Verify function, host, and master key governance
+
+Function keys and host keys are shared secrets. Require inventory and rotation evidence for:
+
+- Function-specific keys
+- Host keys
+- Master/admin key
+- Who can read, list, or regenerate keys
+- Whether keys are stored in Key Vault or app storage
+
+Evidence examples:
+
+```hcl
+resource "azurerm_key_vault_secret" "function_key" {
+  name            = "function-host-key"
+  key_vault_id    = azurerm_key_vault.example.id
+  expiration_date = "2026-12-31T00:00:00Z"
+}
+```
+
+### AZURE-FUNCTIONS-ADMIN -- Verify admin endpoint and SCM/Kudu isolation
+
+Check for admin endpoint isolation, SCM exposure, and access restrictions:
+
+```hcl
+resource "azurerm_linux_function_app" "example" {
+  public_network_access_enabled = false
+
+  site_config {
+    scm_minimum_tls_version = "1.2"
+
+    ip_restriction {
+      action     = "Deny"
+      ip_address = "0.0.0.0/0"
+    }
+  }
+
+  app_settings = {
+    "functionsRuntimeAdminIsolationEnabled" = "1"
+  }
+}
+```
+
+### AZURE-FUNCTIONS-MANAGED-IDENTITY -- Prefer managed identity for downstream resources
+
+Check for system-assigned or user-assigned managed identity and identity-based connections instead of connection strings or static secrets:
+
+```hcl
+resource "azurerm_linux_function_app" "example" {
+  identity {
+    type = "SystemAssigned"
+  }
+
+  app_settings = {
+    "AzureWebJobsStorage__accountName" = azurerm_storage_account.example.name
+  }
+}
+```
+
+Flag function apps that use storage account keys, Service Bus connection strings, SQL passwords, or Key Vault secrets without rotation and least-privilege evidence.
+
+### AZURE-FUNCTIONS-DIAGNOSTICS -- Verify invocation and admin audit evidence
+
+Require Application Insights or diagnostic settings for invocation telemetry, failed authorization/key use, admin API calls, and anomalous invocation volume:
+
+```hcl
+resource "azurerm_monitor_diagnostic_setting" "function_app" {
+  target_resource_id = azurerm_linux_function_app.example.id
+
+  enabled_log {
+    category = "FunctionAppLogs"
+  }
+
+  metric {
+    category = "AllMetrics"
+    enabled  = true
+  }
+}
+```
