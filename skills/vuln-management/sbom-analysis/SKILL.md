@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -239,6 +239,16 @@ License Analysis:
 
 ---
 
+### Step 6: SBOM Artifact Freshness Evidence
+
+Tie every SBOM to the exact software artifact under review. An SBOM is current only when its artifact binding, generation pipeline, and release timing match the deployed or released artifact being assessed.
+
+| Software Artifact | Version / Release | Artifact Digest / Immutable ID | Build / Release ID | SBOM Timestamp | Generator / Version | Generation Pipeline | Deployment / Release Date | Freshness Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[component, image, package]` | `[version]` | `[SHA-256, OCI digest, immutable release]` | `[build or release link]` | `[timestamp]` | `[tool and version]` | `[job/workflow]` | `[date]` | `Current / Stale / Unknown` |
+
+Mark `Stale` when the artifact digest or release ID differs from the SBOM source. Mark `Unknown` when the SBOM cannot be bound to a build or deployed artifact.
+
 ## Findings Classification
 
 Classify the overall SBOM analysis into one of the following states:
@@ -267,6 +277,12 @@ Produce a structured report with these exact sections:
 [3-5 sentences. State the software being analyzed, SBOM format, NTIA completeness
 rating, number of components, key risk findings (CVEs in dependencies, license
 conflicts), and overall classification.]
+
+### Artifact Freshness Evidence
+
+| Artifact | Version | Digest / Immutable ID | Build / Release ID | SBOM Timestamp | Generator | Pipeline | Release Date | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[artifact]` | `[version]` | `[digest/id]` | `[build]` | `[timestamp]` | `[tool]` | `[pipeline]` | `[date]` | `Current / Stale / Unknown` |
 
 ### SBOM Overview
 | Field | Value |
@@ -368,6 +384,8 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 - EO 14028: https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/
 
 ---
+
+- Treating an SBOM timestamp as enough freshness evidence without proving it describes the exact artifact digest, build, and release under review.
 
 ## Common Pitfalls
 
