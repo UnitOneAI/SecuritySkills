@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -389,6 +389,16 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 
 ---
 
+### Step 5: Evidence Freshness and Sample Validation
+
+For each PCI DSS sub-requirement reviewed, capture evidence freshness and sampling details tied to the relevant testing procedure. Evidence is only sufficient when it is current, owned, in scope, and supports the examine/observe/interview/test method.
+
+| Requirement | Testing Procedure | Evidence Artifact | Evidence Date | Evidence Owner | Sample Scope | Period Covered | Freshness Status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[requirement/sub-requirement]` | `[examine, observe, interview, test]` | `[artifact]` | `[date]` | `[owner]` | `[systems, users, transactions, locations]` | `[period]` | `Current / Stale / Unknown` | `Pass / Fail / Unknown` |
+
+Mark `Stale` when screenshots, exports, or samples do not cover the assessment period. Mark `Unknown` when scope or testing procedure linkage is missing.
+
 ## Findings Classification
 
 | Classification | Definition | Compliance Impact |
@@ -433,6 +443,12 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 | 2 | Secure Configurations | ... | ... | ... | ... | ... |
 | ... | ... | ... | ... | ... | ... | ... |
 | 12 | Organizational Policies | ... | ... | ... | ... | ... |
+
+### Evidence Freshness and Sample Matrix
+
+| Requirement | Procedure | Evidence | Date | Owner | Sample Scope | Period Covered | Freshness | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[req]` | `[procedure]` | `[artifact]` | `[date]` | `[owner]` | `[sample]` | `[period]` | `Current / Stale / Unknown` | `Pass / Fail / Unknown` |
 
 ## Detailed Findings
 
@@ -507,6 +523,8 @@ Maintain an Information Security Policy:                Requirement 12
 | Future-dated new requirements become mandatory | March 31, 2025 |
 
 ---
+
+- Marking a PCI requirement in place based on stale screenshots, incomplete samples, or evidence that is not tied to the required testing procedure.
 
 ## Common Pitfalls
 
