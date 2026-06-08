@@ -370,6 +370,76 @@ def purchase_ticket():
 - [ ] High-value operations require step-up verification.
 - [ ] Business logic abuse scenarios are documented and monitored.
 
+### Idempotency and Replay Evidence Gate
+
+State-changing APIs also need duplicate-side-effect controls. Rate limits reduce
+volume, but they do not prove that retries, webhook redelivery, queue redelivery,
+mobile double-taps, or concurrent duplicate requests cannot repeat the same
+business action.
+
+**Operations to inventory:**
+
+- Payment, transfer, refund, checkout, subscription, and billing endpoints.
+- Approval, workflow transition, delete, restore, and privileged action endpoints.
+- Webhook handlers and async event consumers that mutate state.
+- Queue producers and job enqueue endpoints.
+- GraphQL mutations with financial, inventory, approval, quota, or uniqueness impact.
+
+**Failure patterns:**
+
+```python
+# VULNERABLE: retrying the same request can create two charges.
+@app.route('/api/v1/payments', methods=['POST'])
+@require_auth
+def create_payment():
+    charge = payment_gateway.charge(current_user.id, request.json['amount'])
+    Payment.create(user_id=current_user.id, gateway_id=charge.id)
+    return jsonify({"payment_id": charge.id}), 201
+```
+
+```javascript
+// VULNERABLE: duplicate webhook event IDs are not stored or rejected.
+app.post('/webhooks/provider', async (req, res) => {
+  await fulfillOrder(req.body.order_id);
+  res.sendStatus(204);
+});
+```
+
+```graphql
+# VULNERABLE: mutation has no idempotency key, nonce, or version check.
+mutation {
+  approveInvoice(invoiceId: "inv_123")
+}
+```
+
+**Evidence to require:**
+
+- [ ] High-impact state-changing operations require an idempotency key, event ID,
+      nonce, version check, or equivalent duplicate control.
+- [ ] Replay controls are bound to actor, tenant, operation, and payload hash.
+- [ ] Duplicate detection is atomic and durable across replicas, queues, retries,
+      and failover paths.
+- [ ] Retrying the same valid request returns the original result or a conflict,
+      not a second side effect.
+- [ ] Webhook/event IDs are stored with a replay window and rejected when reused.
+- [ ] Nonces, timestamps, and signatures have bounded replay windows.
+- [ ] Balance, inventory, quota, approval, and uniqueness-sensitive operations
+      include concurrency tests or transaction evidence.
+- [ ] Duplicate/replay rejects and retry storms are logged and alerted.
+
+**Finding IDs:**
+
+| ID | Finding |
+|---|---|
+| API-REPLAY-01 | State-changing operation lacks idempotency key, event ID, nonce, or equivalent duplicate control |
+| API-REPLAY-02 | Idempotency key or nonce is not bound to actor, tenant, operation, and payload hash |
+| API-REPLAY-03 | Duplicate detection is non-atomic across replicas, queues, retries, or failover paths |
+| API-REPLAY-04 | Retry returns a second side effect instead of original result, conflict, or replay rejection |
+| API-REPLAY-05 | Webhook or async event handler accepts duplicate event IDs without durable replay tracking |
+| API-REPLAY-06 | Replay window for signatures, timestamps, or nonces is missing or too broad |
+| API-REPLAY-07 | Balance, inventory, quota, approval, or uniqueness-sensitive operation lacks concurrency evidence |
+| API-REPLAY-08 | Duplicate/replay rejects and retry storms are not logged or alerted |
+
 ---
 
 ## API7:2023 -- Server Side Request Forgery (SSRF)

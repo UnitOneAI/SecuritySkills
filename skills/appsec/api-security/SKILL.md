@@ -51,6 +51,47 @@ For detailed checklist items with vulnerable code patterns, remediation examples
 
 ---
 
+## Cross-Cutting Gate: Idempotency and Replay Evidence
+
+For state-changing operations, verify that retries, duplicate delivery, and
+concurrent requests cannot produce duplicate side effects. This gate applies to
+REST create/update/delete endpoints, GraphQL mutations, webhooks, event
+consumers, queue workers, and async job APIs.
+
+**Evidence to collect:**
+
+- [ ] Inventory high-impact state-changing operations: charges, transfers,
+      approvals, deletes, workflow transitions, inventory changes, quota changes,
+      webhook handlers, job enqueueing, and GraphQL mutations.
+- [ ] Idempotency keys, event IDs, nonces, timestamps, or equivalent replay
+      controls are required for high-impact operations.
+- [ ] Idempotency keys and nonces are bound to actor, tenant, operation, and
+      payload hash so one key cannot replay a different action.
+- [ ] Duplicate detection is atomic across replicas, queues, retries, and failover
+      paths, using unique constraints, compare-and-swap, durable ledgers, or
+      equivalent controls.
+- [ ] Retry responses return the original result or a conflict/replay rejection,
+      not a second side effect.
+- [ ] Replay windows for signatures, timestamps, nonces, and webhook event IDs
+      are documented and enforced.
+- [ ] Logs and alerts capture duplicate rejects, replay rejects, retry storms, and
+      concurrency conflicts.
+
+**Finding IDs:**
+
+```
+API-REPLAY-01: State-changing operation lacks idempotency key, event ID, nonce, or equivalent duplicate control
+API-REPLAY-02: Idempotency key or nonce is not bound to actor, tenant, operation, and payload hash
+API-REPLAY-03: Duplicate detection is non-atomic across replicas, queues, retries, or failover paths
+API-REPLAY-04: Retry returns a second side effect instead of original result, conflict, or replay rejection
+API-REPLAY-05: Webhook or async event handler accepts duplicate event IDs without durable replay tracking
+API-REPLAY-06: Replay window for signatures, timestamps, or nonces is missing or too broad
+API-REPLAY-07: Balance, inventory, quota, approval, or uniqueness-sensitive operation lacks concurrency evidence
+API-REPLAY-08: Duplicate/replay rejects and retry storms are not logged or alerted
+```
+
+---
+
 ## Findings Classification
 
 Each finding produced by this review must include the following fields:
@@ -111,6 +152,13 @@ The final review output must be structured as follows:
 
 **Total Findings:** [count]
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
+
+### Idempotency and Replay Control Matrix
+
+| Operation | API Style | Side Effect | Replay Control | Binding | Atomicity Evidence | Retry Response | Logging / Alerting |
+|---|---|---|---|---|---|---|---|
+| POST /payments | REST | charge creation | idempotency key | actor + tenant + payload hash | unique key ledger | original result | duplicate reject alert |
+| mutation approveWorkflow | GraphQL | approval transition | nonce + version check | actor + workflow + payload hash | compare-and-swap | conflict | concurrency conflict log |
 
 ### Findings
 
@@ -214,6 +262,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Treating retries as harmless.** Client retries, mobile double-taps, webhook redelivery, and queue redelivery can repeat the same business action unless state-changing operations have durable idempotency or replay controls.
 
 ---
 
