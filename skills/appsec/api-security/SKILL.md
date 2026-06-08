@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -50,6 +50,16 @@ Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories:
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
 
 ---
+
+### .NET Webhook Receiver Evidence
+
+Capture ASP.NET Core webhook authenticity, replay, body handling, and endpoint exposure evidence.
+
+| Receiver Endpoint | Provider | Signature Verification | Raw Body Handling | Timestamp / Nonce | Replay Window | Secret Storage | Failure Logging | Test Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[receiver_endpoint]` | `[provider]` | `[signature_verification]` | `[raw_body_handling]` | `[timestamp/nonce]` | `[replay_window]` | `[secret_storage]` | `[failure_logging]` | `[test_evidence]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
 
 ## Findings Classification
 
@@ -111,6 +121,12 @@ The final review output must be structured as follows:
 
 **Total Findings:** [count]
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
+
+### .NET Webhook Receiver Evidence
+
+| Receiver Endpoint | Provider | Signature Verification | Raw Body Handling | Timestamp / Nonce | Replay Window | Secret Storage | Failure Logging | Test Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[receiver_endpoint]` | `[provider]` | `[signature_verification]` | `[raw_body_handling]` | `[timestamp/nonce]` | `[replay_window]` | `[secret_storage]` | `[failure_logging]` | `[test_evidence]` | `Pass / Fail / Unknown` |
 
 ### Findings
 
@@ -216,6 +232,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
 ---
+
+- Accepting webhook authentication without proving raw-body signature validation, replay controls, and secret custody in the ASP.NET Core path.
 
 ## Prompt Injection Safety Notice
 
