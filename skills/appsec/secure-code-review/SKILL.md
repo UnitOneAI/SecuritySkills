@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -420,8 +420,15 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s) |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet demonstrating the issue |
+| **Entry Point** | User-controllable route, handler, job, message consumer, CLI argument, or file parser that introduces attacker-controlled data |
+| **Source-to-Sink Trace** | The call path or data flow from untrusted input to the vulnerable operation, including sanitizers or validation points encountered |
+| **Exploit Preconditions** | Required role, authentication state, tenant/object ownership, feature flag, deployment mode, or configuration needed for exploitation |
+| **Control Bypass Evidence** | Specific authorization, validation, encoding, or cryptographic control that is missing, bypassed, or ineffective |
+| **False-Positive Checks** | Context reviewed that could invalidate the finding, such as upstream validation, framework auto-escaping, centralized policy enforcement, or unreachable code |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
+
+**Finding validation evidence gate:** do not report High or Critical findings based only on pattern matching. Before assigning High or Critical severity, document the reachable entry point, attacker-controlled source, vulnerable sink, exploit preconditions, and the exact missing or bypassed security control. If the source-to-sink path is not reachable, preconditions cannot be established, or a compensating framework/control fully blocks exploitation, downgrade the severity or mark the item as a false positive with rationale.
 
 ### Severity Definitions
 
@@ -445,7 +452,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.0.1
 
 ### Summary
 - Critical: [count]
@@ -466,6 +473,11 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Entry Point:** [route/handler/job/parser/CLI path]
+- **Source-to-Sink Trace:** [attacker-controlled source -> transformations/validators -> vulnerable sink]
+- **Exploit Preconditions:** [auth state, role, tenant/object ownership, config, feature flag, deployment mode]
+- **Control Bypass Evidence:** [missing/bypassed authorization, validation, encoding, crypto, or framework control]
+- **False-Positive Checks:** [context reviewed that could invalidate the finding]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
@@ -540,6 +552,8 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Reporting pattern matches without reachability evidence.** A dangerous function call, missing middleware line, or risky API use is not automatically exploitable. Trace attacker-controlled input from an entry point to the sink, record the required role/configuration, and check framework-level protections before assigning High or Critical severity.
 
 ---
 
