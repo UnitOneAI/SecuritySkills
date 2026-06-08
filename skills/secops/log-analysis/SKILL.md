@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-92]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Before beginning analysis, gather or confirm:
 - [ ] **Time window:** The specific time range to analyze.
 - [ ] **Scope:** Which hosts, users, IP addresses, or network segments are in scope?
 - [ ] **Available log sources:** Which logs are available? (Windows Event Logs, Sysmon, EDR, firewall, proxy, DNS, cloud audit, application logs.)
+- [ ] **Observability correlation context:** For application or API investigations, are OpenTelemetry traces, spans, resources, and log trace-context fields available?
 - [ ] **Known-good context:** What is expected/normal for this environment? (Authorized admin accounts, expected service accounts, normal working hours, approved applications.)
 - [ ] **Related alerts or incidents:** Are there existing alerts, tickets, or incident reports associated with this investigation?
 - [ ] **SIEM access:** Which SIEM platform contains the logs? (Determines query language and table names.)
@@ -317,6 +318,31 @@ Step 5: Build timeline
   -> Identify gaps in visibility (log sources not available)
 ```
 
+#### Step 7.1: OpenTelemetry Trace-Log Correlation Evidence
+
+For application, API, microservice, or distributed-system investigations, verify whether log events can be joined to traces before relying on cross-service correlation:
+
+```
+OpenTelemetry Correlation Evidence:
+- Log format: [OTLP / JSON / syslog / vendor format / unknown]
+- Trace context fields present: [TraceId / SpanId / TraceFlags / none]
+- Vendor field mapping: [trace_id -> TraceId, span_id -> SpanId, traceparent parsed, etc.]
+- Resource context: [service.name, service.namespace, deployment.environment, service.instance.id]
+- Instrumentation scope: [library/name/version or missing]
+- Trace sampling policy: [always-on / parent-based / probabilistic / tail-sampled / unknown]
+- Missing-span expectation: [expected due to sampling / unexpected gap / not evaluated]
+- Semantic attributes available: [http.*, db.*, messaging.*, rpc.*, exception.*, user/session context if permitted]
+- Join confidence: [High / Medium / Low / Not Evaluable]
+```
+
+Evidence rules:
+- Treat ad hoc `request_id`, `correlation_id`, or load-balancer IDs as **local correlation only** unless they are mapped to OpenTelemetry `TraceId` / `SpanId` or a documented propagation standard.
+- If `SpanId` is present without `TraceId`, mark trace-log correlation as **Low** or **Not Evaluable** because the span cannot be reliably joined to a trace.
+- If traces are sampled but logs are retained, note that missing spans may be expected. Do not treat absent spans as proof that a logged security event did not execute.
+- Check resource-context consistency before joining across services. Logs and spans should agree on service identity fields such as `service.name`, namespace, environment, and instance where available.
+- For non-OTLP logs, document the mapping from vendor fields or headers (`trace_id`, `traceId`, `x-b3-traceid`, `traceparent`) to OpenTelemetry trace-context fields.
+- Record missing or unstable semantic attributes when they affect the investigation question. For example, HTTP security analysis may need route, method, status, peer, user-agent, and exception context to interpret a trace pivot.
+
 ---
 
 ## 4. Findings Classification
@@ -373,6 +399,11 @@ Produce log analysis findings in this structure:
 | Timestamp (UTC) | Source | Event | ATT&CK Technique | Assessment |
 |-----------------|--------|-------|-------------------|------------|
 | [HH:MM:SS] | [Source] | [Description] | [T-ID] | [Suspicious / Benign / Confirmed malicious] |
+
+### OpenTelemetry Trace-Log Correlation
+| Service / Source | TraceId Present | SpanId Present | Resource Context Match | Sampling Status | Semantic Attributes | Join Confidence | Gap / Action |
+|------------------|-----------------|----------------|------------------------|-----------------|---------------------|-----------------|--------------|
+| [service/log source] | [Yes/No] | [Yes/No] | [Match/Mismatch/Unknown] | [Sampled/Unsampled/Unknown] | [Complete/Partial/Missing] | [High/Medium/Low/NE] | [gap or next action] |
 
 ### Baseline Observations
 [Any baseline deviations noted, with comparison to established norms]
@@ -451,6 +482,10 @@ A single Event ID can have very different meanings depending on the context. Eve
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
 
+### Pitfall 6: Assuming Request IDs Prove Trace-Log Correlation
+
+Application logs often contain `request_id`, load-balancer IDs, or framework-specific correlation IDs that work within one component but do not prove distributed trace continuity. For OpenTelemetry-backed investigations, verify `TraceId`, `SpanId`, resource context, semantic attributes, and sampling behavior before claiming cross-service correlation confidence.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -478,3 +513,7 @@ This skill processes user-supplied content that may include raw log data, event 
 9. **AWS CloudTrail Event Reference** -- https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference.html
 10. **Azure Activity Log Schema** -- https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/activity-log-schema
 11. **NIST SP 800-61 Rev 2 -- Incident Handling Guide** -- https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final
+12. **OpenTelemetry Logs Data Model** -- https://opentelemetry.io/docs/specs/otel/logs/data-model/
+13. **OpenTelemetry Logging Specification -- Log Correlation** -- https://opentelemetry.io/docs/specs/otel/logs/
+14. **OpenTelemetry Semantic Conventions** -- https://opentelemetry.io/docs/concepts/semantic-conventions/
+15. **OpenTelemetry Trace Context in non-OTLP Log Formats** -- https://opentelemetry.io/docs/specs/otel/compatibility/logging_trace_context/
