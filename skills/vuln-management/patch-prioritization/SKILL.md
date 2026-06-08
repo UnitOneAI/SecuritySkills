@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -256,6 +256,19 @@ Risk Exception Request:
 - Status:                 [Pending | Approved | Denied | Expired]
 ```
 
+**Risk exception evidence matrix:** before reporting an exception as granted, preserve the evidence needed to re-evaluate it and prove it has not exceeded policy limits.
+
+| Exception ID | CVE ID(s) | Affected System(s) | Original SLA | New Deadline | Business Justification | Compensating Control Evidence | Residual Risk | Approver | Approval Date | Expiration/Review Date | Status |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| [EXC-ID] | [CVE-IDs] | [systems] | [tier/deadline] | [date] | [reason] | [control/test evidence] | [impact/likelihood] | [name/title] | [YYYY-MM-DD] | [YYYY-MM-DD] | [Pending/Approved/Denied/Expired] |
+
+For exception evidence review:
+- Verify the requested extension does not exceed the maximum duration for the original SLA tier.
+- Record the specific business constraint, not a generic "business risk accepted" statement.
+- Link each exception to compensating control evidence and residual risk.
+- Mark exceptions `Expired` when the review date has passed, compensating controls are unverified, KEV/EPSS status worsens, or the affected asset exposure changes.
+- Escalate any P0/P1 exception without CISO-level approval as invalid.
+
 ---
 
 ## Findings Classification
@@ -323,9 +336,9 @@ findings requiring immediate action.]
 ### Risk Exceptions
 [List all active risk acceptance/exception records]
 
-| Exception ID | CVE ID(s) | Original SLA | New Deadline | Approver | Status |
-|---|---|---|---|---|---|
-| [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] |
+| Exception ID | CVE ID(s) | Original SLA | New Deadline | Business Justification | Compensating Control Evidence | Residual Risk | Approver | Approval Date | Expiration/Review Date | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [EXC-ID] | [CVE-IDs] | [tier/deadline] | [date] | [reason] | [control/test evidence] | [impact/likelihood] | [name/title] | [YYYY-MM-DD] | [YYYY-MM-DD] | [Approved/Pending/Expired] |
 
 ### Recommendations
 1. [Highest-priority actionable recommendation]
@@ -373,6 +386,8 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+
+6. **Reporting exceptions without revalidation evidence.** An exception table that only lists a new deadline and approver is not enough for governance. Include the business justification, compensating control evidence, residual risk, approval date, expiration/review date, and status so expired or invalid exceptions do not hide SLA breaches.
 
 ---
 
