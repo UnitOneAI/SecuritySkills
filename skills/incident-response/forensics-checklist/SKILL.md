@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -98,6 +98,20 @@ CUSTODY LOG:
 - Use tamper-evident bags or containers for physical media
 - Compute and record cryptographic hashes (SHA-256 minimum) at collection time and verify at each transfer
 - Maintain a continuous, unbroken record from collection through final disposition
+
+**Custody verification evidence:** every custody transfer, storage move, evidence access, and analysis copy must include a verification record, not only a narrative custody log.
+
+| Evidence ID | Transfer/Access Time (UTC) | Released By | Received/Accessed By | Purpose | Storage Location | SHA-256 Before | SHA-256 After | Match | Tamper Evidence | Access Authorization | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| [EVD-NNNN] | [timestamp] | [name/system] | [name/system] | [reason] | [location/path] | [hash] | [hash] | [YES/NO] | [seal number, object lock, WORM setting, or N/A] | [ticket/legal hold/manager approval] | [exceptions] |
+
+For each custody verification record:
+- Recompute SHA-256 at every transfer, every evidence access, before creating an analysis copy, and after creating the analysis copy.
+- Record the access purpose and the authorization source that permitted the access.
+- Record physical tamper-evident seal numbers for removable media, or immutable storage controls for cloud/object storage such as object lock, retention mode, WORM policy, version ID, or audit log reference.
+- Distinguish original evidence, verified working copies, and derived analysis output so analysts do not treat generated findings as original evidence.
+- Keep originals read-only and perform examination only on verified working copies.
+- If hashes do not match, tamper evidence is missing, authorization is absent, or storage controls cannot be proven, mark the evidence item as compromised or not court-ready until resolved.
 
 ### Step 2: Collect Evidence in Order of Volatility (RFC 3227)
 
@@ -360,7 +374,7 @@ Produce the evidence collection report with these exact sections:
 ```markdown
 ## Forensic Evidence Collection Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** forensics-checklist v1.0.0
+**Skill:** forensics-checklist v1.0.1
 **Frameworks:** NIST SP 800-86, RFC 3227
 **Examiner:** [Name or "AI-assisted -- human examiner required for court-admissible evidence"]
 
@@ -369,11 +383,11 @@ Produce the evidence collection report with these exact sections:
 the order of collection, and any evidence that could not be obtained.]
 
 ### Evidence Inventory
-| Evidence ID | Type | Source System | Collection Time (UTC) | SHA-256 Hash | Examiner | Storage Location |
-|---|---|---|---|---|---|---|
-| EVD-0001 | Memory dump | [hostname] | [timestamp] | [hash] | [name] | [location] |
-| EVD-0002 | Disk image (E01) | [hostname] | [timestamp] | [hash] | [name] | [location] |
-| EVD-0003 | Log export | [source] | [timestamp] | [hash] | [name] | [location] |
+| Evidence ID | Type | Evidence State | Source System | Collection Time (UTC) | SHA-256 Hash | Examiner | Storage Location |
+|---|---|---|---|---|---|---|---|
+| EVD-0001 | Memory dump | Original | [hostname] | [timestamp] | [hash] | [name] | [location] |
+| EVD-0002 | Disk image (E01) | Original | [hostname] | [timestamp] | [hash] | [name] | [location] |
+| EVD-0003 | Log export | Verified working copy | [source] | [timestamp] | [hash] | [name] | [location] |
 
 ### Volatility Order Compliance
 | RFC 3227 Priority | Evidence Source | Collected | Notes |
@@ -389,10 +403,15 @@ the order of collection, and any evidence that could not be obtained.]
 ### Chain of Custody
 [Include chain of custody form for each evidence item]
 
+### Custody Verification Evidence
+| Evidence ID | Transfer/Access Time (UTC) | Released By | Received/Accessed By | Purpose | Storage Location | SHA-256 Before | SHA-256 After | Match | Tamper Evidence | Access Authorization | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| EVD-0001 | [timestamp] | [name/system] | [name/system] | [reason] | [location/path] | [hash] | [hash] | [YES/NO] | [seal number/object lock/WORM/audit reference] | [ticket/legal hold/approval] | [exceptions] |
+
 ### Integrity Verification
-| Evidence ID | Acquisition Hash | Verification Hash | Match |
-|---|---|---|---|
-| EVD-0001 | [hash] | [hash] | [YES/NO] |
+| Evidence ID | Evidence State | Verified At (UTC) | Verified By | Verification Context | Acquisition Hash | Verification Hash | Match |
+|---|---|---|---|---|---|---|---|
+| EVD-0001 | Original | [timestamp] | [name/system] | [collection/transfer/access/working copy] | [hash] | [hash] | [YES/NO] |
 
 ### Evidence Gaps
 [List any evidence that could not be collected and the reason]
@@ -448,6 +467,10 @@ Executing forensic tools (or any tools) that reside on the compromised system ri
 ### Pitfall 2: Breaking the Hash Chain
 
 Evidence integrity depends on an unbroken cryptographic hash chain from the moment of collection through analysis and into legal proceedings. Computing the initial hash hours after collection, using weak hash algorithms (MD5 alone), or failing to re-verify hashes after evidence transfers introduces doubt about evidence integrity. Compute SHA-256 hashes immediately upon acquisition, record them in the chain-of-custody form, and verify hashes at every transfer point.
+
+### Pitfall 2a: Logging Custody Transfers Without Verification Evidence
+
+A custody log that lists names and timestamps but omits per-transfer hash checks, access authorization, storage controls, and tamper-evidence references does not prove evidence integrity. Re-verify SHA-256 before and after each transfer or analysis-copy creation, record who authorized the access, and preserve seal numbers or immutable storage metadata so the evidence remains defensible.
 
 ### Pitfall 3: Imaging a Live System Without Capturing Memory First
 
