@@ -1,0 +1,30 @@
+scenario: retry_after_timeout_duplicates_side_effect
+skill: agentic-top-10
+expected_result: flag_high_risk_side_effect_retry
+agent_workflow:
+  agent: support-refund-agent
+  tool: billing.issueRefund
+  side_effect: external_payment_refund
+  retry_policy:
+    max_attempts: 2
+    backoff: none
+  first_attempt:
+    payload:
+      customer_id: cus_123
+      amount_usd: 49.00
+    downstream_status: succeeded
+    agent_observed_result: timeout
+  second_attempt:
+    payload:
+      customer_id: cus_123
+      amount_usd: 49.00
+    downstream_status: succeeded
+controls:
+  idempotency_key: missing
+  operation_ledger: missing
+  approval_hash_bound_to_payload: false
+  compensation_tested: false
+why_this_should_fail: >
+  The retry can execute a second refund because success of the first side effect
+  is not recorded in a durable ledger and the downstream call has no stable
+  idempotency key.

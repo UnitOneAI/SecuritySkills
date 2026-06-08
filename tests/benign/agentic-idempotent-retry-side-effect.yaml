@@ -1,0 +1,30 @@
+scenario: retry_after_timeout_resolves_to_existing_operation
+skill: agentic-top-10
+expected_result: do_not_flag_duplicate_side_effect
+agent_workflow:
+  agent: support-refund-agent
+  tool: billing.issueRefund
+  side_effect: external_payment_refund
+  retry_policy:
+    max_attempts: 2
+    backoff: exponential
+  canonical_operation:
+    operation_id: refund:TCK-4812:sha256-approved-payload
+    idempotency_key: refund:TCK-4812:sha256-approved-payload
+    approval_hash: sha256-approved-payload
+    approval_ttl_expires_at: "2026-06-09T09:30:00Z"
+  first_attempt:
+    downstream_status: succeeded
+    agent_observed_result: timeout
+  second_attempt:
+    downstream_status: idempotent_replay
+    returned_operation_id: refund:TCK-4812:sha256-approved-payload
+controls:
+  idempotency_key: stable_per_business_operation
+  operation_ledger: durable_outbox
+  approval_hash_bound_to_payload: true
+  compensation_tested: true
+why_this_should_pass: >
+  The retry is safe because the same canonical operation ID and approval hash
+  are reused, and the downstream API returns the existing operation rather than
+  creating a second refund.

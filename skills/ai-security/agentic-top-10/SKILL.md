@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -67,6 +67,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Human approval gates | Workflow configs, UI code, approval logic | Determines if HITL can be bypassed |
 | Multi-agent communication | Message bus configs, inter-agent protocols, shared state | Identifies trust boundary violations |
 | Error handling and retry logic | Exception handlers, circuit breaker configs | Reveals cascading failure potential |
+| Side-effecting tool semantics | Tool wrappers, idempotency keys, approval hashes, outbox tables, compensation handlers | Determines whether retries can duplicate irreversible actions |
 | Authentication and identity | Auth middleware, token management, agent identity configs | Exposes identity gaps |
 | Rate limiting and quotas | API gateway configs, token budgets, cost controls | Determines resource exhaustion risk |
 | Data flow diagrams | Architecture docs, network diagrams | Shows exfiltration paths |
@@ -278,7 +279,18 @@ In 2023, security researcher Johann Rehberger demonstrated that Bing Chat (now C
 - Absence of circuit breakers or timeout mechanisms in agent orchestration logic.
 - Error handling that catches exceptions but not semantic errors (the agent returned a confidently wrong answer — no exception is thrown).
 - Retry logic without jitter or backoff that can amplify failures under load.
+- Side-effecting tools that are retried after timeout without an idempotency key, durable operation ledger, or approval bound to the exact canonical payload.
 - Multi-agent systems without a health-check or consensus mechanism for critical decisions.
+
+**Side-effect retry evidence to collect:**
+
+| Evidence | Safe Pattern | Risky Pattern |
+|---|---|---|
+| Idempotency key | Stable per business operation and accepted by the downstream API | Generated per retry or absent |
+| Approval binding | Approval hash covers canonical tool name, arguments, actor, and TTL | Approval covers a summary while retry payload can change |
+| Operation ledger | Durable outbox records submitted, succeeded, failed, and compensated states | Only model memory records whether the action ran |
+| Compensation feasibility | Rollback is tested and possible for the specific side effect | Compensation claims to undo irreversible actions such as sent email or external transfer |
+| Cross-agent deduplication | Shared operation ID prevents duplicate action across agents | Each agent retries independently with no shared ledger |
 
 **Real-World Failure Mode:**
 
@@ -289,7 +301,7 @@ In 2024, a financial services firm reported an incident (disclosed at a CISO rou
 1. Implement validation checkpoints between every agent stage. Validate the semantic content of outputs, not just their format.
 2. Deploy circuit breakers that halt pipeline execution when confidence scores drop below threshold or output anomalies are detected.
 3. Use independent verification for critical outputs — a separate agent or deterministic check that validates key claims before they propagate.
-4. Implement idempotent operations and rollback mechanisms for agents that take real-world actions (send emails, update databases, trigger payments).
+4. Implement idempotent operations and rollback mechanisms for agents that take real-world actions (send emails, update databases, trigger payments). Bind each action to a canonical payload hash, idempotency key, approval TTL, and durable outbox/operation ledger.
 5. Set hard limits on chain depth. Define maximum pipeline length and require human review for chains exceeding the limit.
 6. Implement structured error propagation — agents must explicitly signal uncertainty rather than passing through low-confidence outputs as if they were facts.
 
@@ -343,6 +355,7 @@ In 2024, a red team exercise at a technology company (published in their securit
 - Absence of token budgets or API call limits per agent session.
 - Recursive agent patterns (agent spawns sub-agents that spawn sub-agents) without depth limits.
 - Retry logic without exponential backoff or maximum retry counts.
+- Retry-after-timeout behavior around non-idempotent tools, especially payment, email, ticketing, deployment, IAM, and webhook tools.
 - Agents that process user-supplied data where the data volume is unbounded (e.g., "summarize this 10GB file").
 - No cost monitoring or alerting on LLM API spend.
 - Agents with access to auto-scaling infrastructure where runaway calls can trigger unbounded scale-up.
@@ -360,6 +373,7 @@ In multiple documented incidents throughout 2023-2024, developers using autonomo
 5. Monitor and alert on token consumption rate, API call frequency, and cost accumulation in real time.
 6. Use pre-provisioned, non-auto-scaling infrastructure for agent workloads where possible, or set hard caps on auto-scaling limits.
 7. Implement dead-letter queues for agent tasks that exceed resource limits, enabling post-mortem analysis without continued resource consumption.
+8. Separate rate limiting from side-effect deduplication: token or API budgets stop runaway loops, but idempotency keys and operation ledgers prevent duplicate external effects when retries are still allowed.
 
 **Framework Mapping:**
 
@@ -493,6 +507,7 @@ Structure the final report as follows:
 - Tools registered: [count and categories]
 - Memory stores: [types]
 - Human approval gates: [present/absent, description]
+- Side-effecting tools: [count, idempotency coverage, approval binding, compensation status]
 - Multi-agent communication: [method]
 
 ## Findings by Threat Category
