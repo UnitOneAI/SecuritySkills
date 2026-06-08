@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,7 @@ Before beginning triage, gather or confirm:
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
+- [ ] **Authorization context:** If the activity is claimed to be maintenance, deployment, or break/fix work, capture the change ticket, approver, approved window/timezone, affected assets, authorized actor(s), expected commands/actions, and rollback or extension status.
 
 If some context is unavailable, proceed with available information and note gaps as assumptions.
 
@@ -79,6 +80,7 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
+| **Change management** | Approved ticket ID, window, timezone, approver, affected assets, actor, planned commands/actions, rollback/extension notes | ITSM, change calendar, deployment system |
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
 
@@ -93,6 +95,7 @@ Connect the alert data with surrounding context to build a picture of what happe
 3. **Behavioral correlation:** Does this activity match known ATT&CK technique patterns? Does it match the user's or system's normal behavior baseline?
 4. **Threat intel correlation:** Do any indicators match known threat actor infrastructure, malware campaigns, or published IOCs?
 5. **Kill chain correlation:** Where does this activity fall in the attack lifecycle? Is there evidence of preceding (reconnaissance, initial access) or subsequent (persistence, lateral movement, exfiltration) stages?
+6. **Authorized-change correlation:** If the alert is explained as maintenance or deployment, does the timestamp, timezone, affected asset, actor, observed command/action, and follow-on activity match the approved ticket scope?
 
 **ATT&CK-based correlation framework:**
 
@@ -116,6 +119,18 @@ Assign a disposition and priority based on collected and correlated data.
 | **Benign True Positive (BTP)** | BTP | The alert correctly identified the activity described in the rule, but the activity is authorized, expected, or part of legitimate operations. | Document the legitimate reason. If recurring, request a rule tuning (filter/exclusion). Close alert. |
 | **False Positive (FP)** | FP | The alert fired incorrectly -- the underlying activity does not match what the rule intended to detect (rule logic error, data quality issue). | Document the false positive cause. Submit a tuning request to detection engineering. Close alert. |
 
+#### Authorized Change Evidence Gate
+
+Do not close an alert as BTP solely because an analyst note, alert comment, or asset owner says "maintenance" or "approved change." Before reducing priority or closing as BTP, verify all of the following:
+
+- **Ticket evidence:** Change or incident ticket ID exists and is approved by the required owner or approver.
+- **Window match:** Alert timestamp is inside the approved window, including timezone and any approved extension.
+- **Scope match:** Host, user/service account, source location, command/action, and affected application/resource match the ticket implementation plan.
+- **Expected sequence:** Related events match the expected deployment, restart, scan, backup, or rollback sequence.
+- **Out-of-scope review:** No related privilege escalation, lateral movement, persistence, data access, or post-window activity appears outside the approved scope.
+
+If any required evidence is missing, mark authorization confidence as **Low** and keep the alert open for Tier 2 review. If evidence exists but scope only partially matches, use **Medium** confidence and document the mismatch. Only use **High** confidence BTP when authorization, timing, actor, asset, action, and follow-on behavior all align.
+
 #### Priority Matrix
 
 Assign a priority level based on the combination of asset criticality, threat severity, and confidence.
@@ -137,6 +152,7 @@ Assign a priority level based on the combination of asset criticality, threat se
 | Kill chain stage | Late-stage (exfiltration, impact) | Early-stage (reconnaissance) |
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
 | Business context | During M&A, audit, or incident response | Normal operations |
+| Authorization scope | Outside approved window/scope, missing approver, unexpected actor/action | Approved change with exact time, asset, actor, and action match |
 
 ### Phase 4: Escalate
 
@@ -233,6 +249,18 @@ Produce the triage decision as a structured report:
 - **Lateral:** [Related alerts on other hosts/users]
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
+- **Authorized Change:** [ticket ID, approver, window match, scope match, action match, out-of-scope findings]
+
+### Authorized Change Evidence (if BTP due to maintenance/deployment)
+| Field | Evidence |
+|-------|----------|
+| Ticket / Change ID | [ID and status] |
+| Approved Window | [start/end/timezone and extension status] |
+| Approver / Owner | [role or team] |
+| Approved Scope | [assets, users/service accounts, commands/actions] |
+| Observed Activity Match | [full / partial / no match] |
+| Out-of-Scope Follow-on Review | [none found / findings] |
+| Authorization Confidence | [High / Medium / Low] |
 
 ### Recommended Actions
 - [ ] [Action 1 -- e.g., isolate host, disable account, block IP]
@@ -319,6 +347,10 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Treating "Maintenance" as a Disposition
+
+Maintenance, deployment, and break/fix explanations are evidence hypotheses, not dispositions. Validate the change ticket, approval, time window, asset scope, actor, observed action, and follow-on behavior before closing as BTP. Activity outside the approved window or scope remains suspicious even when a related ticket exists.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -344,3 +376,11 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+
+---
+
+## 10. Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0.1 | 2026-06-08 | Add authorized-change evidence gates for maintenance and deployment BTP decisions |
