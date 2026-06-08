@@ -1,0 +1,39 @@
+workflow:
+  name: deploy
+  "on":
+    push:
+      branches:
+        - main
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      environment: production
+      permissions:
+        contents: write
+        id-token: write
+      steps:
+        - uses: third-party/deploy-action@v1
+        - run: ./deploy.sh
+
+githubSettingsEvidence:
+  environments:
+    production:
+      required_reviewers: []
+      wait_timer_minutes: 0
+      deployment_branch_policy:
+        protected_branches: false
+        custom_branch_policies: false
+      secrets_scoped_to_environment: false
+  rulesets:
+    main:
+      enforcement: disabled
+      required_pull_request_reviews: false
+      required_status_checks: []
+      bypass_actors:
+        - repository-admins
+  actions:
+    default_workflow_permissions: write
+    allowed_actions: all
+  fork_workflows:
+    require_approval_for_fork_pull_requests: false
+  artifact_and_log_retention_days: 1

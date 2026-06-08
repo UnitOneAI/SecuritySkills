@@ -1,0 +1,48 @@
+workflow:
+  name: deploy
+  "on":
+    push:
+      branches:
+        - main
+  permissions:
+    contents: read
+    deployments: write
+    id-token: write
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      environment: production
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            persist-credentials: false
+        - run: ./deploy.sh
+
+githubSettingsEvidence:
+  environments:
+    production:
+      required_reviewers:
+        - platform-release-managers
+      wait_timer_minutes: 15
+      deployment_branch_policy:
+        protected_branches: true
+        custom_branch_policies: false
+      secrets_scoped_to_environment: true
+  rulesets:
+    main:
+      enforcement: active
+      required_pull_request_reviews: true
+      required_status_checks:
+        - ci / test
+        - security / scan
+      bypass_actors: []
+  actions:
+    default_workflow_permissions: read
+    can_approve_pull_request_reviews: false
+    allowed_actions: selected
+    allowed_actions_patterns:
+      - actions/*
+      - slsa-framework/*
+  fork_workflows:
+    require_approval_for_fork_pull_requests: true
+  artifact_and_log_retention_days: 30
