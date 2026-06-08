@@ -695,6 +695,92 @@ resource "azurerm_linux_web_app" {
 }
 ```
 
+
+### CIS 9.X -- Ensure App Service deployment publishing basic authentication is Disabled
+
+Azure App Service has a separate deployment plane for SCM/Kudu, WebDeploy, Local Git, ZipDeploy, and FTP/FTPS publishing. Runtime controls such as App Service Authentication, HTTPS-only, TLS version, client certificates, and `ftps_state = "Disabled"` do not prove that publish-profile basic authentication is disabled.
+
+**Terraform AzureRM evidence:**
+
+```hcl
+resource "azurerm_linux_web_app" "app" {
+  name                = "example-app"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  service_plan_id     = azurerm_service_plan.plan.id
+
+  https_only = true
+
+  ftp_publish_basic_authentication_enabled       = false
+  webdeploy_publish_basic_authentication_enabled = false
+
+  site_config {
+    ftps_state = "Disabled"
+  }
+}
+```
+
+Apply the same evidence requirement to `azurerm_windows_web_app`, `azurerm_linux_function_app`, `azurerm_windows_function_app`, and deployment slot resources where used.
+
+**ARM/Bicep evidence for SCM and FTP policies:**
+
+```bicep
+resource webApp 'Microsoft.Web/sites@2023-12-01' existing = {
+  name: appName
+}
+
+resource scmBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: webApp
+  name: 'scm'
+  properties: {
+    allow: false
+  }
+}
+
+resource ftpBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: webApp
+  name: 'ftp'
+  properties: {
+    allow: false
+  }
+}
+```
+
+**Deployment slot evidence:**
+
+```bicep
+resource slot 'Microsoft.Web/sites/slots@2023-12-01' existing = {
+  parent: webApp
+  name: slotName
+}
+
+resource slotScmBasicAuth 'Microsoft.Web/sites/slots/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: slot
+  name: 'scm'
+  properties: {
+    allow: false
+  }
+}
+
+resource slotFtpBasicAuth 'Microsoft.Web/sites/slots/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: slot
+  name: 'ftp'
+  properties: {
+    allow: false
+  }
+}
+```
+
+**Review checklist:**
+
+- Confirm both `scm` and `ftp` `basicPublishingCredentialsPolicies` exist with `properties.allow = false` for every Web App and Function App.
+- Confirm deployment slots have equivalent `sites/slots/basicPublishingCredentialsPolicies/{scm,ftp}` resources or exported evidence.
+- Confirm Terraform AzureRM sets `ftp_publish_basic_authentication_enabled = false` and `webdeploy_publish_basic_authentication_enabled = false` where those fields are available.
+- Confirm CI/CD uses Entra ID, OIDC federation, managed identity, or federated service principal deployment instead of publish-profile basic auth.
+- Confirm stored publish profiles, deployment passwords, and pipeline secrets were rotated or invalidated after disabling basic authentication.
+- Confirm Azure Policy, Azure Resource Graph, CLI export, ARM export, or Terraform plan evidence covers all subscriptions and resource groups in scope.
+- Do not mark the control as pass based only on `ftps_state = "Disabled"`; that setting blocks FTP traffic but does not prove SCM/WebDeploy basic publishing credentials are disabled.
+
 ### CIS 9.10 -- Ensure FTP deployments are Disabled
 
 ```hcl
