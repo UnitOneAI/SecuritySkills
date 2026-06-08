@@ -1,0 +1,24 @@
+case: scope-change-without-risk-review
+expect: vulnerable
+clauses:
+  - "6.3"
+  - "8.1"
+change:
+  id: ISMS-CHG-2026-051
+  type: planned
+  trigger: outsource payments support to a new provider
+  scope_change: true
+  interested_parties_reviewed: false
+  risk_assessment_link: null
+  soa_controls_reviewed: []
+  approval: null
+  transition_or_rollback_plan: null
+  post_change_review: null
+expected_finding:
+  status: Nonconforming
+  reason_codes:
+    - missing-risk-review
+    - missing-soa-impact
+    - missing-approval
+    - missing-transition-plan
+    - missing-post-change-review

@@ -1,0 +1,26 @@
+case: controlled-isms-scope-change
+expect: benign
+clauses:
+  - "6.3"
+  - "8.1"
+change:
+  id: ISMS-CHG-2026-042
+  type: planned
+  trigger: expand ISMS scope to include EU support function
+  risk_assessment_link: RISK-2026-117
+  interested_parties_reviewed: true
+  soa_controls_reviewed:
+    - A.5.19
+    - A.5.20
+    - A.5.23
+    - A.8.3
+  approval:
+    risk_owner: vp-support
+    isms_owner: ciso
+  transition_or_rollback_plan: retain prior support workflow until supplier DPA and access controls are approved
+  post_change_review:
+    completed_at: "2026-06-08T10:00:00Z"
+    residual_risk_accepted_by: ciso
+expected_finding:
+  status: Conforming
+  reason: planned ISMS scope change includes risk, SoA, approval, transition, and post-change evidence.

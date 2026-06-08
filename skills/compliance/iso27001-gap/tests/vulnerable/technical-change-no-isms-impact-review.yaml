@@ -1,0 +1,19 @@
+case: technical-change-no-isms-impact-review
+expect: vulnerable
+clauses:
+  - "6.3"
+  - "8.1"
+  - "A.8.32"
+change:
+  id: OPS-2026-012
+  type: production-identity-provider-migration
+  pull_request_approved: true
+  cab_approved: true
+  deployment_successful: true
+  isms_impact_review: missing
+  risk_register_updated: false
+  interested_parties_reviewed: false
+  management_review_input: missing
+expected_finding:
+  status: Not Evaluable
+  reason: technical change evidence exists, but ISMS impact and risk-treatment evidence are missing.

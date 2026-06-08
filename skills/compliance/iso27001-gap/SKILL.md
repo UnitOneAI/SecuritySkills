@@ -189,7 +189,30 @@ Evaluate the risk assessment process:
 
 ---
 
-### Step 4: Annex A Control Assessment
+### Step 4: Planned ISMS Change Review (Clauses 6.3 and 8.1)
+
+Evaluate whether planned changes to the ISMS are controlled before scoring the affected clauses and controls as conforming. This gate applies when a change affects ISMS scope, objectives, interested parties, risk criteria, risk treatment, suppliers, cloud services, control ownership, locations, technologies, or Annex A applicability.
+
+Do not treat a software change ticket or pull request approval as sufficient evidence by itself. A.8.32 technical change management evidence may support the review, but Clause 6.3 and Clause 8.1 require planned changes to be considered at the ISMS and operational-control level.
+
+Record the following evidence:
+
+| Field | Required Evidence |
+|-------|-------------------|
+| Change trigger | New supplier, location, business process, cloud service, data processing activity, control owner, risk criterion, or scope boundary |
+| ISMS impact | Clauses, Annex A controls, assets, risks, interested parties, and objectives affected |
+| Risk review | Linked risk assessment or documented rationale that risk treatment remains valid |
+| SoA review | Controls added, removed, re-scored, or re-justified in the Statement of Applicability |
+| Approval | Risk owner, ISMS owner, and affected control owner approval where applicable |
+| Transition or rollback | Reversion path, phased transition, fallback control, or reason rollback is not applicable |
+| Operating evidence | Evidence that the change was implemented as approved and monitored after implementation |
+| Post-change review | Residual risk acceptance, lessons learned, and follow-up actions |
+
+If any required evidence is missing for a significant ISMS change, mark the affected clause or control **Not Evaluable** or **Nonconforming** with a reason code such as `missing-risk-review`, `missing-soa-impact`, `missing-approval`, `missing-transition-plan`, or `missing-post-change-review`.
+
+---
+
+### Step 5: Annex A Control Assessment
 
 Assess each Annex A control for: (a) applicability per SoA, (b) implementation status, (c) evidence of effectiveness, (d) gaps.
 
@@ -311,7 +334,7 @@ Use the following maturity scoring:
 
 ---
 
-### Step 5: Statement of Applicability (SoA)
+### Step 6: Statement of Applicability (SoA)
 
 Build or review the SoA. For each of the 93 Annex A controls, document:
 
@@ -323,7 +346,7 @@ Exclusions are permitted only where the control is genuinely not applicable to t
 
 ---
 
-### Step 6: Internal Audit Readiness (Clause 9.2)
+### Step 7: Internal Audit Readiness (Clause 9.2)
 
 Assess internal audit program against requirements:
 
@@ -337,7 +360,7 @@ Assess internal audit program against requirements:
 
 ---
 
-### Step 7: Management Review Readiness (Clause 9.3)
+### Step 8: Management Review Readiness (Clause 9.3)
 
 Verify management review covers all required inputs:
 
@@ -412,6 +435,12 @@ Classify each finding using the following severity levels:
 
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
+
+## Planned ISMS Change Evidence
+
+| Change ID | Trigger | Clauses / Controls Impacted | Risk Review | SoA Review | Approval | Transition / Rollback | Post-Change Review | Status |
+|-----------|---------|-----------------------------|-------------|------------|----------|-----------------------|--------------------|--------|
+| ISMS-CHG-001 | [scope/supplier/cloud/control change] | [6.3, 8.1, A.x.y] | [link/status] | [link/status] | [owner/status] | [link/status] | [link/status] | [Conforming / Not Evaluable / Nonconforming] |
 
 ## Prioritized Remediation Roadmap
 
@@ -512,6 +541,8 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 4. **Neglecting the 11 new controls introduced in the 2022 revision.** Organizations transitioning from 2013 often miss that controls like A.5.7 (Threat intelligence), A.5.23 (Cloud services security), A.8.9 (Configuration management), A.8.11 (Data masking), A.8.12 (Data leakage prevention), and A.8.16 (Monitoring activities) require explicit consideration in the SoA even if determined not applicable.
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
+
+6. **Treating technical change approval as complete ISMS change planning.** Pull request approval, CAB approval, or deployment success can prove a technical change was authorized, but it does not prove Clause 6.3 planning unless risk, SoA, interested-party, scope, transition, and post-change evidence are reviewed when the ISMS itself is affected.
 
 ---
 

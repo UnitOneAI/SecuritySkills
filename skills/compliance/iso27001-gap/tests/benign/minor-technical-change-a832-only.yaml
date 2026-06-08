@@ -1,0 +1,17 @@
+case: minor-technical-change-a832-only
+expect: benign
+clauses:
+  - "A.8.32"
+change:
+  id: APP-CHG-2026-019
+  type: minor-application-patch
+  scope_change: false
+  risk_criteria_change: false
+  control_owner_change: false
+  interested_party_impact: false
+  pull_request_approved: true
+  tests_passed: true
+  rollback_plan: redeploy previous container image
+expected_finding:
+  status: Conforming
+  reason: change is technical only and does not affect ISMS scope, objectives, risk treatment, interested parties, or SoA applicability.
