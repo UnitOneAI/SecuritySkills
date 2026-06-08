@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -80,6 +80,16 @@ Use Glob and Grep to locate DAST tool configurations, scan policies, and CI inte
 **/Jenkinsfile*
 **/docker-compose*test*
 **/docker-compose*security*
+
+# API specifications and route inventories
+**/openapi*.yml
+**/openapi*.yaml
+**/openapi*.json
+**/swagger*.yml
+**/swagger*.yaml
+**/swagger*.json
+**/routes.*
+**/*routes*
 ```
 
 Categorize by:
@@ -248,7 +258,39 @@ jobs:
 - Content-Type is set correctly for API requests (`application/json` for REST).
 - Rate limiting considerations: API scans should respect rate limits to avoid triggering WAF blocks.
 
-#### 3.2 GraphQL Scanning
+#### 3.2 API Route Coverage Evidence
+
+OpenAPI import proves the scanner can generate requests, but it does not prove the imported specification matches the deployed application or that ZAP reached each route. Build an endpoint coverage matrix before treating API DAST as complete.
+
+**Coverage evidence to collect:**
+
+| Evidence Source | What It Proves | Example |
+|-----------------|----------------|---------|
+| OpenAPI or Swagger spec | Declared methods, paths, parameters, auth requirements | `openapi.yaml`, `/swagger.json` |
+| Runtime route inventory | Routes actually registered by the deployed app | Framework route dump, gateway export, service mesh route table |
+| DAST import log | Which operations ZAP imported successfully | ZAP `openapi` job output |
+| DAST request log or HAR | Which operations were actually requested during the scan | ZAP messages, proxy HAR, access logs |
+| Auth role map | Which roles/users can reach each route | Test user role matrix, token scopes |
+
+**What to verify:**
+
+- [ ] The OpenAPI file has an owner, generation source, commit or build ID, and last-generated timestamp.
+- [ ] Runtime route inventory is compared against the OpenAPI paths and methods for the same deployed build.
+- [ ] ZAP import logs show every expected OpenAPI operation was imported, or list parse/import failures by operation.
+- [ ] Request logs prove each imported route was exercised at least once with the intended auth context.
+- [ ] Endpoints missing from the spec, skipped by auth, blocked by WAF/rate limits, or excluded by scope are recorded with owner and remediation.
+- [ ] Dangerous routes excluded from active scanning are still tracked as intentionally untested, with a manual-test or passive-only plan.
+
+**Coverage matrix template:**
+
+| Method | Path | Source | Auth Role | In Spec | Imported | Exercised | Gap Reason | Owner |
+|--------|------|--------|-----------|---------|----------|-----------|------------|-------|
+| GET | `/api/v1/orders/{id}` | OpenAPI + runtime | user | Yes | Yes | Yes | None | Payments |
+| POST | `/api/v1/admin/reindex` | runtime only | admin | No | No | No | Missing from spec; destructive active test excluded | Search |
+
+**Finding classification:** API route coverage below 80% for production APIs is **High**. Runtime routes missing from the OpenAPI spec are **Medium** (High for sensitive/admin routes). OpenAPI import failures without owner/remediation are **Medium**. A route marked covered without request-log evidence is **Medium**.
+
+#### 3.3 GraphQL Scanning
 
 ```yaml
 # ZAP GraphQL import
@@ -483,7 +525,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
 | **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules; API routes not mapped to scan evidence. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -518,7 +560,14 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
+| API route coverage | <percent> | <spec/runtime/import/request-log matrix> |
 | Results deduplication | Yes/No | <dedup method> |
+
+### API Route Coverage
+
+| Method | Path | Source | Auth Role | In Spec | Imported | Exercised | Gap Reason | Owner |
+|--------|------|--------|-----------|---------|----------|-----------|------------|-------|
+| <GET/POST> | </api/path> | <OpenAPI/runtime/both> | <role> | <Yes/No> | <Yes/No> | <Yes/No> | <reason or None> | <team> |
 
 ### Findings
 
@@ -584,6 +633,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
+6. **Counting OpenAPI import as endpoint coverage.** A green `openapi` job can still miss runtime-only routes, routes hidden behind auth, operations rejected during import, or endpoints skipped by WAF/rate limits. Treat API DAST coverage as proven only when the spec, runtime route inventory, ZAP import log, and scan request log agree.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -609,9 +660,11 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP API Security Top 10: https://owasp.org/API-Security/
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
 - SARIF Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
+- OpenAPI Specification: https://spec.openapis.org/oas/latest.html
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added API route coverage evidence gates for OpenAPI freshness, runtime route inventory, ZAP import results, request-log proof, and output coverage matrices.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
