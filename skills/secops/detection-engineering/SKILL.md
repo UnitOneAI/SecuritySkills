@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,14 +52,15 @@ Invoke this skill when any of the following conditions are met:
 Before beginning, gather or confirm:
 
 - [ ] **Target ATT&CK technique(s):** The specific technique or sub-technique IDs to detect (e.g., T1059.001 -- PowerShell).
-- [ ] **Available log sources:** What telemetry is collected? (Windows Event Logs, Sysmon, EDR, cloud audit logs, proxy logs, DNS logs, firewall logs).
+- [ ] **Target platform(s):** Windows, Linux, macOS, AWS, Azure, GCP, SaaS, network, or multi-platform.
+- [ ] **Available log sources:** What telemetry is collected? (Windows Event Logs, Sysmon, Linux auditd/syslog, macOS EndpointSecurity/unified logs, EDR, cloud audit logs, proxy logs, DNS logs, firewall logs).
 - [ ] **SIEM platform(s):** Target SIEM for rule deployment (Microsoft Sentinel, Splunk, Elastic, Chronicle, QRadar) -- determines Sigma backend conversion target.
 - [ ] **Environment context:** Operating systems, domain structure, cloud providers, key applications in the environment.
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
 - [ ] **Detection priority:** Is this for a known active threat, proactive coverage expansion, or compliance requirement?
 - [ ] **Organizational naming conventions:** Rule ID format, severity taxonomy, and tagging standards used by the detection engineering team.
 
-If the ATT&CK technique is provided but other context is missing, proceed with conservative assumptions (Windows enterprise environment, Sysmon + Windows Security logs available) and note assumptions in the output.
+If the ATT&CK technique is provided but other context is missing, proceed with conservative assumptions (Windows enterprise environment, Sysmon + Windows Security logs available), note assumptions in the output, and mark Linux, macOS, cloud, SaaS, and network coverage as `Not Evaluable` until platform telemetry is confirmed.
 
 ---
 
@@ -107,7 +108,45 @@ Before writing the rule, enumerate:
 - Evasion techniques an adversary might use to avoid the detection (known blind spots)
 - Tuning parameters that can reduce false positives without creating blind spots
 
-### Step 3: Author the Sigma Rule
+### Step 3: Platform and Logsource Compatibility Gate
+
+Before authoring Sigma YAML or ADS validation steps, prove that the requested platform, telemetry source, Sigma logsource, backend conversion, and validation method align. Do not reuse Windows process-creation examples for Linux, macOS, cloud control-plane, SaaS, or network detections unless the selected backend explicitly normalizes those events to the same field names and the report records that mapping.
+
+**Compatibility evidence requirements:**
+
+| Field | Required Evidence |
+|-------|-------------------|
+| Target platform | Windows, Linux, macOS, AWS, Azure, GCP, SaaS, network, or multi-platform |
+| Required telemetry | ATT&CK data source/component and local collection status |
+| Actual log source | Example: Sysmon, Windows 4688, auditd `execve`, EndpointSecurity, osquery, CloudTrail, Azure Activity Logs, GCP Audit Logs, vendor EDR |
+| Sigma logsource | `product`, `service`, and `category`, or a reason Sigma is not suitable |
+| Field mapping | Source fields to Sigma/backend fields, including missing, truncated, delayed, or lossy mappings |
+| Backend support | Splunk, Sentinel, Elastic, Chronicle, QRadar, Sigma backend, custom parser, or `Not Evaluable` |
+| Validation method | Atomic test, replayed event fixture, sandbox API call, unit conversion test, negative control, or `Not Evaluable` reason |
+| Platform blind spots | Events unavailable, not collected, delayed, normalized, truncated, or excluded from retention |
+
+**Decision rules:**
+
+- If target platform is unknown, output the Windows default assumption and mark other platforms `Not Evaluable`.
+- For Linux, macOS, cloud, SaaS, or network detections, do not use Windows field names such as `Image`, `ParentImage`, or `CommandLine` unless the backend normalization evidence maps those fields explicitly.
+- For multi-platform techniques, produce separate deployability rows per platform or separate Sigma rules when logsource or field mappings differ.
+- Validation that runs on a different platform from the requested detection is insufficient evidence; record it as `Not Evaluable` or `Theoretical`.
+- Cloud control-plane detections must identify provider service, API action, identity type, region/tenant/account scope, and audit-log aggregation path before claiming deployability.
+
+```
+Platform and Logsource Compatibility:
+- Target Platform:      [Windows | Linux | macOS | AWS | Azure | GCP | SaaS | Network | Multi-platform]
+- Required Telemetry:   [ATT&CK data source/component]
+- Actual Log Source:    [source and collection evidence]
+- Sigma Logsource:      [product/service/category or Not Suitable]
+- Field Mapping:        [source fields -> Sigma/backend fields]
+- Backend Support:      [SIEM/backend or Not Evaluable]
+- Validation Method:    [test/replay/sandbox/negative control]
+- Blind Spots:          [missing/delayed/truncated/not collected]
+- Deployability Status: [Deployable | Theoretical | Not Evaluable]
+```
+
+### Step 4: Author the Sigma Rule
 
 Write the detection rule following the Sigma specification (sigmahq.io).
 
@@ -195,7 +234,7 @@ fields:
 | `|base64offset` | Base64 encoded value match | `CommandLine|base64offset|contains: 'IEX'` |
 | `condition` | Boolean logic | `selection_a and selection_b and not filter_main` |
 
-### Step 4: Build ADS Documentation
+### Step 5: Build ADS Documentation
 
 Document the detection using the Palantir Alerting and Detection Strategy (ADS) framework. ADS ensures every detection has operational context beyond the rule itself.
 
@@ -269,7 +308,7 @@ Define the analyst response procedure when this alert fires.
 5. **Determine disposition:** Classify as True Positive, Benign True Positive, or False Positive.
 6. **Escalate if TP:** If malicious, escalate to Tier 2/IR team with decoded command, parent process chain, and correlated events.
 
-### Step 5: Detection Coverage Heatmap Methodology
+### Step 6: Detection Coverage Heatmap Methodology
 
 Map detection coverage against the ATT&CK matrix to identify gaps.
 
@@ -302,7 +341,7 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | Ease of detection | Medium | Some techniques have clear observable artifacts; prioritize those first |
 | Compliance requirements | Medium | Regulatory frameworks may mandate detection of specific techniques |
 
-### Step 6: Detection-as-Code Practices
+### Step 7: Detection-as-Code Practices
 
 Manage detection rules as code artifacts in version control.
 
@@ -365,7 +404,7 @@ Produce detection engineering deliverables in this structure:
 ```markdown
 ## Detection Engineering Report: [ATT&CK Technique ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** detection-engineering v1.0.0
+**Skill:** detection-engineering v1.0.1
 **Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
 
 ### ATT&CK Technique Summary
@@ -379,8 +418,13 @@ Produce detection engineering deliverables in this structure:
 ### Sigma Rule
 [Full Sigma YAML rule]
 
+### Platform and Logsource Compatibility
+| Target Platform | Actual Log Source | Sigma Logsource | Field Mapping | Backend Support | Validation Method | Deployability |
+|-----------------|-------------------|-----------------|---------------|-----------------|-------------------|---------------|
+| [platform] | [source] | [product/service/category] | [mapping or gap] | [backend] | [method] | [Deployable/Theoretical/Not Evaluable] |
+
 ### ADS Documentation
-[Complete ADS framework documentation per Step 4]
+[Complete ADS framework documentation per Step 5]
 
 ### Coverage Assessment
 | Level | Status |
@@ -446,6 +490,10 @@ Sigma is a generic and open signature format for SIEM systems. It allows writing
 | `image_load` | `windows` | DLL/image load events (Sysmon 7) |
 | `process_creation` | `linux` | Process start events (auditd, syslog) |
 | `file_event` | `linux` | File creation/modification |
+| `process_creation` | `macos` | Process start events (EndpointSecurity, osquery, EDR) |
+| `cloudtrail` | `aws` | AWS CloudTrail management/data events |
+| `activitylogs` | `azure` | Azure Activity Logs and resource-provider operations |
+| `audit` | `gcp` | Google Cloud Audit Logs |
 | `firewall` | (various) | Firewall allow/deny logs |
 | `proxy` | (various) | Web proxy access logs |
 | `webserver` | (various) | Web server access/error logs |
@@ -486,11 +534,19 @@ Deploying a detection rule without enumerating and testing against known false p
 
 A detection rule that has never been tested against a known-true-positive event provides only theoretical coverage. Use Atomic Red Team (https://github.com/redcanaryco/atomic-red-team), Caldera, or manual technique execution in a test environment to confirm the rule fires on the expected activity. Move rules from "experimental" to "stable" status only after successful validation.
 
-### Pitfall 4: Ignoring Detection Rule Lifecycle Management
+### Pitfall 4: Reusing Windows Defaults for Non-Windows Detections
+
+Windows process-creation examples do not prove Linux, macOS, cloud, SaaS, or network coverage. A Linux `auditd` rule, macOS EndpointSecurity rule, or AWS CloudTrail rule needs platform-specific logsource, field mapping, backend conversion, validation method, and blind-spot evidence.
+
+### Pitfall 5: Treating Backend Normalization as Telemetry Proof
+
+SIEM or EDR backends may normalize events into common fields, but conversion does not prove that the source telemetry exists, is complete, or is retained. Record the original source, parser, collection scope, and any lossy mapping before claiming deployability.
+
+### Pitfall 6: Ignoring Detection Rule Lifecycle Management
 
 Detection rules are not write-once artifacts. Log sources change, environments evolve, adversary techniques mutate, and SIEM platforms update their query syntax. Rules that are not periodically reviewed become stale, accumulate false positives, or silently stop working. Implement a review cadence (quarterly minimum) and track rule health metrics (fire count, TP/FP ratio, last triggered date).
 
-### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
+### Pitfall 7: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
@@ -522,3 +578,11 @@ This skill processes user-supplied content that may include log samples, detecti
 10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
 11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
 12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+13. **Sigma Log Sources Guide** -- https://sigmahq.io/docs/basics/log-sources.html
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added platform and logsource compatibility gates for target platform, actual telemetry, Sigma product/service/category, field mapping, backend support, validation method, deployability status, and `Not Evaluable` handling.
+- **1.0.0** -- Initial release. Sigma rule authoring, ADS documentation, ATT&CK coverage mapping, detection-as-code practices, and validation workflow.
