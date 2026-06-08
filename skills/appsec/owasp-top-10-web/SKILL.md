@@ -6,13 +6,13 @@ description: >
   when a user asks for a general security review of a web application. Produces
   structured findings mapped to A01-A10 with CWE references, severity ratings,
   and specific remediation guidance.
-tags: [appsec, web, owasp]
+tags: [appsec, web, owasp, exploitability]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -598,11 +598,11 @@ Before finalizing findings, apply this verification checklist to each candidate 
 
 - [ ] **File and line reference exists** — the finding cites a specific file path and line number.
 - [ ] **Vulnerable code is confirmed** — you used `Read` to examine the actual code and confirmed the vulnerable pattern (not just a grep match).
-- [ ] **User input reaches the sink** — for injection findings, you traced that user-controlled input flows into the vulnerable function without adequate sanitization.
-- [ ] **No compensating control** — you checked for middleware, wrappers, or framework-level protections that neutralize the vulnerability.
+- [ ] **User input reaches the sink** — for injection findings, you traced that user-controlled input flows into the vulnerable function without adequate sanitization.`r`n- [ ] **Reachable entry point documented** — the route, controller, handler, middleware chain, template render, job trigger, parser, or file upload path is identified.`r`n- [ ] **Exploit preconditions recorded** — authentication, role, tenant/object ownership, feature flag, deployment mode, network position, or required configuration is stated.`r`n- [ ] **Source-to-sink trace captured** — the finding shows source, transformations, validators/sanitizers, sink, and why remaining controls are insufficient.
+- [ ] **No compensating control** — you checked for middleware, wrappers, framework-level protections, centralized policy, auto-escaping, parameterized APIs, allowlists, WAF rules, or deployment controls that neutralize the vulnerability.`r`n- [ ] **False-positive rationale written** — the report explains why this is not static data, test/example code, dead code, framework-safe behavior, or an unreachable path.
 - [ ] **Not a test or example** — the code is production code, not a test fixture, documentation example, or intentionally vulnerable training sample.
 
-**Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
+**Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational. Findings missing entry point, exploit preconditions, or source-to-sink evidence must not be rated Critical unless active exploitation evidence or a working reproduction is provided.
 
 Classify each verified finding using the following severity ratings:
 
@@ -634,11 +634,17 @@ Present findings in this structure:
 - **CWE:** [CWE-XXX — CWE Name]
 - **Location:** [file:line or file:function]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
-- **Evidence:** [Code snippet or configuration excerpt]
+- **Evidence:** [Code snippet or configuration excerpt]`r`n- **Reachable Entry Point:** [route/controller/handler/job/template/parser/middleware chain/upload path]`r`n- **Source-to-Sink Trace:** [attacker-controlled source -> validation/transforms -> vulnerable sink]`r`n- **Exploit Preconditions:** [auth state, role, tenant/object ownership, feature flag, config, deployment mode, network position]`r`n- **Compensating Controls Checked:** [middleware, wrapper, auto-escaping, parameterized API, policy, sanitizer, WAF, deployment control]`r`n- **False-Positive Rationale:** [why the finding is production-reachable and not safe framework behavior, static data, test code, or dead code]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
 - **Verification:** [How to confirm the fix is effective]
 
 ---
+
+### Exploitability Evidence Matrix
+
+| Finding | Entry Point | Source-to-Sink Trace | Preconditions | Compensating Controls Checked | False-Positive Rationale | Evidence Status |
+|---------|-------------|----------------------|---------------|-------------------------------|--------------------------|-----------------|
+| F-001 | <route/function/path> | <source -> sink> | <auth/role/config/etc.> | <controls reviewed> | <why confirmed> | Complete/Partial/Missing |
 
 ### Summary Table
 
@@ -685,7 +691,7 @@ Present findings in this structure:
 
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
-5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.`r`n`r`n6. **Leaving exploitability proof out of the deliverable.** Internal notes are not enough for audit-quality findings. The final report must show the reachable entry point, source-to-sink path, exploit preconditions, compensating controls checked, and false-positive rationale so a reviewer can reproduce the severity decision.
 
 ## Prompt Injection Safety Notice
 
@@ -712,4 +718,4 @@ This skill processes source code and configuration files that may contain advers
 - MITRE CWE List — https://cwe.mitre.org/
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
-- OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+- OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/`r`n`r`n## Changelog`r`n`r`n- **1.0.2** -- Adds exploitability evidence fields and matrix for reachable entry point, source-to-sink trace, exploit preconditions, compensating-control review, and false-positive rationale.`r`n- **1.0.1** -- Prior update.`r`n- **1.0.0** -- Initial OWASP Top 10 web application security review guidance.
