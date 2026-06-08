@@ -7,13 +7,13 @@ description: >
   Walks through all seven benchmark sections, evaluates each recommendation,
   and produces a prioritized findings report with remediation guidance mapped
   to specific CIS control IDs.
-tags: [cloud, gcp, cis-benchmark]
+tags: [cloud, gcp, cis-benchmark, image-sharing]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,7 +53,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - gcloud CLI output or configuration exports (if reviewing a live environment)
 - IAM policy bindings and org policy definitions
 - VPC and firewall rule definitions
-- Cloud Audit Logs configuration
+- Cloud Audit Logs configuration`r`n- Custom image and snapshot IAM policy exports, image project IAM bindings, and artifact sensitivity/sanitization evidence when live GCP evidence is available
 
 ---
 
@@ -88,7 +88,22 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Custom Image and Snapshot IAM Sharing Evidence
+
+Evaluate custom images and snapshots separately from VM posture. A private VM, encrypted boot disk, Shielded VM, or disk CMEK control does not prove that the source image or derived snapshot is restricted.
+
+Required evidence when live GCP output is available:
+
+- Custom image IAM policies, including image-level `roles/compute.imageUser` bindings and any `allAuthenticatedUsers` members.
+- Snapshot IAM policies and project-level or folder-level IAM grants that allow broad snapshot use or administration.
+- Image project Viewer bindings that make shared image catalogs discoverable to external users or groups.
+- Approved principal inventory for cross-project, cross-folder, cross-organization, or contractor access.
+- Data sensitivity and sanitization evidence for images and snapshots derived from production disks.
+- Review date, owner, business justification, expiration or recertification cadence for external sharing.
+
+Fail sensitive or production-derived images/snapshots shared with `allAuthenticatedUsers` or unapproved external principals. Mark the check Not Evaluable when image/snapshot inventory, IAM policy exports, or project-level discoverability evidence is unavailable. Report these artifact-sharing checks outside the CIS pass/fail total if there is no direct CIS control mapping.
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -150,6 +165,21 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+#### [GCP-IMAGE-SNAPSHOT-SHARING] <Custom Image or Snapshot Sharing Finding>
+- **Status:** Pass / Fail / Not Evaluable
+- **Severity:** High / Medium / Low / Informational
+- **Artifact Type:** Custom image / Snapshot
+- **Project:** <project-id>
+- **Artifact ID:** <image-or-snapshot-name>
+- **IAM Scope:** Image-level / Snapshot-level / Project-level / Inherited
+- **Shared Principals:** <allAuthenticatedUsers, group, domain, service account, or approved principal list>
+- **Project Viewer Discoverability:** Present / Absent / Not Evaluable
+- **Data Sensitivity / Sanitization:** Production / Regulated / Unknown / Sanitized / Non-sensitive
+- **Owner / Approval / Review Cadence:** <ticket, owner, expiry, or review date>
+- **Evidence Source:** <gcloud IAM export, Cloud Asset Inventory, Terraform, manual evidence>
+- **Description:** <what was found and why it matters>
+- **Remediation:** <remove public sharing, restrict to approved principals, remove broad project Viewer, sanitize image/snapshot, add expiration or recertification>
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -193,7 +223,7 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **VPC flow logs must be per-subnet.** CIS 3.8 requires flow logs on every subnet, not just the VPC. Each `google_compute_subnetwork` must have a `log_config` block.
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
-6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."`r`n7. **Assuming private VMs prove private images or snapshots.** Custom images and snapshots have their own IAM policies; verify `compute.imageUser`, snapshot IAM, `allAuthenticatedUsers`, and project Viewer discoverability directly.
 
 ---
 
@@ -220,9 +250,13 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
+- Google Cloud custom image access: https://cloud.google.com/compute/docs/images/managing-access-custom-images
+- Google Cloud disk snapshots: https://cloud.google.com/compute/docs/disks/snapshots
+- gcloud compute images get-iam-policy: https://cloud.google.com/sdk/gcloud/reference/compute/images/get-iam-policy
+- gcloud compute snapshots get-iam-policy: https://cloud.google.com/sdk/gcloud/reference/compute/snapshots/get-iam-policy
 
 ---
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+- **1.1.0** -- Adds custom image and snapshot IAM sharing evidence gates.`r`n- **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
