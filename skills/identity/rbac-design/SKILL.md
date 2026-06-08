@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -303,6 +303,15 @@ RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
 
 ### Step 6: Role Mining and Rationalization
 
+
+Require dataset quality evidence before promoting role-mining output into the target RBAC model. Mining stale, incomplete, or biased entitlements can encode privilege creep as new roles.
+
+| Dataset Source | Extraction Date | Observation Window | Population Coverage | Entitlement Normalization | Exclusions / Separations | Permission-Use Evidence | Owner Validation | Mining Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[IAM, directory, app export]` | `[date]` | `[window]` | `[users, groups, apps, gaps]` | `[direct, inherited, nested, JIT, temporary]` | `[dormant, break-glass, service, contractor, test]` | `[last-used or usage logs]` | `[business/resource owner]` | `High / Medium / Low / Not Evaluable` |
+
+Mark `Not Evaluable` when the dataset window, entitlement expansion, account filtering, permission-use evidence, or owner validation is missing.
+
 **Objective:** Derive optimal roles from existing access patterns and reduce role sprawl.
 
 #### Role Mining Process
@@ -389,6 +398,12 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - ABAC Policies (Step 5): [count]
 - Role Mining (Step 6): [count]
 
+#### Role-Mining Dataset Quality Evidence
+
+| Source | Extraction Date | Window | Coverage | Normalization | Exclusions | Usage Evidence | Owner Validation | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[source]` | `[date]` | `[window]` | `[coverage]` | `[normalization]` | `[excluded]` | `[usage]` | `[owner]` | `High / Medium / Low / Not Evaluable` |
+
 ### Detailed Findings
 [Findings table]
 
@@ -426,6 +441,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Auditability** | All policy evaluations logged with input attributes and decision rationale |
 
 ---
+
+- Promoting role-mining clusters into target roles before proving dataset freshness, entitlement normalization, account filtering, usage evidence, and owner signoff.
 
 ## Common Pitfalls
 
