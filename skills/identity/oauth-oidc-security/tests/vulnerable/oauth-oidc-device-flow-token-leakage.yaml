@@ -1,0 +1,30 @@
+case: oauth_oidc_device_flow_token_leakage
+skill: oauth-oidc-security
+category: vulnerable
+scenario: Device authorization flow and browser client leak long-lived tokens without refresh rotation.
+evidence:
+  device_flow:
+    user_code_lifetime_minutes: 30
+    phishing_warning_displayed: false
+    user_prompt_shows_requesting_device: false
+    polling_rate_limit: missing
+    account_binding_evidence: user_code_only
+  browser_client:
+    access_token_storage: localStorage
+    refresh_token_storage: localStorage
+    third_party_scripts_on_token_origin: true
+    authorization_response_mode: query
+  refresh_tokens:
+    rotation_enabled: false
+    reuse_detection: false
+    logout_revokes_refresh_token: false
+  telemetry:
+    token_values_in_crash_reports: true
+    authorization_codes_in_access_logs: true
+expected_findings:
+  - OAUTH-DEVICE-01
+  - OAUTH-STORE-01
+  - OAUTH-REFRESH-01
+  - OAUTH-CODE-01
+expected_severity: high
+safe_result: false

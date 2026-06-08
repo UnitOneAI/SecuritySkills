@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-09"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -88,6 +88,18 @@ skills:
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/identity/iam-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: oauth-oidc-security
+    name: "OAuth/OIDC Security Review"
+    tags: [identity, oauth, oidc, federation, authentication]
+    role: [appsec-engineer, security-engineer]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OAuth-2.0, OpenID-Connect-Core, RFC-9700, RFC-7636, RFC-8252, RFC-8628, OWASP-ASVS-5.0]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/oauth-oidc-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: access-review

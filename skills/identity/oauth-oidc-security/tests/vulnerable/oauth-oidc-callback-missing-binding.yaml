@@ -1,0 +1,36 @@
+case: oauth_oidc_callback_missing_binding
+skill: oauth-oidc-security
+category: vulnerable
+scenario: Authorization code OIDC login accepts callback parameters without request binding.
+evidence:
+  client_type: spa_public_client
+  authorization_request:
+    redirect_uri_registration: "https://app.example.com/callback*"
+    redirect_match_mode: prefix
+    pkce:
+      method: plain
+      verifier_storage: browser_session_storage
+    state:
+      generated: true
+      entropy_bits: 32
+      bound_to_server_session: false
+      consumed_once: false
+    nonce:
+      generated: false
+      compared_to_id_token: false
+  callback_handler:
+    code_exchange_location: browser
+    accepts_query_redirect_after_login: true
+    authorization_code_replay_test: not_performed
+  token_handling:
+    id_token_validation: jwt_decode_without_verification
+    account_link_key: email
+expected_findings:
+  - OAUTH-REDIR-01
+  - OAUTH-CB-01
+  - OIDC-NONCE-01
+  - OAUTH-PKCE-01
+  - OIDC-JWT-01
+  - OAUTH-LINK-01
+expected_severity: high
+safe_result: false

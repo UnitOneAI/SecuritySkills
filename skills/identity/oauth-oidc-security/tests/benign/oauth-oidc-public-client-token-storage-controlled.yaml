@@ -1,0 +1,29 @@
+case: oauth_oidc_public_client_token_storage_controlled
+skill: oauth-oidc-security
+category: benign
+scenario: Native and browser public clients use PKCE, platform storage or BFF isolation, and refresh-token rotation.
+evidence:
+  native_client:
+    user_agent: external_system_browser
+    redirect_uri: https_claimed_app_link
+    pkce_method: S256
+    token_storage: platform_keychain
+    embedded_client_secret: absent
+  browser_client:
+    architecture: backend_for_frontend
+    access_token_visible_to_javascript: false
+    refresh_token_visible_to_javascript: false
+    session_cookie:
+      httponly: true
+      secure: true
+      samesite: lax
+  refresh_tokens:
+    rotation_enabled: true
+    reuse_detection: true
+    logout_revokes_refresh_token: true
+    compromise_revocation_runbook: documented
+  telemetry:
+    token_redaction_in_logs: verified
+    crash_report_token_filter: verified
+safe_result: true
+expected_findings: []

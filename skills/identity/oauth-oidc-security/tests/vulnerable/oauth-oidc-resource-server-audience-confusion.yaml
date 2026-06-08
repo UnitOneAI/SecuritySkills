@@ -1,0 +1,32 @@
+case: oauth_oidc_resource_server_audience_confusion
+skill: oauth-oidc-security
+category: vulnerable
+scenario: Resource server accepts any signed JWT from a shared IdP without audience, type, or tenant enforcement.
+evidence:
+  api_resource: https://api.example.com/payments
+  accepted_tokens:
+    - token_type: id_token
+      accepted_for_api: true
+    - token_type: access_token
+      audience_required: false
+  jwt_validation:
+    signature_verified: true
+    issuer_allowlist:
+      - https://login.example-idp.com/common
+    audience_check: missing
+    authorized_party_check: missing
+    token_type_check: missing
+    jwks_source: issuer_metadata_common_endpoint
+    key_selection: kid_only_without_issuer_partition
+  authorization:
+    scope_mapping: "scope string contains admin"
+    tenant_check: missing
+    object_owner_check: missing
+expected_findings:
+  - OAUTH-AUD-01
+  - OIDC-TYPE-01
+  - OIDC-MULTI-01
+  - OAUTH-SCOPE-01
+  - OAUTH-TENANT-01
+expected_severity: high
+safe_result: false

@@ -1,0 +1,36 @@
+case: oauth_oidc_hardened_auth_code_pkce
+skill: oauth-oidc-security
+category: benign
+scenario: Authorization code OIDC login is bound with exact redirect, PKCE S256, state, nonce, and server-side token validation.
+evidence:
+  client_type: web_confidential_bff
+  authorization_request:
+    redirect_uri_registration: https://app.example.com/oauth/callback
+    redirect_match_mode: exact
+    pkce:
+      method: S256
+      verifier_storage: server_side_session
+    state:
+      entropy_bits: 128
+      bound_to_server_session: true
+      binds_post_login_redirect: true
+      consumed_once: true
+    nonce:
+      generated: true
+      bound_to_server_session: true
+      compared_to_id_token: true
+      consumed_once: true
+  callback_handler:
+    code_exchange_location: backend
+    authorization_code_replay_test: rejects_second_use
+  token_validation:
+    signature_verified: true
+    issuer: https://idp.example.com/
+    audience: web-client-123
+    algorithms:
+      - RS256
+    azp_check: not_required_single_audience
+    expiry_and_nbf_checked: true
+    jwks_source: trusted_issuer_metadata
+safe_result: true
+expected_findings: []

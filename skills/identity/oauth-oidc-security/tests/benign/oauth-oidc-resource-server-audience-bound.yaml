@@ -1,0 +1,32 @@
+case: oauth_oidc_resource_server_audience_bound
+skill: oauth-oidc-security
+category: benign
+scenario: API validates access-token audience, issuer, scopes, token type, tenant, and revocation cache behavior.
+evidence:
+  api_resource: https://api.example.com/payments
+  accepted_tokens:
+    - token_type: access_token
+      audience: https://api.example.com/payments
+  jwt_validation:
+    signature_verified: true
+    issuer_allowlist:
+      - https://idp.example.com/tenant-a
+    audience_check: exact_resource_audience
+    authorized_party_check: client_id_allowlist
+    token_type_check: rejects_id_tokens
+    algorithms:
+      - RS256
+    jwks_source: trusted_issuer_metadata
+    key_cache_ttl_minutes: 15
+  authorization:
+    scope_mapping:
+      POST /refunds: payments.refund.write
+      GET /refunds: payments.refund.read
+    tenant_check: issuer_subject_and_tenant_claim
+    object_owner_check: database_owner_policy
+  revocation:
+    introspection_for_opaque_tokens: supported
+    validation_cache_ttl_minutes: 5
+    deprovisioning_recheck: on_session_refresh
+safe_result: true
+expected_findings: []
