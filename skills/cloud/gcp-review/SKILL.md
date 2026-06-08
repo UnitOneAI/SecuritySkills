@@ -7,13 +7,13 @@ description: >
   Walks through all seven benchmark sections, evaluates each recommendation,
   and produces a prioritized findings report with remediation guidance mapped
   to specific CIS control IDs.
-tags: [cloud, gcp, cis-benchmark]
+tags: [cloud, gcp, cis-benchmark, iam-conditions]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -82,9 +82,22 @@ Record all discovered files. If no GCP configurations are found, report that fin
 
 ### Step 2 through Step 8: CIS Benchmark Evaluation (Sections 1-7)
 
-Evaluate all GCP configurations against CIS GCP v2.0.0 Sections 1 through 7, covering Identity and Access Management, Logging and Monitoring, Networking, Virtual Machines, Storage, Cloud SQL, and BigQuery.
+Evaluate all GCP configurations against CIS GCP v2.0.0 Sections 1 through 7, covering Identity and Access Management, Logging and Monitoring, Networking, Virtual Machines, Storage, Cloud SQL, and BigQuery. For IAM, include permanent grants and conditional/time-bound access evidence.
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, grep patterns, and configuration examples for all seven sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
+#### IAM Conditions and Time-Bound Access Gate
+
+For temporary, scoped, emergency, contractor, partner, or break-glass access, verify that risk reduction is enforced by the IAM policy or a documented JIT mechanism, not only by comments, tickets, calendar reminders, or manual offboarding tasks:
+
+- Conditional IAM bindings include a `condition` object with `title`, `description`, and a CEL `expression`.
+- Temporary access uses an enforceable expiry such as `request.time < timestamp("YYYY-MM-DDTHH:MM:SSZ")`.
+- Scoped access uses supported resource attributes, resource tags, Access Context attributes, or service-specific attributes where available.
+- Legacy basic roles (`roles/owner`, `roles/editor`, `roles/viewer`) are not credited as conditionally constrained because IAM Conditions do not apply to basic role grants.
+- Public principals (`allUsers`, `allAuthenticatedUsers`) are not credited as conditionally constrained because IAM Conditions do not apply to public grants.
+- Break-glass access evidence includes expiry, approver, ticket or incident ID, activation reason, monitoring, and post-use review.
+- IAM policy exports, Cloud Asset Inventory, Security Command Center, log metrics, or monitoring detect missing, expired, or weakened conditions.
+
+Treat missing condition expressions, unsupported basic/public grants, or expired conditions that remain bound as failed or not evaluable rather than accepting narrative evidence alone.
 
 ---
 
@@ -138,6 +151,11 @@ Produce the final report using the structure defined in the Output Format sectio
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
 
+
+### IAM Conditions and Temporary Access Evidence
+| Principal | Role | Resource Scope | Condition Title | Expiry / Scope Expression | Basic/Public Grant Unsupported? | Evidence Source | Review Status |
+|-----------|------|----------------|-----------------|---------------------------|----------------------------------|-----------------|---------------|
+| <principal> | <role> | <project/folder/org/resource> | <title or none> | <CEL expression, JIT grant, or none> | Yes / No / N/A | <Terraform, gcloud export, CAI, log, ticket> | Pass / Fail / Not Evaluable |
 ### Detailed Findings
 
 #### [CIS X.Y] <Recommendation Title>
@@ -171,7 +189,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 | Section | Domain | Key Focus Areas |
 |---------|--------|-----------------|
-| 1 | Identity and Access Management | Corporate credentials, MFA, service account keys, admin privileges, SA role assignments, KMS key access, API key restrictions, Essential Contacts |
+| 1 | Identity and Access Management | Corporate credentials, MFA, service account keys, admin privileges, SA role assignments, IAM Conditions/time-bound access, KMS key access, API key restrictions, Essential Contacts |
 | 2 | Logging and Monitoring | Cloud Audit Logs (admin/data read/write), log sinks, bucket lock retention, metric filters and alerts (8 categories), DNS logging, Cloud Asset Inventory |
 | 3 | Networking | Default network removal, legacy networks, DNSSEC, firewall rules (SSH/RDP from internet), VPC flow logs, SSL policies, IAP-only access |
 | 4 | Virtual Machines | Default service accounts, access scopes, project SSH key blocking, OS Login, serial port, IP forwarding, CMEK disks, Shielded VM, public IPs, Confidential Computing |
@@ -215,7 +233,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 - CIS Google Cloud Platform Foundation Benchmark v2.0.0: https://www.cisecurity.org/benchmark/google_cloud_computing_platform
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
-- Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
+- Google Cloud IAM Documentation: https://cloud.google.com/iam/docs`n- IAM Conditions overview: https://cloud.google.com/iam/docs/conditions-overview`n- Configure temporary access with IAM Conditions: https://cloud.google.com/iam/docs/configuring-temporary-access`n- IAM Conditions attribute reference: https://cloud.google.com/iam/docs/conditions-attribute-reference
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
@@ -225,4 +243,4 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+- **1.1.0** -- Added IAM Conditions and time-bound access evidence gates.`n- **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
