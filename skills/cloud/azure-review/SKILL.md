@@ -7,13 +7,13 @@ description: >
   access policies. Walks through all nine benchmark sections, evaluates each
   recommendation, and produces a prioritized findings report with remediation
   guidance mapped to specific CIS control IDs.
-tags: [cloud, azure, cis-benchmark]
+tags: [cloud, azure, cis-benchmark, app-service]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -82,9 +82,22 @@ Record all discovered files. If no Azure configurations are found, report that f
 
 ### Step 2 through Step 10: CIS Benchmark Evaluation (Sections 1-9)
 
-Evaluate all Azure configurations against CIS Azure v2.1.0 Sections 1 through 9, covering Identity and Access Management, Microsoft Defender for Cloud, Storage Accounts, Database Services, Logging and Monitoring, Networking, Virtual Machines, Key Vault, and App Service.
+Evaluate all Azure configurations against CIS Azure v2.1.0 Sections 1 through 9, covering Identity and Access Management, Microsoft Defender for Cloud, Storage Accounts, Database Services, Logging and Monitoring, Networking, Virtual Machines, Key Vault, and App Service. For App Service, include both runtime controls and deployment-plane publishing controls.
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, Bicep examples, and configuration checks for all nine sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
+#### App Service Deployment-Plane Basic Authentication Gate
+
+For every Azure App Service Web App, Function App, and deployment slot in scope, verify that deployment publishing endpoints do not allow basic authentication:
+
+- `Microsoft.Web/sites/basicPublishingCredentialsPolicies/scm` has `properties.allow = false` for SCM/Kudu, WebDeploy, Local Git, and ZipDeploy publishing.
+- `Microsoft.Web/sites/basicPublishingCredentialsPolicies/ftp` has `properties.allow = false` for FTP/FTPS publishing.
+- Terraform AzureRM fields such as `ftp_publish_basic_authentication_enabled = false` and `webdeploy_publish_basic_authentication_enabled = false` are present where supported.
+- Deployment slots have equivalent `Microsoft.Web/sites/slots/basicPublishingCredentialsPolicies/{scm,ftp}` coverage.
+- CI/CD uses Entra ID, OIDC federation, managed identity, or a federated service principal instead of publish-profile basic authentication.
+- Publish profiles, user-level deployment credentials, and stored pipeline secrets are rotated or invalidated after disabling basic auth.
+- Azure Policy, Resource Graph, ARM export, Terraform plan, or CLI evidence proves coverage across subscriptions, resource groups, apps, functions, and slots.
+
+Treat missing SCM or FTP publishing policy evidence as not evaluable or failed rather than assuming runtime authentication, HTTPS-only, TLS, or `ftps_state = "Disabled"` protects the deployment plane.
 
 ---
 
@@ -142,6 +155,11 @@ Produce the final report using the structure defined in the Output Format sectio
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
 
+
+### App Service Deployment Publishing Evidence
+| App/Slot | SCM Basic Auth | FTP Basic Auth | Deployment Method | Publish Profile Exposure | Credential Rotation | Policy/Export Evidence | Status |
+|----------|----------------|----------------|-------------------|--------------------------|--------------------|------------------------|--------|
+| <app-or-slot> | Disabled / Enabled / Unknown | Disabled / Enabled / Unknown | OIDC / Managed Identity / Publish Profile / Unknown | None / Stored / Unknown | Rotated / Pending / N/A | <policy, ARG, ARM, Terraform, or CLI evidence> | Pass / Fail / Not Evaluable |
 ### Detailed Findings
 
 #### [CIS X.Y.Z] <Recommendation Title>
@@ -183,7 +201,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 6 | Networking | NSG rules (RDP, SSH, UDP, HTTP), flow log retention, traffic analytics |
 | 7 | Virtual Machines | Azure Bastion, managed disks, disk encryption with CMK, approved extensions, endpoint protection |
 | 8 | Key Vault | Key/secret expiration, soft delete, purge protection, RBAC authorization, private endpoints |
-| 9 | App Service | Authentication, HTTPS redirect, TLS version, client certificates, Entra ID registration, HTTP/2, FTP disabled |
+| 9 | App Service | Authentication, HTTPS redirect, TLS version, client certificates, Entra ID registration, HTTP/2, FTP disabled, SCM/FTP publishing basic auth disabled |
 
 ### CIS Profile Levels
 
@@ -224,11 +242,11 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
-- Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
+- Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security`n- Disable basic authentication for Azure App Service deployments: https://learn.microsoft.com/en-us/azure/app-service/configure-basic-auth-disable`n- Microsoft.Web sites/basicPublishingCredentialsPolicies ARM/Bicep reference: https://learn.microsoft.com/en-us/azure/templates/microsoft.web/sites/basicpublishingcredentialspolicies`n- Microsoft.Web sites/slots/basicPublishingCredentialsPolicies ARM/Bicep reference: https://learn.microsoft.com/en-us/azure/templates/microsoft.web/sites/slots/basicpublishingcredentialspolicies
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
 ---
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
+- **1.1.0** -- Added App Service SCM/FTP publishing basic authentication evidence gates.`n- **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
