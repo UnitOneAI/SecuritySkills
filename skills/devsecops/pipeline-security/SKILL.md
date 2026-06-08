@@ -392,6 +392,8 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Signatures, SBOMs, or provenance generated for one artifact while deployment pulls a different mutable tag or unverified package.
+- Deployment steps that reference image tags, package names, or release assets without verifying the digest, signing identity, provenance subject, and SBOM subject match the build output.
 
 **Grep patterns:**
 
@@ -414,7 +416,23 @@ image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+**Artifact integrity evidence gate:** Before marking CICD-SEC-9 as passing, capture evidence that the exact artifact deployed is the same artifact that was built, signed, attested, and described by the SBOM.
+
+| Artifact | Build run | Immutable digest | Signature / attestation | Signing identity | Provenance subject | SBOM subject | Verification command/policy | Deployment reference | Result |
+|----------|-----------|------------------|-------------------------|------------------|--------------------|--------------|-----------------------------|---------------------|--------|
+| `<image/package>` | `<run id/url>` | `<sha256:...>` | `<cosign/in-toto/SLSA>` | `<OIDC issuer/subject>` | `<digest matches?>` | `<digest matches?>` | `<verify step or admission policy>` | `<digest/tag used by deploy>` | `Pass/Fail/Unknown` |
+
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, and whether deployment verifies that the digest, signature, provenance subject, and SBOM subject all refer to the same artifact.
+
+**Review checklist:**
+
+- [ ] Build output is recorded with an immutable digest.
+- [ ] Signature or attestation verifies against an expected trust root and signing identity.
+- [ ] Provenance subject digest matches the build output digest.
+- [ ] SBOM subject digest or package URL matches the build output digest.
+- [ ] Deployment references the immutable digest, not only a mutable tag such as `latest`, `main`, or a semver tag.
+- [ ] A CI verification step, deployment admission policy, or release gate enforces signature/provenance/SBOM verification before deployment.
+- [ ] Evidence comes from the same build run and artifact, not from a different branch, rebuild, architecture, or release asset.
 
 ---
 
@@ -488,6 +506,7 @@ Produce the final report using the following structure:
 - **File:** <path to relevant config>
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
+- **Evidence:** <artifact integrity table, permission evidence, runner evidence, or other control-specific proof>
 - **Remediation:** <specific fix>
 
 ### Prioritized Remediation Plan
@@ -510,6 +529,16 @@ Produce the final report using the following structure:
 ## Output Format
 
 The final deliverable is a structured assessment report as shown in Step 4 above. All findings must reference specific control IDs (CICD-SEC-1 through CICD-SEC-10) and SLSA build levels (L1, L2, L3). Every finding must include the file path and, where possible, the relevant line numbers.
+
+---
+
+## Common Pitfalls
+
+1. **Generated-but-not-enforced attestations.** Producing a provenance file, signature, or SBOM does not protect the deployment if the deploy job never verifies it.
+2. **Mutable deployment references.** A pipeline can sign `my-app@sha256:abc...` and still deploy `my-app:latest`, allowing tag drift or registry replacement.
+3. **Mixed artifact evidence.** Do not combine a signature from one build, an SBOM from another build, and a deployment reference from a third build when scoring CICD-SEC-9.
+4. **Unverified signing identity.** A valid cryptographic signature is incomplete evidence unless the signer identity, issuer, repository, workflow, and branch/ref are expected.
+5. **Architecture or platform mismatch.** Multi-arch images and package bundles need per-platform digest evidence; one signed manifest does not automatically prove every deployed platform artifact is verified.
 
 ---
 
