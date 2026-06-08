@@ -170,6 +170,45 @@ PAM-TOOL-10: PAM tool not integrated with IdP for identity verification
 
 ---
 
+### Step 2.5: Privileged MFA Assurance
+
+**Objective:** Verify that privileged MFA is strong enough for the specific administrative action and enforced at every PAM chokepoint, not only at initial login.
+
+**NIST SP 800-63B Reference:** Authentication assurance and phishing-resistant authenticator guidance
+**CIS Controls v8 Reference:** Control 6.5 -- Require MFA for Administrative Access
+
+Privileged access reviews must distinguish generic MFA presence from method strength, enforcement point, recovery assurance, and audit evidence. SMS, voice, email OTP, simple push approval, and helpdesk reset flows can satisfy a checkbox while leaving vault checkout, JIT activation, vendor access, or break-glass paths exposed.
+
+**What to look for:**
+
+```
+PAM-MFA-01: High-risk admin paths allow SMS, voice, email OTP, or simple push approval without phishing-resistant MFA or documented compensating controls
+PAM-MFA-02: MFA is enforced only at PAM login, not at vault checkout, JIT activation, privileged session launch, or break-glass use
+PAM-MFA-03: Push approval lacks number matching, request context, rate limiting, or equivalent fatigue-resistant controls
+PAM-MFA-04: Privileged authenticators are not device-bound or user-bound, allowing reusable factors to move across devices or sessions
+PAM-MFA-05: Recovery or re-enrollment can downgrade privileged assurance through helpdesk reset, weak identity proofing, or unreviewed factor replacement
+PAM-MFA-06: External, vendor, or delegated administrators are not held to equivalent MFA method strength and PAM enforcement points
+PAM-MFA-07: Break-glass MFA exceptions lack dual control, immediate alerting, session recording, and post-use credential or authenticator rotation
+PAM-MFA-08: Audit logs prove only that MFA succeeded, not which authenticator method, device, challenge, or enforcement point was used
+```
+
+**Privileged MFA evidence matrix:**
+
+| Evidence Area | Reviewer Must Confirm |
+|---|---|
+| Method strength | Phishing-resistant MFA is required for high-risk admin paths, or compensating controls are documented and risk-accepted |
+| Enforcement points | MFA or step-up is enforced at PAM login, vault checkout, JIT activation, session launch, recovery, and break-glass use |
+| Push fatigue controls | Number matching, request context, rate limiting, device binding, or equivalent controls prevent blind push approval |
+| Device/authenticator binding | Privileged authenticators are bound to the admin user and trusted device where the IdP/PAM platform supports it |
+| Recovery assurance | Recovery, re-enrollment, and factor replacement cannot bypass privileged MFA assurance or skip approval evidence |
+| External admin parity | Vendor, partner, MSP, and delegated tenant administrators meet the same MFA strength and logging requirements |
+| Break-glass exception control | Exceptions require dual control, immediate alerting, session capture, post-use rotation, and follow-up review |
+| Method-level audit logs | Logs identify authenticator method, device or credential ID, challenge type, enforcement point, session, and outcome |
+
+> **Gate:** Do not mark CIS 6.5 coverage complete for privileged access unless MFA strength, step-up enforcement points, recovery flows, external administrator parity, break-glass exceptions, and method-level audit evidence are all reviewed.
+
+---
+
 ### Step 3: Just-In-Time (JIT) Access Patterns
 
 **Objective:** Evaluate whether privileged access is time-bounded, approval-gated, and automatically revoked.
@@ -388,6 +427,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 |---|---|---|
 | Credential Vaulting | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Session Management | [Not Present/Basic/Mature/Advanced] | [Target] |
+| Privileged MFA Assurance | [Not Present/Basic/Mature/Advanced] | [Target] |
 | JIT Access | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
@@ -401,10 +441,16 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 ### Findings by Category
 - Privileged Account Inventory (Step 1): [count]
 - PAM Tool Assessment (Step 2): [count]
+- Privileged MFA Assurance (Step 2.5): [count]
 - JIT Access (Step 3): [count]
 - Break-Glass Procedures (Step 4): [count]
 - Session Recording (Step 5): [count]
 - Credential Vaulting (Step 6): [count]
+
+### Privileged MFA Assurance Evidence
+| Admin Path | MFA Method Strength | Step-up Point | Recovery/External Admin Parity | Break-Glass Exception Control | Method-Level Audit Evidence |
+|---|---|---|---|---|---|
+| [PAM login / vault checkout / JIT / session launch / vendor / break-glass] | [phishing-resistant / compensated / weak] | [where enforced] | [evidence] | [dual control + alert + rotation] | [method, device, challenge, session] |
 
 ### Detailed Findings
 [Findings table]
@@ -457,6 +503,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+9. **Counting any MFA as privileged MFA assurance** -- weak factors, push-only approval, and login-only MFA do not prove high-risk admin actions are protected. Check method strength and every enforcement point.
 
 ---
 
@@ -478,7 +525,9 @@ that may contain adversarial content.
 ## References
 
 - NIST SP 800-53 Rev. 5, Security and Privacy Controls — AC-6 Least Privilege: https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-63B, Authentication and Authenticator Management: https://pages.nist.gov/800-63-4/sp800-63b.html
 - CIS Controls v8, Control 5 (Account Management), Control 6 (Access Control Management): https://www.cisecurity.org/controls/v8
+- CISA Multifactor Authentication (MFA): https://www.cisa.gov/resources-tools/resources/multifactor-authentication-mfa
 - NIST SP 800-207, Zero Trust Architecture (JIT access principles): https://csrc.nist.gov/publications/detail/sp/800-207/final
 - CISA Privileged Access Management Guidance: https://www.cisa.gov
 - Verizon Data Breach Investigations Report (DBIR) — credential misuse statistics: https://www.verizon.com/business/resources/reports/dbir/
