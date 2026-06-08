@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -92,7 +92,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -129,6 +129,11 @@ The final review output must be structured as follows:
 - **Status:** Open
 
 [Repeat for each finding]
+
+### CORS and Private Network Access Evidence
+| Endpoint | Credentialed | Origin Decision | `Vary: Origin` | Methods/Headers | PNA Decision | Finding |
+|---|---|---|---|---|---|---|
+| [path] | Yes/No | Exact allowlist / reflected / public-only / rejected | Present/Missing/Not Applicable | [allowed preflight scope] | Allowed/Rejected/Not Applicable | [ID or None] |
 ```
 
 ---
@@ -147,6 +152,65 @@ The final review output must be structured as follows:
 | API8:2023 | Security Misconfiguration | CWE-16, CWE-611 | CORS, headers, TLS, error handling, XXE |
 | API9:2023 | Improper Inventory Management | CWE-1059 | Shadow APIs, deprecated versions, missing documentation |
 | API10:2023 | Unsafe Consumption of APIs | CWE-20, CWE-295 | Trusting upstream API data without validation |
+
+---
+
+## API8 CORS and Private Network Access Gates
+
+CORS is an API8:2023 security misconfiguration only when the server's origin decision exposes protected API responses or private-network access to an untrusted browser origin. Do not flag exact dynamic allowlists solely because they echo the request origin; require evidence of arbitrary reflection, unsafe credential use, missing cache variation, or private-network exposure.
+
+### Exact-Origin Allowlist Evidence
+
+Review API gateway, middleware, framework, and endpoint-level CORS logic for:
+
+- Exact origin allowlists, including scheme, host, and port. Wildcards or suffix checks such as `*.example.com` require evidence that attacker-controlled subdomains cannot be registered or delegated.
+- `Access-Control-Allow-Origin` values that are selected only after allowlist matching, not copied from any request origin.
+- `Access-Control-Allow-Credentials: true` only when the allowlist is exact and the endpoint actually requires cookies or browser-managed credentials.
+- `Vary: Origin` when responses vary by request origin, so shared caches do not reuse an allowlisted response for another origin.
+- Per-endpoint `Access-Control-Allow-Methods` and `Access-Control-Allow-Headers`, with privileged methods and sensitive headers restricted to endpoints that need them.
+- Production evidence that local development origins such as `http://localhost:*` are disabled or scoped to non-production environments.
+
+### Null and Opaque Origin Handling
+
+Treat `Origin: null` and opaque origins as untrusted for credentialed or sensitive APIs unless there is a documented, narrow business case and compensating control.
+
+Flag as **High** when:
+
+- `Origin: null` receives `Access-Control-Allow-Origin: null` with `Access-Control-Allow-Credentials: true` on an authenticated or sensitive endpoint.
+- `file:`, `data:`, sandboxed document, or opaque-origin clients are trusted without endpoint-specific justification.
+- The same code path permits both arbitrary origin reflection and credentialed responses.
+
+Classify public, unauthenticated, read-only APIs lower when they intentionally allow broad CORS and do not expose private, user-specific, or administrative data.
+
+### Private Network Access Preflight Review
+
+Requests containing `Access-Control-Request-Private-Network: true` indicate that a browser origin is attempting to reach a less-public network target. Reviewers must require explicit policy evidence before accepting `Access-Control-Allow-Private-Network: true`.
+
+Verify:
+
+- Only trusted origins can receive `Access-Control-Allow-Private-Network: true`.
+- The endpoint is intended to be reachable from browser clients and is not an internal admin, metadata, router, printer, CI, database, or control-plane API.
+- Credentialed PNA responses require the same exact-origin and `Vary: Origin` evidence as other credentialed CORS responses.
+- Public-only APIs with no private-network resources document PNA as `Not Applicable` with routing or deployment evidence.
+
+Flag trusted-origin bypasses or arbitrary-origin PNA approval as **High**, and escalate to **Critical** when the exposed target is an administrative or control-plane API.
+
+**Patterns to check:**
+
+```http
+Origin: null
+Access-Control-Allow-Origin: null
+Access-Control-Allow-Credentials: true
+
+Access-Control-Request-Private-Network: true
+Access-Control-Allow-Private-Network: true
+
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+Vary: Origin
+```
+
+**Finding IDs:** Use `API-CORS-*` for CORS allowlist, null-origin, preflight, and cache-variation findings, and `API-PNA-*` for Private Network Access findings.
 
 ---
 
@@ -215,6 +279,12 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Treating all dynamic CORS reflection as vulnerable.** Echoing an origin after exact allowlist matching can be acceptable when credentials, methods, headers, and cache variation are constrained. Arbitrary reflection is the unsafe pattern.
+
+8. **Trusting `Origin: null` for credentialed APIs.** Null and opaque origins can come from sandboxed or non-hierarchical contexts and should not be accepted for protected API responses without a narrow documented exception.
+
+9. **Approving Private Network Access without origin gating.** `Access-Control-Allow-Private-Network: true` must be tied to trusted origins and intended private-resource exposure, not returned as a generic preflight response.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -239,3 +309,13 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+- **MDN CORS Guide:** https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+- **MDN Access-Control-Allow-Origin:** https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+- **WICG Private Network Access:** https://wicg.github.io/private-network-access/
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added API8 CORS and Private Network Access evidence gates for exact-origin allowlists, `Origin: null`, `Vary: Origin`, per-endpoint preflight scope, and `Access-Control-Allow-Private-Network` review decisions.
+- **1.0.0** -- Initial release. OWASP API Security Top 10:2023 review workflow for REST, GraphQL, gRPC, and hybrid APIs.
