@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -84,6 +84,12 @@ Use Glob and Grep to locate SAST tool configurations, custom rules, and CI integ
 **/.github/workflows/*.yml
 **/.gitlab-ci.yml
 **/Jenkinsfile*
+
+# Custom rule and query tests
+**/semgrep-rules/**
+**/*semgrep*/tests/**
+**/codeql-queries/**
+**/*codeql*/test*/**
 ```
 
 Categorize by:
@@ -229,6 +235,7 @@ rules:
 - [ ] `confidence` is documented (HIGH, MEDIUM, LOW).
 - [ ] `languages` is explicitly specified.
 - [ ] `pattern-not` or `pattern-not-inside` handles known safe patterns to reduce false positives.
+- [ ] Rule has matching positive and negative test fixtures, not only a manual scan example.
 
 ---
 
@@ -306,6 +313,34 @@ select sink.getNode(), source, sink, "SQL injection from $@.", source.getNode(),
 - [ ] `@tags` include CWE and OWASP references.
 - [ ] Taint tracking uses appropriate source and sink definitions.
 - [ ] Query is tested against known-vulnerable and known-safe code samples.
+
+#### 4.3 Custom Rule Test Fixture and Regression Evidence Gate
+
+Do not approve a custom Semgrep rule or CodeQL query based only on syntax validity, a screenshot, or one positive finding. Custom SAST logic must have repeatable tests that prove the rule detects the intended vulnerable pattern and does not fire on equivalent safe code.
+
+Require:
+
+- **Rule-to-test mapping:** every custom Semgrep rule or CodeQL query has a named test file or query test pack that maps directly to the rule/query ID.
+- **Positive fixtures:** at least one vulnerable sample per supported language/framework is expected to produce a finding.
+- **Negative fixtures:** at least one safe sample per supported language/framework is expected to produce no finding.
+- **Expected-result annotations:** test files mark expected findings and non-findings in a reviewer-verifiable way, or query tests include expected output files.
+- **Regression execution:** CI or documented local validation runs rule tests (`semgrep --test` or equivalent, and `codeql test run` for CodeQL packs) before custom rules are merged.
+- **Drift handling:** test fixtures are updated when a rule changes, a suppression is added, or a framework version changes the relevant API pattern.
+- **Coverage limits:** any untested language, framework, source, sink, or sanitizer variant is listed as a known limitation, not implied as covered.
+
+```
+Custom SAST Rule Test Evidence:
+- Rule / Query ID:       [id]
+- Tool:                  [Semgrep | CodeQL | Other]
+- Test Fixture Path:     [path]
+- Positive Cases:        [count and summary]
+- Negative Cases:        [count and summary]
+- Expected Results:      [annotation/output path]
+- Last Test Run:         [command, date, result]
+- CI Enforcement:        [blocking | non-blocking | local only | absent]
+- Coverage Limits:       [untested variants]
+- Status:                [In Place | Not in Place | Not Applicable | Not Tested]
+```
 
 ---
 
@@ -475,6 +510,12 @@ jobs:
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
 
+### Custom Rule Test Status
+
+| Rule / Query ID | Tool | Positive Fixtures | Negative Fixtures | Last Test Run | CI Enforcement | Coverage Limits | Status |
+|-----------------|------|-------------------|-------------------|---------------|----------------|-----------------|--------|
+| <id> | <Semgrep/CodeQL> | <count> | <count> | <command/result> | <blocking/non-blocking/local/absent> | <limits> | <Pass/Fail/Not Tested> |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -534,7 +575,9 @@ jobs:
 
 4. **Not testing custom rules against both vulnerable and safe code.** A custom rule that fires on vulnerable patterns but also fires on safe patterns is worse than no rule (it trains developers to suppress). Maintain a test corpus with expected true positives and expected true negatives for every custom rule.
 
-5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
+5. **Treating one successful finding as a rule test.** A custom SAST rule also needs safe-code fixtures and a repeatable test command. Otherwise, a later pattern change can silently increase false positives or remove coverage for the original vulnerability shape.
+
+6. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
 ---
 
@@ -555,8 +598,10 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
+- Semgrep rule contribution tests: https://semgrep.dev/docs/contributing/contributing-to-semgrep-rules-repository
 - Semgrep Registry: https://semgrep.dev/r
 - CodeQL Documentation: https://codeql.github.com/docs/
+- CodeQL custom query testing: https://docs.github.com/en/code-security/codeql-cli/using-the-advanced-functionality-of-the-codeql-cli/testing-custom-queries
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
