@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -88,6 +88,19 @@ SBOM Format Assessment:
 - Component Count:     [N direct + N transitive = N total]
 - File Size:           [Size]
 ```
+
+**SBOM artifact freshness evidence:** before using an SBOM for compliance, vulnerability response, or vendor risk decisions, bind it to the software artifact it claims to describe.
+
+| Software Artifact | Artifact Version | Artifact Digest | Build/Release ID | SBOM Timestamp | SBOM Generator | Generation Pipeline | Deployment/Release Date | Freshness Result | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [package/image/binary] | [version/tag] | [sha256 digest] | [CI run/release ID] | [ISO 8601] | [tool/version] | [pipeline/job] | [date] | [Current/Stale/Unknown] | [exceptions] |
+
+For freshness review:
+- Record the artifact digest or immutable release identifier for the software the SBOM describes.
+- Record the SBOM generator name/version and build or release pipeline that produced the SBOM.
+- Compare the SBOM timestamp to the build, release, and deployment dates. Mark the SBOM `Stale` if it predates the artifact build or latest dependency update.
+- Mark freshness `Unknown` when the SBOM cannot be tied to an artifact digest, build/release ID, generator, or pipeline.
+- Do not rely on an SBOM for remediation decisions if it cannot be bound to the deployed artifact under review.
 
 ### Step 2: NTIA Minimum Elements Completeness Check
 
@@ -273,11 +286,20 @@ conflicts), and overall classification.]
 |---|---|
 | Software Name | [Name] |
 | Software Version | [Version] |
+| Software Artifact Digest | [SHA-256 digest or Unknown] |
+| Build/Release ID | [CI run/release ID] |
 | SBOM Format | [CycloneDX 1.5 / SPDX 2.3] |
 | Serialization | [JSON / XML / Other] |
 | Total Components | [N] (direct: [N], transitive: [N]) |
 | SBOM Author | [Author name] |
 | SBOM Timestamp | [ISO 8601] |
+| SBOM Generator | [tool name/version] |
+
+### SBOM Freshness and Artifact Binding
+
+| Software Artifact | Artifact Version | Artifact Digest | Build/Release ID | SBOM Timestamp | SBOM Generator | Generation Pipeline | Deployment/Release Date | Freshness Result | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [package/image/binary] | [version/tag] | [sha256 digest] | [CI run/release ID] | [ISO 8601] | [tool/version] | [pipeline/job] | [date] | [Current/Stale/Unknown] | [exceptions] |
 
 ### NTIA Minimum Elements Compliance
 
@@ -379,7 +401,7 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 
 4. **Overlooking license implications in SaaS deployments.** AGPL-3.0 triggers copyleft obligations for network use (SaaS), unlike GPL which only triggers on distribution. Organizations running AGPL-licensed components in SaaS products may have unrecognized compliance obligations. Always flag AGPL components regardless of distribution model.
 
-5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
+5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Bind the SBOM to the artifact digest, build/release ID, generator, and deployment date before relying on it.
 
 ---
 
