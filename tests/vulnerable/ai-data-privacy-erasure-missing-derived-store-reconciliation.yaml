@@ -1,0 +1,42 @@
+scenario: erasure_request_missing_derived_ai_store_reconciliation
+skill: ai-data-privacy
+expected_result: flag_erasure_propagation_gap
+data_subject_request:
+  request_id: DSR-2026-1842
+  request_type: erasure
+  subject_id: user-4821
+  legal_basis: gdpr_article_17
+  deadline: "2026-07-08"
+source_system:
+  crm_record_deleted: true
+  support_ticket_deleted: true
+derived_ai_stores:
+  vector_store:
+    provider: pinecone
+    source_doc_ids:
+      - ticket-931
+    vector_ids: unknown
+    delete_by_source_doc_id: not_supported
+    metadata_tombstone: missing
+    nearest_neighbor_reconciliation: missing
+  prompt_logs:
+    contains_subject_pii: true
+    delete_receipt: missing
+  training_snapshot:
+    id: sft-export-2026-05
+    contains_subject_records: true
+    exclusion_manifest_updated: false
+  evaluation_dataset:
+    contains_subject_records: unknown
+  third_party_llm_provider:
+    deletion_receipt: missing
+  backups:
+    restore_replay_tombstones: missing
+model_lineage:
+  fine_tuned_model: support-sft-v14
+  retraining_or_unlearning_decision: missing
+why_this_should_fail: >
+  The primary CRM and support records were deleted, but the erasure request has
+  no reconciled vector IDs, no prompt-log/provider receipts, no training
+  exclusion manifest, no backup restore replay, and no documented decision for
+  the fine-tuned model trained from the affected snapshot.

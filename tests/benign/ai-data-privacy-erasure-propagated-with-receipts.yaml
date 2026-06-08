@@ -1,0 +1,53 @@
+scenario: erasure_request_propagated_to_ai_derived_stores
+skill: ai-data-privacy
+expected_result: do_not_flag_erasure_propagation_gap
+data_subject_request:
+  request_id: DSR-2026-1842
+  request_type: erasure
+  subject_id: user-4821
+  legal_basis: gdpr_article_17
+  decision_authority: privacy_counsel
+  deadline: "2026-07-08"
+source_system:
+  crm_record_deleted: true
+  support_ticket_deleted: true
+derived_ai_stores:
+  vector_store:
+    provider: internal_qdrant
+    source_doc_ids:
+      - ticket-931
+    vector_ids:
+      - vec-1001
+      - vec-1002
+    delete_receipt: qdrant-delete-8841
+    metadata_tombstone: tombstone-DSR-2026-1842
+    nearest_neighbor_reconciliation: passed
+  prompt_logs:
+    delete_receipt: logs-delete-8841
+    pii_redacted_in_analytics: true
+  training_snapshot:
+    id: sft-export-2026-05
+    exclusion_manifest_updated: true
+    subject_membership_index_checked: true
+  evaluation_dataset:
+    membership_checked: true
+    subject_records_present: false
+  third_party_llm_provider:
+    deletion_receipt: provider-delete-8841
+    retention_confirmation: zero_retention_endpoint
+  backups:
+    retention_exception_expires: "2026-08-08"
+    restore_replay_tombstones: documented
+model_lineage:
+  fine_tuned_model: support-sft-v14
+  decision: suppress_until_next_retrain
+  decision_authority: model_governance_board
+  next_retrain_excludes_subject: true
+audit:
+  closed_at: "2026-06-20"
+  evidence_package: privacy-evidence-DSR-2026-1842
+why_this_should_pass: >
+  The erasure request is closed only after source systems, vector IDs, prompt
+  logs, training snapshots, evaluation datasets, provider objects, backups, and
+  model lineage have receipts or documented decisions plus reconciliation
+  evidence.
