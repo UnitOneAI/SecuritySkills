@@ -1,0 +1,55 @@
+scenario: workflow_run_artifact_promotion_with_verified_trust_chain
+skill: pipeline-security
+expected_result: do_not_flag_workflow_handoff_ppe
+workflows:
+  producer:
+    path: .github/workflows/release-build.yml
+    trigger: push
+    branches:
+      - main
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: commit_sha
+      - run: npm ci && npm run build
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: dist/app.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/app.tar.gz
+  consumer:
+    path: .github/workflows/publish.yml
+    trigger: workflow_run
+    workflow_run_source: release-build
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    environment:
+      name: production
+      reviewers_required: true
+    checks:
+      conclusion_success: true
+      trusted_head_repository: owner/repo
+      trusted_branch: main
+      actor_in_release_team: true
+      artifact_digest_verification: present
+      provenance_verification: present
+      subject_sha_matches_workflow_run_head_sha: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: workflow_run_id
+          name: release-dist
+      - run: cosign verify-attestation --type slsaprovenance dist/app.tar.gz
+      - run: publish --artifact dist/app.tar.gz
+why_this_should_pass: >
+  The consumer workflow only promotes artifacts from a trusted main-branch
+  producer, verifies provenance and digest binding to the workflow_run head SHA,
+  uses scoped permissions, and requires a protected production environment.

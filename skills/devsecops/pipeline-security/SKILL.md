@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -49,6 +49,7 @@ The assessment produces a formal report containing a SLSA build level determinat
 - Access to CI/CD configuration files (e.g., `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, `cloudbuild.yaml`).
 - Access to repository settings context (branch protection rules, environment configurations).
 - Read access to dependency manifests and lock files for supply-chain analysis.
+- Access to workflow artifact, cache, and promotion metadata when pipelines hand build outputs from one workflow to another.
 
 ---
 
@@ -251,6 +252,7 @@ on: pull_request_target
 ```
 
 - **Indirect PPE:** Workflows that execute scripts, Makefiles, or config files that exist in the repository and can be modified by a pull request.
+- **Workflow handoff PPE:** Privileged workflows triggered by `workflow_run` that download artifacts, caches, coverage reports, build outputs, or scripts from an untrusted PR or fork workflow and then execute, deploy, sign, publish, or upload them with elevated permissions.
 - **Public fork access:** Whether the repository allows workflows to run on pull requests from forks with access to secrets.
 - Injection of untrusted input into shell commands:
 
@@ -264,7 +266,33 @@ on: pull_request_target
     PR_TITLE: ${{ github.event.pull_request.title }}
 ```
 
-**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+```yaml
+# DANGEROUS: privileged workflow_run consumes untrusted PR artifact
+on:
+  workflow_run:
+    workflows: ["PR build"]
+    types: [completed]
+
+permissions: write-all
+
+jobs:
+  publish:
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+      - run: ./dist/release.sh
+```
+
+For `workflow_run` or equivalent multi-stage pipelines, verify:
+
+- The upstream workflow cannot be triggered from untrusted forks or unreviewed branches when downstream jobs receive secrets, write tokens, signing keys, package publishing tokens, or deployment credentials.
+- The downstream workflow checks `github.event.workflow_run.conclusion == 'success'`, source repository, head branch, event type, and trusted actor/team before consuming outputs.
+- Downloaded artifacts are treated as untrusted unless they are bound to a reviewed commit SHA, signed, attested, or rebuilt in the privileged workflow from trusted source.
+- Downstream steps do not execute scripts, Makefiles, binaries, coverage tools, or package lifecycle hooks from downloaded artifacts without verification.
+- Cache keys do not allow untrusted PRs to poison caches later restored by protected-branch or release workflows.
+
+**Finding format:** Report any `pull_request_target` usage, privileged `workflow_run` handoffs, direct expression injection in `run:` steps, fork workflow policies, and whether PR code or PR-generated artifacts can influence privileged pipelines.
 
 ---
 
@@ -392,6 +420,7 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Privileged release/deploy workflows consuming artifacts from another workflow without binding the artifact to a trusted commit, run identity, signature, attestation, or checksum.
 
 **Grep patterns:**
 
@@ -414,7 +443,14 @@ image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+For workflow artifacts and caches:
+
+- Record producer workflow, trigger event, head repository, head SHA, artifact name, digest/checksum, retention, and consumer workflow.
+- Flag artifacts uploaded by PR/fork workflows that are later downloaded by protected-branch, release, publish, or deployment workflows.
+- Verify promotion steps use immutable references such as commit SHA, artifact digest, package digest, Sigstore certificate identity, or SLSA provenance subject.
+- Do not treat `workflow_run.conclusion == success` alone as sufficient trust; it only proves the upstream workflow completed successfully.
+
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, and whether cross-workflow artifact promotion preserves a verifiable trust chain.
 
 ---
 
@@ -490,6 +526,12 @@ Produce the final report using the following structure:
 - **Description:** <what was found>
 - **Remediation:** <specific fix>
 
+### Privileged Workflow Handoffs
+
+| Producer Workflow | Trigger | Artifact/Cache | Consumer Workflow | Privileged Capability | Verification | Status |
+|-------------------|---------|----------------|-------------------|-----------------------|--------------|--------|
+| PR build | pull_request | dist.zip | Release | package publish | digest/signature/provenance | Pass/Fail |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** <CICD-SEC-X> -- <action item>
@@ -550,6 +592,8 @@ This skill processes user-supplied content including CI/CD configuration files, 
 - SLSA Build Track: https://slsa.dev/spec/v1.0/levels#build-track
 - OWASP Top 10 CI/CD Security Risks: https://owasp.org/www-project-top-10-ci-cd-security-risks/
 - GitHub Actions Security Hardening: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions
+- GitHub Actions workflow_run event: https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_run
+- GitHub Actions artifact attestations: https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds
 - Sigstore / Cosign: https://docs.sigstore.dev/
 - SLSA GitHub Generator: https://github.com/slsa-framework/slsa-github-generator
 
@@ -557,4 +601,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Add workflow_run artifact handoff, cache poisoning, and privileged artifact promotion evidence gates.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).

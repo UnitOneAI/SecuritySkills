@@ -1,0 +1,42 @@
+scenario: workflow_run_privileged_publish_consumes_untrusted_pr_artifact
+skill: pipeline-security
+expected_result: flag_workflow_handoff_ppe
+workflows:
+  producer:
+    path: .github/workflows/pr-build.yml
+    trigger: pull_request
+    fork_prs_allowed: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci && npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+  consumer:
+    path: .github/workflows/publish.yml
+    trigger: workflow_run
+    workflow_run_source: PR build
+    permissions: write-all
+    secrets_available:
+      - NPM_TOKEN
+      - PRODUCTION_DEPLOY_KEY
+    checks:
+      conclusion_success: true
+      trusted_head_repository: missing
+      trusted_branch: missing
+      artifact_digest_verification: missing
+      provenance_verification: missing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: workflow_run_id
+          name: dist
+      - run: ./dist/release.sh
+why_this_should_fail: >
+  The privileged workflow_run job downloads and executes an artifact produced
+  by a pull_request workflow that can run for forks, then publishes with write
+  permissions and secrets. A successful upstream workflow is not enough
+  provenance for executing PR-controlled artifacts in a privileged context.
