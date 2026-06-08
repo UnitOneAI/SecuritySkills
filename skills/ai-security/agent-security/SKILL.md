@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -341,6 +341,15 @@ Evaluate whether the audit logging for agent actions is sufficient for incident 
 
 ### Step 6 -- Rollback Capability
 
+
+Require measured emergency-stop and rollback drill evidence for agents that can call tools, delegate work, write data, deploy code, or send messages.
+
+| Scenario | Kill Switch Trigger | Stop Scope | Queued Tool Containment | State Capture | Rollback / Compensation | Runbook Owner | Time to Stop / Recover | Drill Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[incident scenario]` | `[manual/API/policy]` | `[agent, tools, delegates]` | `[queue cancellation evidence]` | `[state snapshot/log]` | `[rollback action]` | `[operator]` | `[TTS/TTR]` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when disabling the primary agent leaves queued calls, delegated agents, or completed side effects uncontrolled.
+
 Evaluate whether agent-initiated actions can be undone when something goes wrong -- whether due to agent malfunction, prompt injection, hallucination, or operator error.
 
 **What to look for in code and configuration:**
@@ -509,6 +518,12 @@ Glob: **/security_architecture*
 - **Recommendation:** [Specific architectural remediation]
 - **Priority:** [P0 / P1 / P2 / P3]
 
+## Emergency Stop and Rollback Drill Evidence
+
+| Scenario | Trigger | Scope | Queue Containment | State Capture | Rollback | Owner | TTS / TTR | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[scenario]` | `[trigger]` | `[scope]` | `[evidence]` | `[state]` | `[action]` | `[owner]` | `[time]` | `Pass / Fail / Unknown` |
+
 ## Architecture Security Posture Summary
 
 | Review Area | Rating | Key Finding | Priority |
@@ -556,6 +571,8 @@ Glob: **/security_architecture*
 **NIST AI RMF 1.0:** Published January 2023. Organized around four functions: GOVERN (policies, culture), MAP (context, risk identification), MEASURE (risk analysis), MANAGE (risk response, monitoring). Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework)
 
 ---
+
+- Accepting a kill switch design without drill evidence for queued tool calls, delegated agents, side effects, rollback execution, and measured recovery time.
 
 ## Common Pitfalls
 
