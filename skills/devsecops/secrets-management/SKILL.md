@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -296,6 +296,21 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 - Rotation events are logged and monitored.
 - Failed rotations trigger alerts.
 
+For each rotated secret, record rotation validation evidence:
+
+```
+| Secret Type | Secret Store | Rotation Event | Old Credential Revoked | Consumers Updated | Old Credential Test | New Credential Test | Monitoring Evidence | Rollback Window | Validation Confidence |
+```
+
+Validation requirements:
+- Record the rotation event ID, timestamp, automation job, or change ticket.
+- Verify all known consumers have been updated or redeployed to use the new secret version.
+- Test or otherwise prove the old credential no longer authenticates after the rollover window closes.
+- Test or otherwise prove the new credential works for required consumers.
+- Record monitoring evidence showing no authentication failures, error spikes, or fallback to the old credential after rotation.
+- If dual-key rollover is used, record both acceptance window and final old-key revocation.
+- Treat a successful rotation job as incomplete evidence unless old credential revocation and consumer adoption are validated.
+
 **Finding classification:** No rotation for secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**.
 
 ---
@@ -389,6 +404,12 @@ spec:
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
 
+### Rotation Validation Evidence
+
+| Secret Type | Secret Store | Rotation Event | Old Credential Revoked | Consumers Updated | Old Credential Test | New Credential Test | Monitoring Evidence | Rollback Window | Validation Confidence |
+|-------------|--------------|----------------|------------------------|-------------------|--------------------|--------------------|--------------------|-----------------|-----------------------|
+| API key | <vault/store> | <job/ticket/timestamp> | Yes/No | Yes/No | Pass/Fail | Pass/Fail | <logs/metrics> | <duration> | High/Medium/Low |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -396,6 +417,7 @@ spec:
 - **Control Reference:** OWASP Secrets Mgmt / NIST SP 800-57 Section X
 - **File:** <path to config file>
 - **Description:** <what was found -- NEVER include actual secret values>
+- **Validation Evidence:** <rotation event, old credential revocation, consumer update proof, test result, or monitoring evidence>
 - **Remediation:** <concrete fix>
 
 ### Prioritized Remediation Plan
@@ -442,6 +464,8 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Assuming a successful rotation job means the old secret is dead.** Rotation automation can create a new value while consumers keep using the old one, or while the old credential remains valid for rollback. Verify consumer adoption, old credential revocation, and post-rotation monitoring before marking rotation complete.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -471,5 +495,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Add rotation validation evidence gates for old credential revocation, consumer adoption, and monitoring.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
