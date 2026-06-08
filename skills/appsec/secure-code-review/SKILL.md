@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -396,12 +396,49 @@ func fetchURL(w http.ResponseWriter, r *http.Request) {
 ```
 Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
 
-### 8.3 Review Checklist
+### 8.3 SSRF URL Canonicalization and Redirect Review
+
+For code that fetches user-controlled or semi-trusted URLs, require evidence that validation and the actual HTTP client use the same canonical destination.
+
+```
+SSRF URL Fetch Evidence:
+- Source of URL: [request parameter / webhook config / import job / metadata field]
+- Parser used for validation: [library/function/version]
+- Parser used by HTTP client: [library/function/version]
+- Allowed schemes: [https only / http+https / other]
+- Host allowlist: [exact host / suffix match / regex / none]
+- DNS resolution point: [before request / inside client / proxy / unknown]
+- IP filters: [loopback / private / link-local / multicast / IPv6 / IPv4-mapped IPv6 / cloud metadata]
+- Redirect policy: [disabled / revalidated each hop / automatic without revalidation]
+- Final destination pinning: [resolved IP pinned / Host header pinned / not pinned]
+- Timeout and size limits: [connect/read timeout, max bytes]
+```
+
+**What to look for:**
+
+```
+SCR-SSRF-01: Validation parser differs from fetch client parser (URL parser differential)
+SCR-SSRF-02: Redirects followed without revalidating scheme, host, DNS result, and IP range
+SCR-SSRF-03: DNS rebinding possible between allowlist check and outbound request
+SCR-SSRF-04: Private, loopback, link-local, multicast, IPv6, or IPv4-mapped IPv6 addresses not blocked
+SCR-SSRF-05: Cloud metadata endpoints not explicitly denied (169.254.169.254, metadata.google.internal, Azure IMDS)
+SCR-SSRF-06: Alternate IP encodings bypass filters (decimal, octal, hexadecimal, dotted integer)
+SCR-SSRF-07: User-controlled URL can switch scheme or method through redirects or protocol confusion
+```
+
+Review rules:
+- Parse once into a canonical URL object and use that same canonical value for validation and request construction.
+- Revalidate every redirect target before following it; do not assume the original URL's allowlist decision applies to the final URL.
+- Resolve hostnames through a controlled resolver and reject loopback, RFC1918/private, link-local, multicast, unique-local IPv6, IPv4-mapped IPv6, and cloud metadata ranges after resolution.
+- Treat DNS rebinding as a code-review concern when the code validates a hostname before the client resolves it later. Prefer disabling redirects, pinning resolved destinations, or enforcing egress proxy allowlists.
+- Reject alternate IP representations before comparison. Filters that only match dotted IPv4 strings are insufficient.
+
+### 8.4 Review Checklist
 
 - [ ] No use of native deserialization (pickle, ObjectInputStream, Marshal.load) on untrusted data.
 - [ ] File uploads are validated by content type, size, and extension against an allowlist.
 - [ ] Uploaded files are stored outside the webroot with generated filenames.
-- [ ] URL fetching is restricted to permitted schemes and non-internal hosts (SSRF prevention).
+- [ ] URL fetching is restricted to permitted schemes and non-internal hosts, using canonical parsing, redirect revalidation, DNS/IP checks, and metadata endpoint deny rules.
 - [ ] Archive extraction checks for zip bombs and path traversal in entry names.
 
 ---
@@ -477,6 +514,11 @@ The final review output must be structured as follows:
 | V2 Authentication | Yes/No | [count] | [result] |
 | V3 Session Management | Yes/No | [count] | [result] |
 | ... | ... | ... | ... |
+
+### SSRF URL Fetch Review
+| Location | URL Source | Parser Consistency | Redirect Revalidation | DNS/IP Validation | Metadata Endpoint Block | Size/Timeout Limits | Status |
+|---|---|---|---|---|---|---|---|
+| [file:line] | [source] | [Pass/Fail/NE] | [Pass/Fail/NE] | [Pass/Fail/NE] | [Pass/Fail/NE] | [Pass/Fail/NE] | [finding/status] |
 ```
 
 ---
@@ -541,6 +583,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Treating SSRF as a single allowlist check.** URL validation must survive parser differences, redirects, DNS rebinding, alternate IP encodings, IPv6, and cloud metadata endpoints. A host allowlist checked before the HTTP client follows redirects is not enough.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -562,4 +606,6 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP SSRF Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- **CWE-918 Server-Side Request Forgery:** https://cwe.mitre.org/data/definitions/918.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
