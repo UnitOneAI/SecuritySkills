@@ -488,3 +488,120 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+## Supplemental EKS Cluster Posture Review
+
+Evaluate `aws_eks_cluster`, `aws_eks_node_group`, `aws_eks_fargate_profile`, `aws_eks_pod_identity_association`, OIDC provider resources, and EKS export evidence when an AWS environment runs Amazon EKS. These checks are supplemental to CIS AWS v3.0.0 because they focus on cluster-level AWS controls; use `skills/cloud/container-security/SKILL.md` for Kubernetes workload manifests.
+
+### AWS-EKS-01 -- Ensure EKS Clusters Are Explicitly Inventoried
+
+**Grep patterns:**
+
+```
+resource "aws_eks_cluster"
+resource "aws_eks_node_group"
+resource "aws_eks_fargate_profile"
+resource "aws_eks_pod_identity_association"
+aws_eks_cluster
+```
+
+If any EKS resource is present, require an EKS evidence row in the final report. Missing endpoint, access management, pod identity, node role, encryption, or logging evidence is **Not Evaluable**.
+
+### AWS-EKS-02 -- Ensure API Server Endpoint Access Is Private or Tightly Scoped
+
+```hcl
+# BAD: public endpoint open to the internet
+resource "aws_eks_cluster" "bad" {
+  vpc_config {
+    endpoint_private_access = false
+    endpoint_public_access  = true
+    public_access_cidrs     = ["0.0.0.0/0"]
+  }
+}
+```
+
+Require evidence for `endpoint_private_access`, `endpoint_public_access`, and `public_access_cidrs`. A public endpoint can be acceptable only with narrow CIDRs and documented admin source networks.
+
+### AWS-EKS-03 -- Ensure Cluster Access Management Is Reviewed
+
+```hcl
+# BAD: legacy config map only and bootstrap admin retained
+resource "aws_eks_cluster" "bad" {
+  access_config {
+    authentication_mode                         = "CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+}
+```
+
+Look for:
+
+```
+access_config {
+authentication_mode
+bootstrap_cluster_creator_admin_permissions = true
+aws-auth
+```
+
+Record whether access uses the EKS access management API, the legacy `aws-auth` ConfigMap, or both. Bootstrap creator admin should be disabled or time-bound with explicit break-glass review.
+
+### AWS-EKS-04 -- Ensure Pod Identity or IRSA Evidence Exists
+
+```hcl
+resource "aws_eks_pod_identity_association" "app" {
+  cluster_name    = aws_eks_cluster.private.name
+  namespace       = "payments"
+  service_account = "api"
+  role_arn        = aws_iam_role.payments_pod.arn
+}
+```
+
+Accept either EKS Pod Identity or IRSA when namespace, service account, IAM role, and trust policy are scoped. Missing pod-level identity evidence should be **High** for workloads that access AWS APIs.
+
+### AWS-EKS-05 -- Ensure Node Role and IMDSv2 Evidence Exists
+
+```hcl
+resource "aws_eks_node_group" "good" {
+  node_role_arn = aws_iam_role.eks_nodes_minimal.arn
+
+  launch_template {
+    id      = aws_launch_template.eks_nodes.id
+    version = "$Latest"
+  }
+}
+```
+
+Cross-check node roles for broad policies and ensure launch templates enforce IMDSv2 where node metadata is exposed. If no node identity evidence exists, mark the node group **Not Evaluable**.
+
+### AWS-EKS-06 -- Ensure Secrets Encryption and Control-Plane Logging Are Enabled
+
+```hcl
+resource "aws_eks_cluster" "good" {
+  encryption_config {
+    provider {
+      key_arn = aws_kms_key.eks_secrets.arn
+    }
+    resources = ["secrets"]
+  }
+
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+}
+```
+
+Require KMS-backed secrets encryption and complete control-plane logging for production clusters. Missing audit or authenticator logs should be **High**.
+
+### AWS-EKS-07 -- Ensure Network Add-on and Private Subnet Evidence Exists
+
+Check for:
+
+```
+aws_eks_addon
+vpc-cni
+aws_eks_fargate_profile
+subnet_ids = aws_subnet.private
+aws_security_group_policy
+```
+
+Record VPC CNI/add-on version evidence, private subnet placement, Fargate or managed node group mode, and security groups for pods where used. Missing network add-on or private routing evidence should be **Not Evaluable**.

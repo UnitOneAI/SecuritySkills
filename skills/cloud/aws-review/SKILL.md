@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -25,7 +25,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security assessment of AWS environments against the **CIS Amazon Web Services Foundations Benchmark v3.0.0**. The benchmark is organized into five sections covering identity management, storage, logging, monitoring, and networking. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, CloudFormation, CDK), AWS CLI output, or configuration files available in the repository.
+This skill performs a structured security assessment of AWS environments against the **CIS Amazon Web Services Foundations Benchmark v3.0.0**. The benchmark is organized into five sections covering identity management, storage, logging, monitoring, and networking. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, CloudFormation, CDK), AWS CLI output, or configuration files available in the repository. When EKS clusters are present, the review also collects supplemental EKS posture evidence so cluster-level AWS controls are not lost between generic AWS checks and the separate container workload review.
 
 The CIS AWS Foundations Benchmark v3.0.0 contains 62 recommendations across five domains. This skill evaluates each applicable control against the codebase and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
@@ -99,7 +99,39 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Supplemental EKS Cluster Posture Evidence
+
+When `aws_eks_cluster`, `aws_eks_node_group`, `aws_eks_pod_identity_association`, or EKS configuration exports are present, evaluate cluster-level AWS controls before final scoring. This supplemental gate does not replace the `container-security` skill for Kubernetes manifests, RBAC, Pod Security, or workload YAML. It covers the AWS control plane, IAM, endpoint, encryption, logging, and pod identity settings that are visible in Terraform, CloudFormation, CDK, or EKS exports.
+
+Record an EKS evidence row for each cluster and node group:
+
+| Evidence Field | Required Evidence | Risk If Missing |
+|---|---|---|
+| Cluster mode | Managed node group, Fargate, self-managed, or EKS Auto Mode evidence | Node identity and operational controls can be scored against the wrong runtime model |
+| API server endpoint | `endpoint_private_access`, `endpoint_public_access`, and `public_access_cidrs` | Public or broadly reachable Kubernetes API server |
+| Cluster access management | `access_config`, authentication mode, bootstrap creator admin status, and `aws-auth`/CAM evidence | Standing cluster-admin or legacy access paths remain unreviewed |
+| Pod AWS identity | EKS Pod Identity associations, IRSA/OIDC provider, namespace/service-account mapping, and IAM trust scope | Workloads inherit broad node roles or static AWS credentials |
+| Node identity | Node group IAM role, policies, launch template, and IMDSv2 evidence | Pods or nodes can use overbroad AWS permissions |
+| Secrets and audit | `encryption_config`, KMS key, and complete `enabled_cluster_log_types` | Kubernetes secrets or control-plane actions lack encryption/audit evidence |
+| Network add-ons | VPC CNI, security groups for pods, private subnets, and endpoint/VPC route evidence | Pod networking and egress paths are not reviewable from AWS posture data |
+
+**Finding triggers:**
+
+```
+AWS-EKS-01: EKS cluster evidence is missing while IaC declares aws_eks_cluster resources
+AWS-EKS-02: Public endpoint is enabled with 0.0.0.0/0 or ::/0 public access CIDRs without documented compensating control
+AWS-EKS-03: Bootstrap cluster creator admin is enabled or access mode evidence is missing
+AWS-EKS-04: Pod Identity or IRSA evidence is absent for workloads that need AWS API access
+AWS-EKS-05: Node IAM role is broad or node/launch-template IMDSv2 evidence is missing
+AWS-EKS-06: Secrets encryption or complete control-plane logging evidence is missing
+AWS-EKS-07: Network add-on, private subnet, or security-groups-for-pods evidence is missing or Not Evaluable
+```
+
+If EKS evidence is incomplete, mark the affected cluster as **Not Evaluable** rather than scoring it as pass. If the same environment includes Kubernetes manifests, route manifest-level findings to `skills/cloud/container-security/SKILL.md`.
+
+---
+
+### Step 8: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -145,6 +177,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 3 | Logging | X/11 | Y | Z | nn% |
 | 4 | Monitoring | X/16 | Y | Z | nn% |
 | 5 | Networking | X/6 | Y | Z | nn% |
+
+### Supplemental EKS Evidence
+
+| Cluster/Node Group | Mode | API Endpoint | Access Management | Pod AWS Identity | Node Identity | Secrets/Logging | Network Add-ons | Status |
+|---|---|---|---|---|---|---|---|---|
+| <cluster> | Managed/Fargate/Self-managed/Auto | <private/public/CIDRs> | <access mode/bootstrap/admin evidence> | <Pod Identity/IRSA/none> | <node role/IMDSv2> | <KMS/log types> | <CNI/SGP/private subnet> | Pass/Fail/Not Evaluable |
 
 ### Detailed Findings
 
@@ -200,6 +238,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Letting EKS fall between skills.** Generic CIS AWS checks do not inspect cluster-only settings such as API endpoint access, public access CIDRs, bootstrap admin, access management mode, Pod Identity/IRSA, secrets encryption, control-plane logs, or node role scope. Capture those controls here, then hand Kubernetes manifest findings to `container-security`.
 
 ---
 
@@ -225,10 +264,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- Amazon EKS cluster endpoint access: https://docs.aws.amazon.com/eks/latest/userguide/cluster-endpoint.html
+- Amazon EKS Pod Identity: https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html
+- Amazon EKS security best practices: https://docs.aws.amazon.com/eks/latest/best-practices/security.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Adds supplemental EKS cluster posture evidence gates for API endpoint access, cluster access management, Pod Identity/IRSA, node identity, secrets encryption, control-plane logs, and network add-on evidence.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
