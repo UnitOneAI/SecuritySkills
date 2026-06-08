@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -156,6 +156,21 @@ AR-CERT-08: Delegated reviews without accountability (certifier delegates but is
 | Approval rate per certifier | > 95% with > 50 entitlements | Flag for management review |
 | Time to certify | < 2 minutes per decision batch | Flag as potential non-review |
 | No revocations across multiple cycles | 3+ consecutive cycles | Escalate to compliance team |
+
+For each certification campaign, collect decision-level attestation evidence:
+
+```
+| Campaign | Identity | Entitlement | Permission Meaning | Certifier | Certifier Relationship | Decision | Decision Timestamp | Batch Size | Decision Duration | Enforcement Ticket | Confidence |
+```
+
+Evidence requirements:
+- Record the certifier identity and relationship to the reviewed identity or resource (manager, application owner, data owner, delegated reviewer).
+- Include the entitlement's effective permission meaning, not only the group or role name.
+- Capture approve/revoke/modify decisions with timestamps and immutable campaign or audit-log references.
+- Track batch size and decision duration so rubber-stamp patterns can be detected from the evidence.
+- Link revoke/modify decisions to enforcement tickets or automated deprovisioning records.
+- Treat delegated decisions as lower confidence unless the accountable certifier and delegation trail are retained.
+- If a certifier cannot see permission meaning or business context, mark the decision as weak evidence and require follow-up validation.
 
 ---
 
@@ -321,6 +336,7 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, roles, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding (counts, examples, screenshots) |
+| **Attestation Evidence** | Certifier, relationship, decision timestamp, permission meaning, campaign/audit-log reference, and enforcement linkage |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -354,6 +370,12 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 
 ### Detailed Findings
 [Findings table]
+
+### Certification Attestation Evidence
+
+| Campaign | Identity | Entitlement | Permission Meaning | Certifier | Certifier Relationship | Decision | Decision Timestamp | Batch Size | Decision Duration | Enforcement Ticket | Confidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| [campaign] | [user/service account] | [role/group/permission] | [effective access] | [name/id] | [manager/owner/delegate] | [approve/revoke/modify] | [timestamp] | [N] | [duration] | [ticket/id] | [High/Medium/Low] |
 
 ### Remediation Roadmap
 - Immediate (0-7 days): [critical findings]
@@ -401,6 +423,7 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
 7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+8. **Treating campaign completion as proof of meaningful review** — A completed certification campaign does not prove reviewers understood or evaluated the access. Preserve decision-level attestation evidence, permission meaning, certifier relationship, batch metrics, and enforcement linkage so rubber-stamping and unenforced revocations are visible.
 
 ---
 
@@ -443,4 +466,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-08 | Added certification attestation evidence gates for access review decisions |
 | 1.0.0 | 2025-03-06 | Initial release |
