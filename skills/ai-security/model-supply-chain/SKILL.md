@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -352,6 +352,16 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ---
 
+### Step 7 -- Artifact Verification Evidence Gates
+
+For every model, adapter, checkpoint, tokenizer, dataset artifact, evaluation bundle, container, or inference dependency, record reproducible verification evidence before trusting the artifact. Evidence must let another reviewer locate the same artifact and independently repeat the verification.
+
+| Artifact | Source URL / Registry | Immutable Revision | SHA-256 Digest | Signature / Attestation / Provenance | Trust Root | Independent Verification Source | Verifier / Timestamp | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[model, adapter, tokenizer, container, dataset]` | `[registry or repository URL]` | `[commit, tag, release, model version]` | `[digest]` | `[Sigstore, GPG, SLSA provenance, model card attestation]` | `[certificate identity, maintainer key, registry policy]` | `[second registry, release notes, transparency log, CI log]` | `[name and date]` | `Pass / Fail / Unknown` |
+
+A pass requires at least an immutable revision, digest, trusted signing or provenance evidence when available, and an independent verification source. Mark `Unknown` when the artifact is only referenced by a mutable alias such as `latest`, an unpinned branch, or an unverified download URL.
+
 ## Findings Classification
 
 | Severity | Criteria | Response SLA |
@@ -396,6 +406,12 @@ Assess whether architectural and procedural controls exist to detect model backd
 - **Recommendation:** [Specific defensive measure]
 - **Priority:** [P0 / P1 / P2 / P3]
 
+## Artifact Verification Evidence Matrix
+
+| Artifact | Source | Immutable Revision | Digest | Signature / Provenance | Trust Root | Independent Check | Verifier / Timestamp | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[artifact name]` | `[URL or registry]` | `[commit/tag/version]` | `[SHA-256]` | `[attestation]` | `[identity/key/policy]` | `[cross-check evidence]` | `[reviewer/date]` | `Pass / Fail / Unknown` |
+
 ## Supply Chain Maturity Summary
 
 | Domain | Current State | Target State | Gap Severity |
@@ -429,6 +445,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ---
 
+- Accepting a model or dependency because it came from a familiar registry while leaving the version mutable, digest unrecorded, or signature/provenance unverified.
 ## Common Pitfalls
 
 1. **Verifying checksums against attacker-controlled sources.** Downloading a model from a public registry and verifying its checksum against a value published on the same registry provides no security. If the attacker compromised the model, they also control the published checksum. Checksums must be verified against an independently trusted source -- the model publisher's signed release, a separate attestation service, or an internal model registry that independently computed the hash on first ingestion.
