@@ -1,0 +1,45 @@
+program: enterprise-patch-governance
+date: "2026-06-08"
+exceptions:
+  - id: EXC-2026-044
+    cves:
+      - CVE-2026-12345
+    asset: payment-api
+    original_tier: P2
+    original_deadline: "2026-06-10"
+    current_deadline: "2026-07-10"
+    original_breach_status_visible: true
+    request_date: "2026-06-05"
+    renewal_count: 0
+    auto_renew: false
+    approver: security-director
+    approval_date: "2026-06-05"
+    review_date: "2026-06-20"
+    compensating_control:
+      type: WAF virtual patch
+      effectiveness: partial
+      last_tested: "2026-06-05"
+      current_topology_verified: true
+      test_evidence: WAF-TEST-4812
+      coverage: all_affected_assets
+    closure_criteria: deploy vendor-fixed SDK and retire WAF virtual patch
+change_window:
+  id: CHG-4812
+  cves:
+    - CVE-2026-12345
+  scheduled_window: "2026-06-20 02:00-04:00 UTC"
+  dependency_order:
+    - deploy patched SDK to canary
+    - migrate schema
+    - deploy production API
+  rollback_plan: immutable deployment rollback to release-2026.06.01
+  rollback_tested: true
+  backup_snapshot: snap-20260619-2300
+  go_no_go_criteria: health checks and error budget within threshold
+  post_patch_validation: package version and scanner verification scheduled
+expected_decision: pass
+reason: >
+  The exception preserves original SLA evidence, has explicit approval and
+  review dates, avoids auto-renewal, uses fresh compensating-control testing, and
+  the patch window has rollback, dependency, snapshot, go/no-go, and validation
+  evidence.

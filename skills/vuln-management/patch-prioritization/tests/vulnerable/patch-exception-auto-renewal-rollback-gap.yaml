@@ -1,0 +1,47 @@
+program: enterprise-patch-governance
+date: "2026-06-08"
+exceptions:
+  - id: EXC-2025-777
+    cves:
+      - CVE-2025-77777
+    asset: internet-facing-vpn
+    original_tier: P1
+    original_deadline: "2025-12-01"
+    current_deadline: "2026-09-01"
+    original_breach_status_visible: false
+    request_date: "2025-11-15"
+    renewal_count: 5
+    auto_renew: true
+    approver: system-owner
+    compensating_control:
+      type: segmentation
+      effectiveness: partial
+      last_tested: "2025-08-01"
+      current_topology_verified: false
+      coverage: subset
+    closure_criteria: missing
+change_window:
+  id: CHG-90210
+  cves:
+    - CVE-2025-77777
+  scheduled_window: "2026-06-08 02:00-04:00 UTC"
+  dependency_order: unknown
+  rollback_plan: restore if needed
+  rollback_tested: false
+  backup_snapshot: stale
+  go_no_go_criteria: missing
+  post_patch_validation: missing
+expected_findings:
+  - PATCH-GOV-01
+  - PATCH-GOV-02
+  - PATCH-GOV-03
+  - PATCH-GOV-04
+  - PATCH-GOV-05
+  - PATCH-GOV-06
+  - PATCH-GOV-07
+  - PATCH-GOV-08
+reason: >
+  The exception masks the original SLA breach, auto-renews repeatedly without
+  fresh compensating-control evidence or escalation, and the scheduled patch
+  window lacks tested rollback, dependency order, backup freshness, go/no-go
+  criteria, closure criteria, and post-patch validation.
