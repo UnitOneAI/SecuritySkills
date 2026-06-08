@@ -1,0 +1,23 @@
+scenario: privacy-preserving-audit-schema
+audit_event:
+  agent_id: research-agent-7
+  user_id: user-42
+  tool_name: search_customer_records
+  timestamp_utc: "2026-06-09T02:00:00.123Z"
+  parameter_keys:
+    - customer_id
+    - query
+  parameter_fingerprints:
+    customer_id: sha256:8b7-example
+  result_status: success
+  result_count: 3
+  correlation_id: req-123
+  approval_id: appr-456
+  redaction_policy: pii-and-secrets-v4
+intentionally_not_logged:
+  - full parameter values
+  - access tokens
+  - returned customer records
+  - chain-of-thought
+expected_status: pass
+false_positive_guardrail: privacy-preserving audit events can support attribution and reconstruction without logging raw sensitive values

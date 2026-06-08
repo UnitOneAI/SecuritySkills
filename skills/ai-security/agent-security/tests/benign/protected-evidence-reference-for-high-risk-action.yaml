@@ -1,0 +1,23 @@
+scenario: protected-evidence-reference-for-high-risk-action
+audit_event:
+  agent_id: deployment-agent
+  tool_name: rotate_database_credentials
+  parameter_keys:
+    - database_cluster
+    - rotation_window
+  parameter_fingerprints:
+    database_cluster: sha256:cluster-example
+  result_status: success
+  correlation_id: req-789
+  approval_id: cab-2026-044
+  policy_id: secret-rotation-policy-v3
+  bounded_rationale: approved rotation for scheduled credential rollover
+  evidence_reference: vault://agent-audit-evidence/req-789
+evidence_vault:
+  encrypted: true
+  access_controlled: true
+  retention_days: 30
+  access_logged: true
+  raw_payload_in_searchable_logs: false
+expected_status: pass
+false_positive_guardrail: full payloads may be retained separately when encrypted, access-controlled, retention-limited, and referenced from ordinary logs
