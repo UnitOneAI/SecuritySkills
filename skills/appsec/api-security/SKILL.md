@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -37,7 +37,8 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+7. **Identify export and download workflows** -- Bulk exports, async report jobs, pre-signed or signed download URLs, and file download endpoints that may outlive the initiating request.
+8. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -48,6 +49,32 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+---
+
+## Step 11.5: Bulk Export and Signed Download URL Evidence Gate
+
+For APIs that create exports, reports, archives, CSV downloads, async jobs, or pre-signed download URLs, verify the entire workflow, not just the initial request.
+
+Require evidence for:
+
+- **Authorization at each phase:** the API enforces object, tenant, and function authorization when creating the export, checking job status, and redeeming the download URL.
+- **Snapshot scope binding:** exported data is bound to the requesting user, tenant, filters, and object set at job creation time; later URL redemption cannot widen scope.
+- **Signed URL lifecycle:** URLs have short TTLs, are single-use or revocable where feasible, and are not logged, returned to untrusted referrers, or reusable after account/session revocation.
+- **Resource controls:** exports have row/file-size limits, cost quotas, timeout/cancellation behavior, concurrency limits, and abuse monitoring separate from ordinary read endpoints.
+- **Storage isolation:** generated files are stored under tenant/user-scoped keys with private ACLs and are deleted or expired after the retention window.
+- **Auditability:** export creation, completion, download, failure, and cancellation events are logged with actor, tenant, filters, object count, byte size, destination, and correlation ID.
+
+Do not treat a checked export creation endpoint as proof that later job-status or download endpoints are safe. Async exports often create new identifiers and URLs that need their own BOLA, BFLA, and resource-consumption evidence.
+
+Severity calibration:
+
+| Evidence Pattern | Severity |
+|------------------|----------|
+| Any authenticated user can download another tenant's export or widen export scope through job/download identifiers | Critical |
+| Signed URL for sensitive export is long-lived, reusable, unrevoked after authorization changes, or stored with public ACLs | High |
+| Export has authorization but lacks row/size/concurrency limits for expensive or sensitive data | Medium |
+| Export workflow lacks full audit fields, retention evidence, or cancellation behavior | Low |
 
 ---
 
@@ -92,7 +119,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -125,6 +152,20 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Remediation:** [specific fix with code example]
+- **Status:** Open
+
+#### API-SEC-EXPORT: [Bulk Export or Signed Download URL Finding]
+- **OWASP API Risk:** API1:2023 / API4:2023 / API5:2023 -- [primary mapping]
+- **Severity:** [Critical|High|Medium|Low|Informational]
+- **API Style:** [REST|GraphQL|gRPC|General]
+- **Workflow Phase:** Create export / Poll status / Download URL redemption / Cleanup
+- **Location:** [file:line or spec path]
+- **Authorization Scope:** [actor, tenant, object set, filters, function permission]
+- **Signed URL Controls:** [TTL, single-use, revocation, private storage, logging policy]
+- **Resource Controls:** [row/file-size limits, concurrency, timeout, cancellation, quotas]
+- **Audit Evidence:** [creation/completion/download/cancel events and correlation ID]
+- **Description:** [explanation]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
@@ -213,7 +254,9 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
-6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+6. **Checking only the export creation endpoint.** Async exports and signed downloads create new job IDs, file IDs, and URLs. Verify authorization and resource controls at create, status, download, and cleanup phases.
+
+7. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
 ---
 
@@ -239,3 +282,9 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added bulk export and signed download URL evidence gates covering phased authorization, URL lifecycle, storage isolation, resource controls, and auditability.

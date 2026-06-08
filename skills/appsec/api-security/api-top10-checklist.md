@@ -267,6 +267,36 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```python
+# VULNERABLE: Export job authorization is checked only at creation time.
+# The generated file can later be downloaded by anyone who guesses or receives the job ID.
+@app.post('/api/v1/reports/export')
+@require_auth
+def create_export():
+    job = ExportJob.create(
+        tenant_id=current_user.tenant_id,
+        filters=request.json.get('filters', {}),
+        requested_by=current_user.id
+    )
+    return {'job_id': job.id}
+
+@app.get('/api/v1/reports/export/<job_id>/download')
+@require_auth
+def download_export(job_id):
+    job = ExportJob.get(job_id)  # Missing tenant/user ownership check
+    return redirect(storage.presign(job.object_key, expires_in=86400))
+```
+
+```javascript
+// VULNERABLE: Long-lived reusable signed URL for sensitive bulk export
+const url = await s3.getSignedUrlPromise('getObject', {
+  Bucket: 'exports',
+  Key: `reports/${jobId}.csv`,
+  Expires: 7 * 24 * 60 * 60
+});
+return res.json({ url });
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
@@ -275,6 +305,11 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
+- For bulk exports and reports, enforce object/tenant/function authorization at export creation, job status, download URL redemption, and cleanup.
+- Bind export jobs to the requesting actor, tenant, filters, object set, and sensitivity at creation time. Never let a later download request widen scope through job IDs or file keys.
+- Use short-lived signed URLs, private storage ACLs, revocation or one-time-use controls where feasible, and retention policies that delete generated files after the approved window.
+- Apply row count, byte size, concurrency, timeout, cancellation, and per-user/tenant quota limits to exports separately from ordinary read endpoints.
+- Audit export creation, completion, download, cancellation, and failure with actor, tenant, filters, object count, byte size, destination, and correlation ID.
 
 ### Review Checklist
 
@@ -284,6 +319,11 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
+- [ ] Bulk export workflows re-check authorization at create, status, download, and cleanup phases.
+- [ ] Export job IDs, file IDs, and signed URLs are scoped to the requesting user/tenant and cannot be replayed by other users.
+- [ ] Signed download URLs have short TTLs, private storage ACLs, and revocation or one-time-use evidence for sensitive exports.
+- [ ] Export row count, file size, concurrency, timeout, retention, and cancellation limits are enforced server-side.
+- [ ] Export audit logs include actor, tenant, filters, object count, byte size, destination, and correlation ID.
 
 ---
 
