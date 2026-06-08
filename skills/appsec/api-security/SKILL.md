@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -48,6 +48,43 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+### State-Changing Idempotency and Replay Evidence
+
+For APIs that create, update, transfer, approve, delete, or otherwise trigger irreversible business actions, verify that retry, replay, and duplicate-submission behavior is explicitly controlled. Map findings primarily to API6:2023 (Unrestricted Access to Sensitive Business Flows), API4:2023 (Unrestricted Resource Consumption), and API8:2023 (Security Misconfiguration) depending on impact.
+
+**Evidence to collect:**
+
+| Evidence Area | What to Verify |
+|---|---|
+| State-changing operation inventory | POST, PUT, PATCH, DELETE, GraphQL mutations, webhooks, async job submissions, and payment/approval endpoints are identified |
+| Idempotency key enforcement | High-impact create/charge/transfer/approve operations require a client- or server-issued idempotency key scoped to actor, tenant, operation, and payload hash |
+| Replay window | Nonces, timestamps, signatures, and webhook delivery IDs expire within a documented window and cannot be reused after success |
+| Duplicate detection storage | The idempotency store is atomic, shared across replicas, and survives retries, queue redelivery, and failover |
+| Response consistency | Replayed requests return the original result or a safe conflict response, not a second side effect |
+| Authorization binding | Idempotency keys and nonces cannot be reused by another user, tenant, role, or modified payload |
+| Concurrency behavior | Parallel identical requests cannot bypass uniqueness, inventory, balance, quota, or approval checks |
+| Observability | Duplicate/replay rejects, idempotency-store errors, and retry storms are logged and alertable |
+
+**Patterns to search:**
+
+```
+Grep: "Idempotency-Key|idempotency|idempotent|nonce|replay|dedupe|deduplicate|duplicate" in **/*.{py,js,ts,java,go,cs,rb,php}
+Grep: "POST|PATCH|DELETE|mutation|charge|transfer|approve|refund|withdraw|create_job|enqueue" in **/*.{py,js,ts,java,go,cs,rb,php,yaml,yml,json}
+Grep: "unique.*constraint|ON CONFLICT|upsert|compareAndSet|SETNX|lock|mutex|transaction" in **/*.{py,js,ts,java,go,cs,rb,php,sql}
+Grep: "webhook.*signature|delivery.*id|event.*id|timestamp.*signature|retry.*webhook" in **/*.{py,js,ts,java,go,cs,rb,php}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Payment, transfer, privilege-change, or destructive endpoint can be replayed to trigger the side effect multiple times | Critical |
+| High-impact state-changing endpoint has no idempotency key, nonce, unique constraint, or equivalent duplicate control | High |
+| Idempotency key is not bound to user, tenant, operation, and payload, allowing cross-user or modified-payload reuse | High |
+| Idempotency storage is local memory only or not shared across replicas handling the same operation | Medium |
+| Webhook or async job replay controls trust timestamps/signatures but do not track delivery/event IDs | Medium |
+| Duplicate/replay rejection is not logged, monitored, or distinguishable from normal validation errors | Low |
 
 ---
 
@@ -92,7 +129,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.1.0
 
 ### Summary
 
@@ -129,6 +166,11 @@ The final review output must be structured as follows:
 - **Status:** Open
 
 [Repeat for each finding]
+
+### State-Changing Idempotency and Replay Evidence
+| Operation | Side Effect | Idempotency / Replay Control | Binding Scope | Duplicate Test Result | Status |
+|---|---|---|---|---|---|
+| [endpoint or mutation] | [charge / transfer / approval / delete / job enqueue] | [idempotency key, nonce, event ID, unique constraint, transaction] | [user, tenant, payload hash, operation] | [same result / conflict / duplicate side effect] | [Pass/Fail/Gap] |
 ```
 
 ---
@@ -214,6 +256,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+
+7. **Assuming retries are harmless.** Client retries, mobile double-taps, webhook redelivery, queue retries, and load-balancer failover can repeat the same state-changing operation. Sensitive APIs need idempotency or replay controls that are atomic, shared across replicas, and bound to the actor, tenant, operation, and payload.
 
 ---
 
