@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -227,7 +227,7 @@ Remediation: Require POST with a validated CSRF token. Use a CSRF middleware lib
 ## Step 5: Cryptography Review
 
 **ASVS Reference:** V6 -- Stored Cryptography
-**CWE Coverage:** CWE-798 (Hard-coded Credentials -- cryptographic keys)
+**CWE Coverage:** CWE-798 (Hard-coded Credentials -- cryptographic keys), CWE-327 (Use of a Broken or Risky Cryptographic Algorithm), CWE-326 (Inadequate Encryption Strength)
 
 ### 5.1 Controls to Verify
 
@@ -268,6 +268,45 @@ Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.g
 - [ ] All random values used for security purposes come from a CSPRNG.
 - [ ] Cryptographic keys are not hard-coded -- loaded from a key management system.
 - [ ] TLS certificates and configurations are not bypassed or weakened in code.
+
+### 5.4 Cryptographic Agility and Migration Evidence
+
+Review whether cryptographic choices can be upgraded safely when algorithms, key sizes, libraries, or compliance requirements change. Treat hard-coded algorithm assumptions as findings when they block migration away from weak or deprecated cryptography.
+
+**What to verify:**
+
+| Evidence Area | Review Questions |
+|---|---|
+| Algorithm and key identifiers | Does ciphertext, token, signature, or envelope metadata include an algorithm ID, key ID, and version instead of relying on one global default? |
+| Centralized crypto policy | Are allowed algorithms, modes, key sizes, and deprecation dates configured in one reviewed policy layer rather than scattered constants? |
+| Migration job safety | Is there a tested re-encryption, re-signing, password-hash upgrade, or token reissue path with batching, retry, and rollback behavior? |
+| Backward compatibility window | Are legacy decrypt/verify paths time-bound, monitored, and denied for new writes after the migration starts? |
+| Failure behavior | Do unknown algorithms, retired key IDs, malformed envelopes, and downgrade attempts fail closed with auditable errors? |
+| Test fixtures | Do tests cover old-format reads, new-format writes, mixed-version data, downgrade rejection, and migration idempotency? |
+| Telemetry and completion proof | Can operators prove how much data remains on legacy algorithms or keys before removing fallback code? |
+
+**Patterns to search:**
+
+```
+# Find hard-coded algorithms, key versions, and envelope metadata
+Grep: "AES|RSA|ECDSA|Ed25519|HMAC|PBKDF2|bcrypt|scrypt|Argon2|MD5|SHA1|SHA-1" in **/*.{py,js,ts,java,go,cs,rb,php}
+Grep: "algorithm|alg|cipher|mode|key_id|kid|keyVersion|key_version|crypto_version" in **/*.{py,js,ts,java,go,cs,rb,php,json,yaml,yml}
+
+# Find migration and fallback code
+Grep: "reencrypt|re-encrypt|resign|re-sign|rotate|migrate.*hash|upgrade.*hash|legacy.*decrypt|fallback.*decrypt" in **/*.{py,js,ts,java,go,cs,rb,php}
+Grep: "allow_legacy|legacy_crypto|deprecated_crypto|disable_legacy|retire.*key|retired.*key" in **/*.{py,js,ts,java,go,cs,rb,php,json,yaml,yml}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Application cannot distinguish legacy and current ciphertext, signatures, or hashes because no algorithm/key version is stored | High |
+| Legacy decrypt/verify fallback remains enabled indefinitely and accepts new writes or downgrade-controlled inputs | High |
+| Weak algorithm migration has no tested re-encryption, token reissue, password-hash upgrade, or rollback plan | Medium |
+| Unknown algorithm IDs, retired key IDs, or malformed envelopes fail open or silently use a default algorithm | Medium |
+| Crypto settings are duplicated across modules with no centralized policy or owner | Medium |
+| Operators cannot measure remaining legacy-encrypted records before deleting fallback code | Low |
 
 ---
 
@@ -445,7 +484,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.1.0
 
 ### Summary
 - Critical: [count]
@@ -477,6 +516,11 @@ The final review output must be structured as follows:
 | V2 Authentication | Yes/No | [count] | [result] |
 | V3 Session Management | Yes/No | [count] | [result] |
 | ... | ... | ... | ... |
+
+### Cryptographic Agility Evidence
+| Asset or Code Path | Current Algorithm/Key Version | Legacy Compatibility | Migration Evidence | Status |
+|---|---|---|---|---|
+| [ciphertext/token/hash/signature path] | [algorithm, mode, key ID, version] | [none / time-bound fallback / indefinite fallback] | [tests, job, telemetry, rollback, owner] | [Pass/Fail/Gap] |
 ```
 
 ---
@@ -540,6 +584,8 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Checking only whether today's algorithm is strong.** A codebase can use AES-GCM, Argon2id, or modern signing algorithms and still be brittle if ciphertexts, hashes, and signatures do not carry algorithm and key-version metadata. Without crypto agility, the next library deprecation, key compromise, or compliance change becomes a risky emergency migration.
 
 ---
 
