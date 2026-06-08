@@ -106,7 +106,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 
 | Skill | File | Frameworks |
 |-------|------|------------|
-| AWS Security Review | `skills/cloud/aws-review.md` | CIS AWS Benchmark v3.0 |
+| AWS Security Review | `skills/cloud/aws-review.md` | CIS AWS Benchmark v3.0, AWS Security Hub CSPM version-aware evidence |
 | Azure Security Review | `skills/cloud/azure-review.md` | CIS Azure Benchmark v2.1 |
 | GCP Security Review | `skills/cloud/gcp-review.md` | CIS GCP Benchmark v2.0 |
 | IaC Security | `skills/cloud/iac-security.md` | OWASP IaC Security, SLSA v1.0 |

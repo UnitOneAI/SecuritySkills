@@ -1,12 +1,69 @@
-# CIS AWS Foundations Benchmark v3.0.0 -- Detailed Checklist
+# CIS AWS Foundations Benchmark -- Detailed Checklist
 
-This file contains the detailed CIS benchmark checklist items for the AWS Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+This file contains benchmark version preflight rules and the detailed legacy CIS AWS v3.0.0 checklist items for the AWS Security Posture Review skill. See [SKILL.md](SKILL.md) for the main skill definition, process overview, and output format.
+
+---
+
+## Benchmark Version Preflight
+
+Run this preflight before using any section checklist. The goal is to prevent a legacy v3.0.0 checklist from being reported as current CIS AWS v5.0.0 coverage.
+
+### Required report fields
+
+Record these fields in the final assessment:
+
+| Field | Required Value |
+|-------|----------------|
+| `benchmark_version` | `CIS AWS Foundations Benchmark v5.0.0`, `v3.0.0`, or the exact requested version |
+| `benchmark_source` | CIS benchmark, AWS Security Hub CSPM, supplied evidence export, or manual evidence |
+| `benchmark_source_date` | Publication date if known, otherwise retrieval date |
+| `security_hub_standard_arn_or_version` | Standard ARN/version when Security Hub evidence is present |
+| `legacy_baseline` | `true` only for explicit v3.0.0 or legacy-compatible reviews |
+| `control_denominator_source` | Selected benchmark mapping, Security Hub controls, or `source-specific` |
+
+### Security Hub standard detection
+
+Look for Security Hub standard identifiers in IaC, exported findings, or documentation:
+
+```
+standards/cis-aws-foundations-benchmark/v/5.0.0
+standards/cis-aws-foundations-benchmark/v/3.0.0
+aws_securityhub_standards_subscription
+SecurityHubStandardArn
+StandardsSubscriptionArn
+GetEnabledStandards
+```
+
+If the enabled or requested standard is `v/5.0.0`, treat the review as a current v5.0.0 report. If only `v/3.0.0` evidence exists, mark the report as a legacy baseline unless the user supplies a verified v5.0.0 control mapping.
+
+### Control support status categories
+
+Use one of these support statuses for every finding:
+
+| Support Status | Meaning |
+|----------------|---------|
+| `current` | The control is verified against the selected benchmark version or Security Hub standard |
+| `legacy` | The control belongs to v3.0.0 or another explicitly requested legacy baseline |
+| `removed` | The requirement was removed from the selected current benchmark |
+| `unsupported` | Security Hub CSPM does not support this requirement for the selected standard |
+| `manual` | The requirement exists but needs human or account-level evidence not present in the repository |
+| `not evaluable` | Supplied artifacts are insufficient to determine pass/fail |
+
+Do not convert a removed, unsupported, manual, or not-evaluable item into a failed current control. Keep these counts separate from pass/fail compliance scoring.
+
+### Version-specific scoring rules
+
+- For v5.0.0 current reports, use verified v5.0.0 control evidence or Security Hub CSPM v5.0.0 findings before assigning current control IDs.
+- For v3.0.0 legacy reports, use the Sections 1-5 checklist below and mark `legacy_baseline: true`.
+- For mixed Security Hub standards, report each finding with its own benchmark version and evidence source.
+- If exact v5.0.0 mapping is unavailable, mark affected items `manual` or `not evaluable` instead of copying v3.0.0 identifiers into a current v5.0.0 report.
+- If a fixed-count legacy v3.0.0 score is included for comparison, label it as legacy, state the denominator source, and do not use it as the current v5.0.0 denominator.
 
 ---
 
 ## Section 1 -- Identity and Access Management
 
-Evaluate IAM configurations against CIS AWS v3.0.0 Section 1 recommendations.
+Evaluate IAM configurations against CIS AWS v3.0.0 Section 1 recommendations when the review is explicitly legacy v3.0.0 or v3-compatible. For current v5.0.0 reports, verify the current control mapping first and record `current` or `manual` support status before scoring.
 
 ### CIS 1.1 -- Maintain current contact details
 
