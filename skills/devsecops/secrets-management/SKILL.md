@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -315,6 +315,7 @@ For agentic systems (AI agents, automation bots, CI/CD agents), evaluate credent
 - Agents should request credentials at execution time, not store them at rest.
 - Vault AppRole or Kubernetes service account token injection is preferred over static API keys.
 - Credentials should be revoked or expire automatically after task completion.
+- Verify the bootstrap path used to obtain the first credential; do not accept "uses Vault" or "uses OIDC" without evidence that the identity exchange is bound, short-lived, and auditable.
 
 **Patterns to check:**
 
@@ -352,13 +353,57 @@ spec:
 
 ---
 
+#### 5.3 Secret-Zero and Bootstrap Credential Controls
+
+Every JIT or vault pattern still needs an initial machine identity. Review the "secret zero" path for CI/CD agents, bots, Kubernetes workloads, and AI agents before marking agent credential handling as mature.
+
+Verify:
+
+- **No paired bootstrap secrets at rest:** Do not store both Vault `role_id` and `secret_id`, cloud access key pairs, or broker client ID/secret pairs in the same repository, CI secret store, image, artifact, or Kubernetes Secret.
+- **Bound identity claims:** OIDC, workload identity, or Kubernetes auth roles must bind issuer, audience, subject, repository/project, branch/ref, environment, namespace, service account, and workflow/job identity where the platform supports it.
+- **Wrapped or one-time bootstrap material:** Vault AppRole `secret_id` should use response wrapping, short `secret_id_ttl`, and `secret_id_num_uses = 1` when AppRole is unavoidable.
+- **Session constraints:** Issued credentials should have TTLs aligned to task duration, non-renewable or bounded renewal, least-privilege policy, and automatic revocation on job completion or failure.
+- **No persistence after exchange:** Agents must not write exchanged tokens, dynamic credentials, or broker responses into logs, artifacts, caches, workspace files, crash dumps, or model/tool transcripts.
+- **Audit correlation:** Secret issuance logs should include actor, workload identity, source repository or namespace, run/job ID, requested scope, TTL, and revocation result.
+
+**Patterns to check:**
+
+```yaml
+# BAD: both halves of a Vault AppRole bootstrap stored in CI secrets
+env:
+  VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
+  VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
+
+# BAD: OIDC role accepts any branch or repository in an organization
+bound_subject: "repo:example-org/*"
+bound_audiences: []
+
+# BETTER: OIDC exchange is bound to one repo, protected ref, and environment
+bound_audiences:
+  - "vault://prod-deploy"
+bound_subject: "repo:example-org/payments:ref:refs/heads/main"
+bound_claims:
+  environment: "production"
+  workflow: "deploy.yml"
+
+# BETTER: AppRole secret_id is wrapped, one-use, and short lived
+secret_id_ttl: "10m"
+secret_id_num_uses: 1
+token_ttl: "15m"
+token_max_ttl: "30m"
+```
+
+**Finding classification:** Paired long-lived bootstrap credentials stored together is **Critical**. Unbound OIDC/workload identity roles that can be assumed from untrusted repos, branches, namespaces, or workflows are **High**. Bootstrap tokens written to logs/artifacts/caches are **High**. Missing audit correlation for automated secret issuance is **Medium**.
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed; paired long-lived bootstrap credentials stored together. |
+| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault; unbound OIDC/workload identity roles; bootstrap tokens persisted after exchange. |
+| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection); missing audit correlation for automated secret issuance. |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -388,6 +433,12 @@ spec:
 | DB credentials | Vault dynamic | On-demand | Yes | N/A (dynamic) |
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
+
+### Machine Identity Bootstrap Review
+
+| Workload / Agent | Bootstrap Method | Bound Claims | TTL / Uses | Persistence Controls | Audit Correlation | Status |
+|------------------|------------------|--------------|------------|----------------------|-------------------|--------|
+| deploy-bot | OIDC to Vault | repo/ref/env/workflow | 15m / n/a | no logs/artifacts/cache | run ID + actor | Pass/Fail |
 
 ### Findings
 
@@ -442,6 +493,8 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Solving rotation while ignoring secret zero.** A system can issue short-lived dynamic credentials and still be unsafe if the bootstrap identity is a long-lived static pair, an over-broad OIDC trust policy, or a reusable AppRole secret ID stored in CI. Review the identity exchange that obtains the first credential, not only the credential eventually returned by the vault.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -471,5 +524,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Add secret-zero bootstrap credential gates for OIDC, workload identity, AppRole, and automated agents.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
