@@ -62,6 +62,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
 - Container registry configurations (if available)
+- Image signing, SBOM, provenance attestation, and admission policy evidence (if available)
 
 ---
 
@@ -115,7 +116,46 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Image Provenance and Admission Evidence Chain
+
+**Objective:** Verify that production workloads can only run images with an
+auditable source, immutable reference, vulnerability/SBOM context, and admission
+enforcement. NIST SP 800-190 treats image and registry risks as distinct from
+runtime hardening; a pod can be otherwise hardened but still run an unsigned or
+unexpected image.
+
+For every production workload image, record:
+
+- **Rendered image reference:** The final image after Helm/Kustomize/values overrides, not only the template default.
+- **Resolved digest:** Prefer `registry/name@sha256:<digest>` in manifests. If tags are used, resolve and record the digest reviewed.
+- **Build provenance:** CI run, commit SHA, builder identity, and artifact registry path that produced the image.
+- **Signature verification:** Evidence from the organization's signing system, such as Cosign, Notary, registry-native signing, or an equivalent trust service.
+- **SBOM / attestation:** SBOM or provenance attestation attached to the same image digest, not a different tag.
+- **Admission enforcement:** Policy that blocks unsigned, untrusted, or mutable images at deploy time (OPA/Gatekeeper, Kyverno, admission webhook, registry policy, or equivalent).
+- **Exception lifecycle:** Owner, reason, expiry date, compensating controls, and follow-up evidence for any unsigned or tag-only image exception.
+
+**What to look for:**
+
+```
+CONT-PROV-01: Production workload uses a mutable tag without a recorded digest
+CONT-PROV-02: Image signature exists but is verified against a tag instead of the deployed digest
+CONT-PROV-03: SBOM or provenance attestation cannot be linked to the deployed digest
+CONT-PROV-04: Admission policy is configured in audit/warn mode only for production namespaces
+CONT-PROV-05: Admission policy checks signatures but not trusted identity, issuer, or key source
+CONT-PROV-06: Helm/Kustomize values can override a signed digest with an unsigned tag
+CONT-PROV-07: Image exception has no owner, expiry, or compensating control evidence
+CONT-PROV-08: Registry lifecycle policy allows stale or superseded vulnerable images to remain deployable
+```
+
+**Evidence table:**
+
+| Workload | Rendered Image | Digest | Signature Verified | SBOM/Attestation | Admission Policy | Exception |
+|---|---|---|---|---|---|---|
+| `deploy/api` | `registry/app/api:1.4.2` | `sha256:...` | Pass / Fail / Missing | Present / Missing | Enforced / Audit-only / Missing | None / details |
+
+---
+
+### Step 8: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -127,8 +167,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |
-| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
-| **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, secrets as env vars |
+| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, unsigned production images admitted without enforcement, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
+| **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags without recorded digest, missing seccomp profile, read-write root filesystem, secrets as env vars |
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
 | **Informational** | Observation with no direct security impact | Image size optimization, multi-stage build suggestions, label recommendations |
 
@@ -161,6 +201,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | RBAC | CIS K8s 5.1.x | X | X | X | X | X |
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
+| Image Provenance | NIST 800-190 Image/Registry | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
 
@@ -184,6 +225,12 @@ Produce the final report using the structure defined in the Output Format sectio
 |----------|-----------|-----------|------------|
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
+
+### Image Provenance Evidence
+
+| Workload | Rendered Image | Digest Reviewed | Signature Evidence | SBOM / Attestation | Admission Enforcement | Exceptions |
+|----------|----------------|-----------------|--------------------|--------------------|-----------------------|------------|
+| deploy/api | registry/app/api:1.4.2 | sha256:... | Pass / Fail / Missing | Present / Missing | Enforced / Audit-only / Missing | None / owner + expiry |
 
 ### Prioritized Remediation Plan
 
@@ -257,6 +304,8 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Image pull policy is not provenance.** `imagePullPolicy: Always` only affects pull behavior; it does not prove the image is signed, digest-pinned, or from the expected build pipeline.
+9. **Signatures and attestations must match the deployed digest.** A signature or SBOM attached to `app:1.4.2` is weak evidence if the workload actually deploys a different digest through Helm values or registry tag mutation.
 
 ---
 
@@ -288,6 +337,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
+- Sigstore Cosign verification: https://docs.sigstore.dev/cosign/verifying/verify/
+- Kubernetes admission controllers: https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/
 
 ---
 

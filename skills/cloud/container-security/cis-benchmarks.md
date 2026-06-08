@@ -596,6 +596,36 @@ Evaluate container runtime configurations against NIST SP 800-190 countermeasure
 | **CM-4:** Use immutable tags or digests | `image: nginx@sha256:...` preferred over `image: nginx:1.25` |
 | **CM-5:** Remove unnecessary packages | No curl, wget, netcat, or shells in production images |
 
+#### Image Provenance Evidence Chain
+
+For production workloads, do not treat image scanning, signing, and digest
+pinning as separate checkboxes. Verify that the exact image admitted to the
+cluster is the same artifact that was built, scanned, signed, and approved.
+
+**Required evidence:**
+
+| Evidence | What to verify | Failure pattern |
+|---|---|---|
+| Rendered workload image | Helm/Kustomize output shows the final `image:` value | Template is pinned but environment values override it with a mutable tag |
+| Digest | Deployed image resolves to a reviewed `sha256` digest | Review evidence is tied to a tag that can move |
+| Signature | Signature verifies for the deployed digest and trusted signer identity | Signature exists, but trusted identity or digest match is not checked |
+| SBOM / provenance | SBOM or provenance attestation is attached to the deployed digest | SBOM belongs to a different tag or older digest |
+| Admission enforcement | Production namespaces reject unsigned/untrusted images | Policy is in audit/warn mode only, or excludes critical namespaces |
+| Exceptions | Exception has owner, expiry, and compensating controls | Long-lived unsigned image exception with no expiry |
+
+**Finding patterns:**
+
+```
+CONT-PROV-01: Production workload uses a mutable tag without a recorded digest
+CONT-PROV-02: Image signature exists but is verified against a tag instead of the deployed digest
+CONT-PROV-03: SBOM or provenance attestation cannot be linked to the deployed digest
+CONT-PROV-04: Admission policy is configured in audit/warn mode only for production namespaces
+CONT-PROV-05: Admission policy checks signatures but not trusted identity, issuer, or key source
+CONT-PROV-06: Helm/Kustomize values can override a signed digest with an unsigned tag
+CONT-PROV-07: Image exception has no owner, expiry, or compensating control evidence
+CONT-PROV-08: Registry lifecycle policy allows stale or superseded vulnerable images to remain deployable
+```
+
 ### NIST 800-190: Orchestrator Countermeasures
 
 | Countermeasure | What to Check |
