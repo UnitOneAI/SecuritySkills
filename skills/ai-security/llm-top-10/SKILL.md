@@ -313,6 +313,36 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Do not store raw source text in vector metadata unless access controls are equivalent to the source document's classification.
 - Monitor vector store access patterns for anomalous query volumes or bulk extraction attempts.
 
+#### Retrieval Authorization Evidence Gates
+
+RAG authorization must be proven end to end. A filtered vector query is insufficient if caches, rerankers, hybrid search, chunk aggregation, or prompt assembly can reintroduce unauthorized content.
+
+Treat the following as findings when evidence is missing:
+
+```
+LLM08-RETRIEVAL-AUTH-01: Retrieval uses pre-query tenant or user filters but does not revalidate returned chunks against the authenticated user's document and chunk ACL before prompt assembly
+LLM08-RETRIEVAL-AUTH-02: Retrieval or embedding cache keys omit tenant, user, group membership, permission version, source document ID, or public/private classification
+LLM08-RETRIEVAL-AUTH-03: Reranker, hybrid search, or keyword merge logic drops ACL metadata, source tenant, document owner, chunk policy, or authorization decision fields
+LLM08-RETRIEVAL-AUTH-04: Public documents are shared across tenants without explicit public classification, immutable source metadata, and reviewer evidence that they are safe for cross-tenant retrieval
+LLM08-RETRIEVAL-AUTH-05: Permission, group membership, document sharing, or revocation changes do not invalidate retrieval caches, permission-versioned indexes, or precomputed reranker results
+LLM08-RETRIEVAL-AUTH-06: Chunk-level ACLs, redacted sections, inherited folder permissions, or document-level exceptions are not preserved through chunking and embedding metadata
+LLM08-RETRIEVAL-AUTH-07: Prompt assembly accepts retrieved context without recording authorization decision, source metadata, similarity score, reranker score, and residual cross-tenant risk
+```
+
+**Required evidence matrix:**
+
+| Evidence Area | Reviewer Must Confirm |
+|---|---|
+| Pre-query filter | Query construction includes tenant/user/group/document scope derived from the authenticated caller |
+| Post-retrieval ACL validation | Every returned chunk is checked against document and chunk ACL before prompt insertion |
+| Cache scope | Retrieval, embedding, and reranker caches are keyed by tenant, user/group, permission version, and public/private classification |
+| Metadata preservation | Vector, keyword, hybrid, reranker, and chunk aggregation stages preserve ACL and source document metadata |
+| Public document classification | Cross-tenant public content has explicit classification and immutable provenance |
+| Permission invalidation | Group, sharing, ACL, and revocation changes invalidate caches and permission-versioned indexes |
+| Prompt assembly audit | Final context records source IDs, authorization decision, score, and any residual cross-tenant risk |
+
+> **Gate:** Do not mark LLM08 retrieval authorization as effective until pre-query filters, post-retrieval ACL validation, cache scoping, metadata preservation, public classification, permission-change invalidation, and prompt assembly audit evidence are all documented.
+
 **CWE Mapping:** CWE-284 (Improper Access Control), CWE-311 (Missing Encryption of Sensitive Data)
 
 ---
@@ -435,6 +465,12 @@ Structure the findings report as follows:
 |----|---------------|----------|----------|--------|
 | FINDING-001 | LLM0X:2025 | High | P1 | Open |
 
+## LLM08 Retrieval Authorization Evidence
+
+| Pipeline Stage | Authorization Evidence | ACL Metadata Preserved | Cache Scope | Permission Version | Residual Cross-Tenant Risk |
+|---|---|---|---|---|---|
+| [pre-query / retrieval / reranker / hybrid search / prompt assembly] | [filter or ACL decision] | [tenant/user/group/document/chunk fields] | [tenant/user/group/permission/public classification] | [version or invalidation trigger] | [none/accepted/open] |
+
 ## Recommendations
 
 [Prioritized list of remediation actions]
@@ -476,6 +512,8 @@ These are the five most frequent mistakes agents make when performing LLM securi
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
 
+6. **Trusting the first retrieval filter as complete authorization.** RAG pipelines can lose ACL metadata in caches, rerankers, hybrid search, chunk aggregation, or prompt assembly. Verify authorization after each stage, not only in the vector query.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -504,6 +542,15 @@ When performing a review using this skill:
 - LLM05:2025 Improper Output Handling: https://genai.owasp.org/llmrisk/llm05-improper-output-handling/
 - LLM06:2025 Excessive Agency: https://genai.owasp.org/llmrisk/llm06-excessive-agency/
 - LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm07-system-prompt-leakage/
-- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
+- LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-excessive-agency/
 - LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
 - LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+
+---
+
+## 10. Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.1 | 2026-06-08 | Added LLM08 retrieval authorization evidence gates for post-retrieval ACL validation, cache scoping, reranker metadata preservation, public classification, and permission-change invalidation |
+| 1.0.0 | 2025-03-06 | Initial release |
