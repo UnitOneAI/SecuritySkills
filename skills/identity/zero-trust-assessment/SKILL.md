@@ -4,15 +4,16 @@ description: >
   Performs a Zero Trust Architecture maturity assessment against NIST SP 800-207
   and the CISA Zero Trust Maturity Model v2. Evaluates all five CISA ZT pillars
   (Identity, Devices, Networks, Applications & Workloads, Data) across maturity
-  stages. Covers microsegmentation readiness, continuous verification, and
-  produces a pillar-by-pillar maturity scorecard with remediation roadmap.
+  stages. Covers microsegmentation readiness, continuous verification,
+  policy-decision traceability, posture freshness, and produces a
+  pillar-by-pillar maturity scorecard with remediation roadmap.
 tags: [identity, zero-trust, network, architecture]
 role: [security-engineer, architect, vciso]
 phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -341,6 +342,52 @@ ZT-GOV-04: No zero trust roadmap with milestones and budget
 ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 ```
 
+### Step 7: Policy Decision Trace and Posture Freshness Evidence
+
+**Objective:** Prove that zero trust allow/deny outcomes are made per session by a policy decision point and enforced by a policy enforcement point using fresh subject, device, workload, resource, and risk signals.
+
+Architecture diagrams, ZTNA product names, VPN replacement, or IP ACL remnants are not enough to score continuous verification. Require decision-level evidence that binds the subject, device, resource, policy version, risk context, and enforcement point for the same request.
+
+#### Policy Decision Trace Record
+
+For each representative critical access path, request one sample allow decision and one sample deny or step-up decision.
+
+| Field | Required evidence |
+|---|---|
+| Decision ID and timestamp | Stable PDP decision ID, request timestamp, and timezone |
+| Subject | User, service account, workload identity, group, and assurance level |
+| Device or workload | Device ID, managed/BYOD status, EDR/MDM source, workload identity, and posture state |
+| Resource and action | Application, API, data object, operation, environment, and sensitivity |
+| Policy context | Policy ID, policy version, rule matched, risk score, and input attributes used |
+| PDP and PEP binding | PDP service ID, PEP/gateway/proxy ID, enforcement action, and session ID |
+| Decision result | Allow, deny, step-up, quarantine, monitor-only, or break-glass with reason |
+| Retention and replay | Log source, retention period, query link, and ability to replay or correlate the event |
+
+If a vendor log cannot expose every field, mark missing fields as `Not Evaluable` and record the compensating evidence. Do not treat a high-level access log as a policy decision trace unless it includes the policy and enforcement identifiers.
+
+#### Posture Freshness and Revocation Matrix
+
+| Signal | Freshness threshold | Observed age | Fallback state | Revocation behavior | Evidence source |
+|---|---|---|---|---|---|
+| Identity risk | [minutes/hours] | [age] | [cached / live / unavailable] | [step-up / deny / no action] | [IdP / risk engine] |
+| Device posture | [minutes/hours] | [age] | [cached / live / offline grace] | [session revoked / rechecked / no action] | [MDM / EDR / CDM] |
+| Workload posture | [minutes/hours] | [age] | [cached / live / unknown] | [policy re-evaluated / no action] | [CNAPP / service mesh] |
+| Resource sensitivity | [minutes/hours/days] | [age] | [cached / live / manual] | [mask / deny / no action] | [DSPM / classification] |
+| Threat intelligence | [minutes/hours] | [age] | [cached / stale / unavailable] | [block / monitor / no action] | [TI feed / SIEM] |
+
+**What to look for:**
+
+```
+ZT-TRACE-01: No PDP decision ID linking subject, device, resource, policy, and action.
+ZT-TRACE-02: PEP access log exists but cannot prove which PDP policy version authorized the session.
+ZT-TRACE-03: Device or workload posture is cached beyond the documented freshness threshold.
+ZT-TRACE-04: Risk change, EDR isolation, MDM non-compliance, or user disablement does not trigger re-evaluation or revocation.
+ZT-TRACE-05: Offline or BYOD fallback grants access without expiry, scope reduction, or post-reconnect revalidation.
+ZT-TRACE-06: Emergency or break-glass access bypasses policy trace logging.
+ZT-TRACE-07: Decision logs are retained for less time than investigation, compliance, or access-review needs.
+ZT-TRACE-08: Legacy VPN, IP ACL, or service account path bypasses the PDP/PEP enforcement path.
+```
+
 ---
 
 ## Findings Classification
@@ -348,8 +395,8 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 | Severity | Definition | Examples |
 |---|---|---|
 | **Critical** | Fundamental zero trust gap enabling undetected compromise | Flat network with no segmentation; no MFA; no device compliance |
-| **High** | Major pillar at Traditional maturity with exploitation potential | No microsegmentation; VPN as sole remote access; no DLP |
-| **Medium** | Pillar at Initial maturity or cross-cutting capability gap | Partial ZTNA deployment; SIEM without cross-pillar correlation |
+| **High** | Major pillar at Traditional maturity with exploitation potential | No microsegmentation; VPN as sole remote access; no DLP; PDP/PEP decision trace missing for critical apps |
+| **Medium** | Pillar at Initial maturity or cross-cutting capability gap | Partial ZTNA deployment; SIEM without cross-pillar correlation; posture cached beyond threshold but bounded by expiry |
 | **Low** | Pillar at Advanced seeking Optimal or process improvement | Missing automation; governance documentation gaps |
 
 ---
@@ -390,6 +437,16 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 - Visibility & Analytics: [maturity]
 - Automation & Orchestration: [maturity]
 - Governance: [maturity]
+
+### Policy Decision Trace Evidence
+| Access path | Decision ID | Subject | Device / workload | Resource / action | Policy version | PDP | PEP | Result | Trace status |
+|---|---|---|---|---|---|---|---|---|---|
+| [app/API/data path] | [id or Not Evaluable] | [identity] | [asset/workload] | [resource/action] | [version] | [service] | [gateway/proxy] | [allow/deny/step-up] | [Complete / Partial / Not Evaluable] |
+
+### Posture Freshness and Revocation Evidence
+| Signal | Threshold | Observed age | Fallback state | Revocation behavior | Evidence source | Finding |
+|---|---|---|---|---|---|---|
+| [identity/device/workload/resource/TI] | [limit] | [age] | [live/cached/offline] | [deny/step-up/revoke/no action] | [log/source] | [none or finding ID] |
 
 ### Findings by Severity
 - Critical: [count]
@@ -442,6 +499,8 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Assuming a ZTNA product proves per-session authorization** -- Product deployment does not prove the PDP evaluated the current subject, device, resource, risk, and policy version for a specific request. Require decision trace evidence.
+9. **Accepting stale posture as continuous verification** -- Cached compliance can be valid for offline or BYOD edge cases, but only when there is a documented freshness threshold, expiry, reduced scope, and revocation behavior after a risk change.
 
 ---
 
@@ -487,4 +546,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-08 | Added policy decision trace and posture freshness evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
