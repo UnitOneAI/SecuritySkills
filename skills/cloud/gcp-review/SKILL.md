@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -78,6 +78,26 @@ Use Glob to locate all GCP-related infrastructure definitions.
 
 Record all discovered files. If no GCP configurations are found, report that finding and halt.
 
+Build an evidence inventory before scoring controls:
+
+```
+| Evidence Source | Type | Project/Region Coverage | Export/Observation Date | Controls Supported | Limitations |
+|-----------------|------|-------------------------|-------------------------|--------------------|-------------|
+| terraform/*.tf | IaC | [projects/regions] | [git commit/date] | [CIS IDs] | [live drift unknown] |
+| gcloud-export.json | gcloud export | [projects/regions] | [timestamp] | [CIS IDs] | [missing folders/services] |
+```
+
+For each control, distinguish between:
+- **IaC intent:** desired state from Terraform, Deployment Manager, org policy, or IAM policy files
+- **Live/exported state:** gcloud, Cloud Asset Inventory, Security Command Center, Policy Analyzer, or console export evidence
+- **Partial evidence:** only some projects, folders, regions, services, or resource types covered
+- **Missing evidence:** no reliable artifact for the control
+
+Do not mark a control as Pass when the only evidence is stale, partial, or an
+unvalidated IaC declaration for an environment where live drift is in scope.
+Use Not Evaluable or document a lower-confidence result until current evidence
+covers the assessed project, folder, organization, and region set.
+
 ---
 
 ### Step 2 through Step 8: CIS Benchmark Evaluation (Sections 1-7)
@@ -92,6 +112,13 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 
 Produce the final report using the structure defined in the Output Format section.
+
+Before finalizing, verify that every Passed or Failed control references a
+specific evidence source from the inventory, including the evidence type,
+project/folder/organization coverage, region coverage, and freshness. If
+multiple evidence sources conflict, prefer current live/exported state for
+deployed environments and record the IaC drift or documentation mismatch as a
+finding.
 
 ---
 
@@ -117,6 +144,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Framework: CIS Google Cloud Platform Foundation Benchmark v2.0.0
 - Files reviewed: <list of IaC files>
+- Evidence basis: <IaC / gcloud export / live configuration / mixed>
+- Evidence freshness: <export dates or git commit range>
+- Project/Folder/Region coverage: <projects, folders, org, and regions assessed>
+- Evidence limitations: <missing projects, folders, regions, services, or live-state gaps>
 
 ### Executive Summary
 - Total CIS recommendations evaluated: <N>
@@ -148,6 +179,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Evidence Source:** <IaC file / gcloud export / Cloud Asset Inventory / Security Command Center / live observation>
+- **Evidence Date:** <timestamp, commit, or observation date>
+- **Coverage:** <project(s), folder(s), region(s), services, sample size>
+- **Confidence:** High / Medium / Low
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -194,6 +229,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Treating IaC as proof of deployed GCP state without freshness checks.** Terraform or Deployment Manager shows intended configuration, not necessarily the live project or organization. When drift, console changes, partial project exports, or stale `gcloud` output are possible, record the evidence limitation and lower the confidence instead of presenting the control as fully verified.
 
 ---
 
@@ -225,4 +261,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added evidence source, freshness, coverage, and confidence gates for GCP CIS review conclusions.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
