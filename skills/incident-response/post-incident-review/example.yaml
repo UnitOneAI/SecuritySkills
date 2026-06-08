@@ -1,0 +1,24 @@
+incident: IR-2026-0142
+source: upstream-email-provider-outage
+customer_data_affected: none_confirmed
+legal_decision:
+  regulator_notice_required: false
+  reason: no personal-data access, no contractual notification threshold met
+communications:
+  status_page_update: published
+  customer_email: not_applicable
+  insurer_notice: not_applicable
+  not_applicable_reason: no personal-data access, no contractual notification threshold met
+vendor_rca:
+  due_date: 2026-06-14
+  current_status: pending_from_supplier
+third_party_incident:
+  supplier: managed-auth-provider
+  dependency: login and MFA service
+  evidence_available:
+    - status-page events
+    - support case transcript
+  evidence_missing:
+    - final supplier RCA
+    - customer-specific impact statement
+    - contractual SLA breach determination
