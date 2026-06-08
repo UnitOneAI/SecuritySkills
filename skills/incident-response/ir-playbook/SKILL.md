@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -109,6 +109,37 @@ Verify that the foundational elements for incident response are in place. If gap
 | External IR retainer (if applicable) | [ ] | |
 | Regulatory notification requirements documented | [ ] | GDPR, HIPAA, state laws, SEC |
 | Evidence storage with chain-of-custody procedures | [ ] | |
+
+#### Communication Channel Integrity Gate
+
+For SEV-1 and SEV-2 incidents, verify that response communications are not dependent on infrastructure the attacker may control or monitor. Treat the communication plan as an evidence item, not just an operational preference.
+
+**Evidence to collect:**
+
+| Evidence Area | What to Verify |
+|---|---|
+| Channel risk assessment | Corporate email, chat, ticketing, phone bridge, and paging systems are classified as trusted, suspect, or compromised |
+| Out-of-band channel activation | The incident commander records when the response moved to personal phones, dedicated secure messaging, an external bridge, or an IR-retainer portal |
+| Participant verification | War-room participants, external responders, legal counsel, insurers, and vendors are verified through pre-established contacts or callback procedures |
+| Access control | War-room membership is limited to need-to-know participants and removed when roles change |
+| Message retention | Decisions, approvals, containment orders, and legal/regulatory notifications are preserved without exposing sensitive evidence in compromised channels |
+| Attacker visibility review | Responders explicitly assess whether the adversary has access to mailboxes, chat exports, IdP admin logs, ticket queues, or endpoint management tools |
+| Command authorization | High-impact actions such as isolation, credential revocation, public statements, and regulatory notices are tied to a named approver and communication channel |
+| Return-to-normal criteria | The team documents when internal channels are considered safe to resume and what evidence supports that decision |
+
+**What to look for:**
+
+```
+IR-COMMS-01: SEV-1/SEV-2 response uses corporate email or chat before confirming the attacker cannot monitor it
+IR-COMMS-02: No documented trigger for switching to out-of-band communications
+IR-COMMS-03: War-room participants or external responders are not verified through trusted contact records
+IR-COMMS-04: Containment orders are issued in chat without named approver, timestamp, and action owner
+IR-COMMS-05: Incident details, credentials, or sensitive evidence are pasted into channels later deemed compromised
+IR-COMMS-06: No record of who had war-room access during the incident
+IR-COMMS-07: Team resumes normal communication channels without evidence that mailbox/chat/ticket access is clean
+```
+
+**Finding classification:** Using attacker-visible communications for active containment decisions is **High**. Missing participant verification, approver traceability, or return-to-normal evidence is **Medium**. Incomplete message retention is **Low** unless it affects legal, regulatory, or containment decisions.
 
 ### Phase 2: Detection and Analysis (NIST) / Identification (SANS)
 
@@ -412,6 +443,11 @@ and recommended immediate actions. Lead with the most critical fact.]
 |---|---|---|---|
 | [Executive / Legal / Regulator / Customer / Insurance] | [Yes / No / Pending] | [timestamp] | [Email / Phone / Portal] |
 
+### Communication Channel Integrity
+| Channel | Trust Status | Approved Use | Participants / Access Control | Evidence Preserved | Return-to-Normal Criteria |
+|---|---|---|---|---|---|
+| [Email / chat / bridge / secure messaging / IR portal] | [Trusted / Suspect / Compromised] | [Allowed / Out-of-band only / Disabled] | [verified participants, owner, access changes] | [decision log, transcript, ticket ID] | [evidence required before reuse] |
+
 ### Escalation Decisions
 [Document any escalation triggers hit and actions taken]
 
@@ -454,7 +490,7 @@ Responders under pressure often prioritize containment speed over evidence prese
 
 ### Pitfall 2: Alerting the Attacker During Investigation
 
-Communicating about the incident over channels the attacker may be monitoring (corporate email, Slack, Teams) can tip off the adversary, prompting them to accelerate data exfiltration, deploy destructive payloads, or cover their tracks. For SEV-1 and SEV-2 incidents, use out-of-band communication channels (personal phones, dedicated secure messaging, physical meetings) until the attacker's access to communication systems has been assessed and ruled out.
+Communicating about the incident over channels the attacker may be monitoring (corporate email, Slack, Teams) can tip off the adversary, prompting them to accelerate data exfiltration, deploy destructive payloads, or cover their tracks. For SEV-1 and SEV-2 incidents, use out-of-band communication channels (personal phones, dedicated secure messaging, physical meetings) until the attacker's access to communication systems has been assessed and ruled out. Record who authorized the communication switch, who joined the war room, which channel carried containment orders, and what evidence justified returning to normal channels.
 
 ### Pitfall 3: Failing to Establish a Clear Incident Commander
 
