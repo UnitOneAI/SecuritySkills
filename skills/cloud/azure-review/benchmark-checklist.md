@@ -522,6 +522,119 @@ Check for `traffic_analytics` block in flow log configuration.
 
 ---
 
+## Supplemental AKS Cluster Posture Review
+
+Evaluate `azurerm_kubernetes_cluster`, `azurerm_kubernetes_cluster_node_pool`, Bicep `Microsoft.ContainerService/managedClusters`, and AKS export evidence when an Azure environment runs Azure Kubernetes Service. These checks are supplemental to CIS Azure v2.1.0 because they focus on cluster-level Azure controls; use `skills/cloud/container-security/SKILL.md` for Kubernetes workload manifests.
+
+### AZ-AKS-01 -- Ensure AKS Clusters Are Explicitly Inventoried
+
+**Grep patterns:**
+
+```
+resource "azurerm_kubernetes_cluster"
+resource "azurerm_kubernetes_cluster_node_pool"
+Microsoft.ContainerService/managedClusters
+azurerm_kubernetes_cluster
+```
+
+If any AKS resource is present, require an AKS evidence row in the final report. Missing API server exposure, identity, workload identity, monitoring, or network evidence is **Not Evaluable**.
+
+### AZ-AKS-02 -- Ensure API Server Exposure Is Private or Tightly Scoped
+
+```hcl
+# BAD: public API server with broad authorized range
+resource "azurerm_kubernetes_cluster" "bad" {
+  private_cluster_enabled         = false
+  api_server_authorized_ip_ranges = ["0.0.0.0/0"]
+}
+```
+
+Require evidence for `private_cluster_enabled`, `private_cluster_public_fqdn_enabled`, and `api_server_authorized_ip_ranges`. A public API server can be acceptable only with narrow authorized ranges and documented compensating controls.
+
+### AZ-AKS-03 -- Ensure Identity, RBAC, and Local Accounts Are Hardened
+
+```hcl
+# BAD: local accounts and no RBAC
+resource "azurerm_kubernetes_cluster" "bad" {
+  role_based_access_control_enabled = false
+  local_account_disabled            = false
+
+  service_principal {
+    client_id     = var.legacy_client_id
+    client_secret = var.legacy_client_secret
+  }
+}
+```
+
+Look for:
+
+```
+local_account_disabled = false
+role_based_access_control_enabled = false
+service_principal {
+identity {
+```
+
+Prefer managed identities and disabled local accounts. Treat legacy service principals, enabled local accounts, or disabled RBAC as **High** unless the cluster is explicitly non-production and compensating controls are documented.
+
+### AZ-AKS-04 -- Ensure Microsoft Entra Workload ID Is Enabled and Evidenced
+
+```hcl
+resource "azurerm_kubernetes_cluster" "good" {
+  oidc_issuer_enabled       = true
+  workload_identity_enabled = true
+}
+```
+
+Require cluster-level `oidc_issuer_enabled` and `workload_identity_enabled`, plus workload/service-account annotations or federated identity credential evidence for pods that access Azure resources.
+
+### AZ-AKS-05 -- Ensure NetworkPolicy and Private Routing Evidence Exists
+
+```hcl
+# BAD: no network policy evidence
+resource "azurerm_kubernetes_cluster" "bad" {
+  network_profile {
+    network_plugin = "kubenet"
+  }
+}
+```
+
+Require `network_profile` evidence for network plugin, network policy, private subnet attachment, and egress model. Production clusters without NetworkPolicy or equivalent provider-managed controls should be **High** unless documented otherwise.
+
+### AZ-AKS-06 -- Ensure Azure Policy, Defender, and Admission Guardrails Are Reviewed
+
+```hcl
+# BAD: policy disabled and no Defender profile
+resource "azurerm_kubernetes_cluster" "bad" {
+  azure_policy_enabled = false
+}
+```
+
+Check for:
+
+```
+azure_policy_enabled = true
+microsoft_defender {
+azurerm_security_center_subscription_pricing
+resource_type = "Containers"
+```
+
+Defender for Containers at the subscription level is useful but does not prove cluster admission and policy guardrails are enabled. Record both subscription-level plan evidence and cluster-level add-on/profile evidence where available.
+
+### AZ-AKS-07 -- Ensure Log Analytics and Diagnostic Evidence Exists
+
+```hcl
+resource "azurerm_kubernetes_cluster" "good" {
+  oms_agent {
+    log_analytics_workspace_id = azurerm_log_analytics_workspace.aks.id
+  }
+}
+```
+
+Require evidence for `oms_agent`, diagnostic settings, Log Analytics workspace routing, and Defender signal collection. Missing monitoring for production AKS clusters should be **High** or **Not Evaluable** if the evidence is incomplete.
+
+---
+
 ## Section 7 -- Virtual Machines
 
 Evaluate VM configurations against Section 7 recommendations.

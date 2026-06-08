@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -25,7 +25,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security assessment of Azure environments against the **CIS Microsoft Azure Foundations Benchmark v2.1.0**. The benchmark is organized into nine sections covering identity management, security center, storage, database services, logging and monitoring, networking, virtual machines, Key Vault, and App Service. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Bicep, ARM templates), Azure CLI output, or configuration files available in the repository.
+This skill performs a structured security assessment of Azure environments against the **CIS Microsoft Azure Foundations Benchmark v2.1.0**. The benchmark is organized into nine sections covering identity management, security center, storage, database services, logging and monitoring, networking, virtual machines, Key Vault, and App Service. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Bicep, ARM templates), Azure CLI output, or configuration files available in the repository. When AKS clusters are present, the review also collects supplemental AKS posture evidence so cluster-level Azure controls are not lost between generic Azure checks and the separate container workload review.
 
 The CIS Azure Foundations Benchmark v2.1.0 provides prescriptive guidance across nine domains. This skill evaluates each applicable control and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
@@ -88,10 +88,39 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 11: Supplemental AKS Cluster Posture Evidence
+
+When `azurerm_kubernetes_cluster`, `azurerm_kubernetes_cluster_node_pool`, or AKS configuration exports are present, evaluate cluster-level Azure controls before final scoring. This supplemental gate does not replace the `container-security` skill for Kubernetes manifests, RBAC, Pod Security, or workload YAML. It covers the Azure control plane, identity, network, policy, and monitoring settings that are visible in Terraform, Bicep, ARM, or AKS exports.
+
+Record an AKS evidence row for each cluster and node pool:
+
+| Evidence Field | Required Evidence | Risk If Missing |
+|---|---|---|
+| Cluster mode | Standard vs. AKS Automatic or other provider-managed mode | Standard-only requirements can be misapplied, or provider defaults can be assumed without proof |
+| API server exposure | `private_cluster_enabled`, `private_cluster_public_fqdn_enabled`, and `api_server_authorized_ip_ranges` | Public or broadly reachable Kubernetes API server |
+| Identity and access | Managed identity type, Azure RBAC/RBAC status, and `local_account_disabled` | Local admin credentials or unmanaged service principals remain active |
+| Workload identity | `oidc_issuer_enabled`, `workload_identity_enabled`, service-account annotations, and federated identity credential evidence | Workloads fall back to secrets, broad identities, or legacy pod identity patterns |
+| Network controls | Azure CNI or equivalent, `network_policy`, private subnet evidence, and egress model | Pod traffic lacks enforceable network policy or private routing evidence |
+| Policy and admission | Azure Policy add-on, Defender for Containers profile, and admission/guardrail evidence | Cluster guardrails are absent even when Defender plan is enabled |
+| Logging and monitoring | `oms_agent`, Log Analytics workspace, diagnostic settings, and Defender integration | Cluster events and security signals are not collected for review or alerting |
+
+**Finding triggers:**
+
+```
+AZ-AKS-01: AKS cluster evidence is missing while IaC declares azurerm_kubernetes_cluster resources
+AZ-AKS-02: API server is public or authorized IP ranges include 0.0.0.0/0 without documented compensating control
+AZ-AKS-03: Local accounts are enabled, RBAC is disabled, or cluster identity uses unmanaged/overbroad credentials
+AZ-AKS-04: OIDC issuer or Microsoft Entra Workload ID is absent for workloads that need Azure resource access
+AZ-AKS-05: NetworkPolicy, private networking, or egress controls are missing for production clusters
+AZ-AKS-06: Azure Policy add-on, Defender for Containers, or admission guardrail evidence is missing
+AZ-AKS-07: Log Analytics, diagnostic, or Defender signal collection is missing or Not Evaluable
+```
+
+If AKS evidence is incomplete, mark the affected cluster as **Not Evaluable** rather than scoring it as pass. If the same environment includes Kubernetes manifests, route manifest-level findings to `skills/cloud/container-security/SKILL.md`.
 
 ---
 
-### Step 11: Compile Assessment Report
+### Step 12: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -141,6 +170,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 7 | Virtual Machines | X | Y | Z | nn% |
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
+
+### Supplemental AKS Evidence
+
+| Cluster/Node Pool | Mode | API Server Exposure | Identity/RBAC | Workload Identity | Network Controls | Policy/Defender | Logging | Status |
+|---|---|---|---|---|---|---|---|---|
+| <cluster> | Standard/Automatic | <private/public/IP ranges> | <managed identity/RBAC/local accounts> | <OIDC/Workload ID/federated credentials> | <plugin/policy/private subnet/egress> | <Azure Policy/Defender/admission> | <Log Analytics/diagnostics> | Pass/Fail/Not Evaluable |
 
 ### Detailed Findings
 
@@ -200,6 +235,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Letting AKS fall between skills.** Generic CIS Azure checks do not inspect cluster-only settings such as private API server, public FQDN, local admin accounts, OIDC issuer, Microsoft Entra Workload ID, Azure Policy, Defender profile, or NetworkPolicy. Capture those controls here, then hand Kubernetes manifest findings to `container-security`.
 
 ---
 
@@ -225,10 +261,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
+- Azure Kubernetes Service Workload ID: https://learn.microsoft.com/en-us/azure/aks/workload-identity-overview
+- Azure Kubernetes Service private clusters: https://learn.microsoft.com/en-us/azure/aks/private-clusters
+- Azure Kubernetes Service policy reference: https://learn.microsoft.com/en-us/azure/aks/policy-reference
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Adds supplemental AKS cluster posture evidence gates for private API server, local accounts, RBAC, Microsoft Entra Workload ID, NetworkPolicy, Azure Policy, Defender, and Log Analytics evidence.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
