@@ -1,0 +1,33 @@
+case: approved-emergency-extension
+expect: benign
+alert:
+  id: siem-12091
+  rule: admin-command-on-production
+  timestamp: "2026-06-08T03:18:00Z"
+  host: prod-api-04
+  user: oncall-incident-commander@example.com
+  action: rollback release api-2026.06.08.1
+change_evidence:
+  ticket_id: CHG-48291
+  approver: service-owner@example.com
+  approved_window:
+    start: "2026-06-08T02:00:00Z"
+    end: "2026-06-08T03:00:00Z"
+    timezone: UTC
+  approved_assets:
+    - prod-api-04
+  approved_users:
+    - oncall-incident-commander@example.com
+  planned_actions:
+    - rollback release api-2026.06.08.1
+  extension:
+    id: EMERG-774
+    approved_by: incident-manager@example.com
+    start: "2026-06-08T03:00:00Z"
+    end: "2026-06-08T03:30:00Z"
+    reason: failed health checks after deployment
+  follow_on_review:
+    suspicious_activity: none
+expected_disposition:
+  disposition: BTP
+  reason: out-of-window activity is covered by a scoped emergency extension and has no suspicious follow-on events.

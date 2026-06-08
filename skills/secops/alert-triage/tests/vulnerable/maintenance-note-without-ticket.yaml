@@ -1,0 +1,20 @@
+case: maintenance-note-without-ticket
+expect: vulnerable
+alert:
+  id: edr-7712
+  rule: suspicious-service-control
+  timestamp: "2026-06-08T02:14:00Z"
+  host: prod-api-03
+  user: deployer@example.com
+  action: restart nginx
+analyst_note: "maintenance deployment, safe to close"
+change_evidence:
+  ticket_id: null
+  approver: null
+  approved_window: null
+  approved_assets: []
+  planned_actions: []
+expected_disposition:
+  disposition: Investigate
+  priority_floor: P3
+  reason: a free-text maintenance note has no approval, scope, or time-window evidence.

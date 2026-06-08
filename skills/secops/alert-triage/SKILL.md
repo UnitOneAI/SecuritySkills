@@ -57,6 +57,7 @@ Before beginning triage, gather or confirm:
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
+- [ ] **Authorized change evidence:** If the activity is described as maintenance, deployment, break/fix, or managed-service-provider work, collect the change ticket, approver, approved time window with timezone, in-scope assets/users, expected commands/actions, rollback or extension status, and post-change validation evidence.
 
 If some context is unavailable, proceed with available information and note gaps as assumptions.
 
@@ -79,6 +80,7 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
+| **Change management** | Ticket ID, approver, approved window/timezone, in-scope assets, authorized users/service accounts, expected commands/actions, rollback or extension notes | ITSM, change calendar, deployment system |
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
 
@@ -93,6 +95,7 @@ Connect the alert data with surrounding context to build a picture of what happe
 3. **Behavioral correlation:** Does this activity match known ATT&CK technique patterns? Does it match the user's or system's normal behavior baseline?
 4. **Threat intel correlation:** Do any indicators match known threat actor infrastructure, malware campaigns, or published IOCs?
 5. **Kill chain correlation:** Where does this activity fall in the attack lifecycle? Is there evidence of preceding (reconnaissance, initial access) or subsequent (persistence, lateral movement, exfiltration) stages?
+6. **Authorized-change correlation:** If a change ticket is cited, does the alert timestamp, timezone, asset, user/service account, source system, command/action, and rollout wave match the approved scope?
 
 **ATT&CK-based correlation framework:**
 
@@ -115,6 +118,25 @@ Assign a disposition and priority based on collected and correlated data.
 | **True Positive (TP)** | TP | The alert correctly identifies malicious or unauthorized activity that poses a real threat. | Escalate to incident response. Create an incident ticket. |
 | **Benign True Positive (BTP)** | BTP | The alert correctly identified the activity described in the rule, but the activity is authorized, expected, or part of legitimate operations. | Document the legitimate reason. If recurring, request a rule tuning (filter/exclusion). Close alert. |
 | **False Positive (FP)** | FP | The alert fired incorrectly -- the underlying activity does not match what the rule intended to detect (rule logic error, data quality issue). | Document the false positive cause. Submit a tuning request to detection engineering. Close alert. |
+
+#### Authorized Change Evidence Gate
+
+Do not close an alert as BTP solely because an analyst note, operator, or ticket title says "maintenance", "deployment", "change", or "break/fix". A claimed authorized change must be bound to the exact alert activity before it can reduce priority or justify closure.
+
+Require all of the following evidence before classifying maintenance/deployment activity as BTP:
+
+| Evidence Field | Required Match |
+|----------------|----------------|
+| Ticket ID | Approved change, incident, emergency change, or recurring job record |
+| Approver | Named approver or policy-defined auto-approval source |
+| Time window | Alert timestamp falls inside the approved window, with timezone recorded |
+| Asset scope | Affected host, cloud resource, namespace, or application is in the approved asset list or rollout wave |
+| Actor scope | User, service account, automation identity, or MSP account matches the approved implementer |
+| Action scope | Observed command, process, package, firewall, IAM, or service action matches the implementation plan |
+| Extension or rollback | Out-of-window activity has an approved extension, rollback, or emergency record |
+| Follow-on review | No out-of-scope lateral movement, privilege change, persistence, exfiltration, or unrelated alerts after the change |
+
+If any required field is missing, keep the alert open as **P3 Investigate** at minimum, document the missing evidence, and escalate to Tier 2 when the activity involves privileged accounts, production assets, or security tooling. If a valid ticket exists but the alert is out of time, asset, actor, or action scope, treat the ticket as contextual evidence only and continue triage as a potential TP.
 
 #### Priority Matrix
 
@@ -223,6 +245,16 @@ Produce the triage decision as a structured report:
 | **Confidence** | [High / Medium / Low] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
 
+### Authorized Change Evidence
+| Field | Value |
+|-------|-------|
+| Ticket / Change ID | [ID or N/A] |
+| Approval Status | [Approved / Emergency / Missing / Not Applicable] |
+| Approved Window | [start/end with timezone] |
+| Scope Match | [Time: yes/no; Asset: yes/no; Actor: yes/no; Action: yes/no] |
+| Exceptions / Extensions | [rollback, extension, emergency approval, or none] |
+| Out-of-Scope Follow-On | [related suspicious events after the change or none] |
+
 ### Evidence Summary
 1. [Key finding 1 -- what was observed]
 2. [Key finding 2 -- corroborating or contradicting evidence]
@@ -318,6 +350,10 @@ Investigating an alert in isolation without checking for activity before and aft
 ### Pitfall 5: Delaying Escalation While Seeking Perfect Information
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
+
+### Pitfall 6: Treating a Change Ticket as a Blanket Suppression
+
+An approved change is not proof that every related-looking alert is benign. Compare the alert against the approved timestamp, timezone, asset list, actor, and planned action. A valid ticket for `prod-api-01` between 02:00 and 03:00 UTC does not explain a privileged service restart on `prod-db-02` at 04:12 UTC.
 
 ---
 
