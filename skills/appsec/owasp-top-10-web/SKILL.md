@@ -626,6 +626,11 @@ Present findings in this structure:
 **Review Date:** [date]
 **Scope:** [files/modules reviewed]
 
+
+### Web Cache Poisoning / Cache-Key Evidence
+| Route / Asset | Cache Layer | Cache Key Inputs | Origin Inputs Used | Unkeyed Influence Tested | Cacheability Evidence | User/Tenant Separation | Impact | Status |
+|---|---|---|---|---|---|---|---|---|
+| [path] | [CDN/proxy/framework/object cache] | [host/path/query/header/cookie/body/session] | [inputs changing response] | [yes/no + evidence] | [Cache-Control/Age/Vary/debug/replay] | [private/no-store/keyed/unknown] | [redirect/content/header/metadata] | [Pass/Fail/Not Evaluable] |
 ### Findings
 
 #### [SEVERITY] — [Short Title]
