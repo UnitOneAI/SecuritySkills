@@ -1,0 +1,59 @@
+name: post-incident-review
+description: Conduct a post-incident review to identify root causes and areas for improvement.
+parameters:
+  - name: incident
+    type: object
+    properties:
+      id:
+        type: string
+      source:
+        type: string
+      customer_data_affected:
+        type: string
+      legal_decision:
+        type: object
+        properties:
+          regulator_notice_required:
+            type: boolean
+          reason:
+            type: string
+      communications:
+        type: object
+        properties:
+          status_page_update:
+            type: string
+          customer_email:
+            type: string
+          insurer_notice:
+            type: string
+          not_applicable_reason:
+            type: string
+      vendor_rca:
+        type: object
+        properties:
+          due_date:
+            type: string
+          current_status:
+            type: string
+      third_party_incident:
+        type: object
+        properties:
+          supplier:
+            type: string
+          dependency:
+            type: string
+          evidence_available:
+            type: array
+            items:
+              type: string
+          evidence_missing:
+            type: array
+            items:
+              type: string
+      external_messages:
+        type: object
+        properties:
+          status_page:
+            type: string
+          support_macro:
+            type: string
