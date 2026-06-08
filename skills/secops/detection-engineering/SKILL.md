@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -42,6 +42,7 @@ Invoke this skill when any of the following conditions are met:
 - **Detection-as-code pipeline** -- Detection rules are being managed in version control and need to follow a standardized format for CI/CD integration.
 - **Post-incident detection improvement** -- After an incident or purple team exercise, new detections must be created for techniques that were not caught.
 - **Detection rule review** -- Existing rules need validation against current ATT&CK mappings, log source availability, or Sigma specification compliance.
+- **Telemetry health review** -- A detection appears deployed, but field mapping, ingestion latency, dropped events, or parser drift may prevent it from firing.
 
 **Do not use when:** The task is triaging an active alert (use alert-triage), writing SIEM-specific query syntax without Sigma abstraction (use siem-rules), or performing incident response forensics (use ir-playbook).
 
@@ -53,6 +54,7 @@ Before beginning, gather or confirm:
 
 - [ ] **Target ATT&CK technique(s):** The specific technique or sub-technique IDs to detect (e.g., T1059.001 -- PowerShell).
 - [ ] **Available log sources:** What telemetry is collected? (Windows Event Logs, Sysmon, EDR, cloud audit logs, proxy logs, DNS logs, firewall logs).
+- [ ] **Telemetry health evidence:** Current ingestion volume, parser status, field completeness, schema mapping, and latency for the required log sources.
 - [ ] **SIEM platform(s):** Target SIEM for rule deployment (Microsoft Sentinel, Splunk, Elastic, Chronicle, QRadar) -- determines Sigma backend conversion target.
 - [ ] **Environment context:** Operating systems, domain structure, cloud providers, key applications in the environment.
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
@@ -347,13 +349,67 @@ detections/
 
 ---
 
+### Step 7: Telemetry Health and Field Mapping Evidence
+
+Before marking a detection as Tested, Operational, or Robust, verify that the required telemetry is present, timely, parsed correctly, and mapped to the fields used by the Sigma rule and converted SIEM query.
+
+#### 7.1 Telemetry Health Evidence
+
+For each required log source and data component, collect:
+
+| Evidence | Why It Matters |
+|---|---|
+| Event source and sensor population | Confirms expected hosts, cloud accounts, or services are sending data |
+| Current event volume and last-seen time | Detects silent collection failures and stale sources |
+| Ingestion latency percentiles | Confirms alerts can meet MTTD and SLA requirements |
+| Dropped, throttled, or filtered event counts | Reveals events lost before rule evaluation |
+| Parser/schema status | Confirms fields are parsed into the expected SIEM schema |
+| Field completeness for rule fields | Validates fields such as Image, CommandLine, User, ParentImage, RemoteIP, or EventID are populated |
+| Sigma-to-SIEM field mapping | Proves converted KQL/SPL/EQL fields match the deployed data model |
+| Sample true-positive and true-negative events | Shows the rule can match real normalized telemetry, not only idealized examples |
+
+#### 7.2 Field Mapping Review
+
+Treat field mapping as part of detection correctness. A Sigma rule can be syntactically valid but operationally blind if the backend conversion maps to fields that do not exist or are sparsely populated.
+
+**What to verify:**
+
+- Sigma `logsource` category/product maps to the actual SIEM table, index, or dataset.
+- Every field in `detection` and `fields` exists in the target schema.
+- Field naming differences are documented, such as `Image` vs. `process_path`, `CommandLine` vs. `ProcessCommandLine`, or `User` vs. `AccountName`.
+- Field values preserve case, path separators, truncation behavior, and command-line length needed by the rule.
+- Enrichment fields used for filters, such as asset criticality or known admin tools, are populated before rule evaluation.
+- Backend conversion warnings are reviewed and do not silently drop conditions, modifiers, or filters.
+
+#### 7.3 Coverage Level Guardrails
+
+| Coverage Level | Telemetry Requirement |
+|---|---|
+| Theoretical | Rule logic exists, but telemetry health or field mapping is unverified |
+| Tested | Synthetic or replayed events prove required fields map and match correctly |
+| Operational | Production telemetry is current, complete enough for the rule, and latency meets SLA |
+| Robust | Multiple telemetry paths or compensating detections cover parser drift, dropped events, and adversary variation |
+
+#### 7.4 Finding Conditions
+
+| Condition | Priority |
+|---|---|
+| Rule marked Operational or Robust while required log source has no current events | P2 |
+| Converted SIEM query references fields that are absent, renamed, truncated, or sparsely populated | P2 |
+| Ingestion latency exceeds the detection response SLA for the intended priority | P2 |
+| Parser failure or schema drift drops required fields after rule deployment | P2 |
+| Dropped/throttled event evidence is missing for high-volume log sources | P3 |
+| Rule validation uses idealized sample logs but no normalized SIEM event sample | P3 |
+
+---
+
 ## 4. Findings Classification
 
 | Severity | Label | Definition | SLA |
 |----------|-------|------------|-----|
 | P1 | Critical | Detection gap for an actively exploited technique targeting the organization's industry. No compensating detection exists. | Create and deploy detection within 24 hours |
-| P2 | High | Detection gap for a technique with known procedure examples and available log sources. Threat intelligence indicates active use by relevant threat groups. | Create and deploy detection within 7 days |
-| P3 | Medium | Detection gap for a technique with available log sources but lower threat intelligence relevance. Coverage improvement opportunity. | Create and deploy detection within 30 days |
+| P2 | High | Detection gap for a technique with known procedure examples and available log sources; or deployed rule depends on stale, missing, delayed, or unmapped telemetry. Threat intelligence indicates active use by relevant threat groups. | Create and deploy detection within 7 days |
+| P3 | Medium | Detection gap for a technique with available log sources but lower threat intelligence relevance; or telemetry health evidence is incomplete for a deployed rule. Coverage improvement opportunity. | Create and deploy detection within 30 days |
 | P4 | Low | Detection exists but has not been validated or tuned. Coverage is theoretical only. | Validate and tune within 90 days |
 
 ---
@@ -388,6 +444,11 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+
+### Telemetry Health and Field Mapping
+| Log Source | Required Fields | Last Seen | Latency P95 | Field Completeness | Backend Mapping | Coverage Impact |
+|------------|-----------------|-----------|-------------|--------------------|-----------------|-----------------|
+| [source] | [fields] | [timestamp] | [duration] | [percent/status] | [mapped/unmapped/partial] | [none/downgrade/gap] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -494,6 +555,10 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
+### Pitfall 6: Calling a Rule Operational Without Telemetry Proof
+
+A converted rule can be deployed and still never fire because the table is stale, the parser renamed fields, command lines are truncated, or ingestion latency exceeds the alert SLA. Validate telemetry health and field mapping with normalized SIEM events before moving coverage beyond Theoretical or Tested.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -522,3 +587,9 @@ This skill processes user-supplied content that may include log samples, detecti
 10. **MITRE Cyber Analytics Repository (CAR)** -- https://car.mitre.org/
 11. **Detection Engineering Maturity Model** -- Kyle Bailey, https://kyle-bailey.medium.com/detection-engineering-maturity-matrix-f4f3181a5cc7
 12. **Sigma Rule Creation Guide (SigmaHQ)** -- https://sigmahq.io/docs/guide/rules.html
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Add telemetry health, ingestion latency, parser/schema drift, and Sigma-to-SIEM field mapping gates before operational coverage claims.

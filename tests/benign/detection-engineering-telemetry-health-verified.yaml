@@ -1,0 +1,46 @@
+scenario: detection_telemetry_health_verified
+skill: detection-engineering
+expected_result: do_not_flag_telemetry_health_gap
+description: >
+  A detection is marked operational only after current telemetry, field
+  completeness, backend mapping, latency, and normalized true-positive replay
+  evidence are verified.
+evidence:
+  detection:
+    title: Suspicious PowerShell Encoded Command Execution
+    attack_id: T1059.001
+    claimed_coverage: Operational
+    target_siem: Microsoft Sentinel
+  sigma_fields:
+    logsource:
+      product: windows
+      category: process_creation
+    required_fields:
+      - Image
+      - CommandLine
+      - ParentImage
+      - User
+  telemetry_health:
+    table: DeviceProcessEvents
+    last_seen: 2026-06-08T20:42:10Z
+    current_event_volume_24h: 1834920
+    ingestion_latency_p95_minutes: 4
+    dropped_event_count_24h: 0
+    sensor_population_coverage: 98.7 percent
+  field_mapping:
+    Image: FolderPath
+    CommandLine: ProcessCommandLine
+    ParentImage: InitiatingProcessFolderPath
+    User: AccountName
+    backend_conversion_warnings: []
+    command_line_truncation_checked: true
+  validation:
+    normalized_siem_event_sample: true
+    atomic_test: T1059.001
+    true_positive_replay_matched: true
+    true_negative_replay_matched: true
+assertions:
+  - telemetry is current and within latency SLA
+  - every required field has a documented backend mapping
+  - parser/schema warnings are absent
+  - normalized SIEM replay validates true positive and true negative behavior

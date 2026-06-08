@@ -1,0 +1,45 @@
+scenario: operational_detection_missing_required_telemetry
+skill: detection-engineering
+expected_result: flag_telemetry_health_gap
+description: >
+  A Sigma detection is marked operational, but the SIEM table is stale, required
+  fields are missing after parser drift, and ingestion latency exceeds the
+  response SLA.
+evidence:
+  detection:
+    title: Suspicious PowerShell Encoded Command Execution
+    attack_id: T1059.001
+    claimed_coverage: Operational
+    target_siem: Microsoft Sentinel
+  sigma_fields:
+    logsource:
+      product: windows
+      category: process_creation
+    required_fields:
+      - Image
+      - CommandLine
+      - ParentImage
+      - User
+  telemetry_health:
+    table: SecurityEvent
+    last_seen: 2026-06-01T00:00:00Z
+    current_event_volume_24h: 0
+    ingestion_latency_p95_minutes: 180
+    dropped_event_count_24h: unknown
+  field_mapping:
+    Image: missing
+    CommandLine: missing
+    ParentImage: missing
+    User: Account
+    backend_conversion_warnings:
+      - Image modifier dropped because target field not found
+      - CommandLine condition converted to empty predicate
+  validation:
+    normalized_siem_event_sample: false
+    synthetic_log_only: true
+    true_positive_replay_matched: false
+assertions:
+  - coverage cannot be operational when the source table is stale
+  - required Sigma fields are unmapped or missing
+  - ingestion latency exceeds response expectations
+  - validation used idealized sample logs instead of normalized SIEM events
