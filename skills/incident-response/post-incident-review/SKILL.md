@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -266,10 +266,10 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 
 **Remediation action template:**
 
-| ID | Finding | Action | Owner | Priority | Deadline | Tracking |
-|---|---|---|---|---|---|---|
-| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] |
-| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Tracking | Validation Method | Effectiveness Evidence |
+|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] | [retest/control evidence/tabletop/etc.] | [expected proof] |
+| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] | [method] | [evidence] |
 
 **Remediation prioritization:**
 
@@ -279,6 +279,27 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 | P1 | Significant gap that contributed to the incident severity or delayed response | 30 days |
 | P2 | Moderate gap that represents a defense-in-depth weakness | 90 days |
 | P3 | Minor improvement or best-practice enhancement | Next quarter |
+
+### Step 7: Remediation Effectiveness Validation
+
+Do not treat an action item as complete just because a ticket was closed or a configuration changed. Every P0/P1 action and any action tied to the root cause must include evidence that the remediation changed the incident outcome or reduced recurrence likelihood.
+
+For each remediation, define:
+
+1. **Validation method** -- control retest, detection replay, purple-team exercise, tabletop, configuration export, access review, patch verification, backup restore test, or runbook drill.
+2. **Pre/post comparison** -- the incident-enabling condition before remediation and the measured state after remediation.
+3. **Effectiveness owner** -- the person or team accountable for validating the fix, which may differ from the implementation owner.
+4. **Validation date** -- when the evidence will be collected, typically 30-60 days after remediation or earlier for P0/P1 items.
+5. **Recurrence signal** -- the alert, metric, incident category, exception count, or control drift signal that would prove the same failure mode is recurring.
+6. **Residual risk decision** -- whether remaining risk is accepted, transferred, mitigated by compensating controls, or escalated.
+
+**Effectiveness validation matrix:**
+
+| Remediation ID | Failure Mode | Validation Method | Evidence Required | Effectiveness Owner | Validation Date | Recurrence Signal | Status |
+|---|---|---|---|---|---|---|---|
+| REM-001 | [root/contributing failure] | [retest/replay/tabletop/etc.] | [screenshot/query/export/test result] | [team/name] | [YYYY-MM-DD] | [metric/alert/control drift] | [pending/pass/fail/accepted risk] |
+
+**Closure rule:** A remediation may be marked `Implemented` when the technical change is complete, but it should not be marked `Effective` until validation evidence proves the original failure mode would be detected, blocked, contained, or recovered faster.
 
 ---
 
@@ -302,7 +323,7 @@ Produce the post-incident review report with these exact sections:
 ## Post-Incident Review: [Incident ID]
 **Date of Review:** [YYYY-MM-DD]
 **Date of Incident:** [YYYY-MM-DD]
-**Skill:** post-incident-review v1.0.0
+**Skill:** post-incident-review v1.0.1
 **Framework:** NIST SP 800-61 Rev 2
 **PIR Facilitator:** [Name or "AI-assisted -- human facilitator required"]
 
@@ -354,9 +375,14 @@ root cause, and the number/priority of remediation actions identified.]
 - [Gap or failure identified during retrospective]
 
 ### Remediation Plan
-| ID | Finding | Action | Owner | Priority | Deadline | Ticket |
-|---|---|---|---|---|---|---|
-| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Ticket | Validation Method | Effectiveness Evidence |
+|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] | [method] | [evidence] |
+
+### Remediation Effectiveness Validation
+| Remediation ID | Failure Mode | Validation Method | Evidence Required | Effectiveness Owner | Validation Date | Recurrence Signal | Status |
+|---|---|---|---|---|---|---|---|
+| REM-001 | [failure mode] | [retest/replay/tabletop/etc.] | [proof] | [owner] | [date] | [metric/alert] | [pending/pass/fail/accepted risk] |
 
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
@@ -412,6 +438,10 @@ When the PIR focuses on who made mistakes rather than what systemic conditions e
 
 Documenting lessons learned and remediation actions in a PIR report that is then filed and forgotten produces zero security improvement. Every remediation action must be entered into the organization's work tracking system (Jira, ServiceNow, Azure DevOps) with an owner, priority, deadline, and scheduled review date. The PIR facilitator should schedule a follow-up review (typically 30 days after the PIR) to verify remediation progress.
 
+### Pitfall 3a: Treating Ticket Closure as Remediation Effectiveness
+
+A closed ticket only proves that someone recorded an implementation step. It does not prove that the original failure mode would now be prevented, detected, contained, or recovered faster. Require post-fix evidence such as replayed detections, configuration exports, control retests, tabletop results, or recurrence metrics before marking a remediation as effective.
+
 ### Pitfall 4: Stopping Root Cause Analysis at the Proximate Cause
 
 "The attacker exploited an unpatched vulnerability" is a proximate cause, not a root cause. The root cause analysis should continue: Why was the system unpatched? Was there a patch management gap? Was the system excluded from scanning? Was the patch tested and rolled back? Was the vulnerability not prioritized? Stopping at the first "why" produces surface-level remediations (patch this specific system) rather than systemic fixes (improve vulnerability prioritization and patch management process).
@@ -445,3 +475,10 @@ This skill processes incident response data including timelines, forensic findin
 7. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
 8. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
 9. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added remediation effectiveness validation gates, evidence matrix, and output fields.
+- **1.0.0** -- Initial release. PIR report workflow with timeline, root cause analysis, metrics, lessons learned, and remediation tracking.
