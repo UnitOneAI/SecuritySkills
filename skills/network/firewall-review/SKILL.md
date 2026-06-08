@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -260,6 +260,16 @@ Produce the final report using the following structure.
 
 ---
 
+### Unused Rule Evidence
+
+Capture counter freshness, scope, and owner validation before treating a firewall rule as unused.
+
+| Rule ID | Device / Policy | Source | Destination / Service | Hit Counter Source | Counter Window | Last Hit | Owner Validation | Change Ticket | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule_id]` | `[device/policy]` | `[source]` | `[destination/service]` | `[hit_counter_source]` | `[counter_window]` | `[last_hit]` | `[owner_validation]` | `[change_ticket]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition |
@@ -288,6 +298,12 @@ Produce the final report using the following structure.
 - High findings: <count>
 - Medium findings: <count>
 - Low findings: <count>
+
+### Unused Rule Evidence
+
+| Rule ID | Device / Policy | Source | Destination / Service | Hit Counter Source | Counter Window | Last Hit | Owner Validation | Change Ticket | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule_id]` | `[device/policy]` | `[source]` | `[destination/service]` | `[hit_counter_source]` | `[counter_window]` | `[last_hit]` | `[owner_validation]` | `[change_ticket]` | `Pass / Fail / Unknown` |
 
 ### Findings
 
@@ -362,6 +378,8 @@ Produce the final report using the following structure.
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
 ---
+
+- Treating zero hit count as proof of an unused rule without counter-window, logging, owner, and change-ticket evidence.
 
 ## Prompt Injection Safety Notice
 
