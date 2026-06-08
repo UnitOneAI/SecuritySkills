@@ -434,6 +434,17 @@ Based on the scope determined in Step 1, evaluate the following additional crite
 
 ---
 
+### CC8.1 Emergency Change Sampling Checklist
+
+When emergency production changes occurred during the audit period, sample them separately from standard changes. Record each sampled emergency change in this matrix:
+
+| Change ID | Emergency Reason | Approval SLA Met | Requester | Approver | Deployer | Verifier | Validation Evidence | Rollback / Abort Evidence | Post-Implementation Review | Result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [CHG-ID] | [incident/vulnerability/outage] | [Yes/No/N/A] | [name/team] | [name/team] | [name/team] | [name/team] | [CI/smoke/health] | [specific rollback + threshold] | [reviewer/date/actions] | [Pass/Finding ID] |
+
+**Benign evidence example:** an emergency patch linked to an exploited vulnerability, with separated requester/approver/deployer/verifier, retroactive approval completed inside policy SLA, successful CI and smoke test, change-specific rollback/abort criteria, and completed post-implementation review.
+
+**Vulnerable evidence example:** a hotfix ticket where the same person requested, approved, deployed, and verified the change, approval is missing, rollback and abort criteria are null, and no post-implementation review exists.
 ## Gap Scoring Matrix
 
 Score each criterion using the following maturity scale:
