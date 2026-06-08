@@ -1,0 +1,21 @@
+case: reserved-vendor-cname
+expect: benign
+record:
+  name: docs.example.com
+  type: CNAME
+  target: vendor.example-host.com
+  public: true
+provider_evidence:
+  provider: documentation hosting vendor
+  response: "404 custom domain reserved"
+  claimability: not_claimable
+  reservation_status: active
+  account_id: acct-12345
+  last_verified: "2026-06-08"
+asset_inventory:
+  owner: docs-platform@example.com
+  service_status: parked
+  removal_plan: migrate to docs-new.example.com by 2026-07-31
+expected_finding:
+  status: Informational
+  reason: dangling-looking target is still reserved by the organization and recently verified as not claimable.

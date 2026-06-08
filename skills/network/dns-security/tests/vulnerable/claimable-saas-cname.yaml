@@ -1,0 +1,19 @@
+case: claimable-saas-cname
+expect: vulnerable
+record:
+  name: docs.example.com
+  type: CNAME
+  target: old-project.pages-provider.example
+  public: true
+provider_evidence:
+  provider: example pages hosting
+  response: "404 project not found"
+  claimability: claimable_by_new_tenant
+  reservation_status: missing
+  last_verified: "2026-06-08"
+asset_inventory:
+  owner: null
+  service_status: decommissioned
+expected_finding:
+  severity: High
+  reason: public CNAME target is no longer reserved and can be claimed by another tenant.

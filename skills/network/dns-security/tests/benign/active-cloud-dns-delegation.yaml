@@ -1,0 +1,20 @@
+case: active-cloud-dns-delegation
+expect: benign
+record:
+  name: dev.example.com
+  type: NS
+  values:
+    - ns-cloud-a1.googledomains.com
+    - ns-cloud-a2.googledomains.com
+delegation_evidence:
+  parent_zone: example.com
+  child_zone_exists: true
+  cloud_account_owner: platform-dns@example.com
+  zone_id: managedZones/dev-example-com
+  nameserver_set_matches_provider_inventory: true
+  last_verified: "2026-06-08"
+asset_inventory:
+  owner: platform-networking@example.com
+expected_finding:
+  status: Pass
+  reason: delegated zone exists in the organization's cloud account and nameserver inventory matches the parent delegation.

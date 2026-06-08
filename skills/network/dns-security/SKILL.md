@@ -294,13 +294,41 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
+### Step 7: Dangling Record and Subdomain Takeover Review
+
+DNSSEC, RPZ, and protective DNS do not prove that a third-party target is still owned by the organization. Review public authoritative records for stale references that could be claimed by another tenant.
+
+Inspect these record types:
+
+- `CNAME`, `ALIAS`, and `ANAME` records pointing to SaaS, CDN, storage, pages, app hosting, or load-balancer targets.
+- `NS` delegations for subzones, especially delegated nameservers under cloud DNS providers or registrar-managed domains.
+- Cloud DNS hosted zones that are deleted, parked, migrated, or no longer linked to the organization's account.
+- Migration or parking records retained after service decommissioning.
+
+Require takeover evidence before scoring severity:
+
+| Evidence Field | Required Check |
+|----------------|----------------|
+| Record owner | Business owner, service owner, or asset inventory reference |
+| Target provider | Vendor or platform, such as Pages, Heroku, Azure Static Web Apps, CloudFront, S3, Netlify, or cloud DNS |
+| Reservation status | Whether the target hostname, bucket, app, distribution, or zone is still reserved by the organization |
+| Claimability | Vendor-specific evidence showing whether another tenant can claim the target |
+| Runtime response | HTTP/TLS/DNS response, provider error code, or API inventory output |
+| Delegation health | For `NS`, nameserver domain registration, cloud zone existence, and account ownership |
+| Last verification | Timestamp and method used to verify ownership or non-claimability |
+| Exception governance | Owner, expiry, and migration/removal plan for parked or intentionally retained records |
+
+Classify confirmed claimable records as **High** for a single subdomain and **Critical** for stale `NS` delegation that exposes an entire subzone. If the target is reserved, not claimable, and recently verified, document it as Pass or Informational rather than flagging a dangling-looking record. If ownership or claimability cannot be proven, mark the record **Not Evaluable** or **Medium** pending verification based on exposure and business criticality.
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; stale `NS` delegation that allows takeover of an entire subzone. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; confirmed claimable dangling CNAME/ALIAS/ANAME target. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; dangling-looking third-party DNS target with unverified ownership or claimability. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -344,6 +372,12 @@ abcdef0123456789.dnscat.example.com TXT
 - Volumetric thresholds: <Configured / Not configured>
 - SIEM integration: <Yes / No>
 
+### Dangling Record and Takeover Review
+
+| Record | Type | Target | Owner | Reservation Status | Claimability | Last Verified | Status |
+|--------|------|--------|-------|--------------------|--------------|---------------|--------|
+| docs.example.com | CNAME | vendor.example-host.com | Docs team | Active / Unknown / Missing | Claimable / Not claimable / Unknown | YYYY-MM-DD | Pass / Fail / Not Evaluable |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -383,6 +417,8 @@ abcdef0123456789.dnscat.example.com TXT
 3. **Relying solely on domain reputation lists for exfiltration detection.** Attackers use attacker-controlled domains that are not yet categorized. Behavioral detection (entropy, volume, query type anomalies) catches novel exfiltration domains that reputation feeds miss.
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
+
+5. **Treating signed DNS records as ownership proof.** DNSSEC can prove the organization published a record, but it does not prove the target service, bucket, CDN distribution, or delegated zone is still reserved by the organization.
 
 ---
 

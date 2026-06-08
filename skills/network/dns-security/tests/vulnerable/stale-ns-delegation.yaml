@@ -1,0 +1,18 @@
+case: stale-ns-delegation
+expect: vulnerable
+record:
+  name: dev.example.com
+  type: NS
+  values:
+    - ns1.deleted-zone.cloud-dns.example
+    - ns2.deleted-zone.cloud-dns.example
+delegation_evidence:
+  parent_zone: example.com
+  child_zone_exists: false
+  cloud_account_owner: unknown
+  nameserver_domain_registered: true
+  claimability: zone_can_be_recreated_by_other_account
+  last_verified: "2026-06-08"
+expected_finding:
+  severity: Critical
+  reason: stale NS delegation can expose the entire delegated subzone to takeover.
