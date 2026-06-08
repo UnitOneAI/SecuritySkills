@@ -12,7 +12,7 @@ phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -385,6 +385,16 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 
 ---
 
+### Factual Claim Citation Verification
+
+Require material claims to be tied to sources that exist, are fresh enough, and actually support the generated answer.
+
+| Material Claim | Citation Present | Source Exists | Source Supports Claim | Freshness Metadata | Citation Integrity | High-Stakes Routing | Reviewer | Decision | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[material_claim]` | `[citation_present]` | `[source_exists]` | `[source_supports_claim]` | `[freshness_metadata]` | `[citation_integrity]` | `[high-stakes_routing]` | `[reviewer]` | `[decision]` | `Supported / Unsupported / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## 4. Findings Classification
 
 | Severity | Criteria | Example |
@@ -442,6 +452,12 @@ Structure the findings report as follows:
 
 ---
 
+### Factual Claim Citation Verification
+
+| Material Claim | Citation Present | Source Exists | Source Supports Claim | Freshness Metadata | Citation Integrity | High-Stakes Routing | Reviewer | Decision | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[material_claim]` | `[citation_present]` | `[source_exists]` | `[source_supports_claim]` | `[freshness_metadata]` | `[citation_integrity]` | `[high-stakes_routing]` | `[reviewer]` | `[decision]` | `Supported / Unsupported / Unknown` |
+
 ## 6. Framework Reference
 
 The OWASP Top 10 for LLM Applications 2025 is organized around these core principles:
@@ -477,6 +493,8 @@ These are the five most frequent mistakes agents make when performing LLM securi
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
 
 ---
+
+- Treating source links as misinformation control without verifying source existence, support, freshness, and citation integrity.
 
 ## 8. Prompt Injection Safety Notice
 
