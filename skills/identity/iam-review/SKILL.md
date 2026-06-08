@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -157,6 +157,15 @@ IAM-AUTH-10: Composition rules used instead of length-based policy (NIST SP 800-
 ---
 
 ### Step 3: Least Privilege Audit
+
+
+Before recommending permission removal or role downscoping, record usage evidence and confidence. Provider last-used summaries can be coarse or time-limited, so pair them with owner confirmation or secondary telemetry for periodic business processes.
+
+| Principal | Policy / Role | Permission / Action | Resource Scope | Usage Data Source | Last Used | Observation Window | Business Owner | Secondary Evidence | Downscope Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[user, group, role, service account]` | `[policy/role]` | `[action]` | `[resource]` | `[IAM access advisor, logs, SIEM, cloud trail]` | `[timestamp/granularity]` | `[window]` | `[owner]` | `[ticket, app owner attestation, telemetry]` | `High / Medium / Low` |
+
+Use `Low` confidence when last-used data is service-level only, the lookback window is incomplete, or periodic use has not been ruled out.
 
 **Objective:** Identify over-permissioned accounts and enforce least privilege.
 
@@ -411,6 +420,12 @@ For each finding, produce a row with:
 - JIT Access (Step 6): [count]
 - Zero Trust (Step 7): [count]
 
+#### Unused Permission Evidence
+
+| Principal | Role / Policy | Permission | Scope | Usage Source | Last Used | Observation Window | Owner | Secondary Evidence | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[principal]` | `[role]` | `[permission]` | `[scope]` | `[source]` | `[last used]` | `[window]` | `[owner]` | `[evidence]` | `High / Medium / Low` |
+
 ### Detailed Findings
 [Findings table — see above]
 
@@ -433,6 +448,10 @@ For each finding, produce a row with:
 | **P3 — Planned** | 91-180 days | Zero trust maturity gaps, device trust integration, continuous access evaluation |
 
 ---
+
+## Common Pitfalls
+
+- Removing permissions based only on coarse provider last-used summaries without checking lookback limits, periodic business use, owner confirmation, or secondary telemetry.
 
 ## Cross-References
 
