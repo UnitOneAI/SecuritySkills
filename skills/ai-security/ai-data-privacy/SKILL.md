@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -81,6 +81,19 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
 | Data classification scheme | Governance documentation | Defines sensitivity levels applied to AI data flows |
 | Regulatory requirements | Compliance documentation, legal counsel input | Identifies applicable data protection obligations |
+
+**AI data processing evidence matrix:** before marking privacy controls as present, document the processing evidence for each AI data store, data flow, or third-party transfer. A narrative data-flow map is not enough for privacy review.
+
+| Data Flow/Store | Data Type | Data Subjects | Purpose | Legal Basis/Consent | Third Party/Region | Retention Period | Deletion Propagation | Controls Evidence | Result | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [prompt log/vector store/fine-tune dataset/LLM API call] | [PII/PHI/financial/embedding/etc.] | [users/customers/employees/patients] | [inference/training/analytics/support] | [consent/contract/legal obligation/legitimate interest/DPA] | [provider/region/cross-border transfer] | [TTL/policy/Unknown] | [source/vector/log/backup/model artifact] | [file:line/config/policy/DPA/ticket] | [Pass/Fail/Unknown] | [exceptions] |
+
+For each matrix row:
+- Record the applicable legal basis, consent status, DPA/provider term, or documented legitimate-interest assessment.
+- Record whether data is sent to a third party, crosses regions, or is retained by an LLM provider.
+- Record the retention period and the implementation evidence that enforces it, such as TTL, lifecycle rule, purge job, or provider setting.
+- Record how deletion or consent withdrawal propagates to prompt logs, vector stores, embeddings, backups, training datasets, evaluation datasets, and model artifacts where applicable.
+- Mark the result as `Unknown` when legal basis, retention enforcement, deletion propagation, or third-party processing evidence cannot be produced.
 
 ---
 
@@ -408,6 +421,12 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 [Description or reference to diagram showing personal data flows through AI components:
 user input -> prompt assembly -> LLM API -> completion -> output -> logging/storage]
 
+## AI Data Processing Evidence Matrix
+
+| Data Flow/Store | Data Type | Data Subjects | Purpose | Legal Basis/Consent | Third Party/Region | Retention Period | Deletion Propagation | Controls Evidence | Result | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [prompt log/vector store/fine-tune dataset/LLM API call] | [PII/PHI/financial/embedding/etc.] | [users/customers/employees/patients] | [inference/training/analytics/support] | [consent/contract/legal obligation/legitimate interest/DPA] | [provider/region/cross-border transfer] | [TTL/policy/Unknown] | [source/vector/log/backup/model artifact] | [file:line/config/policy/DPA/ticket] | [Pass/Fail/Unknown] | [exceptions] |
+
 ## Findings
 
 ### Finding [N]: [Title]
@@ -471,6 +490,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 4. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
+
+6. **Treating a data-flow diagram as privacy evidence.** A diagram can show where data moves, but it does not prove legal basis, consent enforcement, provider retention, deletion propagation, or cross-border transfer controls. Record the processing evidence matrix so each AI data store and transfer has reproducible proof.
 
 ---
 
