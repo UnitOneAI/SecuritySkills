@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -54,6 +54,8 @@ Before conducting the PIR, gather or confirm:
 - [ ] **Timeline of events** -- Chronological record of all significant events from initial compromise through detection, containment, eradication, and recovery.
 - [ ] **Team participants** -- Names and roles of all personnel involved in the response (IR team, management, legal, communications, external responders).
 - [ ] **Communication logs** -- Records of notifications, escalations, and status updates sent during the incident.
+- [ ] **External obligation evidence** -- Customer contract notice terms, regulator thresholds, cyber insurance notice requirements, status page updates, support macros, and legal decisions marking notices as sent, pending, or not applicable.
+- [ ] **Supplier evidence** -- Vendor status page events, support case transcripts, supplier RCA due dates, customer-specific impact statements, and SLA or data-processing obligations for incidents caused or amplified by third parties.
 - [ ] **Evidence and forensic findings** -- Summary of forensic analysis results, root cause indicators, and attacker TTPs identified.
 - [ ] **Existing controls** -- Documentation of security controls that were in place at the time of the incident (detection rules, access controls, network segmentation, patching cadence).
 - [ ] **Previous PIR reports** -- Any prior post-incident reviews for similar incident types, to identify recurring patterns.
@@ -228,6 +230,32 @@ MTTR measures the total response duration from detection through return to norma
 | **Notification Time** | Notification - Detection | Time from detection to stakeholder/regulatory notification |
 | **Recurrence Rate** | Count of similar incidents in last 12 months | Whether root causes from prior incidents were effectively addressed |
 
+### Step 4b: Supplier and External Obligation Evidence
+
+For incidents involving third-party services, customer-facing commitments, regulated data, cyber insurance, or public communications, record the external evidence separately from the technical RCA. A missing notice is a gap only when notice was required and not sent; a valid non-notification decision must include the decision authority and reason.
+
+**Supplier RCA tracker:**
+
+| Supplier / Dependency | Evidence Available | Evidence Missing | Owner | Due Date | Closure Criteria |
+|---|---|---|---|---|---|
+| [Vendor or service] | [status page, support case, logs] | [supplier RCA, impact statement, SLA decision] | [Owner] | [YYYY-MM-DD] | [Evidence required to close] |
+
+**External notification matrix:**
+
+| Channel | Required? | Status | Decision Authority | Evidence | Deadline |
+|---|---|---|---|---|---|
+| Customer notice | [Yes/No/Unknown] | [Sent/Pending/Not Applicable] | [Legal/Comms/Owner] | [Message ID, ticket, or reason] | [YYYY-MM-DD or N/A] |
+| Regulator notice | [Yes/No/Unknown] | [Sent/Pending/Not Applicable] | [Legal/Privacy] | [Filing ID or not_applicable_reason] | [YYYY-MM-DD or N/A] |
+| Cyber insurer notice | [Yes/No/Unknown] | [Sent/Pending/Not Applicable] | [Risk/Legal] | [Claim/notice ID or reason] | [YYYY-MM-DD or N/A] |
+| Status page | [Yes/No/Unknown] | [Posted/Pending/Not Applicable] | [Comms/Incident Commander] | [Status page URL or reason] | [YYYY-MM-DD or N/A] |
+| Support macro / customer-facing script | [Yes/No/Unknown] | [Approved/Pending/Not Applicable] | [Support/Comms/Legal] | [Macro ID or reason] | [YYYY-MM-DD or N/A] |
+
+**Consistency checks:**
+- Status page, support replies, customer emails, regulatory notices, and executive updates must use consistent impact language.
+- If a channel is `Not Applicable`, record the specific threshold or fact pattern that made it not applicable.
+- If supplier evidence is pending after the PIR due date, keep the PIR open with a follow-up action rather than closing the supplier RCA as complete.
+- If a customer contract requires availability notice even when privacy law does not require breach notice, track both obligations separately.
+
 ### Step 5: Control Failure Mapping
 
 Map the incident to specific control failures -- what should have prevented, detected, or limited the incident but did not.
@@ -250,6 +278,7 @@ Map the incident to specific control failures -- what should have prevented, det
 | **Segmentation failure** | Network segmentation did not prevent lateral movement | Review and enforce micro-segmentation; validate firewall rules; implement zero-trust architecture |
 | **Process gap** | IR playbook did not cover the incident type or was outdated | Update IR playbooks; conduct tabletop exercises; review annually |
 | **Communication failure** | Stakeholders were not notified, or notification was delayed | Formalize escalation matrix; automate notifications; test communication procedures |
+| **External obligation gap** | Customer, regulator, insurer, supplier, or public status obligations were not tracked with evidence | Add an external obligation matrix with owner, deadline, status, and not-applicable rationale |
 
 ### Step 6: Lessons Learned and Remediation Plan
 
@@ -302,7 +331,7 @@ Produce the post-incident review report with these exact sections:
 ## Post-Incident Review: [Incident ID]
 **Date of Review:** [YYYY-MM-DD]
 **Date of Incident:** [YYYY-MM-DD]
-**Skill:** post-incident-review v1.0.0
+**Skill:** post-incident-review v1.0.1
 **Framework:** NIST SP 800-61 Rev 2
 **PIR Facilitator:** [Name or "AI-assisted -- human facilitator required"]
 
@@ -334,6 +363,7 @@ root cause, and the number/priority of remediation actions identified.]
 | MTTC (Detection to Containment) | [duration] | [comparison to org average] |
 | MTTR (Detection to Recovery) | [duration] | [comparison to org average] |
 | Escalation Time | [duration] | [SLA target] |
+| Notification Time | [duration or N/A] | [contract/regulatory target] |
 
 ### Root Cause Analysis
 **Method:** [5 Whys / Fishbone / Both]
@@ -346,6 +376,15 @@ root cause, and the number/priority of remediation actions identified.]
 | Control Category | Expected Control | Status | Failure Mode | Improvement |
 |---|---|---|---|---|
 | [Preventive/Detective/Corrective] | [Control] | [Status] | [Why it failed] | [Improvement] |
+
+### Supplier and External Obligations
+| Obligation | Required? | Status | Owner | Evidence | Deadline / Follow-Up |
+|---|---|---|---|---|---|
+| Customer notice | [Yes/No/Unknown] | [Sent/Pending/Not Applicable] | [Owner] | [Message ID, ticket, or not_applicable_reason] | [Date or N/A] |
+| Regulator notice | [Yes/No/Unknown] | [Sent/Pending/Not Applicable] | [Owner] | [Filing ID or not_applicable_reason] | [Date or N/A] |
+| Cyber insurer notice | [Yes/No/Unknown] | [Sent/Pending/Not Applicable] | [Owner] | [Notice/claim ID or not_applicable_reason] | [Date or N/A] |
+| Supplier RCA | [Yes/No/Unknown] | [Received/Pending/Not Applicable] | [Owner] | [Support case, status page, RCA link, or reason] | [Date or N/A] |
+| Public status page / support macro | [Yes/No/Unknown] | [Published/Approved/Pending/Not Applicable] | [Owner] | [URL, macro ID, or reason] | [Date or N/A] |
 
 ### What Went Well
 - [Strength identified during retrospective]

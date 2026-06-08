@@ -1,0 +1,36 @@
+scenario: supplier_incident_with_documented_external_obligations
+skill: post-incident-review
+expected_result: do_not_flag_missing_notice
+incident:
+  id: IR-2026-2045-benign
+  source: upstream-email-provider-outage
+  customer_impact: delayed_notifications
+  data_impact: none_confirmed
+external_obligations:
+  customer_notice:
+    required: false
+    status: not_applicable
+    decision_authority: legal
+    not_applicable_reason: no_contractual_availability_threshold_met
+  regulator_notice:
+    required: false
+    status: not_applicable
+    decision_authority: privacy_counsel
+    not_applicable_reason: no_personal_data_access_or_exfiltration
+  cyber_insurer_notice:
+    required: false
+    status: not_applicable
+    decision_authority: risk
+    not_applicable_reason: below_policy_notice_threshold
+  status_page:
+    required: true
+    status: posted
+    evidence: status-page-incident-4812
+supplier_evidence:
+  support_case: VND-90210
+  supplier_rca_due_date: "2026-06-14"
+  follow_up_ticket: PIR-2045-FU
+why_this_should_pass: >
+  Missing customer, regulator, and insurer notices are documented as not
+  applicable with decision authorities and reasons, while pending supplier RCA
+  evidence is tracked with an owner and follow-up.

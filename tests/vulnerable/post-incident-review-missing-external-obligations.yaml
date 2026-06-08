@@ -1,0 +1,24 @@
+scenario: supplier_incident_without_external_obligation_evidence
+skill: post-incident-review
+expected_result: flag_incomplete_pir
+incident:
+  id: IR-2026-2045
+  source: managed-auth-provider
+  customer_impact: login_and_mfa_outage
+  data_impact: none_confirmed
+pir_evidence:
+  supplier_status_page: present
+  supplier_support_case: present
+  supplier_final_rca: missing
+  customer_contract_notice_review: missing
+  regulator_notice_decision: missing
+  cyber_insurer_notice_decision: missing
+  support_macro_approved: false
+external_messages:
+  status_page: "partial outage, no data exposure"
+  support_macro: "security incident under investigation"
+  customer_email: not_sent
+why_this_should_fail: >
+  The PIR cannot close because supplier RCA evidence and external notification
+  decisions are missing, and customer-facing messages use inconsistent impact
+  language.
