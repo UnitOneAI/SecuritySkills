@@ -450,6 +450,57 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+### HTTP Parameter Pollution and Parser Inconsistency
+
+Duplicate parameters can become a security misconfiguration when different layers choose different values. Test repeated query parameters, form fields, array syntax, and repeated headers for endpoints where parameters influence authorization, tenancy, signatures, cache keys, redirects, pricing, workflow state, or downstream service calls.
+
+```http
+GET /api/v1/accounts?tenant_id=public&tenant_id=admin&id=123 HTTP/1.1
+Host: api.example.com
+Authorization: Bearer user-token
+```
+
+```javascript
+// VULNERABLE: Middleware validates the first value while the handler uses the last value
+app.use((req, res, next) => {
+  const tenant = Array.isArray(req.query.tenant_id) ? req.query.tenant_id[0] : req.query.tenant_id;
+  authorizeTenant(req.user, tenant);
+  next();
+});
+
+app.get('/api/v1/accounts', (req, res) => {
+  const tenant = Array.isArray(req.query.tenant_id)
+    ? req.query.tenant_id[req.query.tenant_id.length - 1]
+    : req.query.tenant_id;
+  return res.json(loadAccounts(tenant));
+});
+```
+
+Remediation:
+
+```javascript
+// SECURE: Reject duplicate security-sensitive parameters before authorization
+const singleValueParams = new Set(['tenant_id', 'id', 'role', 'scope', 'redirect_uri']);
+
+app.use((req, res, next) => {
+  for (const name of singleValueParams) {
+    if (Array.isArray(req.query[name])) {
+      return res.status(400).json({ error: 'Duplicate parameter rejected' });
+    }
+  }
+  next();
+});
+```
+
+### HPP Evidence Checklist
+
+- [ ] Security-sensitive parameters are identified across query string, path, form body, JSON body, and headers.
+- [ ] Duplicate values are tested through the gateway/WAF, framework parser, validator, application handler, cache/CDN, and downstream service.
+- [ ] The review records whether each layer rejects, uses first value, uses last value, joins values, or binds a list.
+- [ ] Authentication, authorization, rate limiting, cache keys, request signing, audit logging, and business logic use the same canonical parameter set.
+- [ ] Duplicate object ID, tenant, role, scope, price, redirect, callback, and signature parameters are rejected or normalized before any security decision.
+- [ ] Negative tests and access logs prove duplicate parameter attempts are blocked or deterministically handled.
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
@@ -462,6 +513,7 @@ Document doc = builder.parse(request.getInputStream());
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
+- Reject duplicate security-sensitive parameters at the first trusted boundary, or canonicalize them once and pass the normalized representation to every downstream decision point.
 
 ### Review Checklist
 
@@ -472,6 +524,7 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
+- [ ] Duplicate security-sensitive parameters are rejected or consistently canonicalized across gateway, application, cache, and downstream layers.
 
 ---
 

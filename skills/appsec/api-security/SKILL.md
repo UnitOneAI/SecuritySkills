@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -48,6 +48,38 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+---
+
+## HTTP Parameter Pollution and Duplicate Parameter Evidence
+
+REST, gateway, and backend frameworks handle duplicate query, form, path, and header parameters differently. Do not assume that OpenAPI uniqueness constraints, gateway validation, or client SDK behavior reflects the value used by the application, authorization middleware, cache key, signature validator, or downstream service.
+
+When an API accepts security-sensitive parameters, require evidence for duplicate-parameter behavior:
+
+1. **Identify sensitive parameters** -- object IDs, role/scope flags, tenant IDs, redirect URLs, callback URLs, price/quantity values, pagination controls, signature basestring inputs, filters that influence authorization, and feature flags.
+2. **Compare parser behavior across layers** -- API gateway/WAF, load balancer, framework router, request binding middleware, validation library, application handler, cache/CDN, and downstream service clients.
+3. **Test duplicate-value precedence** -- first value wins, last value wins, comma join, list binding, rejection, or inconsistent behavior between layers.
+4. **Verify canonicalization before decisions** -- authentication, authorization, rate limiting, cache key generation, request signing, audit logging, and business logic must use the same normalized parameter set.
+5. **Exercise mixed locations** -- duplicate values across query string, form body, JSON body, path variables, repeated headers, and array syntaxes such as `id=1&id=2`, `id[]=1&id[]=2`, and `id=1,2`.
+6. **Capture negative test evidence** -- requests with duplicate security-sensitive parameters must be rejected or deterministically normalized before any security decision.
+
+### Parameter Pollution Coverage Matrix
+
+Use this table when duplicate parameter behavior could affect authorization, authentication, routing, caching, signing, or business logic:
+
+| Endpoint | Parameter | Location(s) | Security Decision | Gateway Behavior | App Behavior | Downstream Behavior | Expected Handling | Evidence |
+|---|---|---|---|---|---|---|---|---|
+| `[method path]` | `[name]` | `[query/form/header/body]` | `[authz/cache/signature/etc.]` | `[reject/first/last/list]` | `[reject/first/last/list]` | `[same/different/n/a]` | `[reject or canonicalize]` | `[test/log/spec link]` |
+
+### Parameter Pollution Finding Guidance
+
+- **High:** Duplicate object, tenant, role, scope, price, or signature parameters can make the gateway authorize one value while the handler or downstream service acts on another value.
+- **Medium:** Duplicate filters, pagination, cache keys, redirect targets, or workflow parameters can bypass validation, poison cache entries, or change business outcomes.
+- **Low:** Duplicate non-sensitive parameters are accepted inconsistently but do not currently affect a security or business decision.
+- **Not a finding:** The API rejects duplicate security-sensitive parameters at the first trusted boundary and logs the rejection with enough context for investigation.
+
+Map findings to **API8:2023 -- Security Misconfiguration** when parser or gateway behavior is inconsistent, and to **API10:2023 -- Unsafe Consumption of APIs** when upstream or downstream services interpret the same duplicate parameters differently. Include **CWE-235 -- Improper Handling of Extra Parameters** or **CWE-20 -- Improper Input Validation** as appropriate.
 
 ---
 
@@ -92,7 +124,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -215,6 +247,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Assuming duplicate parameters are harmless.** Gateways, frameworks, validators, caches, and downstream services may choose different values when a request repeats the same parameter. Verify that duplicate security-sensitive parameters are rejected or normalized before any security decision.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -238,4 +272,14 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
+- **OWASP WSTG-INPV-04 -- Testing for HTTP Parameter Pollution:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.1 | 2026-06-08 | Added HTTP Parameter Pollution and duplicate parameter evidence gates with parser-consistency coverage matrix. |
+| 1.0.0 | Initial | Initial API security review workflow. |
