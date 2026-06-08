@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -90,6 +90,51 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 - Use `npm audit --omit=dev`, `pip-audit`, `govulncheck`, or `cargo audit` to scan the full resolved dependency tree.
 - Pin critical transitive dependencies using overrides/resolutions (`npm overrides`, `pip` constraints files, `go.mod replace`).
 - Evaluate dependency tree depth before adopting new packages: `npm ls --all`, `pipdeptree`, `go mod graph`.
+
+## Lockfile Artifact Integrity and Registry Provenance
+
+Lockfiles are not just dependency enumerations. They are artifact evidence: package source, resolved artifact location, integrity checksum, install-script flags, and sometimes immutable source commits are recorded there. Use this gate before CVE and license triage so non-CVE supply-chain drift is visible in the report.
+
+### Evidence to Collect
+
+| Ecosystem | Evidence fields | Review notes |
+|---|---|---|
+| npm | `package-lock.json` / `npm-shrinkwrap.json` `packages.*.resolved`, `integrity`, `hasInstallScript`, `link`, `hasShrinkwrap`; manifest specs such as `git+`, `file:`, `link:`, `http://`, `https://` | `npm-shrinkwrap.json` can override root `package-lock.json`; expected registry host must be compared to project `.npmrc` policy. |
+| Yarn / pnpm | Lockfile resolved URL, checksum / integrity, patched dependency metadata, script approval controls where present | Treat missing checksums differently for legacy formats; record the package-manager version. |
+| Python | Hash-pinned requirements (`--hash=`), lockfile hashes, index URLs, direct URL dependencies, VCS dependencies with commit SHAs | A version pin without a hash is weaker artifact evidence for high-risk release builds. |
+| Go | `go.sum`, module proxy / checksum database posture, `replace` directives, VCS pseudo-versions | A local or broad `replace` directive in production can bypass public module checksum evidence. |
+| Rust | `Cargo.lock` source registry, checksum, git source revision, `build.rs` presence for packages that compile native code | Git dependencies should resolve to immutable revisions rather than moving branches. |
+
+### Finding Triggers
+
+| ID | Trigger | Severity Guidance |
+|---|---|---|
+| DEP-LOCK-01 | Lockfile is missing for an ecosystem that supports deterministic installs in production or CI | Medium; High when release artifacts are built without a committed lockfile. |
+| DEP-LOCK-02 | Lockfile package lacks integrity / checksum evidence where the ecosystem normally records it | Medium; High when the package is production runtime or build-tooling code. |
+| DEP-LOCK-03 | `resolved` artifact host, scheme, or registry differs from the approved registry / proxy policy | High when it points to an unapproved external tarball host or plain HTTP source. |
+| DEP-LOCK-04 | Git / VCS dependency is pinned to a branch, tag, or symbolic ref instead of an immutable commit in production builds | Medium; High for privileged build, deploy, or security tooling dependencies. |
+| DEP-LOCK-05 | Manifest, lockfile, SBOM, and registry metadata disagree on package name, version, source, hash, license, or supplier | Medium until explained; High if the mismatch changes the executable artifact. |
+| DEP-LOCK-06 | `hasInstallScript` / lifecycle-script evidence exists for production or build dependencies without an allowlist, script-disabled untrusted install path, or isolated build controls | Medium; High when scripts run with secrets, deploy tokens, or cloud credentials. |
+| DEP-LOCK-07 | Registry signature or provenance verification is expected but missing, failing, stale, or not recorded | Medium; do not treat unsupported signatures as a CVE-equivalent failure. |
+| DEP-LOCK-08 | `file:`, `link:`, local tarball, patch, vendored, or workspace dependency can replace production code without the same artifact integrity controls | Medium; High when used in release builds without review evidence. |
+
+### False-Positive Boundaries
+
+- A `resolved` tarball URL is normal in npm lockfiles. Report it only when the host, scheme, registry policy, or package identity is unexpected.
+- `registry.npmjs.org` can be a normal npm lockfile registry value. Compare it to the project's configured registry policy before flagging.
+- Legitimate native packages may have install scripts. Inventory them first, then risk-score based on trust, script behavior, dependency scope, and whether scripts run in privileged CI.
+- Signature and provenance support varies by registry and package age. Record `Verified`, `Failed`, `Not Supported`, or `Not Evaluated` rather than collapsing all missing evidence into one finding.
+- Local workspace links can be normal during development. They need release-build evidence showing the final artifact cannot silently substitute unreviewed local code.
+
+### Artifact Integrity Output
+
+For each high-risk package or representative sample, record:
+
+| Package | Scope | Source / Registry | Integrity / Checksum | Mutable Source? | Install Script? | Signature / Provenance | Decision |
+|---|---|---|---|---|---|---|---|
+| `[name@version]` | runtime / build / dev | `[registry host or URL]` | present / missing / mismatch | no / branch / tag / local path | yes / no | verified / failed / not supported / not evaluated | pass / fail / needs review |
+
+If npm registry signature verification is in scope, record whether `npm audit signatures` or equivalent evidence was reviewed, and whether JSON output included attestation bundles when the organization requires provenance evidence.
 
 ## Vulnerability Triage: EPSS + CVSS + CISA KEV
 
@@ -210,8 +255,19 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Typosquatting risk detected
 - [ ] Packages with no license
 - [ ] Packages with install scripts
+- [ ] Missing lockfile integrity/checksum evidence
+- [ ] Unexpected artifact host, registry, or source scheme
+- [ ] Mutable git, local, linked, or external tarball dependencies
+- [ ] Registry signature/provenance not verified where expected
+- [ ] Manifest/lockfile/SBOM/registry metadata mismatch
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+
+### Lockfile Artifact Integrity
+
+| Package | Scope | Source / Registry | Integrity | Mutable Source | Install Script | Signature / Provenance | Decision |
+|---|---|---|---|---|---|---|---|
+| ... | ... | ... | ... | ... | ... | ... | ... |
 
 ### Recommendations
 
@@ -226,8 +282,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Lockfile artifact integrity review**: Compare manifest, lockfile, SBOM, registry policy, source URL, integrity/checksum, git commit, install-script, and signature/provenance evidence. Do not execute lifecycle scripts.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
@@ -250,4 +307,6 @@ This skill processes user-supplied content including package manifests, lockfile
 - [FIRST EPSS Model](https://www.first.org/epss/)
 - [NIST NVD](https://nvd.nist.gov/)
 - [OpenSSF Scorecard](https://securityscorecards.dev/)
+- [npm package-lock.json format](https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/)
+- [npm audit signatures](https://docs.npmjs.com/cli/v11/commands/npm-audit/#audit-signatures)
 - [Executive Order 14028 - Improving the Nation's Cybersecurity](https://www.whitehouse.gov/briefing-room/presidential-actions/2021/05/12/executive-order-on-improving-the-nations-cybersecurity/)

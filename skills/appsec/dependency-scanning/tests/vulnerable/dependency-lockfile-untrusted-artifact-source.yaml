@@ -1,0 +1,42 @@
+project: checkout-service
+ecosystem: npm
+expected_registry_policy:
+  public_registry: https://registry.npmjs.org/
+  private_registry: https://npm.internal.example/
+manifest:
+  dependencies:
+    lodash: "^4.17.21"
+    release-helper: "git+https://github.com/example/release-helper.git#main"
+lockfile:
+  lockfileVersion: 3
+  packages:
+    node_modules/lodash:
+      version: 4.17.21
+      resolved: http://mirror.example.invalid/lodash-4.17.21.tgz
+      integrity: null
+    node_modules/release-helper:
+      version: git+https://github.com/example/release-helper.git#main
+      resolved: git+https://github.com/example/release-helper.git#main
+      integrity: null
+      hasInstallScript: true
+sbom:
+  component:
+    name: lodash
+    version: 4.17.21
+    purl: pkg:npm/lodash@4.17.21
+    externalReferences:
+      - type: distribution
+        url: https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz
+signature_evidence:
+  npm_audit_signatures: not_evaluated
+expected_findings:
+  - DEP-LOCK-02
+  - DEP-LOCK-03
+  - DEP-LOCK-04
+  - DEP-LOCK-05
+  - DEP-LOCK-06
+  - DEP-LOCK-07
+reason: >
+  The resolved artifact source uses an unapproved HTTP host, integrity evidence is
+  missing, the git dependency resolves to a mutable branch, install-script evidence
+  is present without controls, and SBOM source metadata disagrees with the lockfile.

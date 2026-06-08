@@ -1,0 +1,44 @@
+project: billing-portal
+ecosystem: npm
+expected_registry_policy:
+  public_registry: https://registry.npmjs.org/
+  private_registry: https://npm.internal.example/
+manifest:
+  dependencies:
+    lodash: "4.17.21"
+    internal-ui: "1.4.2"
+lockfile:
+  lockfileVersion: 3
+  packages:
+    node_modules/lodash:
+      version: 4.17.21
+      resolved: https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz
+      integrity: sha512-redacted-sri
+      hasInstallScript: false
+    node_modules/internal-ui:
+      version: 1.4.2
+      resolved: https://npm.internal.example/internal-ui/-/internal-ui-1.4.2.tgz
+      integrity: sha512-redacted-internal-sri
+      hasInstallScript: false
+sbom:
+  components:
+    - name: lodash
+      version: 4.17.21
+      purl: pkg:npm/lodash@4.17.21
+      hashes:
+        - alg: SHA-512
+          content: redacted-sri
+    - name: internal-ui
+      version: 1.4.2
+      purl: pkg:npm/internal-ui@1.4.2
+      hashes:
+        - alg: SHA-512
+          content: redacted-internal-sri
+signature_evidence:
+  npm_audit_signatures: verified
+  include_attestations: true
+expected_decision: pass
+reason: >
+  The lockfile source hosts match the approved registry policy, integrity evidence
+  is present, no mutable source dependency or install script is present, and SBOM
+  identity evidence aligns with the lockfile.
