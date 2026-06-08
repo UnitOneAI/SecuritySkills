@@ -260,6 +260,76 @@ aws_efs_file_system
 encrypted = true
 ```
 
+### Supplemental -- Public Snapshot and AMI Sharing Gates
+
+These gates are not a separate CIS Foundations recommendation count. Use them to prevent storage exposure false negatives where live resources are private but copied backup or image artifacts are public.
+
+#### RDS DB snapshot public restore permissions
+
+Review manual DB snapshot attributes, especially production-derived and regulated-data snapshots.
+
+```bash
+aws rds describe-db-snapshots \
+  --snapshot-type manual \
+  --include-public \
+  --include-shared
+
+aws rds describe-db-snapshot-attributes \
+  --db-snapshot-identifier <snapshot-id>
+```
+
+Fail when the `restore` attribute contains `all`, unless the report proves the artifact is intentionally public, non-sensitive, and approved. Record explicit account IDs separately from public sharing.
+
+#### EBS snapshot public create-volume permissions
+
+Review snapshot permissions and account-level block public access state for every in-scope Region.
+
+```bash
+aws ec2 describe-snapshot-attribute \
+  --snapshot-id <snapshot-id> \
+  --attribute createVolumePermission
+
+aws ec2 get-snapshot-block-public-access-state \
+  --region <region>
+```
+
+Fail when `createVolumePermission` includes `Group=all`. Calibrate severity with the Regional block public access mode:
+
+| Block Public Access State | Interpretation |
+|---------------------------|----------------|
+| `block-all-sharing` | Strongest evidence that public EBS snapshot access is blocked in that Region |
+| `block-new-sharing` | Blocks new public sharing but requires inventory of existing public snapshots |
+| Unblocked / not configured | No account-level guardrail against public snapshot sharing |
+| Not available | Mark Not Evaluable for that Region unless another authoritative control covers it |
+
+#### AMI public launch permissions
+
+Review owned AMIs and trace block device mappings to snapshots where possible.
+
+```bash
+aws ec2 describe-images --owners self
+
+aws ec2 describe-image-attribute \
+  --image-id <ami-id> \
+  --attribute launchPermission
+```
+
+Fail when `launchPermission` includes `Group=all` for AMIs that are production-derived, contain sensitive software/data, or reference snapshots with unknown sharing posture. Do not treat AMI launch permission as the same evidence path as direct EBS snapshot `createVolumePermission`; record both when available.
+
+#### Evidence fields to capture
+
+For each evaluated artifact, record:
+
+- Artifact type: RDS DB snapshot, EBS snapshot, or AMI
+- Account and Region
+- Snapshot or AMI ID
+- Public attribute observed: `restore=all`, `createVolumePermission=Group=all`, `launchPermission=Group=all`, or none
+- Explicit shared account IDs and approval status
+- EBS block public access mode for the Region, when relevant
+- Data sensitivity or derivation from production
+- Evidence source and timestamp
+- Not Evaluable reason if live AWS inventory or snapshot attributes are unavailable
+
 ---
 
 ## Section 3 -- Logging
