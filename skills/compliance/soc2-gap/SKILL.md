@@ -357,6 +357,32 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 
 ---
 
+### CC8.1 Emergency Change Evidence Gate
+
+Emergency changes are expedited changes, not evidence-free changes. When emergency production changes occurred during the SOC 2 review period, require auditor-verifiable evidence that each change was authorized, validated, recoverable, and reviewed after implementation.
+
+For every sampled emergency change, collect:
+
+- change identifier linking ticket, incident, PR, deployment run, and production audit log;
+- emergency reason tied to incident, outage, vulnerability, customer impact, or risk record;
+- approval evidence, including retroactive approval due/completed timestamps when pre-approval was not possible;
+- requester, approver, deployer, and verifier identities, plus compensating review if segregation of duties collapsed;
+- CI result, smoke test, health check, monitoring, or other validation evidence;
+- change-specific rollback plan, abort criteria, rollback owner, and previous known-good version or configuration;
+- post-implementation review with reviewer, completion timestamp, outcome, and follow-up control actions.
+
+Do not score CC8.1 as audit-ready based on chat-only approval, generic rollback runbooks, closed deployment tickets, or emergency labels without the evidence fields above.
+
+Use these finding IDs for emergency-change gaps:
+
+| Finding ID | Condition |
+|---|---|
+| SOC2-CC8-EMERG-01 | Emergency production change lacks a formal ticket or traceable change identifier. |
+| SOC2-CC8-EMERG-02 | Emergency reason is missing or not tied to incident, vulnerability, outage, customer-impact, or risk evidence. |
+| SOC2-CC8-EMERG-03 | Approval is missing, undocumented, or outside the policy-defined retroactive approval SLA. |
+| SOC2-CC8-EMERG-04 | Requester, approver, deployer, and verifier are the same person without compensating review. |
+| SOC2-CC8-EMERG-05 | Change-specific rollback plan, abort criteria, or rollback owner is missing. |
+| SOC2-CC8-EMERG-06 | Post-implementation review is missing, unsigned, late, or lacks follow-up control actions. |
 ## Output Format
 
 When performing a SOC 2 gap analysis, produce the following deliverables:
@@ -368,7 +394,7 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
 6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
 7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
-7. **Emergency Change Evidence Matrix**: For any emergency production changes in the audit period, include sampled CC8.1 evidence with rollback, abort criteria, segregation-of-duties, approval SLA, validation, and post-implementation review status.
+8. **Emergency Change Evidence Matrix**: For any emergency production changes in the audit period, include sampled CC8.1 evidence with rollback, abort criteria, segregation-of-duties, approval SLA, validation, and post-implementation review status.
 
 
 ### Emergency Change Evidence Matrix (CC8.1)
