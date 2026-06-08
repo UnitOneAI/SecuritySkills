@@ -1,0 +1,23 @@
+scenario: stale-kev-epss-emergency-tier
+cve: CVE-2026-10001
+proposed_sla_tier: P0
+decision_inputs:
+  cisa_kev:
+    listed: true
+    source_url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+    retrieved_at: "2026-05-30T00:00:00Z"
+  epss:
+    score: 0.82
+    percentile: missing
+    score_date: missing
+  ssvc_decision: Immediate
+asset:
+  exposure: internet-facing
+  criticality: high
+expected_findings:
+  - id: PATCH-EXPLOIT-01
+    severity: high
+    reason: emergency SLA depends on KEV/EPSS evidence without current retrieval date and complete score metadata
+  - id: PATCH-EXPLOIT-02
+    severity: medium
+    reason: EPSS evidence is missing score date and percentile

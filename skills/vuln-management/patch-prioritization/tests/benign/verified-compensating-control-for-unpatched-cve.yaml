@@ -1,0 +1,21 @@
+scenario: verified-compensating-control-for-unpatched-cve
+cve: CVE-2026-10004
+proposed_sla_tier: P2
+patch_available: false
+decision_inputs:
+  cisa_kev:
+    listed: false
+    retrieved_at: "2026-06-09T01:00:00Z"
+  epss:
+    score: 0.18
+    percentile: 0.86
+    score_date: "2026-06-09"
+  exploit_maturity: public_poc
+compensating_control:
+  type: waf_virtual_patch
+  blocks_specific_exploit_path: true
+  tested_against_poc_at: "2026-06-08T18:00:00Z"
+  coverage: all_internet_facing_assets
+  expires_at: "2026-06-23T00:00:00Z"
+expected_status: pass
+false_positive_guardrail: lack of vendor patch is not itself a failure when a current verified control blocks the specific exploit path and has an expiration

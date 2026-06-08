@@ -110,6 +110,37 @@ Assign or validate SLA tiers using the following matrix. SLA tiers are derived f
 3. **Upward adjustment only:** If EPSS or KEV status indicates higher urgency than the SSVC decision alone, escalate the tier; never use EPSS to downgrade an SSVC Immediate decision
 4. **Asset criticality modifier:** For non-critical assets (dev, test, sandbox), the SLA tier may be relaxed by one level with documented justification
 
+### Step 2A: Exploit Maturity Evidence and Source Freshness
+
+Before assigning or changing an SLA tier, validate that the exploitability signals used in the decision are current, attributable, and traceable to authoritative evidence.
+
+**Framework mapping:** SSVC 2.1 exploitation state, EPSS v3 daily scoring, CISA KEV catalog evidence
+
+**Evidence freshness requirements:**
+
+- **CISA KEV:** Use the current machine-readable feed or record the catalog retrieval date. Treat KEV status as **Not Evaluable** when the feed is older than 24 hours for P0/P1 decisions.
+- **EPSS:** Record the EPSS score date and percentile. Treat missing or stale dates as insufficient evidence for escalation or deferral.
+- **Exploit maturity:** Distinguish active exploitation, weaponized exploit, public PoC, private proof, rumor, and no known exploit. Do not collapse all "PoC available" claims into active exploitation.
+- **Source quality:** Prefer vendor advisories, CISA KEV, CERT/CC, FIRST EPSS, reputable exploit databases, scanner plugin metadata with timestamps, or internally validated incident evidence.
+- **Asset applicability:** Confirm the exploit path applies to the affected asset version, configuration, exposure, and reachable attack surface.
+
+**What to look for:**
+
+```
+PATCH-EXPLOIT-01: SLA tier changed based on KEV/EPSS data without retrieval date or source URL
+PATCH-EXPLOIT-02: EPSS score is stale, missing percentile, or copied from a non-authoritative source
+PATCH-EXPLOIT-03: Public PoC is treated as active exploitation without incident, telemetry, KEV, or reputable threat-intel evidence
+PATCH-EXPLOIT-04: Exploit evidence does not apply to the deployed version, configuration, or exposed attack surface
+PATCH-EXPLOIT-05: Risk exception cites compensating controls but does not test them against the specific exploit path
+PATCH-EXPLOIT-06: Ransomware or mass-exploitation label is asserted without source, date, or campaign evidence
+```
+
+**False-positive guardrails:**
+
+- Do not downgrade a confirmed KEV finding because EPSS is low; KEV is evidence of known exploitation.
+- Do not escalate to P0 solely because a GitHub gist or blog mentions a PoC unless the source, date, affected version, and exploit path are validated.
+- Do not reject a compensating control solely because no vendor patch exists; evaluate whether the control blocks the specific exploit preconditions and whether verification evidence is current.
+
 ### Step 3: EPSS Trend Analysis
 
 Analyze EPSS score trajectory to identify vulnerabilities with increasing exploitation likelihood.
@@ -307,6 +338,12 @@ findings requiring immediate action.]
 |---|---|---|---|---|
 | [CVE-ID] | [score] | [score] | [Surging/Rising] | [Action] |
 
+### Exploit Evidence Freshness
+
+| CVE ID | KEV Source Date | EPSS Date | Exploit Maturity | Source Quality | Asset Applicability | Status |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [date/source] | [date] | [active/weaponized/PoC/none] | [authoritative/unverified] | [confirmed/not confirmed] | [Pass/Fail/Not Evaluable] |
+
 ### Prioritized Patch Schedule
 
 | Priority | CVE ID(s) | Target System | Patch | Scheduled Window | SLA Deadline | Status |
@@ -373,6 +410,10 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+
+6. **Using stale exploitability snapshots for emergency decisions.** A cached KEV export or old EPSS CSV may be acceptable for backlog reporting, but not for P0/P1 SLA changes. Record retrieval dates and refresh authoritative sources before emergency scheduling.
+
+7. **Confusing public PoC with active exploitation.** A proof-of-concept can justify higher urgency, but active exploitation requires stronger evidence such as KEV listing, incident telemetry, reputable threat intelligence, or verified campaign reporting.
 
 ---
 
