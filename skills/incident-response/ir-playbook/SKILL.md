@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -27,7 +27,7 @@ argument-hint: "[target-file-or-directory]"
 > **Frameworks:** NIST SP 800-61 Rev 2 (Computer Security Incident Handling Guide), SANS Incident Handler's Handbook
 > **Role:** SOC Analyst, Security Engineer, vCISO
 > **Time:** 30-60 min
-> **Output:** Incident response plan with severity classification, containment decision tree, communication templates, escalation criteria, and post-incident handoff checklist
+> **Output:** Incident response plan with severity classification, containment decision tree, legal-hold and evidence handoff gates, communication templates, escalation criteria, and post-incident handoff checklist
 
 ---
 
@@ -62,6 +62,7 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
+- [ ] **Legal hold and evidence custody** -- Legal hold status, custody owner, evidence storage location, and external transfer receipts if any artifacts leave the organization.
 
 ---
 
@@ -109,6 +110,7 @@ Verify that the foundational elements for incident response are in place. If gap
 | External IR retainer (if applicable) | [ ] | |
 | Regulatory notification requirements documented | [ ] | GDPR, HIPAA, state laws, SEC |
 | Evidence storage with chain-of-custody procedures | [ ] | |
+| Legal-hold workflow and evidence custodian identified | [ ] | Counsel approval, hold ticket, custody owner |
 
 ### Phase 2: Detection and Analysis (NIST) / Identification (SANS)
 
@@ -230,6 +232,45 @@ START: Is the attack actively ongoing?
                           - Rebuild from known-good baseline
 ```
 
+#### Step 3.1a: Legal Hold and Evidence Preservation Gate
+
+Before any containment action that deletes, rebuilds, powers off, rotates away, or transfers evidence, record whether preservation must take priority over speed. This gate prevents a response plan from treating all delayed containment as negligence when counsel, insurance, or law enforcement has approved a controlled preservation delay.
+
+**Activate or confirm legal hold when any of these apply:**
+
+- The incident may involve regulated data, customer data, employee data, trade secrets, privileged communications, or payment-card data.
+- Litigation, insurance coverage, regulator inquiry, law-enforcement referral, or contractual notice is reasonably possible.
+- A destructive action is planned, including cloud instance termination, disk rebuild, log-retention changes, mailbox purge, account deletion, or key rotation that may invalidate evidence.
+- Evidence will be transferred to an external IR firm, insurer, counsel, eDiscovery provider, regulator, or law-enforcement contact.
+
+**Preservation decision table:**
+
+| Planned action | Evidence at risk | Preservation status | Legal hold / approval | Custodian | Exception reason |
+|---|---|---|---|---|---|
+| [isolate / terminate / rebuild / rotate / transfer] | [memory / disk / logs / SaaS export / cloud snapshot] | [Captured / Pending / Not feasible] | [Ticket ID, counsel, timestamp] | [Owner] | [None / emergency containment / provider limit] |
+
+**Minimum viable evidence before destructive containment:**
+
+- Capture volatile evidence when feasible: memory, process list, network connections, active sessions, logged-in users, and open files.
+- Preserve durable evidence: disk image or cloud snapshot, EDR triage bundle, relevant audit logs, IAM policy state, affected mailbox or SaaS export, and IOC list.
+- Record hash values for exported artifacts using SHA-256 or stronger and store the hash manifest separately from the evidence package.
+- Export cloud/provider logs before terminating resources or changing retention policies. If immediate termination is required, document the approving responder and the post-action log recovery plan.
+- For ransomware, wiper, or active exfiltration, document why containment preceded full collection and what minimum evidence was captured first.
+
+**External evidence handoff requirements:**
+
+| Field | Required evidence |
+|---|---|
+| Recipient identity | Named person, organization, role, and contact channel |
+| Scope authority | Retainer, statement of work, regulator request, counsel instruction, or case number |
+| Artifact inventory | File names, artifact types, system/source, collection timestamp, and sensitivity |
+| Integrity proof | SHA-256 hash manifest and verification result after receipt |
+| Transfer protection | Encryption method, key-exchange channel, access expiry, and recipient access list |
+| Receipt | Sent timestamp, received timestamp, accepting recipient, checksum confirmation, and custody location |
+| Exception handling | Missing artifact, failed checksum, emergency transfer, or delayed receipt with owner and due date |
+
+If any required handoff field is unavailable, classify the handoff as `Not Evaluable` rather than complete. A narrative statement such as "sent to IR firm" is not sufficient evidence of custody integrity.
+
 #### Step 3.1b: Wiper / Destructive Malware Response Track
 
 Wiper malware destroys data irrecoverably (unlike ransomware which preserves encrypted data for ransom). This demands a fundamentally different response posture.
@@ -343,6 +384,7 @@ Escalate to the next tier when any of the following conditions are met:
 | Incident duration exceeds 4 hours without containment | IR lead escalates to management for resource allocation | At 4-hour mark |
 | Evidence of supply chain compromise affecting customers | Legal, Customer communications, Executive leadership | Within 2 hours |
 | Regulatory notification deadline approaching | Legal counsel, Compliance team | 24 hours before deadline |
+| Legal hold triggered or external evidence transfer planned | Legal counsel, evidence custodian, cyber insurance carrier or external IR firm | Before destructive containment or transfer |
 | Insider threat involving executive or privileged admin | Legal counsel, HR, Board (if executive) | Immediately |
 | IR team lacks expertise for the attack type | External IR retainer, Vendor support | Upon recognition |
 
@@ -367,7 +409,7 @@ Produce the incident response report with these exact sections:
 ```markdown
 ## Incident Response Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** ir-playbook v1.0.0
+**Skill:** ir-playbook v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, SANS Incident Handler's Handbook
 **Incident Commander:** [Name or "Unassigned -- assign immediately"]
 
@@ -401,6 +443,16 @@ and recommended immediate actions. Lead with the most critical fact.]
 |---|---|---|---|
 | [Action taken] | [Complete / In Progress / Planned] | [timestamp] | [responder] |
 
+### Legal Hold and Evidence Preservation
+| Planned action | Evidence at risk | Preservation status | Legal hold / approval | Custodian | Exception reason |
+|---|---|---|---|---|---|
+| [isolate / terminate / rebuild / rotate / transfer] | [artifact] | [Captured / Pending / Not feasible / Not Evaluable] | [ticket, counsel, timestamp] | [owner] | [reason or None] |
+
+### External Evidence Handoff
+| Artifact | Recipient | Scope authority | Hash verified | Transfer protection | Receipt status | Custody location |
+|---|---|---|---|---|---|---|
+| [artifact name/type] | [person/org/role] | [SOW/case/legal request] | [Yes / No / Not Evaluable] | [encryption/access expiry] | [sent/received timestamp] | [storage/case system] |
+
 ### Eradication and Recovery
 - **Root Cause:** [Description of initial access vector and exploitation path]
 - **Eradication Actions:** [List of removal actions taken]
@@ -421,6 +473,8 @@ and recommended immediate actions. Lead with the most critical fact.]
 ### Handoff to Post-Incident Review
 - **PIR Scheduled:** [Date or "Not yet scheduled"]
 - **Evidence Preserved:** [Yes / No -- reference forensics-checklist]
+- **Legal Hold Status:** [Active / Pending / Not Required / Not Evaluable]
+- **External Handoff Receipts:** [Complete / Incomplete / Not Applicable -- include receipt IDs]
 - **Remediation Tracking:** [Ticket system and IDs]
 ```
 
@@ -468,6 +522,14 @@ Reconnecting systems to the network before thoroughly removing all persistence m
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
 
+### Pitfall 6: Treating Legal-Hold Delay as Uncontrolled Delay
+
+Some containment delays are intentional and approved because evidence preservation, legal hold, cyber insurance requirements, or law-enforcement coordination must happen first. Do not mark delayed isolation as a response failure when there is a documented hold ticket, counsel or incident commander approval, named custodian, minimum viable evidence capture, and a time-boxed containment plan. Conversely, if a delay lacks those records, treat it as an evidence-quality and response-governance finding.
+
+### Pitfall 7: Handing Off Evidence Without Receipt and Hash Verification
+
+Sending disk images, cloud exports, logs, or mailbox archives to an external IR firm over a shared drive does not prove custody integrity. A valid handoff includes recipient identity, transfer scope, artifact inventory, SHA-256 hash manifest, encryption and access-expiry details, sent and received timestamps, checksum confirmation after receipt, and the final custody location. Missing any of these fields should be reported as incomplete or `Not Evaluable` instead of accepted as a complete handoff.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -497,3 +559,4 @@ This skill processes incident data that may include attacker-controlled content 
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
 13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+14. **NIST SP 800-86** -- Guide to Integrating Forensic Techniques into Incident Response -- https://csrc.nist.gov/publications/detail/sp/800-86/final
