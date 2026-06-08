@@ -6,13 +6,13 @@ description: >
   touching authentication, authorization, cryptography, or input handling is shared.
   Produces findings mapped to ASVS controls and CWE identifiers with severity
   ratings and specific remediation guidance.
-tags: [appsec, code-review, sast]
+tags: [appsec, code-review, sast, ssrf]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -394,14 +394,40 @@ func fetchURL(w http.ResponseWriter, r *http.Request) {
     io.Copy(w, resp.Body)
 }
 ```
-Remediation: Validate the URL scheme (allow only `https`), resolve the hostname and reject private/internal IP ranges, and use an allowlist of permitted domains.
+Remediation: Validate the URL scheme (allow only `https`), use a single canonical parser for validation and fetching, revalidate each redirect target, resolve and pin the final destination IP, reject private/link-local/loopback/multicast and metadata endpoints, and enforce an allowlist of permitted domains.
 
+
+#### 8.2a SSRF URL Parser, Redirect, and DNS Revalidation Gates
+
+For any code path that fetches user-controlled URLs, require evidence that validation and the HTTP client share the same canonical URL interpretation. A review is incomplete if it only checks the initial string or hostname before the fetch.
+
+**Evidence gates:**
+
+| Gate | Required Evidence | Failure Mode |
+|------|-------------------|--------------|
+| Canonical parser consistency | The same parsed URL object or canonicalization routine is used by validation and fetch code. | One parser approves a URL while another parser follows a different host, scheme, port, userinfo, or path. |
+| Redirect revalidation | Every 30x target is re-parsed, DNS-resolved, and rechecked before following. | Initial URL is safe but redirect target reaches internal or metadata services. |
+| DNS and final IP pinning | The destination IP used for the request is checked after resolution and pinned through connect. | DNS rebinding or TOCTOU changes move from public to private/link-local IPs. |
+| Alternate IP encoding rejection | Decimal, octal, hexadecimal, dotted-integer, IPv6, and IPv4-mapped IPv6 forms are normalized and blocked when internal. | Private ranges bypass filters through non-standard notation. |
+| Metadata endpoint denylist | AWS, Azure, GCP, Kubernetes, and local metadata addresses/hostnames are explicitly denied. | Cloud credentials or workload identity tokens are exposed. |
+| Scheme and method enforcement | Redirects cannot downgrade HTTPS, switch protocol, or reach file, gopher, ftp, or other unsupported schemes. | Protocol confusion bypasses HTTP-only SSRF controls. |
+
+**Finding IDs:**
+
+| ID | Condition | Severity | CWE |
+|----|-----------|----------|-----|
+| SCR-SSRF-01 | Validation and fetch code use different URL parsing or canonicalization behavior. | High | CWE-918 |
+| SCR-SSRF-02 | Redirect targets are followed without full revalidation. | High | CWE-918 |
+| SCR-SSRF-03 | DNS rebinding or final destination IP changes are not checked/pinned. | High | CWE-918 |
+| SCR-SSRF-04 | Alternate IP encodings or IPv4-mapped IPv6 forms bypass private-range filters. | Medium | CWE-918 |
+| SCR-SSRF-05 | Cloud metadata endpoints are not explicitly blocked. | High | CWE-918 |
+| SCR-SSRF-06 | Scheme, protocol, or method changes are accepted after validation. | Medium | CWE-918 |
 ### 8.3 Review Checklist
 
 - [ ] No use of native deserialization (pickle, ObjectInputStream, Marshal.load) on untrusted data.
 - [ ] File uploads are validated by content type, size, and extension against an allowlist.
 - [ ] Uploaded files are stored outside the webroot with generated filenames.
-- [ ] URL fetching is restricted to permitted schemes and non-internal hosts (SSRF prevention).
+- [ ] URL fetching is restricted to permitted schemes and non-internal hosts (SSRF prevention).`n- [ ] SSRF defenses use one canonical parser, revalidate redirects, pin final resolved IPs, reject alternate IP encodings, and deny cloud metadata endpoints.
 - [ ] Archive extraction checks for zip bombs and path traversal in entry names.
 
 ---
@@ -445,7 +471,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.1.0
 
 ### Summary
 - Critical: [count]
@@ -471,7 +497,7 @@ The final review output must be structured as follows:
 
 [Repeat for each finding]
 
-### ASVS Coverage Matrix
+### SSRF URL Fetch Review`n| Check | Status | Evidence | Finding ID |`n|---|---|---|---|`n| Parser consistency | [Pass/Fail/N/A] | [validation parser and HTTP client parser evidence] | [SCR-SSRF-01 or N/A] |`n| Redirect revalidation | [Pass/Fail/N/A] | [redirect policy and per-hop checks] | [SCR-SSRF-02 or N/A] |`n| DNS/final IP validation | [Pass/Fail/N/A] | [resolver behavior, pinned IP, denied ranges] | [SCR-SSRF-03 or N/A] |`n| Alternate IP encoding handling | [Pass/Fail/N/A] | [normalization test evidence] | [SCR-SSRF-04 or N/A] |`n| Metadata endpoint blocking | [Pass/Fail/N/A] | [AWS/Azure/GCP/Kubernetes metadata deny rules] | [SCR-SSRF-05 or N/A] |`n| Scheme/protocol enforcement | [Pass/Fail/N/A] | [allowed schemes, redirect downgrade behavior] | [SCR-SSRF-06 or N/A] |`n`n### ASVS Coverage Matrix
 | ASVS Section | Applicable | Findings | Pass/Fail |
 |---|---|---|---|
 | V2 Authentication | Yes/No | [count] | [result] |
@@ -561,5 +587,5 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Top 25 (2024):** https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
-- **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/`n- **OWASP SSRF Prevention Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html`n- **CWE-918 Server-Side Request Forgery:** https://cwe.mitre.org/data/definitions/918.html
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
