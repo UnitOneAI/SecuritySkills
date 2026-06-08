@@ -80,6 +80,71 @@ Check for key rotation mechanisms or expiration policies on service account keys
 
 Verify that no user has both `iam.serviceAccountUser` and `iam.serviceAccountAdmin` simultaneously.
 
+### Additional IAM Gate -- Conditional and Time-Bound Role Bindings
+
+For privileged, temporary, emergency, contractor, partner, or environment-scoped access, verify that the IAM policy enforces the claimed boundary with IAM Conditions or an equivalent JIT access mechanism. Ticket due dates, calendar reminders, or comments are not enforceable access controls.
+
+Terraform examples:
+
+```hcl
+# PASS: temporary project-level admin support access expires automatically
+resource "google_project_iam_member" "temporary_support" {
+  project = var.project_id
+  role    = "roles/compute.admin"
+  member  = "group:support@example.com"
+
+  condition {
+    title       = "expires_2026_06_30"
+    description = "Temporary support access approved in CHG-1234"
+    expression  = "request.time < timestamp(\"2026-06-30T23:59:59Z\")"
+  }
+}
+```
+
+```hcl
+# FAIL: described as temporary, but no enforced condition
+resource "google_project_iam_member" "temporary_support" {
+  project = var.project_id
+  role    = "roles/compute.admin"
+  member  = "group:support@example.com"
+}
+```
+
+```hcl
+# FAIL: IAM Conditions do not make legacy basic roles or public grants safe
+resource "google_project_iam_member" "owner_grant" {
+  project = var.project_id
+  role    = "roles/owner"
+  member  = "user:admin@example.com"
+}
+
+resource "google_storage_bucket_iam_member" "public_reader" {
+  bucket = google_storage_bucket.example.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}
+```
+
+Live-environment evidence:
+
+```bash
+gcloud projects get-iam-policy <project-id> \
+  --format=json
+
+gcloud organizations get-iam-policy <org-id> \
+  --format=json
+```
+
+Review checklist:
+
+- [ ] Privileged, emergency, partner, contractor, and temporary grants include an enforceable `condition` or are managed by a JIT system.
+- [ ] Time-limited access uses `request.time < timestamp("...")` or equivalent expiry logic.
+- [ ] Environment or resource-scoped access uses resource attributes, tags, Access Context attributes, or service-specific scopes where supported.
+- [ ] Legacy basic roles (`roles/owner`, `roles/editor`, `roles/viewer`) are not credited as conditionally constrained.
+- [ ] Public principals (`allUsers`, `allAuthenticatedUsers`) are not credited as conditionally constrained.
+- [ ] Break-glass grants include expiry, approver, ticket, activation reason, monitoring, and post-use review evidence.
+- [ ] IAM policy exports or SCC/Cloud Asset Inventory monitoring detect missing, expired, or weakened conditions.
+
 ### CIS 1.9 -- Ensure that Cloud KMS Cryptokeys Are Not Anonymously or Publicly Accessible
 
 **Grep patterns:**

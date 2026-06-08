@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -85,6 +85,35 @@ Record all discovered files. If no GCP configurations are found, report that fin
 Evaluate all GCP configurations against CIS GCP v2.0.0 Sections 1 through 7, covering Identity and Access Management, Logging and Monitoring, Networking, Virtual Machines, Storage, Cloud SQL, and BigQuery.
 
 For detailed CIS benchmark checklist items with specific Terraform patterns, grep patterns, and configuration examples for all seven sections, see [benchmark-checklist.md](benchmark-checklist.md) in this skill directory.
+
+---
+
+### IAM Conditions and Time-Bound Access Evidence
+
+When reviewing IAM bindings, verify whether privileged, temporary, emergency, contractor, partner, or environment-scoped access is constrained with IAM Conditions or an equivalent just-in-time mechanism. A binding that is described as "temporary" or "limited" is not sufficient evidence unless the policy itself enforces the condition.
+
+Require evidence for:
+
+1. **Condition expression** -- role bindings that should be temporary or scoped include a `condition` with explicit CEL expression, title, and description.
+2. **Time-bound access** -- temporary access uses `request.time < timestamp("...")` or an equivalent expiry expression, not only a ticket due date or manual reminder.
+3. **Resource and tag scoping** -- environment, folder, project, bucket, dataset, or service-specific access uses `resource.name`, `resource.type`, resource tags, or Access Context attributes where supported.
+4. **Unsupported binding detection** -- reviewers do not credit conditions on legacy basic roles (`roles/owner`, `roles/editor`, `roles/viewer`) or public principals (`allUsers`, `allAuthenticatedUsers`), because Google Cloud IAM Conditions do not apply to those grants.
+5. **Break-glass governance** -- emergency access has expiry, approver, ticket, activation reason, monitoring, and post-use review evidence.
+6. **Drift and expiry monitoring** -- IAM policies are exported or monitored so expired, missing, or weakened conditions are detected.
+
+Use this output table when IAM bindings are in scope:
+
+| Scope | Principal | Role | Condition | Expiry / Scope Expression | Unsupported Basic/Public Grant? | Evidence | Status |
+|---|---|---|---|---|---|---|---|
+| `[org/folder/project/resource]` | `[member]` | `[role]` | `[title or none]` | `[request.time/resource/tag expression]` | `[yes/no]` | `[policy export/file]` | `[pass/fail/not evaluable]` |
+
+Severity guidance:
+
+- **High:** privileged or production access is described as temporary or scoped but has no enforceable IAM Condition or JIT control.
+- **High:** basic roles or public principals are granted where a reviewer claims conditional access reduces risk; these grants cannot rely on IAM Conditions.
+- **Medium:** non-production, contractor, partner, or emergency access lacks expiry, resource scope, or post-use review evidence.
+- **Low:** conditions exist but have unclear titles/descriptions, weak monitoring, or missing expiry-review evidence.
+- **Not Evaluable:** IAM policy exports are unavailable, or the review cannot determine whether bindings include conditions.
 
 ---
 
@@ -171,7 +200,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 | Section | Domain | Key Focus Areas |
 |---------|--------|-----------------|
-| 1 | Identity and Access Management | Corporate credentials, MFA, service account keys, admin privileges, SA role assignments, KMS key access, API key restrictions, Essential Contacts |
+| 1 | Identity and Access Management | Corporate credentials, MFA, service account keys, admin privileges, conditional IAM bindings, SA role assignments, KMS key access, API key restrictions, Essential Contacts |
 | 2 | Logging and Monitoring | Cloud Audit Logs (admin/data read/write), log sinks, bucket lock retention, metric filters and alerts (8 categories), DNS logging, Cloud Asset Inventory |
 | 3 | Networking | Default network removal, legacy networks, DNSSEC, firewall rules (SSH/RDP from internet), VPC flow logs, SSL policies, IAP-only access |
 | 4 | Virtual Machines | Default service accounts, access scopes, project SSH key blocking, OS Login, serial port, IP forwarding, CMEK disks, Shielded VM, public IPs, Confidential Computing |
@@ -194,6 +223,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Assuming all IAM grants can be conditional.** IAM Conditions do not apply to legacy basic roles or public principals. Do not downgrade `roles/owner`, `roles/editor`, `roles/viewer`, `allUsers`, or `allAuthenticatedUsers` grants based on a claimed condition.
 
 ---
 
@@ -216,6 +246,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - CIS Google Cloud Platform Foundation Benchmark v2.0.0: https://www.cisecurity.org/benchmark/google_cloud_computing_platform
 - Google Cloud Security Best Practices: https://cloud.google.com/security/best-practices
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
+- Google Cloud IAM Conditions Overview: https://cloud.google.com/iam/docs/conditions-overview
+- Google Cloud Temporary Access with IAM Conditions: https://cloud.google.com/iam/docs/configuring-temporary-access
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
@@ -225,4 +257,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added IAM Conditions and time-bound access evidence gates for scoped, temporary, and break-glass IAM bindings.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
