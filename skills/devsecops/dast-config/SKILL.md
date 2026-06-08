@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -331,6 +331,51 @@ env:
 
 ---
 
+#### 4.2 Stateful Authenticated Scan Safety
+
+Authenticated DAST is not complete until state-changing flows are either safely scanned or explicitly excluded with documented risk acceptance. Generic crawling can miss ordered workflows, replay stale anti-CSRF tokens, or mutate business data in ways that are not obvious from path names alone.
+
+**Evidence to collect for stateful flows:**
+
+| Evidence | What to Verify |
+|----------|----------------|
+| Flow inventory | Checkout, account recovery, profile updates, subscription changes, onboarding, admin actions, and other POST/PUT/PATCH/DELETE paths are classified as safe to scan, sequence-only, exclude, or manual-test-only. |
+| Sequence coverage | Multi-step flows use ZAP sequence jobs, browser-auth scripts, HAR-derived flows with token refresh, or equivalent tool evidence rather than unordered spidering only. |
+| Token handling | CSRF / anti-forgery tokens, one-time nonces, JWT refresh, and per-request headers are refreshed during the scan instead of replayed from stale captures. |
+| Test identity | The scan uses realistic least-privilege test users, not admin or production-like accounts, unless the admin flow has explicit approval and rollback evidence. |
+| Seed and reset | Seed data exists before the scan, the environment is ephemeral or restorable, and cleanup/reset evidence is captured after the scan. |
+| Mutation budget | The scan bounds side effects such as order creation, emails, webhook callbacks, inventory changes, payment attempts, and audit-log volume. |
+| Outbound effects | Email, SMS, payment, shipping, webhook, and third-party integrations are stubbed, sandboxed, excluded, or rate-limited. |
+
+**Stateful scan decision matrix:**
+
+| Decision | Criteria | Required Evidence |
+|----------|----------|-------------------|
+| Safe to active scan | Disposable user, seeded tenant, bounded data, no external side effects, valid token refresh, and reset/cleanup evidence | Sequence or spider evidence, user role, token refresh method, seed/reset proof |
+| Sequence-only active scan | Flow requires ordered state transitions or dynamic tokens | `sequence-import` / `sequence-activeScan`, browser script, or equivalent flow evidence |
+| Passive or manual only | Flow changes payments, account ownership, privileged admin state, irreversible records, or external notifications | Exclusion path, compensating manual test plan, owner approval |
+| Not in scope | Third-party service, production-only workflow, or unavailable test data | Scope rationale and follow-up action |
+
+**Finding triggers:**
+
+| ID | Trigger | Severity Guidance |
+|----|---------|-------------------|
+| DAST-STATE-01 | Authenticated active scan includes state-changing flows without a flow inventory or decision matrix | High |
+| DAST-STATE-02 | Multi-step workflow is scanned only by generic spider/active scan without sequence evidence | Medium; High for checkout, account recovery, payment, or admin workflows |
+| DAST-STATE-03 | Captured requests replay static CSRF / anti-forgery tokens, nonces, or session headers without refresh handling | High because coverage can silently fail |
+| DAST-STATE-04 | Active scan uses admin, owner, or broadly privileged users without explicit approval and rollback evidence | Critical for production-like data; High for staging |
+| DAST-STATE-05 | Seed data, environment reset, post-scan cleanup, or rollback evidence is missing | High for active scans; Medium for passive authenticated scans |
+| DAST-STATE-06 | Mutation budget is unrestricted for orders, emails, webhooks, inventory, payments, or audit/log volume | High |
+| DAST-STATE-07 | Outbound integrations are live during stateful active scans without sandbox, stub, rate limit, or exclusion evidence | High |
+| DAST-STATE-08 | Excluding all state-changing methods creates authenticated DAST blind spots without a manual test plan | Medium; High for critical business flows |
+
+**False-positive boundaries:**
+
+- A POST, PUT, PATCH, or DELETE request is not automatically unsafe. It becomes acceptable when it uses disposable data, least-privilege users, bounded side effects, and reset evidence.
+- Excluding every state-changing endpoint is not a complete fix. Record which flows receive manual testing or sequence-based DAST coverage.
+- Anti-CSRF handling can come from ZAP form-auth token handling, browser-based auth, a sequence script, a requestor step, or app-specific pre-scan setup. Review the evidence rather than requiring one mechanism.
+- State reset may be a database snapshot, seeded tenant rebuild, cleanup job, or ephemeral environment replacement. The important evidence is that the scan cannot leave persistent business-impacting side effects.
+
 ### Step 5: CI/CD DAST Integration
 
 #### 5.1 Pipeline Integration Patterns
@@ -520,6 +565,12 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
 | Results deduplication | Yes/No | <dedup method> |
 
+### Stateful Authenticated Scan Safety
+
+| Flow | Decision | User / Role | Sequence Evidence | Token Refresh | Seed / Reset | Mutation Budget | Outbound Effects |
+|------|----------|-------------|-------------------|---------------|--------------|-----------------|------------------|
+| <checkout> | Safe / Sequence-only / Manual / Excluded | <user> | <HAR/sequence/script> | <method> | <evidence> | <limit> | <stubbed/excluded/live> |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -604,6 +655,9 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP Web Security Testing Guide v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
 - OWASP ZAP Documentation: https://www.zaproxy.org/docs/
 - ZAP Automation Framework: https://www.zaproxy.org/docs/automate/automation-framework/
+- ZAP Sequence Scanner Automation Framework Support: https://www.zaproxy.org/docs/desktop/addons/sequence-scanner/automation/
+- ZAP Authentication: https://www.zaproxy.org/docs/desktop/start/features/authentication/
+- ZAP Authentication Methods: https://www.zaproxy.org/docs/desktop/start/features/authmethods/
 - ZAP GitHub Actions: https://www.zaproxy.org/docs/docker/github-actions/
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
 - OWASP API Security Top 10: https://owasp.org/API-Security/
@@ -614,4 +668,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **1.0.1** -- Added authenticated stateful scan safety gates for sequence coverage, token refresh, seed/reset evidence, mutation budgets, and outbound side-effect controls.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.

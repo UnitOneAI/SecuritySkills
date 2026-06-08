@@ -1,0 +1,49 @@
+tool: zap
+scan_type: authenticated_sequence_active
+environment: ephemeral_staging
+context:
+  name: shop-buyer
+  urls:
+    - https://staging.example.com
+  includePaths:
+    - https://staging.example.com/shop/.*
+  excludePaths:
+    - https://staging.example.com/shop/account/delete.*
+    - https://staging.example.com/shop/payment/live.*
+  authentication:
+    method: browser
+    verification:
+      loggedInRegex: "\\QSign Out\\E"
+      loggedOutRegex: "\\QSign In\\E"
+  users:
+    - name: buyer-user
+      role: standard_customer
+jobs:
+  - type: sequence-import
+    parameters:
+      name: checkout-flow
+      path: flows/checkout.har
+      assertCode: true
+  - type: sequence-activeScan
+    parameters:
+      sequence: checkout-flow
+stateful_flows:
+  checkout:
+    decision: sequence_only_active_scan
+    sequence_evidence: flows/checkout.har
+    csrf_token_refresh: browser_auth_and_sequence_assignments
+    seed_data_reset: before_and_after_scan_snapshot
+    post_scan_cleanup: cleanup-job-verified
+    mutation_budget:
+      max_orders: 2
+      max_emails: 0
+      max_webhooks: 0
+    outbound_effects:
+      email: stubbed
+      webhook: disabled
+      payment_gateway: sandbox
+expected_decision: pass
+reason: >
+  The scan uses a least-privilege user, sequence-based active scan evidence,
+  dynamic token handling, seeded disposable data, cleanup verification, bounded
+  mutations, and sandboxed or disabled outbound integrations.

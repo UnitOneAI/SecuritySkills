@@ -1,0 +1,52 @@
+tool: zap
+scan_type: authenticated_active
+environment: staging
+context:
+  name: shop-admin
+  urls:
+    - https://staging.example.com
+  includePaths:
+    - https://staging.example.com/.*
+  excludePaths:
+    - https://staging.example.com/logout.*
+  authentication:
+    method: browser
+    verification:
+      loggedInRegex: "\\QAdmin Console\\E"
+      loggedOutRegex: "\\QSign In\\E"
+  users:
+    - name: admin-user
+      role: admin
+jobs:
+  - type: spider
+    parameters:
+      context: shop-admin
+      user: admin-user
+  - type: activeScan
+    parameters:
+      context: shop-admin
+      user: admin-user
+stateful_flows:
+  checkout:
+    decision: active_scan
+    sequence_evidence: missing
+    csrf_token_refresh: static_token_from_har
+    seed_data_reset: missing
+    post_scan_cleanup: missing
+    mutation_budget: unrestricted
+    outbound_effects:
+      email: live
+      webhook: live
+      payment_gateway: sandbox_missing
+expected_findings:
+  - DAST-STATE-01
+  - DAST-STATE-02
+  - DAST-STATE-03
+  - DAST-STATE-04
+  - DAST-STATE-05
+  - DAST-STATE-06
+  - DAST-STATE-07
+reason: >
+  The authenticated active scan uses a privileged user against state-changing
+  flows without sequence evidence, token refresh, seed/reset, cleanup,
+  mutation limits, or outbound integration controls.
