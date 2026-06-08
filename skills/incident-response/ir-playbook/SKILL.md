@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -274,6 +274,36 @@ Restore systems to normal operations:
 5. **Stakeholder confirmation** -- Obtain business owner sign-off before declaring systems operational
 6. **Update IOC blocklists** -- Ensure all identified IOCs remain blocked across perimeter and endpoint controls
 
+#### Step 3.3a: Backup and Recovery Credential Evidence Gate
+
+Before restoring production service, prove that the recovery source and recovery control plane are trustworthy. Ransomware and wiper actors frequently target backup systems, synchronization jobs, recovery credentials, and golden images before destructive actions begin.
+
+| Evidence Area | Required Evidence | Recovery Decision |
+|---|---|---|
+| **Last known-good point** | Timeline evidence showing when initial access, privilege escalation, data staging, encryption/wipe activity, and backup snapshots occurred | Do not restore from a snapshot that may contain persistence, staged malware, or attacker-created accounts |
+| **Backup integrity and immutability** | Restore-test result, hash/checksum or provider integrity status, immutability/WORM/legal-hold setting, retention lock, and deletion-protection status | Backups without integrity and immutability evidence are **Not Evaluable** for SEV-1/SEV-2 recovery |
+| **Backup control plane isolation** | Separate admin accounts, MFA, break-glass custody, network segmentation, and audit logs for backup consoles, vaults, storage accounts, and replication jobs | If the same compromised identity plane can delete or alter backups, treat recovery as High risk |
+| **Recovery credential hygiene** | Rotation/reissuance evidence for domain admin, cloud admin, backup admin, service accounts, API keys, certificates, and restore automation credentials | Do not reconnect restored systems using credentials that may have been exposed during the incident |
+| **Known-good image and automation provenance** | Golden image/build pipeline version, image signature or checksum, IaC commit, package source, and malware scan result | Rebuild from unverified images can reintroduce attacker persistence |
+| **Malware and persistence scan before promotion** | EDR/AV scan, IOC sweep, scheduled task/service/account review, startup item review, web shell scan, and suspicious remote-management tool check | Restore remains isolated until persistence checks pass |
+| **Phased reconnect monitoring** | Canary accounts, high-signal detections, egress monitoring, authentication anomaly rules, and rollback criteria for each reconnect phase | Any post-restore beaconing, credential abuse, or destructive action returns the phase to containment |
+
+```
+Recovery Evidence Record:
+- Recovery Source:          [Backup vault/snapshot/golden image/rebuild pipeline]
+- Snapshot or Image Time:   [YYYY-MM-DD HH:MM UTC]
+- Incident Earliest Access: [YYYY-MM-DD HH:MM UTC or unknown]
+- Integrity Evidence:       [Restore test/hash/provider status]
+- Immutability Evidence:    [WORM/retention lock/legal hold/deletion protection]
+- Control Plane Isolation:  [Separate admins/MFA/segmentation/audit logs]
+- Credentials Rotated:      [Domain/cloud/backup/service/API/cert summary]
+- Persistence Scan Result:  [Pass/Fail/Not Evaluable]
+- Reconnect Phase:          [Isolated | Limited | Production]
+- Monitoring Window:        [Start/end, detections enabled]
+- Rollback Criteria:        [Specific trigger]
+- Business Sign-off:        [Owner/date]
+```
+
 #### Step 3.4: Stakeholder Notification
 
 Use the appropriate communication template based on the audience.
@@ -407,6 +437,11 @@ and recommended immediate actions. Lead with the most critical fact.]
 - **Recovery Actions:** [List of restoration actions taken or planned]
 - **Enhanced Monitoring:** [Description of increased monitoring posture]
 
+### Backup and Recovery Evidence
+| System / Service | Recovery Source | Integrity / Immutability Evidence | Credentials Rotated | Persistence Scan | Reconnect Phase | Decision |
+|---|---|---|---|---|---|---|
+| [system] | [snapshot/image/rebuild] | [restore test/hash/WORM] | [summary] | [Pass/Fail/Not Evaluable] | [isolated/limited/prod] | [Proceed/Hold/Roll back] |
+
 ### Stakeholder Notifications
 | Stakeholder | Notified | Timestamp | Method |
 |---|---|---|---|
@@ -464,6 +499,10 @@ Without a designated incident commander, response efforts become fragmented. Mul
 
 Reconnecting systems to the network before thoroughly removing all persistence mechanisms, backdoors, and compromised credentials results in re-compromise -- often within hours. Attackers routinely deploy multiple persistence mechanisms (scheduled tasks, web shells, new user accounts, modified startup scripts, implanted SSH keys). Validate eradication through IOC scanning, behavioral monitoring, and integrity verification before transitioning to recovery.
 
+### Pitfall 4a: Restoring From Backups Without Proving Recovery Trust
+
+Backups can be unavailable, contaminated, attacker-accessible, or tied to compromised credentials. Restoring quickly from a snapshot is not recovery if the backup control plane, golden image, restore automation, or service account credentials were exposed during the incident. Confirm the last known-good point, integrity/immutability controls, credential rotation, and persistence scan results before reconnecting restored systems.
+
 ### Pitfall 5: Neglecting Regulatory Notification Deadlines
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
@@ -497,3 +536,5 @@ This skill processes incident data that may include attacker-controlled content 
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **H-ISAC (Health Information Sharing and Analysis Center)** -- https://h-isac.org/
 13. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+14. **CISA #StopRansomware Guide** -- https://www.cisa.gov/stopransomware/ransomware-guide
+15. **NIST SP 800-61 Rev 3** -- Incident Response Recommendations and Considerations for Cybersecurity Risk Management -- https://csrc.nist.gov/pubs/sp/800/61/r3/final
