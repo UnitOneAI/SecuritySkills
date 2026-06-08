@@ -12,7 +12,7 @@ phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -345,6 +345,33 @@ Review the application against each of the ten OWASP LLM risk categories below. 
 - Use lower temperature settings (0.0-0.3) for factual, deterministic use cases.
 - Implement cross-referencing or fact-checking pipelines for critical content generation workflows.
 
+#### LLM09 Factual Claim and Citation Verification Evidence Gate
+
+Do not mark LLM09 controls as in place based only on generic source attribution or a statement that "RAG is used." For factual, legal, medical, financial, security, or customer-facing outputs, the review must prove that important claims are grounded in cited sources that exist and actually support the generated text.
+
+Require:
+
+- **Claim extraction:** identify factual claims that can affect user decisions, compliance posture, customer obligations, security actions, or published content.
+- **Citation presence:** each material factual claim has an attached source, document ID, retrieval chunk, database record, or human reviewer note.
+- **Source existence:** cited URLs, documents, records, and retrieval chunks exist at review time and are accessible to the application.
+- **Source support:** the cited source directly supports the claim; it is not merely topically related or contradicted by the cited text.
+- **Freshness:** sources with time-sensitive facts include retrieved-at or effective-date metadata and stale-source handling.
+- **Citation integrity:** model output cannot fabricate citation IDs or URLs that bypass validation; citations are selected from retrieved evidence, not free-form model text.
+- **High-stakes routing:** unsupported, stale, or unverifiable claims are blocked, downgraded, or routed to human review before publishing or downstream action.
+
+```
+Factual Claim Verification Evidence:
+- Output / Use Case:       [feature or workflow]
+- Claim:                   [material factual claim]
+- Citation / Source ID:    [URL, document ID, chunk ID, record ID]
+- Source Exists:           [Yes | No | Not Tested]
+- Source Supports Claim:   [Yes | No | Partial | Not Tested]
+- Source Freshness:        [current date/effective date]
+- Citation Integrity:      [validated source ID | free-form | not tested]
+- Routing Decision:        [publish | block | human review | downgrade]
+- Status:                  [Pass | Partial | Fail | Not Tested]
+```
+
 **CWE Mapping:** CWE-1188 (Initialization with Hard-Coded Network Resource Configuration Reference — analogous: reliance on unvalidated information source)
 
 ---
@@ -435,6 +462,12 @@ Structure the findings report as follows:
 |----|---------------|----------|----------|--------|
 | FINDING-001 | LLM0X:2025 | High | P1 | Open |
 
+## Factual Claim Verification Evidence
+
+| Output / Use Case | Claim | Citation / Source ID | Source Exists | Source Supports Claim | Source Freshness | Citation Integrity | Routing Decision | Status |
+|---|---|---|---|---|---|---|---|---|
+| [workflow] | [claim] | [source] | [Yes/No/Not Tested] | [Yes/No/Partial/Not Tested] | [date] | [validated/free-form/not tested] | [publish/block/review/downgrade] | [Pass/Partial/Fail/Not Tested] |
+
 ## Recommendations
 
 [Prioritized list of remediation actions]
@@ -464,7 +497,7 @@ Key differences from the 2023 edition:
 
 ## 7. Common Pitfalls
 
-These are the five most frequent mistakes agents make when performing LLM security reviews:
+These are the six most frequent mistakes agents make when performing LLM security reviews:
 
 1. **Reviewing only the prompt, not the data flow.** The prompt is one attack surface. The full data flow — from user input through retrieval, prompt assembly, model inference, output parsing, tool execution, and response rendering — must be traced end to end. Findings missed in output handling (LLM05) and excessive agency (LLM06) are the most common gaps.
 
@@ -475,6 +508,8 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Accepting citations without checking support.** A response can cite a real document while making a claim the document does not support, or it can fabricate plausible-looking source IDs. For LLM09, validate source existence and claim support, not just the presence of a citation.
 
 ---
 
