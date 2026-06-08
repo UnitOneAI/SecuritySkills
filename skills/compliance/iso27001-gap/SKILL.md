@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -313,6 +313,15 @@ Use the following maturity scoring:
 
 ### Step 5: Statement of Applicability (SoA)
 
+
+Each Statement of Applicability decision must link the Annex A control to the risk treatment basis and current evidence. Do not accept included or excluded controls that cannot be traced to Clause 6.1.3 treatment decisions or legal, contractual, interested-party, or business requirements.
+
+| Annex A Control | Include / Exclude Rationale | Risk / Requirement Link | Treatment Decision | Evidence Artifact | Evidence Owner | Evidence Date | Currentness |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `[A.x.y control]` | `[why selected or excluded]` | `[risk, legal, contract, interested party, business need]` | `[treat, transfer, avoid, accept]` | `[policy, ticket, control output, audit record]` | `[owner]` | `[date]` | `Current / Stale / Unknown` |
+
+Mark `Unknown` when the SoA entry has a conclusion but no risk, requirement, treatment, or evidence linkage. Mark `Stale` when evidence is older than the assessment period or no longer reflects the current ISMS scope.
+
 Build or review the SoA. For each of the 93 Annex A controls, document:
 
 ```
@@ -404,6 +413,12 @@ Classify each finding using the following severity levels:
 
 ### A.8 Technological Controls (34 controls)
 [same table format]
+
+### SoA Evidence Linkage Matrix
+
+| Annex A Control | Decision Rationale | Risk / Requirement Link | Treatment Decision | Evidence Artifact | Owner | Evidence Date | Currentness |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[rationale]` | `[link]` | `[decision]` | `[evidence]` | `[owner]` | `[date]` | `Current / Stale / Unknown` |
 
 ## Statement of Applicability Summary
 - Controls applicable: [count] / 93
@@ -500,6 +515,8 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 - **Security domains**: Governance and Ecosystem, Protection, Defence, Resilience
 
 ---
+
+- Publishing a Statement of Applicability that lists applicability and status without linking each decision to risk treatment, requirements, current evidence, and an accountable owner.
 
 ## Common Pitfalls
 
