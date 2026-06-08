@@ -7,13 +7,13 @@ description: >
   Walks through all seven benchmark sections, evaluates each recommendation,
   and produces a prioritized findings report with remediation guidance mapped
   to specific CIS control IDs.
-tags: [cloud, gcp, cis-benchmark]
+tags: [cloud, gcp, cis-benchmark, security-command-center]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,7 +53,7 @@ The CIS Google Cloud Platform Foundation Benchmark v2.0.0 is a consensus-driven 
 - gcloud CLI output or configuration exports (if reviewing a live environment)
 - IAM policy bindings and org policy definitions
 - VPC and firewall rule definitions
-- Cloud Audit Logs configuration
+- Cloud Audit Logs configuration`r`n- Security Command Center active finding exports, mute configurations, and bulk mute/change records when live evidence is available
 
 ---
 
@@ -88,7 +88,21 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Security Command Center Findings and Mute Rule Governance
+
+Review Security Command Center evidence outside the CIS pass/fail score so muted findings are not mistaken for remediated findings. Start from raw active findings before relying on dashboards, saved views, or post-mute totals.
+
+Required SCC evidence when live GCP output is available:
+
+- Active findings export for the organization, folder, or project scope under review, including category, severity, state, mute state, resource name, and event time.
+- Static mute rules with narrow filters, owner, justification, compensating control, approval reference, and next review date.
+- Dynamic mute rules with expiration, recertification cadence, or automation owner. Long-lived dynamic rules without review evidence should fail.
+- Bulk mute operations treated as change-controlled exceptions with requester, approver, affected categories/resources, and rollback or remediation tracking.
+- Muted active findings tracked to remediation, accepted risk, or documented false positive. Muting alone does not resolve the underlying issue.
+
+Flag broad mute filters, high/critical muted findings without owner/ticket, missing review dates, or evidence that only muted-filtered dashboards were reviewed. Mark SCC checks Not Evaluable when live SCC exports are absent, and do not count them as CIS passes.
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -150,6 +164,16 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Security Command Center Findings and Mute Rules
+
+| Check | Status | Severity | Evidence | Required Action |
+|-------|--------|----------|----------|-----------------|
+| Active findings reviewed before mute/dashboard rollups | Pass/Fail/Not Evaluable | Critical/High/Medium/Low | <finding export or reason missing> | <action> |
+| Static mute rules are narrow, justified, owned, and reviewed | Pass/Fail/Not Evaluable | Critical/High/Medium/Low | <mute config evidence> | <action> |
+| Dynamic mute rules expire or are periodically recertified | Pass/Fail/Not Evaluable | Critical/High/Medium/Low | <expiration/review evidence> | <action> |
+| Bulk mute activity is approved and traceable | Pass/Fail/Not Evaluable | Critical/High/Medium/Low | <change record/audit log> | <action> |
+| Muted active findings are tracked to remediation or accepted risk | Pass/Fail/Not Evaluable | Critical/High/Medium/Low | <ticket/risk acceptance> | <action> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -193,7 +217,7 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **VPC flow logs must be per-subnet.** CIS 3.8 requires flow logs on every subnet, not just the VPC. Each `google_compute_subnetwork` must have a `log_config` block.
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
-6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."`r`n7. **Treating muted SCC findings as remediated.** Muting hides findings from default SCC views but does not fix the underlying issue; verify active findings, mute rules, and remediation or accepted-risk tracking separately.
 
 ---
 
@@ -220,9 +244,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
+- Security Command Center findings API: https://cloud.google.com/security-command-center/docs/how-to-api-list-findings
+- Security Command Center mute findings: https://cloud.google.com/security-command-center/docs/how-to-mute-findings
+- gcloud SCC muteconfigs list: https://cloud.google.com/sdk/gcloud/reference/scc/muteconfigs/list
 
 ---
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+- **1.1.0** -- Adds Security Command Center active finding and mute rule governance evidence gates.`r`n- **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
