@@ -805,7 +805,7 @@ public class UsersController : ControllerBase
 
 ### API10:2023 -- Unsafe Consumption of APIs
 
-**CWE:** CWE-295, CWE-346
+**CWE:** CWE-20, CWE-295, CWE-345, CWE-294, CWE-346
 **Severity:** Medium to High
 
 #### `HttpClient` Without Response Validation -- Vulnerable
@@ -859,6 +859,76 @@ builder.Services.AddHttpClient("PartnerApi", client =>
 });
 ```
 
+#### Inbound Webhook Receiver Authenticity
+
+Inbound webhook endpoints are intentionally public, so the security decision is not ordinary user-session authentication. Reviewers must prove the event came from the expected provider, was verified against the exact raw request body, is fresh enough to resist replay, and is idempotent before side effects run.
+
+```csharp
+// VULNERABLE: Parses JSON before signature verification and accepts replayed events
+app.MapPost("/webhooks/github", async (HttpRequest request) =>
+{
+    var payload = await request.ReadFromJsonAsync<GitHubWebhookEvent>();
+    await ProcessDeploymentEvent(payload!); // No signature, timestamp, or idempotency check
+    return Results.Ok();
+});
+```
+
+```csharp
+// SECURE: Verify the provider signature over raw bytes before parsing
+app.MapPost("/webhooks/github", async (
+    HttpRequest request,
+    IOptions<WebhookOptions> options,
+    IIdempotencyStore idempotencyStore) =>
+{
+    var deliveryId = request.Headers["X-GitHub-Delivery"].ToString();
+    var eventName = request.Headers["X-GitHub-Event"].ToString();
+    var signature = request.Headers["X-Hub-Signature-256"].ToString();
+
+    using var reader = new StreamReader(request.Body, Encoding.UTF8);
+    var rawBody = await reader.ReadToEndAsync();
+
+    if (!WebhookVerifier.VerifyGitHubSignature(
+            rawBody,
+            signature,
+            options.Value.GitHubWebhookSecret))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!AllowedEvents.Contains(eventName))
+        return Results.BadRequest("Unexpected event type");
+
+    if (!await idempotencyStore.TryStartAsync($"github:{deliveryId}"))
+        return Results.Accepted();
+
+    var payload = JsonSerializer.Deserialize<GitHubWebhookEvent>(rawBody)
+        ?? throw new InvalidOperationException("Invalid webhook payload");
+
+    await ProcessDeploymentEvent(payload);
+    await idempotencyStore.MarkCompleteAsync($"github:{deliveryId}");
+    return Results.Ok();
+});
+```
+
+Provider-specific evidence must be recorded:
+
+| Provider | Required signature evidence | Replay and idempotency evidence |
+|---|---|---|
+| Stripe | `Stripe-Signature`, raw body, timestamp tolerance, endpoint secret per environment | Event id stored before side effects; duplicate deliveries return a safe status |
+| GitHub | `X-Hub-Signature-256`, raw body, webhook secret, event allowlist | `X-GitHub-Delivery` used as replay key; branch/repo/org binding checked |
+| GitLab | `X-Gitlab-Token` or configured secret-token verification, raw body when HMAC is used by a gateway | Event UUID or request id recorded; project/group binding checked |
+| Custom partner | HMAC algorithm, key id, rotation state, canonical string, clock source | Timestamp or nonce window; per-partner replay key and tenant binding |
+
+Additional review gates:
+
+- [ ] Raw request bytes are verified before JSON parsing, model binding, or middleware mutation.
+- [ ] Signature comparison uses constant-time equality.
+- [ ] Timestamp, nonce, delivery id, or event id is stored before irreversible side effects.
+- [ ] Event type allowlists and tenant/account/repository binding are enforced after verification.
+- [ ] Webhook secrets are environment-scoped and rotation does not accept unbounded old secrets.
+- [ ] Provider retries are expected; handlers are idempotent under at-least-once delivery.
+- [ ] Failed verification is logged without storing raw secrets or full sensitive payloads.
+
 #### Unsafe Consumption Review Checklist -- .NET
 
 - [ ] Every `HttpClient` call to an upstream API sets an explicit `Timeout`.
@@ -866,6 +936,8 @@ builder.Services.AddHttpClient("PartnerApi", client =>
 - [ ] `JsonSerializerOptions.MaxDepth` is set to prevent deeply nested payloads.
 - [ ] TLS certificate validation is never bypassed (no `ServerCertificateCustomValidationCallback = (_, _, _, _) => true`).
 - [ ] User-controlled data is never interpolated into upstream URLs without `Uri.EscapeDataString`.
+- [ ] Inbound webhooks verify provider signatures over the raw request body before parsing.
+- [ ] Webhook handlers enforce replay windows, idempotency keys, event allowlists, and tenant/account binding.
 
 ---
 
@@ -1216,6 +1288,20 @@ ServerCertificateCustomValidationCallback\s*=.*=>\s*true
 HttpClientHandler.*ServerCertificateCustomValidation.*true
 ```
 
+### Webhook Authenticity and Replay
+
+```
+# Webhook endpoints that should have raw-body signature verification
+MapPost\(.*webhook
+\[HttpPost\(.*webhook
+# Signature or delivery headers to verify against provider docs
+X-Hub-Signature-256|Stripe-Signature|X-Gitlab-Token|X-GitHub-Delivery
+# Risky parsing before verification
+ReadFromJsonAsync<|JsonSerializer\.Deserialize|FromBody
+# Constant-time comparison expected for HMAC values
+FixedTimeEquals|CryptographicOperations
+```
+
 ### Rate Limiting Absence
 
 ```
@@ -1238,7 +1324,12 @@ MapPost\(.*password.*\)(?![\s\S]*?RequireRateLimiting)
 - [CWE-918: Server-Side Request Forgery](https://cwe.mitre.org/data/definitions/918.html)
 - [CWE-942: Permissive Cross-domain Policy with Untrusted Domains](https://cwe.mitre.org/data/definitions/942.html)
 - [CWE-295: Improper Certificate Validation](https://cwe.mitre.org/data/definitions/295.html)
+- [CWE-345: Insufficient Verification of Data Authenticity](https://cwe.mitre.org/data/definitions/345.html)
+- [CWE-294: Authentication Bypass by Capture-replay](https://cwe.mitre.org/data/definitions/294.html)
 - [Microsoft ASP.NET Core Security Documentation](https://learn.microsoft.com/en-us/aspnet/core/security/)
 - [Microsoft Rate Limiting Middleware](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)
+- [Stripe Webhook Signature Verification](https://docs.stripe.com/webhooks/signature)
+- [GitHub Webhook Signature Validation](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)
+- [GitLab Webhook Secret Token](https://docs.gitlab.com/user/project/integrations/webhooks/#secret-token)
 - [HotChocolate GraphQL Security](https://chillicream.com/docs/hotchocolate/security)
 - [ASP.NET Core gRPC Authentication](https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz)
