@@ -1,0 +1,41 @@
+scenario: segmentation_transit_failover_bypass
+skill: segmentation
+expected_result: flag_segmentation_bypass
+description: >
+  Normal-state segmentation routes through a firewall, but transit route
+  propagation and firewall failover create an uninspected path between user and
+  data zones.
+evidence:
+  zone_pair:
+    source_zone: user
+    destination_zone: data
+    sensitivity: high
+  normal_state:
+    next_hop: fw-active-eni
+    policy_enforcement_point: present
+    denied_flow_test:
+      source: 10.10.20.15
+      destination: 10.30.5.20
+      port: 5432
+      result: denied
+  failover_state:
+    event: firewall_active_standby_failover
+    next_hop: tgw-route-table-propagated
+    policy_enforcement_point: bypassed
+    denied_flow_test:
+      source: 10.10.20.15
+      destination: 10.30.5.20
+      port: 5432
+      result: allowed
+  transit_routes:
+    spoke_to_spoke_propagation: true
+    vpn_route_to_data_zone: true
+    inspection_attachment_required: false
+  logging:
+    normal_path_logs: true
+    failover_path_logs: false
+assertions:
+  - effective route after failover bypasses the firewall PEP
+  - unauthorized user-to-data flow succeeds in degraded mode
+  - transit route propagation permits spoke-to-spoke access
+  - failover path lacks deny logging evidence

@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -37,6 +37,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Post-incident reviews where lateral movement was observed or suspected.
 - Cloud migration planning requiring workload isolation design.
 - Merger/acquisition network integration planning.
+- Validating that transit gateways, peering, VPN routes, or firewall failover do not bypass segmentation enforcement points.
 
 ---
 
@@ -72,6 +73,12 @@ Use Glob and Grep to locate network configuration files, diagrams-as-code, and i
 **/security-group*
 **/nsg*
 **/route-table*
+**/transit-gateway*
+**/tgw*
+**/peering*
+**/vpn*
+**/expressroute*
+**/directconnect*
 
 # Traditional
 **/vlan*
@@ -245,13 +252,64 @@ Document or verify the existence of a segmentation testing process:
 
 ---
 
+### Step 7: Effective Route and Failover Bypass Evidence
+
+Static diagrams and intended route tables are not enough to prove segmentation. Validate the effective traffic path between zones, including cloud inherited routes, hub-and-spoke attachments, VPN/Direct Connect/ExpressRoute paths, and HA firewall failover states.
+
+#### 7.1 Effective Route Path Review
+
+For each high-risk zone pair (user-to-data, DMZ-to-internal, spoke-to-spoke, management-to-production, non-CDE-to-CDE), collect effective routing evidence:
+
+| Evidence | Why It Matters |
+|---|---|
+| Source and destination route tables | Shows the intended route from each side |
+| Cloud effective routes or route propagation output | Captures inherited routes from transit gateways, peering, VPN, and cloud defaults |
+| Security group, NACL, firewall, or NetworkPolicy at each hop | Proves traffic crosses a policy enforcement point (PEP) |
+| NAT, proxy, or load balancer path | Identifies paths that can hide true source or bypass inspection |
+| Asymmetric return route | Reveals return traffic that avoids the same inspection path |
+| Denied-flow evidence | Confirms unauthorized ports fail closed, not merely undocumented |
+
+#### 7.2 Transit and Peering Bypass Checks
+
+Flag bypass risk when:
+
+- Spoke VPC/VNet route propagation allows spoke-to-spoke traffic without firewall inspection.
+- A hub/shared-services subnet can route into data or management zones without workload-level policy.
+- VPN, Direct Connect, ExpressRoute, or site-to-site tunnels introduce a path around the documented DMZ or firewall.
+- Peering routes are accepted broadly while security groups rely on source CIDR ranges that overlap multiple zones.
+- Kubernetes or service-mesh policy is present, but node, hostNetwork, or egress gateway routes permit traffic outside the mesh policy path.
+
+#### 7.3 Failover and Degraded-Mode Validation
+
+For every segmentation enforcement point that claims high availability, require pre-failover and post-failover evidence:
+
+- Active and standby firewall or gateway identifiers.
+- Route table, next hop, and policy state before failover.
+- Route table, next hop, and policy state after failover.
+- Proof that deny rules, default-deny behavior, and logging remain active in the standby path.
+- Evidence that health-check, bypass, or maintenance routes do not fail open.
+- Rollback evidence after the test.
+
+#### 7.4 Finding Conditions
+
+| Condition | Severity |
+|---|---|
+| Effective routes show a direct path between restricted zones that bypasses every PEP | Critical |
+| Firewall or gateway failover opens a route that bypasses deny/default-deny controls | Critical |
+| Transit gateway, peering, VPN, or shared-services hub permits spoke-to-spoke or user-to-data access without inspection | High |
+| Return traffic is asymmetric and bypasses the documented enforcement point | High |
+| Segmentation test only checks normal state and omits HA/degraded-mode validation | Medium |
+| Effective route evidence is unavailable for cloud or hybrid zone pairs | Medium |
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Flat network with no segmentation; missing enforcement points between security zones; CDE not isolated; direct external-to-internal routing. |
-| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic. |
-| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation. |
+| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic; asymmetric return path bypassing inspection. |
+| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation; no effective-route or failover evidence for high-risk zone pairs. |
 | **Low** | Suboptimal zone naming conventions; missing network diagrams; segmentation documentation out of date. |
 
 ---
@@ -283,6 +341,12 @@ Document or verify the existence of a segmentation testing process:
 | DMZ         | App       | Firewall    | Restricted | Pass |
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
+
+### Effective Route and Failover Evidence
+
+| Source Zone | Destination Zone | Normal Next Hop | Failover Next Hop | PEP Present | Denied Flow Tested | Bypass Risk |
+|-------------|------------------|-----------------|-------------------|-------------|-------------------|-------------|
+| <zone> | <zone> | <firewall/tgw/route> | <standby path> | Yes/No | Yes/No | None/Medium/High/Critical |
 
 ### Findings
 
@@ -345,6 +409,8 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Testing only the happy-path route.** Segmentation can look correct in the active firewall path but fail open after HA failover, route propagation changes, or VPN/peering convergence. Always compare effective routes and denied-flow tests before and after failover.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -372,4 +438,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.0.1** -- Add effective-route, transit bypass, asymmetric routing, and HA failover evidence gates for segmentation validation.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.

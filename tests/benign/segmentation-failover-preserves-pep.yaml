@@ -1,0 +1,45 @@
+scenario: segmentation_failover_preserves_policy_enforcement
+skill: segmentation
+expected_result: do_not_flag_segmentation_bypass
+description: >
+  Segmentation is validated with effective route evidence and denied-flow tests
+  before and after firewall failover; both paths preserve the policy enforcement
+  point and block unauthorized zone access.
+evidence:
+  zone_pair:
+    source_zone: user
+    destination_zone: data
+    sensitivity: high
+  normal_state:
+    next_hop: fw-active-eni
+    policy_enforcement_point: present
+    denied_flow_test:
+      source: 10.10.20.15
+      destination: 10.30.5.20
+      port: 5432
+      result: denied
+    log_evidence: siem:event/fw-deny-normal-1842
+  failover_state:
+    event: firewall_active_standby_failover
+    next_hop: fw-standby-eni
+    policy_enforcement_point: present
+    denied_flow_test:
+      source: 10.10.20.15
+      destination: 10.30.5.20
+      port: 5432
+      result: denied
+    log_evidence: siem:event/fw-deny-failover-1843
+  transit_routes:
+    spoke_to_spoke_propagation: false
+    vpn_route_to_data_zone: false
+    inspection_attachment_required: true
+  route_evidence:
+    source_route_table_reviewed: true
+    destination_route_table_reviewed: true
+    cloud_effective_routes_reviewed: true
+    asymmetric_return_path: false
+assertions:
+  - normal and failover paths both traverse a PEP
+  - denied-flow tests remain denied after failover
+  - transit route propagation cannot bypass inspection
+  - logging evidence exists for both normal and failover paths
