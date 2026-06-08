@@ -297,6 +297,44 @@ RBAC-ABAC-05: Environment attributes (time, location, risk) not utilized
 RBAC-ABAC-06: ABAC policies not testable — no simulation or dry-run capability
 RBAC-ABAC-07: Policy conflicts not detected — overlapping permit/deny without resolution order
 RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
+RBAC-ABAC-09: Policy combining algorithm not documented
+RBAC-ABAC-10: Deny exceptions can be overridden by broad permit rules
+RBAC-ABAC-11: PDP or PEP fails open when required attributes are missing, stale, or unavailable
+RBAC-ABAC-12: No negative test cases proving conflicting policies resolve to the expected deny decision
+```
+
+#### Policy Precedence and Conflict Resolution
+
+Hybrid RBAC/ABAC systems often combine coarse-grained roles with fine-grained
+attribute conditions. The design must state how conflicts are resolved before a
+policy can be considered auditable.
+
+Require the authorization design to document:
+
+- **Combining algorithm:** deny-overrides, permit-overrides, first-applicable, priority-based, or explicit custom logic.
+- **Default decision:** unmatched requests and missing attributes must resolve to deny unless a documented exception exists.
+- **Deny precedence:** emergency blocks, legal holds, account suspension, tenant isolation, and data-classification deny rules should not be bypassed by broad role grants.
+- **Failure mode:** PDP, PIP, or attribute lookup failures must fail closed for sensitive operations.
+- **Conflict tests:** policy simulation must include positive and negative cases for overlapping permit and deny rules.
+
+**Example conflict test set:**
+
+| Scenario | Expected Decision | Evidence Required |
+|---|---|---|
+| User has `finance-reader` role but account status is `suspended` | Deny | Simulator output showing suspension deny overrides role permit |
+| User has tenant admin role for tenant A and requests tenant B data | Deny | Test proves tenant boundary condition overrides admin role |
+| Required `device_compliance` attribute is unavailable | Deny | PDP/PEP log showing fail-closed behavior |
+| Break-glass role is activated without ticket or expiry | Deny | Policy test showing prerequisite obligation is enforced |
+
+**What to look for:**
+
+```
+RBAC-PREC-01: No documented policy combining algorithm
+RBAC-PREC-02: Broad role permits override tenant, suspension, or data-classification denies
+RBAC-PREC-03: Missing attributes produce permit decisions for sensitive resources
+RBAC-PREC-04: First-match policy ordering can be changed without review or test evidence
+RBAC-PREC-05: Conflict tests cover only happy-path permits, not deny precedence
+RBAC-PREC-06: Break-glass or emergency access bypasses obligations without time-bound approval
 ```
 
 ---
@@ -387,6 +425,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
+- Policy Precedence / Conflict Resolution: [count]
 - Role Mining (Step 6): [count]
 
 ### Detailed Findings
@@ -394,6 +433,11 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 
 ### Design Recommendations
 [Architecture diagram or pattern with framework justification]
+
+### Policy Conflict Test Evidence
+| Test Case | Conflicting Rules | Expected Decision | Actual Decision | Pass/Fail |
+|---|---|---|---|---|
+| [name] | [permit rule vs deny rule] | [Permit/Deny] | [Permit/Deny] | [Pass/Fail] |
 
 ### Remediation Roadmap
 [Phased implementation plan]
@@ -436,6 +480,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+
+8. **Leaving policy precedence implicit.** If the PDP, gateway, and application code resolve conflicts differently, a deny rule can be silently bypassed by a broad permit. Require a documented combining algorithm and negative tests for every high-risk deny rule.
 
 ---
 
