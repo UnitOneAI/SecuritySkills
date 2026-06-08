@@ -4,14 +4,15 @@ description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
   GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  SSRF, including OpenAPI contract and authorization drift. Produces findings
+  mapped to API1-API10 with remediation guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,6 +23,8 @@ argument-hint: "[target-file-or-directory]"
 # API Security Review -- OWASP API Security Top 10:2023
 
 A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+
+The review also compares documented OpenAPI operations against implemented routes and gateway policies. This contract drift check catches shadow routes, stale documented operations, `security: []` overrides, auth scheme downgrades, and missing operation or response evidence that can make API9 inventory findings materially affect API2, API5, and API1 risk.
 
 ---
 
@@ -38,6 +41,7 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
 7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+8. **Build a contract drift inventory** -- Normalize OpenAPI paths, methods, operationIds, security requirements, code routes, route middleware, and gateway policies into a single route/auth matrix.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
@@ -48,6 +52,22 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+---
+
+## Step 12: OpenAPI Contract and Authorization Drift Evidence
+
+When OpenAPI/Swagger specs and route code are both available, compare them before finalizing API9, API2, API5, and API1 findings.
+
+Reviewers should:
+
+1. Normalize OpenAPI path templates (`/users/{id}`) and framework route templates (`/users/:id`, `/users/{id:int}`) before comparing.
+2. Compare every documented path/method/operationId against implemented routes and gateway policy evidence.
+3. Compare every implemented route against OpenAPI paths to find shadow, debug, test, internal, or admin endpoints.
+4. Identify top-level OpenAPI `security` requirements and operation-level overrides, especially `security: []`.
+5. Compare documented security schemes and scopes with code middleware, route policies, gateway auth, and direct-origin exposure controls.
+6. Record public endpoint allowlist evidence for unauthenticated routes.
+7. Mark gateway-only authentication as Not Evaluable or Partial unless direct access to the origin is blocked and gateway policy evidence is available.
 
 ---
 
@@ -64,6 +84,7 @@ Each finding produced by this review must include the following fields:
 | **CWE** | Applicable CWE identifier (e.g., CWE-639) |
 | **API Style** | REST, GraphQL, gRPC, or General |
 | **Location** | File path and line number(s), or OpenAPI spec path |
+| **Contract Drift Evidence** | Spec route, code route, operationId, documented security, implemented auth, gateway policy, and drift decision |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
 | **Remediation** | Specific fix with code example where possible |
@@ -113,6 +134,24 @@ The final review output must be structured as follows:
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
 
 ### Findings
+
+### OpenAPI Contract Drift Matrix
+
+| Spec Path | Code Route | Method | OperationId | Documented Security | Implemented Auth | Gateway Evidence | Decision |
+|---|---|---|---|---|---|---|---|
+| /api/v1/orders/{orderId} | /api/v1/orders/:orderId | GET | getOrder | bearerAuth | requireAuth + owner filter | direct origin blocked | Match |
+| /api/v1/admin/users/{userId} | /api/v1/admin/users/:userId | DELETE | deleteUser | bearerAuth | missing | none | Drift |
+
+#### API-CONTRACT-001: [Title]
+- **OWASP API Risk:** API9:2023 -- Improper Inventory Management; also map to API2/API5/API1 where applicable
+- **Severity:** [Critical|High|Medium|Low|Informational]
+- **API Style:** REST / GraphQL / gRPC / Hybrid
+- **Spec Evidence:** [OpenAPI path, method, operationId, security requirement]
+- **Implementation Evidence:** [route path, handler, middleware, policy, gateway rule]
+- **Drift Type:** Shadow Route / Stale Spec / Auth Mismatch / Public Override / Auth Downgrade / Missing Schema
+- **Description:** [explanation]
+- **Remediation:** [specific fix with code or spec example]
+- **Status:** Open
 
 #### API-SEC-001: [Title]
 - **OWASP API Risk:** API[N]:2023 -- [Name]
@@ -215,6 +254,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Trusting OpenAPI `security` without implementation evidence.** A spec can claim `bearerAuth` while the route lacks middleware, accepts a weaker scheme, or is reachable by direct origin bypass.
+
+8. **Missing operation-level security overrides.** In OpenAPI, operation-level `security: []` can intentionally make a route public, but sensitive operations need explicit allowlist and business justification evidence.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -239,3 +282,10 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+- **OpenAPI Specification 3.1.0:** https://spec.openapis.org/oas/v3.1.0.html
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added OpenAPI contract and authorization drift evidence gates for route/spec diffing, operationId uniqueness, security overrides, public endpoint allowlists, auth scheme downgrade checks, and gateway policy evidence.

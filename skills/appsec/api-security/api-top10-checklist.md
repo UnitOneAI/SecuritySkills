@@ -518,6 +518,196 @@ Document doc = builder.parse(request.getInputStream());
 
 ---
 
+## Supplemental OpenAPI Contract and Authorization Drift Review
+
+Report these checks as `API-CONTRACT-*` evidence. Map each finding back to API9 and also to API2, API5, API1, API3, or API4 when the drift changes authentication, authorization, object access, response schemas, or rate limits.
+
+### API-CONTRACT-01 -- Normalize and inventory OpenAPI operations and code routes
+
+Build a route/auth matrix from:
+
+- OpenAPI or Swagger paths, methods, operationIds, parameters, request bodies, responses, and `security` requirements.
+- Code route registrations, controller attributes, Minimal API groups, Express routers, FastAPI decorators, GraphQL resolvers, or gateway routes.
+- API gateway policies, direct-origin access controls, route rewrites, and environment-specific feature flags.
+
+**Route normalization examples:**
+
+```text
+OpenAPI: /api/v1/orders/{orderId}
+Express: /api/v1/orders/:orderId
+ASP.NET: /api/v1/orders/{orderId:int}
+FastAPI: /api/v1/orders/{order_id}
+```
+
+Treat these as the same route only after normalizing parameter syntax and method.
+
+### API-CONTRACT-02 -- Detect shadow routes missing from OpenAPI
+
+**Fail pattern:**
+
+```javascript
+app.post("/api/v1/debug/impersonate", requireAuth, async (req, res) => {
+  await impersonate(req.body.userId);
+  res.json({ ok: true });
+});
+```
+
+**Review requirements:**
+
+- Flag undocumented debug, test, internal, admin, export, billing, impersonation, and support routes.
+- Check whether missing routes also bypass gateway policy, rate limits, client SDK review, or formal authorization review.
+- Require owner, environment, exposure, retirement, and monitoring evidence for any intentionally undocumented route.
+
+### API-CONTRACT-03 -- Detect stale OpenAPI operations with no implementation
+
+**Fail pattern:**
+
+```yaml
+paths:
+  /api/v1/legacy/reset-password:
+    post:
+      operationId: legacyResetPassword
+      security: []
+```
+
+**Review requirements:**
+
+- Determine whether the stale operation is only documentation drift or still reachable through an older deployment, gateway route, or versioned host.
+- For deprecated operations, require sunset date, owner, equivalent security controls, and monitoring.
+- Mark unresolved stale operations as API9 risk because consumers and security tooling may rely on inaccurate docs.
+
+### API-CONTRACT-04 -- Compare documented security with implemented route auth
+
+**Fail pattern:**
+
+```yaml
+paths:
+  /api/v1/admin/users/{userId}:
+    delete:
+      operationId: deleteUser
+      security:
+        - bearerAuth: []
+```
+
+```javascript
+app.delete("/api/v1/admin/users/:userId", async (req, res) => {
+  await Users.delete(req.params.userId);
+  res.sendStatus(204);
+});
+```
+
+**Review requirements:**
+
+- Verify code middleware or controller attributes enforce the documented auth scheme.
+- Verify role, permission, tenant, and ownership checks for admin or object-specific routes.
+- If auth is enforced only at the gateway, require gateway policy evidence and direct-origin blocking evidence.
+
+### API-CONTRACT-05 -- Review operation-level `security: []` overrides
+
+**Fail pattern:**
+
+```yaml
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/reports/export:
+    post:
+      operationId: exportReports
+      security: []
+```
+
+**Review requirements:**
+
+- Treat `security: []` as an explicit public override of top-level security.
+- Allow only documented public endpoints such as health checks, public docs, or public catalog reads.
+- Require business justification, data classification, rate limiting, and monitoring evidence for public endpoints.
+- Flag public overrides on admin, billing, export, user-data, mutation, or support operations as High or Critical.
+
+### API-CONTRACT-06 -- Detect auth scheme downgrades
+
+**Fail pattern:**
+
+```yaml
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+paths:
+  /api/v1/billing:
+    get:
+      security:
+        - oauth2: ["billing:read"]
+```
+
+```javascript
+router.get("/api/v1/billing", optionalApiKeyOrBearer, billingHandler);
+```
+
+**Review requirements:**
+
+- Compare documented OAuth scopes, mTLS, API key, session, or JWT requirements against route middleware.
+- Flag routes that accept query tokens, legacy API keys, optional auth, weaker schemes, or broader scopes than the spec documents.
+- Verify scope checks are enforced in the application or gateway, not only named in OpenAPI.
+
+### API-CONTRACT-07 -- Check operationId uniqueness and security traceability
+
+**Review requirements:**
+
+- Ensure each operation has a stable, unique `operationId` so findings, tests, SDK methods, and gateway policies can reference the same operation.
+- Flag duplicate or missing operationIds on sensitive routes because they weaken traceability and CI policy mapping.
+- Require operationIds to appear in route tests, contract tests, or generated SDK metadata where those systems exist.
+
+### API-CONTRACT-08 -- Verify request and response schema drift for sensitive fields
+
+**Review requirements:**
+
+- Compare documented request schemas with accepted body fields to catch mass-assignment drift.
+- Compare documented response schemas with actual serializers/DTOs to catch excessive data exposure.
+- Flag undocumented sensitive fields such as `passwordHash`, `internalRole`, `tenantId`, `billingStatus`, `ssn`, or support notes.
+- Map request drift to API3 mass assignment and response drift to API3 excessive data exposure.
+
+### API-CONTRACT-09 -- Require CI or review evidence for contract drift prevention
+
+**Review requirements:**
+
+- Look for CI checks that compare route inventory to OpenAPI, such as contract tests, generated specs, spectral/openapi linting, or gateway export comparison.
+- Verify CI fails on undocumented sensitive routes, missing security requirements, duplicate operationIds, and public overrides outside an allowlist.
+- If no automated check exists, record manual review evidence and residual risk.
+
+### API-CONTRACT-10 -- Calibrate severity by exposure and sensitivity
+
+**Severity guidance:**
+
+- Critical: unauthenticated implemented route for admin, account takeover, export, billing, or sensitive object access where the spec claims authentication.
+- High: shadow admin/debug/internal route externally reachable, `security: []` on sensitive mutation, or auth scheme downgrade to weaker credentials.
+- Medium: stale spec with unclear deployment status, missing operationId on sensitive route, or missing gateway evidence.
+- Low: documentation mismatch on public low-risk read endpoints with no sensitive data.
+
+**Benign matching example:**
+
+```yaml
+paths:
+  /api/v1/orders/{orderId}:
+    get:
+      operationId: getOrder
+      security:
+        - bearerAuth: []
+```
+
+```javascript
+router.get("/api/v1/orders/:orderId", requireAuth, async (req, res) => {
+  const order = await Orders.findOne({
+    id: req.params.orderId,
+    tenantId: req.user.tenantId,
+    userId: req.user.id,
+  });
+  if (!order) return res.sendStatus(404);
+  res.json(toOrderResponse(order));
+});
+```
+
+---
+
 ## API10:2023 -- Unsafe Consumption of APIs
 
 **CWE:** CWE-20 (Improper Input Validation), CWE-295 (Improper Certificate Validation), CWE-319 (Cleartext Transmission of Sensitive Information)

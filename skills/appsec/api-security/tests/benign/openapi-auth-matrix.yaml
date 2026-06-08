@@ -1,0 +1,70 @@
+openapi: 3.1.0
+info:
+  title: Benign Contract Matched API
+  version: "1.0.0"
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/orders/{orderId}:
+    get:
+      operationId: getOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order visible to the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+  /healthz:
+    get:
+      operationId: healthCheck
+      security: []
+      x-public-allowlist-reason: unauthenticated load balancer health check
+      responses:
+        "200":
+          description: Health check response
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    OrderResponse:
+      type: object
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+---
+implementedRoutes:
+  - method: GET
+    route: /api/v1/orders/:orderId
+    operationId: getOrder
+    middleware:
+      - requireAuth
+      - requireTenant
+    objectAuthorization:
+      ownershipFilter:
+        - tenantId
+        - userId
+    gateway:
+      directOriginBlocked: true
+      policy: bearerAuth
+  - method: GET
+    route: /healthz
+    operationId: healthCheck
+    middleware: []
+    publicAllowlistReason: unauthenticated load balancer health check

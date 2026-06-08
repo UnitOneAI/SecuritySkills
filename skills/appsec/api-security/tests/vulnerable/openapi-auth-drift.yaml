@@ -1,0 +1,69 @@
+openapi: 3.1.0
+info:
+  title: Vulnerable Contract Drift API
+  version: "1.0.0"
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/admin/users/{userId}:
+    delete:
+      operationId: deleteUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+  /api/v1/reports/export:
+    post:
+      operationId: exportReports
+      security: []
+      responses:
+        "202":
+          description: Export started
+  /api/v1/billing:
+    get:
+      operationId: getBilling
+      security:
+        - oauth2:
+            - billing:read
+      responses:
+        "200":
+          description: Billing data
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.example.com/oauth/token
+          scopes:
+            billing:read: Read billing data
+---
+implementedRoutes:
+  - method: DELETE
+    route: /api/v1/admin/users/:userId
+    operationId: deleteUser
+    middleware: []
+    finding: spec requires bearerAuth but the route has no auth middleware
+  - method: POST
+    route: /api/v1/debug/impersonate
+    operationId: null
+    middleware:
+      - requireAuth
+    finding: shadow debug route is missing from OpenAPI
+  - method: GET
+    route: /api/v1/billing
+    operationId: getBilling
+    middleware:
+      - optionalApiKeyOrBearer
+    finding: spec requires OAuth scope but implementation accepts weaker optional API key path
