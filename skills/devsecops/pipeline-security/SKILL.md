@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -385,6 +385,15 @@ docker.sock
 
 #### CICD-SEC-9: Improper Artifact Integrity Validation
 
+
+Artifact integrity reviews must capture reproducible evidence that a deployed artifact is the same artifact produced by the trusted build. Use this evidence gate for images, packages, binaries, deployment charts, and release bundles.
+
+| Artifact | Build Run | Digest | Signature | Signing Identity | Provenance / Attestation | SBOM Reference | Verification Command / Policy | Deployment Reference | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[image, package, binary, chart]` | `[CI run id/link]` | `[SHA-256 or OCI digest]` | `[Sigstore, GPG, registry signature]` | `[OIDC subject, key, certificate identity]` | `[SLSA/in-toto provenance]` | `[CycloneDX/SPDX artifact]` | `[cosign/slsa-verifier/policy output]` | `[environment, release, deploy job]` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when deployment accepts unsigned artifacts, mutable tags without digest pinning, or artifacts whose digest does not match the build output. Mark `Unknown` when the deployed artifact cannot be tied to a specific build run and verification policy result.
+
 **What to look for:**
 
 - Artifacts built and deployed without signing or attestation.
@@ -480,6 +489,12 @@ Produce the final report using the following structure:
 | CICD-SEC-2 | Inadequate IAM | ... | ... | ... |
 | ... | ... | ... | ... | ... |
 
+#### Artifact Integrity Evidence Matrix
+
+| Artifact | Build Run | Digest | Signature | Signing Identity | Provenance | SBOM | Verification Policy / Command | Deployment Reference | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[artifact]` | `[run link/id]` | `[digest]` | `[signature]` | `[identity]` | `[attestation]` | `[SBOM]` | `[policy output]` | `[deploy target]` | `Pass / Fail / Unknown` |
+
 ### Detailed Findings
 
 #### [CICD-SEC-X] <Risk Name>
@@ -558,3 +573,8 @@ This skill processes user-supplied content including CI/CD configuration files, 
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
+
+
+## Common Pitfalls
+
+- Treating a successful CI job as artifact integrity evidence without recording the artifact digest, signer identity, provenance, SBOM, and deployment verification result.
