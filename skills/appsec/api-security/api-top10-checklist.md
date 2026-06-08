@@ -29,6 +29,15 @@ def get_order(order_id):
     return jsonify(order)
 ```
 
+```python
+# VULNERABLE: Export download checks auth, but not tenant or requester ownership
+@app.route('/api/v1/reports/export/<job_id>/download', methods=['GET'])
+@require_auth
+def download_export(job_id):
+    job = ExportJob.get(job_id)
+    return redirect(storage.presign(job.object_key, expires_in=86400))
+```
+
 Remediation:
 
 ```python
@@ -40,6 +49,21 @@ def get_order(order_id):
     if not order:
         return jsonify({"error": "Not found"}), 404
     return jsonify(order)
+```
+
+```python
+# SECURE: Treat export jobs and files as tenant-scoped objects
+@app.route('/api/v1/reports/export/<job_id>/download', methods=['GET'])
+@require_auth
+def download_export(job_id):
+    job = ExportJob.query.filter_by(
+        id=job_id,
+        tenant_id=current_user.tenant_id,
+        requested_by=current_user.id,
+    ).one_or_none()
+    if not job or not current_user.can("report.export.download"):
+        return jsonify({"error": "Not found"}), 404
+    return redirect(storage.presign(job.object_key, expires_in=300))
 ```
 
 ### GraphQL Vulnerable Patterns
@@ -99,6 +123,8 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Every endpoint that accepts a resource identifier enforces ownership or relationship-based access control.
 - [ ] Authorization checks happen at the data access layer, not only at the controller/route layer.
 - [ ] Batch/list endpoints filter results by the caller's permissions.
+- [ ] Async export job IDs, file IDs, object-storage keys, and signed download URLs enforce the same tenant/user/object scope as the original export request.
+- [ ] Export filters are frozen at job creation and cannot be widened during status polling or download.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
 
@@ -267,6 +293,13 @@ query {
 app.use(express.json()); // Default limit may be very large or unconfigured
 ```
 
+```text
+# VULNERABLE: Bulk export has no export-specific resource controls
+POST /api/v1/audit-events/export
+filters: arbitrary date range, all users, all event types
+limits: no row cap, byte cap, concurrency cap, tenant quota, timeout, cancellation, or retention
+```
+
 ### Remediation Guidance
 
 - Implement rate limiting at the API gateway and/or application layer. Use sliding window or token bucket algorithms. Set per-endpoint limits based on expected legitimate usage.
@@ -275,6 +308,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - For GraphQL: enforce query depth limits (e.g., max depth 5), complexity analysis (weighted field costs), and batch query limits.
 - Set execution timeouts for database queries and downstream API calls.
 - Implement cost alerts and circuit breakers for operations that trigger billable third-party APIs.
+- Add export-specific controls for bulk jobs: maximum rows, maximum bytes, date-window caps, concurrency limits, tenant quotas, cancellation, timeouts, retention, and cleanup.
 
 ### Review Checklist
 
@@ -284,6 +318,7 @@ app.use(express.json()); // Default limit may be very large or unconfigured
 - [ ] GraphQL queries have depth limits, complexity limits, and batch restrictions.
 - [ ] Database queries and downstream calls have execution timeouts.
 - [ ] Billable operations have cost controls and alerting.
+- [ ] Bulk export jobs have row, byte, date-range, concurrency, retention, and cancellation limits independent of ordinary list-endpoint pagination.
 
 ---
 
@@ -450,6 +485,15 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+```http
+# VULNERABLE: gateway validates the first tenant_id but the app uses the last
+GET /api/v1/reports?tenant_id=trusted-tenant&tenant_id=attacker-tenant HTTP/1.1
+Authorization: Bearer user-token
+
+# Gateway policy input: tenant_id=trusted-tenant
+# Express/qs handler input: tenant_id=attacker-tenant
+```
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
@@ -462,6 +506,7 @@ Document doc = builder.parse(request.getInputStream());
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
+- Reject duplicate security-sensitive parameters, or canonicalize them once before gateway policy, authentication, authorization, cache-key generation, request signing, audit logging, and application handlers.
 
 ### Review Checklist
 
@@ -472,6 +517,8 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
+- [ ] Duplicate query, body, path, and header parameters have documented parser behavior across gateway/WAF, framework binding, validators, caches, signing logic, audit logs, and downstream services.
+- [ ] Security-sensitive duplicate parameters are rejected or canonicalized before any security decision.
 
 ---
 
@@ -544,6 +591,18 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```javascript
+// VULNERABLE: downstream service receives a different role value than the gateway validated
+app.post('/api/v1/invite', requireAuth, async (req, res) => {
+  // Gateway checked role=viewer, but body parser preserved both values as an array.
+  await partnerApi.createInvite({
+    email: req.body.email,
+    role: req.body.role.at(-1),
+  });
+  res.sendStatus(202);
+});
+```
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
@@ -552,6 +611,7 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
+- Normalize or reject duplicate parameters before forwarding requests to upstream services so the caller, gateway, application, and downstream service all authorize and process the same value.
 
 ### Review Checklist
 
@@ -560,3 +620,50 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+- [ ] Downstream service calls do not receive a different duplicate-parameter value than the value validated by the API gateway, request validator, or authorization middleware.
+
+---
+
+## Cross-Cutting Evidence Checklist: HTTP Parameter Pollution
+
+Use this checklist for API1, API5, API8, and API10 reviews whenever repeated parameters can influence authorization, cache keys, signatures, redirects, prices, quantities, filters, tenant IDs, object IDs, roles, or scopes.
+
+### Parser-Consistency Tests
+
+- [ ] `?id=authorized&id=unauthorized` and the reverse order are both tested.
+- [ ] Repeated form fields, JSON arrays, duplicated JSON keys where supported by the parser, and repeated headers are tested when applicable.
+- [ ] Gateway/WAF, framework router, validation layer, application handler, cache/CDN, request-signature logic, audit logs, and downstream services all document which value they consume.
+- [ ] Sensitive duplicates are rejected with a deterministic 400-class response, or are canonicalized once before any security decision.
+- [ ] Findings include the exact layer mismatch, the value each layer used, and the resulting impact.
+
+### Secure Pattern
+
+```javascript
+function requireSingleParam(req, name) {
+  const raw = req.query[name];
+  if (Array.isArray(raw)) {
+    throw new BadRequestError(`Duplicate ${name} parameters are not allowed`);
+  }
+  return raw;
+}
+
+app.get('/api/v1/reports', requireAuth, (req, res) => {
+  const tenantId = requireSingleParam(req, 'tenant_id');
+  authorizeTenant(currentUser, tenantId);
+  return listReports({ tenantId });
+});
+```
+
+---
+
+## Cross-Cutting Evidence Checklist: Bulk Exports and Signed URLs
+
+Use this checklist for export, report download, backup download, audit log export, evidence package, attachment bundle, and data warehouse extract workflows.
+
+- [ ] Export creation verifies function permission plus tenant/object/filter scope.
+- [ ] Export job status endpoints enforce ownership of `job_id`.
+- [ ] Download endpoints enforce ownership of file IDs and object-storage keys before issuing redirects or signed URLs.
+- [ ] Signed URLs have short TTLs, are non-reusable where feasible, and are invalidated on role change, tenant offboarding, account suspension, or incident containment.
+- [ ] Generated files live in private storage with tenant/user-scoped key prefixes and no public ACLs.
+- [ ] Export jobs enforce row caps, byte caps, date-window caps, concurrency limits, quotas, cancellation, and cleanup.
+- [ ] Audit logs capture actor, tenant, filters, object count, byte size, destination, job ID, file ID, and correlation ID.

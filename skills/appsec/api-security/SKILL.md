@@ -51,6 +51,47 @@ For detailed checklist items with vulnerable code patterns, remediation examples
 
 ---
 
+## Evidence Gates for High-Risk API Workflows
+
+Do not mark API1, API4, API5, API8, or API10 controls as passing for the following workflows until the relevant evidence gate is complete.
+
+### HTTP Parameter Pollution and Parser Consistency Gate
+
+Duplicate or conflicting parameters can be parsed differently by gateways, WAFs, framework binders, validators, cache layers, signing code, audit logs, and downstream services. For endpoints that accept security-sensitive parameters, require parser-consistency evidence before clearing the endpoint.
+
+Capture this matrix for each sensitive parameter:
+
+| Endpoint | Parameter | Security role | Gateway/WAF behavior | Framework binding | Validator input | Application input | Cache/signature input | Downstream input | Decision |
+|---|---|---|---|---|---|---|---|---|---|
+| `[path method]` | `[id/tenant/role/redirect/price/etc.]` | `[authz/cache/signature/business]` | `[first/last/list/reject]` | `[first/last/list/reject]` | `[value used]` | `[value used]` | `[value used]` | `[value used]` | `[reject/canonicalize/finding]` |
+
+Required duplicate-parameter probes:
+
+- first-value wins: `?tenant=trusted&tenant=attacker`
+- last-value wins: `?tenant=attacker&tenant=trusted`
+- list binding: repeated keys bind to an array or list
+- comma-join behavior: `?scope=read&scope=admin` becomes `read,admin`
+- mixed query/body/header/path sources for the same logical parameter
+
+> **Gate:** Security-sensitive parameters must be rejected or canonicalized before authentication, authorization, rate limiting, cache-key generation, request signing, audit logging, and business logic. If any layer makes a different decision from a different value, file an API8/API10 finding and map authorization impact to API1/API5 where applicable.
+
+### Bulk Export and Signed Download URL Gate
+
+Async export workflows create secondary objects that often outlive the initial request: export jobs, status IDs, generated files, object-storage keys, and signed URLs. Reviewing only the export creation endpoint is not sufficient.
+
+Capture this evidence for every export or bulk-download workflow:
+
+| Phase | Object | Authorization evidence | Resource controls | Signed URL controls | Storage isolation | Audit fields |
+|---|---|---|---|---|---|---|
+| Create export | `[filters/job]` | `[role + tenant + object scope]` | `[row/byte/concurrency/quota]` | `N/A` | `[tenant/user key prefix]` | `[actor, tenant, filters]` |
+| Poll status | `[job_id]` | `[tenant/user ownership check]` | `[rate limit]` | `N/A` | `N/A` | `[job_id, status]` |
+| Download | `[file_id/object_key]` | `[job/file ownership check]` | `[download quota]` | `[TTL, reuse, revocation]` | `[private ACL]` | `[object count, bytes, destination]` |
+| Cleanup | `[file/job]` | `[retention policy]` | `[expiry/cancel]` | `[URL invalidation]` | `[delete evidence]` | `[correlation ID]` |
+
+> **Gate:** Export creation, job polling, file download, signed URL redemption, cleanup, and retention are separate authorization and resource-control decisions. File API1/API4/API5 findings when job IDs, file IDs, or signed URLs can widen scope, cross tenants, avoid quotas, remain valid after revocation, or expose files from public storage.
+
+---
+
 ## Findings Classification
 
 Each finding produced by this review must include the following fields:
@@ -66,6 +107,7 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
+| **Evidence Matrix** | Authorization, parser-consistency, export/download, or resource-control matrix used to validate exploitability |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -125,6 +167,7 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Evidence Matrix:** [authorization/parser/export evidence proving the decision gap]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
@@ -215,6 +258,10 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Assuming duplicate parameters are harmless.** If one layer validates the first value and another layer uses the last value or a list, attackers can bypass tenant checks, signature verification, cache keys, redirects, or business rules.
+
+8. **Reviewing only export creation.** Bulk export jobs, status endpoints, object-storage keys, signed URLs, retention, cleanup, and audit events are all part of the authorization boundary.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -238,4 +285,5 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP REST Security Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
+- **OWASP WSTG -- Testing for HTTP Parameter Pollution:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
