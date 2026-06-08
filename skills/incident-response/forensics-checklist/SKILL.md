@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -68,6 +68,15 @@ Before beginning evidence collection, gather or confirm:
 ## 3. Process
 
 ### Step 1: Establish Chain of Custody
+
+
+Every custody transfer, storage move, access event, and analysis-copy creation must include verification evidence. Record hashes and authorization so the report proves integrity from collection through analysis.
+
+| Evidence Item | Event Type | Purpose / Authorization | SHA-256 Before | SHA-256 After | Match Result | Seal / Immutable Storage Control | Copy Type | Failure Handling |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[item id]` | `Transfer / Storage Move / Access / Analysis Copy` | `[ticket, warrant, incident role]` | `[hash]` | `[hash]` | `Match / Mismatch / Unknown` | `[seal number, WORM bucket, object lock]` | `Original / Verified Working Copy / Derived Output` | `[quarantine, reimage, escalation]` |
+
+A mismatch must be escalated and documented before analysis continues. Mark `Unknown` when a transfer or access event lacks before-and-after hash evidence.
 
 Before touching any evidence, initialize the chain-of-custody record. Every transfer, access, or modification of evidence must be documented.
 
@@ -389,6 +398,12 @@ the order of collection, and any evidence that could not be obtained.]
 ### Chain of Custody
 [Include chain of custody form for each evidence item]
 
+### Custody Verification Evidence
+
+| Evidence Item | Event | Authorization | Hash Before | Hash After | Result | Seal / Storage Control | Copy Type | Failure Handling |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[item]` | `[event]` | `[authorization]` | `[hash]` | `[hash]` | `Match / Mismatch / Unknown` | `[control]` | `[copy type]` | `[action]` |
+
 ### Integrity Verification
 | Evidence ID | Acquisition Hash | Verification Hash | Match |
 |---|---|---|---|
@@ -438,6 +453,10 @@ RFC 3227 (February 2002, authored by Dominique Brezinski and Tom Killalea) provi
 RFC 3227 remains a foundational reference for digital evidence collection procedures, cited in ISO 27037 and numerous forensic certification curricula.
 
 ---
+
+### Pitfall 6: Logging Custody Without Verification Evidence
+
+A custody form without before-and-after hashes, access authorization, seal or immutable storage controls, and failure handling does not prove evidence integrity.
 
 ## 7. Common Pitfalls
 
