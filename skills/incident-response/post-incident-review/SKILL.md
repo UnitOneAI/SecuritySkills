@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -253,6 +253,15 @@ Map the incident to specific control failures -- what should have prevented, det
 
 ### Step 6: Lessons Learned and Remediation Plan
 
+
+Each P0/P1 or root-cause-linked remediation must prove effectiveness, not just implementation. Require validation evidence before marking an action closed.
+
+| Remediation | Failure Mode | Validation Method | Pre/Post Comparison | Effectiveness Owner | Validation Date | Recurrence Signal | Residual Risk Decision | Closure Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[action]` | `[incident-enabling condition]` | `[retest, replay, tabletop, config export, access review, patch check, restore test, drill]` | `[before vs after evidence]` | `[owner]` | `[date]` | `[alert, metric, incident class, exception count, drift signal]` | `[accepted/reduced/escalated]` | `Implemented / Effective / Ineffective / Unknown` |
+
+Only mark `Effective` when the validation method demonstrates that the original failure mode is no longer exploitable, undetected, or likely to recur under the same conditions.
+
 Convert analysis findings into specific, measurable, assignable, and time-bound remediation actions.
 
 **Lessons learned categories:**
@@ -358,6 +367,12 @@ root cause, and the number/priority of remediation actions identified.]
 |---|---|---|---|---|---|---|
 | REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
 
+### Remediation Effectiveness Validation
+
+| Remediation | Failure Mode | Validation Method | Pre/Post Evidence | Owner | Date | Recurrence Signal | Residual Risk | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[action]` | `[failure]` | `[method]` | `[comparison]` | `[owner]` | `[date]` | `[signal]` | `[decision]` | `Implemented / Effective / Ineffective / Unknown` |
+
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
 - **PIR Report Distribution:** [List of recipients]
@@ -421,6 +436,10 @@ Documenting lessons learned and remediation actions in a PIR report that is then
 NIST recommends conducting the PIR within several days of incident closure. Waiting weeks or months causes participants to forget critical details, misremember the sequence of events, and lose the emotional context that drives honest reflection. Schedule the PIR meeting before the incident is closed, ideally within 3-5 business days of recovery completion.
 
 ---
+
+### Pitfall 6: Treating Ticket Closure as Effectiveness
+
+A remediation ticket marked done is not evidence that recurrence risk changed. Require retest, replay, drill, configuration, metric, or monitoring evidence before closing effectiveness.
 
 ## 8. Prompt Injection Safety Notice
 
