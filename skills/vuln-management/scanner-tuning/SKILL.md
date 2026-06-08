@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -283,6 +283,16 @@ Configure scan schedules to balance coverage, freshness, and operational impact.
 
 ---
 
+### Step 7: Production Safety and Abort Conditions
+
+Treat scanner safety as a first-class tuning requirement. A policy is not safely tuned unless target-specific hazards, monitoring signals, abort thresholds, and recovery ownership are documented.
+
+| Target / Scan | Safety Hazard | Preflight Evidence | Rate / Concurrency Limit | Monitored Signal | Abort Threshold | Owner / Escalation | Recovery Plan | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[asset group or scan policy]` | `[lockout, IDS block, state change, CPU, 5xx, DB pressure]` | `[sample run, allowlist, lockout policy, change window]` | `[limits]` | `[metric/log/alert]` | `[threshold]` | `[owner]` | `[rollback/unblock/disable]` | `Ready / Blocked / Unknown` |
+
+Mark `Blocked` when scans can mutate production state, trigger lockouts, or overload fragile targets without live monitoring and an approved abort path.
+
 ## Findings Classification
 
 Classify the overall scanner tuning state into one of the following:
@@ -348,6 +358,12 @@ Highlight the most impactful tuning recommendations.]
 | Conflicts Requiring Investigation | [N] |
 | Coverage Gaps | [list by scanner type] |
 
+### Production Safety Evidence
+
+| Target / Scan | Hazard | Preflight Evidence | Limits | Signal | Abort Threshold | Owner | Recovery | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[target]` | `[hazard]` | `[evidence]` | `[limits]` | `[signal]` | `[threshold]` | `[owner]` | `[plan]` | `Ready / Blocked / Unknown` |
+
 ### Scan Schedule
 
 | Scan Type | Current Schedule | Recommended Schedule | Targets |
@@ -386,6 +402,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - CWE/CVE Mapping: https://cwe.mitre.org/data/index.html
 
 ---
+
+- Calling a production scan tuned just because dangerous plugins are disabled while ignoring account lockout, IDS blocking, state-changing requests, fragile target load, abort thresholds, and recovery ownership.
 
 ## Common Pitfalls
 
