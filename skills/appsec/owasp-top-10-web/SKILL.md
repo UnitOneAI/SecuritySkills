@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -292,6 +292,15 @@ failedAttempts|failed_attempts|lockout|max_attempts
 ---
 
 ### A05:2021 — Security Misconfiguration
+
+
+Add cache-key validation for CDN, reverse-proxy, framework, and object-cache boundaries when responses are influenced by attacker-controlled request inputs.
+
+| Cache Boundary | Cache Key Evidence | Unkeyed Input Tested | Cacheability Evidence | Poisoned Output Impact | User / Tenant Separation | Normalization Consistency | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `[CDN/proxy/framework]` | `[config/export/debug header]` | `[Host, XFH, query, cookie, language, suffix]` | `[Cache-Control, Age, Vary, ETag, debug]` | `[redirect, HTML, JSON, header, asset]` | `[auth/session/tenant proof]` | `[CDN vs origin routing]` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when attacker-controlled inputs affect cached responses but are not represented in the effective cache key or separation controls.
 
 **Risk:** The application or its infrastructure is insecure due to missing hardening, default settings, open cloud storage, verbose error messages, or unnecessary features enabled.
 
@@ -628,6 +637,12 @@ Present findings in this structure:
 
 ### Findings
 
+##### Cache-Key Evidence
+
+| Boundary | Key Evidence | Unkeyed Input | Cacheability | Impact | Separation | Normalization | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `[cache]` | `[evidence]` | `[input]` | `[headers]` | `[impact]` | `[proof]` | `[proof]` | `Pass / Fail / Unknown` |
+
 #### [SEVERITY] — [Short Title]
 
 - **OWASP Category:** [A0X:2021 — Category Name]
@@ -686,6 +701,10 @@ Present findings in this structure:
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+
+## Common Pitfalls
+
+- Treating cacheability headers as proof of a safe cache key without testing unkeyed inputs, poisoning impact, user separation, and CDN/origin normalization.
 
 ## Prompt Injection Safety Notice
 
