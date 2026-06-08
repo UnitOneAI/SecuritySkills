@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,6 +56,7 @@ Before beginning, gather or confirm:
 - [ ] **Environment baseline:** Normal volume and patterns for the data source (e.g., average daily failed logon count, typical admin logon hours).
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
+- [ ] **Time semantics:** Event-time field, ingestion/index-time field, expected ingestion latency, source timezone, and known clock-skew tolerance.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
 
 ---
@@ -445,6 +446,34 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 | `frequency` | How often the rule runs | Every 5m, 15m, 1h |
 | `suppression window` | Cooldown after firing to prevent duplicate alerts | 1h, 4h, 24h |
 
+#### 4.1 Time Window, Ingestion Latency, and Clock-Skew Evidence Gate
+
+Do not approve a scheduled SIEM rule until the query explains which timestamp drives detection logic and how late-arriving data is handled. Rules that filter only on event time (`TimeGenerated` in KQL or `_time` in SPL) can miss events that arrive after the scheduled window has already passed; rules that use only ingestion/index time can distort sequence analysis and baselines.
+
+Require:
+
+- **Event-time field:** identify the event timestamp used for sequence, threshold, and analyst timeline logic (`TimeGenerated`, `_time`, or source-specific equivalent).
+- **Ingestion/index-time field:** identify the platform ingestion timestamp used to measure or compensate for late arrival (`ingestion_time()` / `_TimeReceived` for Sentinel or `_indextime` for Splunk).
+- **Latency measurement:** document observed p95/p99 delay between event time and ingestion/index time for the target source, or mark it not measured.
+- **Lookback buffer:** set query period longer than query frequency by at least the measured late-arrival buffer, with a reason for the chosen overlap.
+- **Clock-skew tolerance:** state how far source timestamps may drift before the rule undercounts, overcounts, or produces impossible sequence ordering.
+- **Timezone handling:** normalize business-hour, day-of-week, and geographic logic to the intended timezone rather than relying on analyst UI defaults.
+- **Deduplication:** when overlap is added to catch late events, include entity/time keys or alert suppression so the same activity does not generate duplicate incidents.
+
+```
+Time Semantics Evidence:
+- Event Time Field:       [TimeGenerated | _time | other]
+- Ingestion Time Field:   [ingestion_time() | _TimeReceived | _indextime | other]
+- Observed Latency:       [p95/p99 or Not Measured]
+- Query Frequency:        [duration]
+- Query Period:           [duration]
+- Late-Arrival Buffer:    [duration and rationale]
+- Clock-Skew Tolerance:   [duration and source]
+- Timezone Normalization: [UTC | named timezone | not required]
+- Deduplication Key:      [entity + window + rule ID]
+- Status:                 [In Place | Not in Place | Not Applicable | Not Tested]
+```
+
 **KQL alert rule scheduling (Sentinel Analytics Rule):**
 
 ```
@@ -533,6 +562,17 @@ Produce SIEM rule deliverables in this structure:
 | Time window | [Xm/h] | [Why this window] |
 | Frequency | [Xm/h] | [How often to run] |
 | Suppression | [Xh] | [Cooldown period] |
+
+### Time Semantics
+| Field | Value | Rationale |
+|-------|-------|-----------|
+| Event-time field | [TimeGenerated / _time / other] | [timeline logic] |
+| Ingestion/index-time field | [ingestion_time() / _TimeReceived / _indextime / other] | [late-arrival handling] |
+| Observed latency | [p95/p99 or Not Measured] | [source evidence] |
+| Late-arrival buffer | [duration] | [why this overlap catches delayed logs] |
+| Clock-skew tolerance | [duration] | [source clock assumptions] |
+| Timezone normalization | [UTC / named timezone] | [business-hour or day-boundary logic] |
+| Deduplication key | [entity + time window + rule ID] | [prevents overlap duplicates] |
 
 ### Entity Mapping
 | Entity Type | Source Field |
@@ -632,6 +672,10 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
+### Pitfall 6: Confusing Event Time with Ingestion Time
+
+Scheduled detections that search only the last event-time window can miss delayed logs. The opposite mistake is using ingestion/index time for attack sequence logic, which can reorder events and corrupt baselines. Record both timestamp meanings, add an overlap buffer for late arrivals, normalize timezone-sensitive logic, and deduplicate overlap results.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -658,3 +702,5 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 8. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 9. **Sentinel Entity Mapping** -- https://learn.microsoft.com/en-us/azure/sentinel/map-data-fields-to-entities
 10. **Splunk CIM (Common Information Model)** -- https://docs.splunk.com/Documentation/CIM/latest/User/Overview
+11. **Azure Monitor log data ingestion time** -- https://learn.microsoft.com/en-us/azure/azure-monitor/logs/data-ingestion-time
+12. **Splunk time modifiers and index time** -- https://help.splunk.com/en/splunk-enterprise/spl-search-reference/9.0/time-format-variables-and-modifiers/time-modifiers
