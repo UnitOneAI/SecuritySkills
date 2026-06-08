@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -477,6 +477,16 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 ---
 
+### Step 8: Finding Validation Evidence Gates
+
+Validate every High or Critical DAST result before filing remediation tickets. Scanner output must be backed by request/response context, reproduction steps, calibrated severity, and owner-ready evidence.
+
+| Finding ID | Alert Type | URL / Endpoint | Parameter | Raw Evidence | Reproduction Steps | Validation Result | False-Positive Rationale | Owner | Ticket |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[id]` | `[alert]` | `[url]` | `[parameter]` | `[request/response, payload, scanner evidence]` | `[manual repro steps]` | `Confirmed / False Positive / Unknown` | `[reason if FP]` | `[owner]` | `[ticket]` |
+
+Mark `Unknown` when reproduction cannot be completed or the raw scanner context is insufficient to calibrate severity.
+
 ## Findings Classification
 
 | Severity | Definition |
@@ -519,6 +529,12 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
 | Results deduplication | Yes/No | <dedup method> |
+
+### DAST Finding Validation Evidence
+
+| Finding ID | Alert Type | Endpoint | Parameter | Raw Evidence | Reproduction | Validation Result | FP Rationale | Owner | Ticket |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[id]` | `[alert]` | `[endpoint]` | `[param]` | `[evidence]` | `[steps]` | `Confirmed / False Positive / Unknown` | `[rationale]` | `[owner]` | `[ticket]` |
 
 ### Findings
 
@@ -571,6 +587,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Client-Side | WSTG-CLNT | Moderate (DOM XSS, clickjacking) |
 
 ---
+
+- Filing raw DAST scanner output without reproduction evidence, request/response context, false-positive rationale, owner, and remediation ticket linkage.
 
 ## Common Pitfalls
 
