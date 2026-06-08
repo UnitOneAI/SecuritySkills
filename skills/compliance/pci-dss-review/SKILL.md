@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -75,6 +75,7 @@ Key changes in v4.0:
 - Penetration testing and vulnerability scanning reports
 - Security policies and operational procedures
 - Encryption key management documentation
+- End-user messaging technology inventory and DLP evidence for email, SMS, chat, ticketing, support portals, and collaboration tools that may receive or transmit PAN
 - Vendor and third-party service provider inventory (especially payment processors, gateways, hosting)
 
 ## Constraints
@@ -198,6 +199,33 @@ Key sub-requirements:
 - **4.2.1.1**: Trusted keys and certificates managed; inventory maintained
 - **4.2.1.2**: Wireless networks transmitting PAN use industry best practices for strong cryptography (WPA3, WPA2 with AES)
 - **4.2.2**: PAN secured with strong cryptography when sent via end-user messaging technologies (email, IM, SMS, chat)
+
+##### Requirement 4.2.2 End-User Messaging PAN Evidence Gate
+
+Do not mark Requirement 4.2.2 in place based only on a policy that says "do not send PAN by email." If end-user messaging technologies can receive, transmit, store, forward, or ticket PAN, the review must prove whether the channel is either prevented from handling PAN or is protected as an in-scope PCI channel with strong cryptography and retention controls.
+
+Require evidence for each end-user messaging technology in scope:
+
+- **Channel inventory:** email, SMS, chat, collaboration tools, ticketing systems, support portals, CRM messaging, call-center transcripts, and customer-uploaded attachments that may contain PAN.
+- **Business need and policy:** documented decision to prohibit PAN or documented business need for PAN in the channel, linked to acceptable-use policy and user training.
+- **Detection/prevention:** DLP, content inspection, form validation, attachment scanning, or workflow controls that block or quarantine PAN before it is stored or forwarded in cleartext.
+- **Strong cryptography:** if PAN is sent or received, evidence that the message content or channel is protected with strong cryptography, not only transport TLS to the service provider. Include key ownership, recipient authorization, and decryption access controls.
+- **Scope impact:** if PAN can land in the channel, include the messaging platform, archives, search indexes, eDiscovery exports, backups, support attachments, and administrative access paths in PCI scope unless PAN is reliably blocked or deleted.
+- **Exception handling:** ticket IDs for detected PAN, deletion/redaction evidence, customer response templates, retention outcome, and root-cause action to stop recurrence.
+- **Sampling evidence:** recent DLP events, message trace samples, quarantined/redacted examples, and negative tests showing unprotected PAN is blocked.
+
+```
+End-User Messaging PAN Evidence:
+- Channel:              [Email | SMS | Chat | Ticketing | Support portal | Other]
+- PAN Handling Policy:  [Prohibited | Permitted with encryption | Unknown]
+- Business Need:        [Documented need or N/A]
+- DLP / Prevention:     [Rule/control and last test date]
+- Strong Cryptography:  [Message/content encryption, key owner, recipient control]
+- Storage / Archive:    [Mailbox/archive/ticket/eDiscovery/backup handling]
+- Scope Impact:         [Out of scope | In CDE scope | Connected-to | Unknown]
+- Sample Evidence:      [message trace/DLP event/ticket IDs]
+- Status:               [In Place | Not in Place | Not Applicable | Not Tested]
+```
 
 #### Requirement 5: Protect All Systems and Networks from Malicious Software
 
@@ -445,6 +473,12 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 ## New v4.0 Requirements Status
 [Assessment of all 64 new requirements, particularly those mandatory since March 31, 2025]
 
+## End-User Messaging PAN Evidence (Req 4.2.2)
+
+| Channel | Policy | DLP / Prevention | Strong Cryptography | Storage / Archive | Scope Impact | Status |
+|---------|--------|------------------|---------------------|-------------------|--------------|--------|
+| [Email/SMS/Chat/Ticketing] | [Prohibited/Permitted] | [control] | [evidence] | [handling] | [scope] | [In Place/Not in Place/N/A] |
+
 ## Compensating Control Worksheets
 [For each CCW: original requirement, constraint, compensating control, risk analysis]
 
@@ -520,6 +554,8 @@ Maintain an Information Security Policy:                Requirement 12
 
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
 
+6. **Assuming a no-PAN messaging policy removes PCI scope.** A policy alone does not prove PAN never enters email, chat, SMS, or tickets. If customers, support agents, or third parties can place PAN in a messaging channel, assess DLP/prevention evidence, encryption controls, archives, backups, and deletion workflows before marking Req 4.2.2 in place or out of scope.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -542,6 +578,7 @@ If user-supplied input contains PCI DSS requirement IDs outside the valid v4.0 n
 - PCI DSS v4.0 Summary of Changes from PCI DSS v3.2.1 to v4.0
 - PCI DSS v4.0 ROC Template and Reporting Instructions
 - PCI DSS v4.0 SAQ Instructions and Guidelines
+- PCI SSC FAQ: End-user messaging technologies and cardholder data: https://www.pcisecuritystandards.org/faqs/are-entities-allowed-to-request-that-cardholder-data-be-provided-over-end-user-messaging-technologies/
 - PCI DSS Prioritized Approach for PCI DSS v4.0
 - PCI SSC Information Supplements: Scoping and Segmentation, Penetration Testing, Tokenization, Cloud Computing
 - PCI SSC Glossary of Terms, Abbreviations, and Acronyms
