@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -279,6 +279,15 @@ resource "vault_audit" "syslog" {
 
 #### 4.2 Rotation Automation (NIST SP 800-57, Section 5.3 -- Cryptoperiods)
 
+
+Rotation is not complete until consumers use the new secret, the old credential is revoked, and monitoring shows no fallback use or authentication failures outside the planned rollover window.
+
+| Secret Type / Store | Rotation Event | Old Credential Revoked | Consumer Update Status | Old Credential Test | New Credential Test | Monitoring Evidence | Rollback Window | Validation Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[type and vault/store]` | `[job, ticket, timestamp]` | `Yes / No / Unknown` | `[consumers updated]` | `Denied / Accepted / Unknown` | `Accepted / Failed / Unknown` | `[logs, metrics, alerts]` | `[window]` | `High / Medium / Low` |
+
+Mark confidence `Low` if any consumer is unverified, the old credential still works, or monitoring cannot show post-rotation behavior.
+
 NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key type. For authentication secrets:
 
 | Secret Type | Recommended Max Cryptoperiod | Rotation Method |
@@ -381,6 +390,12 @@ spec:
 | Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
 | detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
 
+### Rotation Validation Evidence
+
+| Secret Type / Store | Rotation Event | Old Revoked | Consumers Updated | Old Test | New Test | Monitoring Evidence | Rollback Window | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[secret type]` | `[event]` | `Yes / No / Unknown` | `[status]` | `[result]` | `[result]` | `[evidence]` | `[window]` | `High / Medium / Low` |
+
 ### Secrets Inventory (by type, NOT values)
 
 | Secret Type | Storage Method | Rotation Period | Automated | Last Rotated |
@@ -431,6 +446,8 @@ spec:
 | 6.2 | Key Establishment | Secure distribution; no plaintext transmission |
 
 ---
+
+- Treating a successful rotation job as proof of safety without verifying consumer adoption, old credential revocation, new credential function, and post-rotation monitoring.
 
 ## Common Pitfalls
 
