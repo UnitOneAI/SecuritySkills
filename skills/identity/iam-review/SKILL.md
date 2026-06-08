@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -196,6 +196,20 @@ IAM-PRIV-08: Resource-based policies granting public or overly broad access
 | Standing admin without JIT | **High** | Persistent lateral movement target |
 | Unused permissions > 90 days | **Medium** | Attack surface reduction opportunity |
 | Direct policy attachment | **Low** | Governance improvement, not direct risk |
+
+Before recommending permission removal or role downscoping, collect unused permission evidence:
+
+```
+| Principal | Policy/Role | Permission/Action | Resource Scope | Usage Data Source | Last Used | Observation Window | Business Owner | Secondary Evidence | Downscope Confidence |
+```
+
+Evidence requirements:
+- Record the usage data source and its limitation, such as AWS IAM Access Analyzer, CloudTrail, Azure activity logs, Entra audit logs, GCP IAM Recommender, Policy Analyzer, or provider-specific last-used data.
+- Record the observation window; do not treat "never used" as conclusive if the tool only tracks a shorter lookback period than the business process requires.
+- Distinguish action-level last-used evidence from role-level, service-level, or policy-level summaries.
+- Cross-check business-critical or periodic permissions with owner confirmation, ticket history, scheduled job calendars, or application telemetry.
+- Mark downscope confidence as High, Medium, or Low based on data freshness, granularity, and secondary evidence.
+- For high-impact permissions, recommend staged monitoring or a temporary deny simulation before permanent removal.
 
 ---
 
@@ -380,6 +394,7 @@ For each finding, produce a row with:
 | **Framework Ref** | NIST SP 800-63B section, NIST SP 800-207 tenet, or CIS Control ID |
 | **Affected Scope** | Accounts, roles, policies, or platforms impacted |
 | **Evidence** | Specific configuration, policy, or data supporting the finding |
+| **Usage Evidence** | Last-used source, observation window, granularity, owner confirmation, and downscope confidence |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -414,6 +429,12 @@ For each finding, produce a row with:
 ### Detailed Findings
 [Findings table — see above]
 
+### Unused Permission Evidence
+
+| Principal | Policy/Role | Permission/Action | Resource Scope | Usage Data Source | Last Used | Observation Window | Business Owner | Secondary Evidence | Downscope Confidence |
+|---|---|---|---|---|---|---|---|---|---|
+| [identity] | [role/policy] | [action] | [resource] | [tool/log] | [timestamp/never] | [days] | [owner] | [ticket/log/confirmation] | [High/Medium/Low] |
+
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
 
@@ -431,6 +452,14 @@ For each finding, produce a row with:
 | **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, no stale account process |
 | **P2 — Important** | 31-90 days | No phishing-resistant MFA, incomplete identity inventory, no access review cadence |
 | **P3 — Planned** | 91-180 days | Zero trust maturity gaps, device trust integration, continuous access evaluation |
+
+---
+
+## Common Pitfalls
+
+1. **Treating provider last-used summaries as complete usage proof.** IAM Access Analyzer, IAM Recommender, activity logs, and policy analyzers often differ in lookback window, granularity, and service coverage. Record the source, observation window, and whether the signal is action-level or only role/service-level before removing permissions.
+
+2. **Removing periodic permissions without business-cycle evidence.** Some access is used only for month-end close, quarterly reporting, disaster recovery, vendor maintenance, or annual audits. Confirm with owners or staged monitoring before permanently downscoping high-impact permissions.
 
 ---
 
@@ -508,4 +537,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-08 | Added unused permission usage evidence gates for least privilege recommendations |
 | 1.0.0 | 2025-03-06 | Initial release |
