@@ -6,13 +6,13 @@ description: >
   (Identity, Devices, Networks, Applications & Workloads, Data) across maturity
   stages. Covers microsegmentation readiness, continuous verification, and
   produces a pillar-by-pillar maturity scorecard with remediation roadmap.
-tags: [identity, zero-trust, network, architecture]
+tags: [identity, zero-trust, network, architecture, shadow-saas]
 role: [security-engineer, architect, vciso]
 phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -268,7 +268,28 @@ ZT-APP-08: No runtime workload protection (CWPP/CNAPP)
 ZT-APP-09: Application-to-application communication not authenticated
 ZT-APP-10: Legacy applications with no path to zero trust integration
 ```
+#### Application Discovery and Shadow SaaS Evidence Gate
 
+Do not score Applications & Workloads as Advanced or Optimal from ZTNA connector counts alone. Require runtime discovery evidence that reconciles the declared application catalog with observed SaaS and private application access.
+
+| Evidence Source | Required Use | Maturity Impact |
+|---|---|---|
+| IdP application catalog and SSO logs | Identify sanctioned apps, enterprise SSO coverage, local-login bypass, and unmanaged OAuth consent. | Missing SSO or OAuth governance prevents Advanced scoring for affected apps. |
+| ZTNA/private app inventory | Compare protected, VPN-only, direct internal, ownerless, and exception-based access paths. | VPN-only or direct network paths remain Initial/Traditional until governed. |
+| CASB/SWG/proxy/DNS discovery logs | Identify observed SaaS apps, users, risk, data movement, and unknown governance status. | High-risk unsanctioned SaaS is a visibility/governance gap. |
+| SaaS admin and DLP/logging evidence | Confirm audit logging, DLP, tenant controls, retention, and policy enforcement. | Sanctioned apps without logging/DLP evidence should not be over-scored. |
+| Exception register | Record owner, risk acceptance, expiry, compensating controls, and review cadence. | Accepted exceptions must be time-bound and monitored. |
+
+**Finding IDs:**
+
+| ID | Condition | Severity |
+|---|---|---|
+| ZT-APP-DISC-01 | No runtime SaaS discovery evidence from CASB/SWG/proxy/DNS or equivalent telemetry. | High |
+| ZT-APP-DISC-02 | High-risk unsanctioned SaaS lacks owner, risk decision, logging/DLP disposition, or expiry. | High |
+| ZT-APP-DISC-03 | Sanctioned SaaS allows direct local-account login outside the enterprise IdP without compensating controls. | Medium |
+| ZT-APP-DISC-04 | Private applications remain VPN-only or directly reachable without ZTNA/PEP exception evidence. | High |
+| ZT-APP-DISC-05 | Application inventory omits owner, access path, enforcement point, IdP/SSO status, or exception status. | Medium |
+| ZT-APP-DISC-06 | OAuth app consent creates unmanaged SaaS access not covered by app governance. | Medium |
 ---
 
 ### Step 5: Pillar 5 — Data
@@ -363,7 +384,7 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 | Identity | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
 | Devices | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
 | Networks | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
-| Applications & Workloads | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
+| Applications & Workloads | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps, including shadow SaaS/private app coverage] |
 | Data | [Traditional/Initial/Advanced/Optimal] | [Target] | [Top 2-3 gaps] |
 
 ### Summary Report Structure
@@ -386,7 +407,7 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 ### CISA ZTMM v2 Maturity Scorecard
 [Pillar-by-pillar table — see above]
 
-### Cross-Cutting Capabilities
+### Application Access Discovery Matrix`n| App / Resource | Discovery Source | Owner | Access Path | PEP/ZTNA Status | IdP/SSO Status | DLP/Logging | Exception Decision |`n|---|---|---|---|---|---|---|---|`n| [SaaS or private app] | [IdP / ZTNA / CASB / SWG / proxy / DNS / SaaS admin] | [owner or missing] | [enterprise SSO / local login / VPN-only / direct / ZTNA] | [protected / exception / not protected] | [enforced / bypass / unknown] | [covered / gap] | [approved / pending / expired] |`n`n### Cross-Cutting Capabilities
 - Visibility & Analytics: [maturity]
 - Automation & Orchestration: [maturity]
 - Governance: [maturity]
@@ -441,7 +462,7 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 4. **Ignoring legacy systems** — legacy applications often cannot support modern authentication. Plan enclave-based or proxy-based patterns for them.
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
-7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.`n8. **Counting ZTNA deployment as application coverage** — connector counts do not prove SaaS discovery, enterprise SSO enforcement, DLP/logging coverage, or private app migration away from VPN-only paths.
 
 ---
 
@@ -487,4 +508,4 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
-| 1.0.0 | 2025-03-06 | Initial release |
+| 1.1.0 | 2026-06-08 | Added shadow SaaS discovery and private app access coverage evidence gates |`n| 1.0.0 | 2025-03-06 | Initial release |
