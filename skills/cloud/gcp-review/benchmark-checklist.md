@@ -76,6 +76,93 @@ These roles should be granted at the service account level, not project level.
 
 Check for key rotation mechanisms or expiration policies on service account keys.
 
+
+### CIS 1.X -- Ensure temporary and scoped access uses IAM Conditions or JIT enforcement
+
+Temporary, emergency, contractor, partner, and scoped access should be enforced in the IAM binding or a documented just-in-time access system. A ticket due date, comment, manual reminder, or spreadsheet owner is not sufficient evidence that access expires or stays scoped.
+
+**Terraform conditional binding evidence:**
+
+```hcl
+resource "google_project_iam_member" "temporary_incident_access" {
+  project = var.project_id
+  role    = "roles/logging.viewer"
+  member  = "user:incident.responder@example.com"
+
+  condition {
+    title       = "temporary_incident_access"
+    description = "Expires after INC-1234 remediation window"
+    expression  = "request.time < timestamp(\"2026-07-01T00:00:00Z\")"
+  }
+}
+```
+
+**Terraform scoped resource/tag evidence:**
+
+```hcl
+resource "google_project_iam_member" "tag_scoped_access" {
+  project = var.project_id
+  role    = "roles/compute.viewer"
+  member  = "group:contractors@example.com"
+
+  condition {
+    title       = "contractor_prod_read_scope"
+    description = "Limit contractor reads to approved tagged resources"
+    expression  = "resource.matchTag(\"123456789012/environment\", \"approved-review\")"
+  }
+}
+```
+
+**gcloud policy export evidence:**
+
+```sh
+gcloud projects get-iam-policy PROJECT_ID --format=json
+```
+
+Expected conditional binding shape:
+
+```json
+{
+  "role": "roles/logging.viewer",
+  "members": ["user:incident.responder@example.com"],
+  "condition": {
+    "title": "temporary_incident_access",
+    "description": "Expires after INC-1234 remediation window",
+    "expression": "request.time < timestamp(\"2026-07-01T00:00:00Z\")"
+  }
+}
+```
+
+**Unsupported grant checks:**
+
+```hcl
+# FAIL: IAM Conditions cannot constrain legacy basic roles.
+resource "google_project_iam_member" "temporary_owner" {
+  project = var.project_id
+  role    = "roles/owner"
+  member  = "user:contractor@example.com"
+}
+
+# FAIL: IAM Conditions cannot constrain public principals.
+resource "google_project_iam_member" "public_viewer" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = "allUsers"
+}
+```
+
+**Review checklist:**
+
+- Confirm every temporary, emergency, contractor, partner, and break-glass grant has a condition expression or JIT control that actually enforces expiry or scope.
+- Confirm conditional bindings include `title`, useful `description`, and a CEL `expression`.
+- Confirm temporary access includes `request.time < timestamp(...)` with a future UTC timestamp tied to the approved access window.
+- Confirm scoped access uses supported resource attributes, resource tags, Access Context attributes, or service-specific attributes; do not infer scope from naming alone.
+- Confirm `roles/owner`, `roles/editor`, and `roles/viewer` grants are treated as unsupported for IAM Conditions rather than marked as conditionally constrained.
+- Confirm `allUsers` and `allAuthenticatedUsers` grants are treated as unsupported for IAM Conditions rather than marked as conditionally constrained.
+- Confirm break-glass evidence includes approver, ticket or incident ID, activation reason, expiry, monitoring, and post-use review.
+- Confirm IAM policy exports, Cloud Asset Inventory, Security Command Center, log metrics, or monitoring detect missing, expired, removed, or weakened conditions.
+- Flag expired conditions that remain present with no cleanup workflow as weak evidence even if access is no longer effective.
+
 ### CIS 1.8 -- Ensure that Separation of Duties is Enforced While Assigning Service Account Related Roles to Users
 
 Verify that no user has both `iam.serviceAccountUser` and `iam.serviceAccountAdmin` simultaneously.
