@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -25,7 +25,7 @@ argument-hint: "[target-file-or-directory]"
 
 ## Overview
 
-This skill performs a structured security assessment of Google Cloud Platform environments against the **CIS Google Cloud Platform Foundation Benchmark v2.0.0**. The benchmark is organized into seven sections covering identity and access management, logging and monitoring, networking, virtual machines, storage, Cloud SQL, and BigQuery. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Deployment Manager), gcloud CLI output, or configuration files available in the repository.
+This skill performs a structured security assessment of Google Cloud Platform environments against the **CIS Google Cloud Platform Foundation Benchmark v2.0.0**. The benchmark is organized into seven sections covering identity and access management, logging and monitoring, networking, virtual machines, storage, Cloud SQL, and BigQuery. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, Deployment Manager), gcloud CLI output, or configuration files available in the repository. When GKE clusters are present, the review also collects supplemental GKE posture evidence so cluster-level Google Cloud controls are not lost between generic GCP checks and the separate container workload review.
 
 The CIS GCP Foundation Benchmark v2.0.0 provides prescriptive guidance for hardening GCP projects and organizations. This skill evaluates each applicable control and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
 
@@ -88,7 +88,39 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 9: Compile Assessment Report
+### Step 9: Supplemental GKE Cluster Posture Evidence
+
+When `google_container_cluster`, `google_container_node_pool`, or GKE configuration exports are present, evaluate cluster-level GCP controls before final scoring. This supplemental gate does not replace the `container-security` skill for Kubernetes manifests, RBAC, Pod Security, or workload YAML. It covers the Google Cloud control plane and node-pool settings that are visible in Terraform or GKE exports.
+
+Record a GKE evidence row for each cluster and node pool:
+
+| Evidence Field | Required Evidence | Risk If Missing |
+|---|---|---|
+| Cluster mode | Standard vs. Autopilot and provider-managed defaults | Standard-only requirements can be misapplied to Autopilot, or Autopilot defaults can be assumed without proof |
+| Control plane exposure | `private_cluster_config`, private endpoint status, and `master_authorized_networks_config` CIDRs | Public or broadly reachable cluster API endpoint |
+| Node identity | Node service account, OAuth scopes, default service-account usage, and node-pool IAM | Pods inherit broad node identity or `cloud-platform` access |
+| Workload Identity Federation for GKE | `workload_identity_config`, node-pool `workload_metadata_config`, namespace/KSA mapping, and IAM conditions where relevant | Pods fall back to node metadata, or same namespace/KSA names in the project share unintended Google Cloud access |
+| Metadata exception paths | Host-network workloads, Dataplane V2 metadata egress allowances, and compensating controls | Workloads bypass expected GKE metadata server behavior |
+| Node integrity | Shielded GKE Nodes status and node-pool override evidence | Node bootstrap identity and integrity are not verifiable |
+| Admission and network controls | Binary Authorization mode, NetworkPolicy enablement, and provider-managed equivalents | Unverified images or unrestricted pod-to-pod traffic in production clusters |
+
+**Finding triggers:**
+
+```
+GCP-GKE-01: GKE cluster evidence is missing while Terraform declares google_container_cluster resources
+GCP-GKE-02: Public control plane or authorized networks include 0.0.0.0/0 without documented compensating control
+GCP-GKE-03: Standard cluster node pool uses default service account or cloud-platform OAuth scope without workload-bound least privilege
+GCP-GKE-04: Workload Identity Federation for GKE is absent, disabled at the node pool, or not mapped to reviewed namespace/KSA bindings
+GCP-GKE-05: Host-network metadata exception paths are present without compensating controls
+GCP-GKE-06: Shielded GKE Nodes are disabled or not evidenced for Standard clusters
+GCP-GKE-07: Binary Authorization or NetworkPolicy is disabled for production clusters without documented exception
+```
+
+If GKE evidence is incomplete, mark the affected cluster as **Not Evaluable** rather than scoring it as pass. If the same environment includes Kubernetes manifests, route manifest-level findings to `skills/cloud/container-security/SKILL.md`.
+
+---
+
+### Step 10: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -137,6 +169,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 5 | Storage | X | Y | Z | nn% |
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
+
+### Supplemental GKE Evidence
+
+| Cluster/Node Pool | Mode | Control Plane Exposure | Node Identity | Workload Identity Evidence | Metadata Exceptions | Shielded Nodes | Binary Authorization | NetworkPolicy | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| <cluster> | Standard/Autopilot | <private/public/CIDRs> | <service account/scopes> | <enabled/missing/N/A> | <hostNetwork/none/unknown> | <enabled/disabled/managed> | <enforced/disabled/N/A> | <enabled/disabled/N/A> | Pass/Fail/Not Evaluable |
 
 ### Detailed Findings
 
@@ -194,6 +232,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
 5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+7. **Letting GKE fall between skills.** Generic CIS GCP checks do not inspect cluster-only settings such as private endpoint, Workload Identity Federation for GKE, node metadata mode, Shielded GKE Nodes, Binary Authorization, or NetworkPolicy. Capture those controls here, then hand Kubernetes manifest findings to `container-security`.
 
 ---
 
@@ -218,6 +257,9 @@ Produce the final report using the structure defined in the Output Format sectio
 - Google Cloud IAM Documentation: https://cloud.google.com/iam/docs
 - Google Cloud Audit Logs: https://cloud.google.com/logging/docs/audit
 - Google Cloud VPC Documentation: https://cloud.google.com/vpc/docs
+- Google Cloud GKE Workload Identity Federation: https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity
+- Google Cloud GKE network isolation: https://docs.cloud.google.com/kubernetes-engine/docs/concepts/network-isolation
+- Google Cloud Shielded GKE Nodes: https://docs.cloud.google.com/kubernetes-engine/docs/how-to/shielded-gke-nodes
 - Google Cloud SQL Security: https://cloud.google.com/sql/docs/mysql/configure-ssl-instance
 - Terraform Google Provider Documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs
 
@@ -225,4 +267,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Adds supplemental GKE cluster posture evidence gates for private control plane, Workload Identity Federation for GKE, node identity, metadata exception paths, Shielded GKE Nodes, Binary Authorization, and NetworkPolicy.
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.

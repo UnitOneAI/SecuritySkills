@@ -534,6 +534,132 @@ resource "google_compute_instance" {
 
 ---
 
+## Supplemental GKE Cluster Posture Review
+
+Evaluate `google_container_cluster`, `google_container_node_pool`, and GKE export evidence when a GCP environment runs Google Kubernetes Engine. These checks are supplemental to CIS GCP v2.0.0 because they focus on cluster-level Google Cloud controls; use `skills/cloud/container-security/SKILL.md` for Kubernetes workload manifests.
+
+### GCP-GKE-01 -- Ensure GKE Clusters Are Explicitly Inventoried
+
+**Grep patterns:**
+
+```
+resource "google_container_cluster"
+resource "google_container_node_pool"
+google_container_cluster
+google_container_node_pool
+```
+
+If any GKE resource is present, require a GKE evidence row in the final report. Missing cluster mode, node-pool identity, Workload Identity, or control-plane evidence is **Not Evaluable**.
+
+### GCP-GKE-02 -- Ensure Control Plane Exposure Is Private or Tightly Scoped
+
+```hcl
+# BAD: public endpoint with broad authorized network
+resource "google_container_cluster" "bad" {
+  private_cluster_config {
+    enable_private_nodes    = false
+    enable_private_endpoint = false
+  }
+
+  master_authorized_networks_config {
+    cidr_blocks {
+      cidr_block = "0.0.0.0/0"
+    }
+  }
+}
+```
+
+Require evidence for private nodes, private endpoint status, and authorized network CIDRs. A public endpoint can be acceptable only with narrow, documented networks and compensating controls.
+
+### GCP-GKE-03 -- Ensure Node Identity Is Least Privilege
+
+```hcl
+# BAD: default service account and broad OAuth scope
+resource "google_container_node_pool" "bad" {
+  node_config {
+    service_account = "default"
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+}
+```
+
+Look for:
+
+```
+service_account = "default"
+oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+roles/editor
+PROJECT_NUMBER-compute@developer.gserviceaccount.com
+```
+
+Node pools should use a dedicated service account with minimal IAM and minimal OAuth scopes where scopes still apply.
+
+### GCP-GKE-04 -- Ensure Workload Identity Federation for GKE Is Enabled and Evidenced
+
+```hcl
+resource "google_container_cluster" "good" {
+  workload_identity_config {
+    workload_pool = "example-prod.svc.id.goog"
+  }
+}
+
+resource "google_container_node_pool" "good" {
+  node_config {
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
+  }
+}
+```
+
+Require cluster-level `workload_identity_config`, node-pool `workload_metadata_config`, namespace/Kubernetes ServiceAccount mapping, and IAM binding conditions where namespace or KSA names can collide across clusters in the same project.
+
+### GCP-GKE-05 -- Ensure Metadata Exception Paths Are Reviewed
+
+Workload Identity Federation for GKE changes metadata behavior, but host-network workloads and required metadata egress paths can be exceptions.
+
+**Grep patterns:**
+
+```
+hostNetwork: true
+169.254.169.254
+169.254.169.252
+workload_metadata_config
+mode = "GCE_METADATA"
+```
+
+Document any host-network workloads, Dataplane V2 metadata egress allowances, and compensating controls before marking Workload Identity evidence complete.
+
+### GCP-GKE-06 -- Ensure Shielded GKE Nodes Are Enabled or Provider-Managed
+
+```hcl
+# BAD for Standard clusters unless justified
+resource "google_container_cluster" "bad" {
+  enable_shielded_nodes = false
+}
+```
+
+For Standard clusters, require evidence that Shielded GKE Nodes are enabled or that a provider-managed mode such as Autopilot enforces the equivalent control.
+
+### GCP-GKE-07 -- Ensure Binary Authorization and NetworkPolicy Are Reviewed
+
+```hcl
+# BAD in production without a documented exception
+resource "google_container_cluster" "bad" {
+  network_policy {
+    enabled = false
+  }
+
+  binary_authorization {
+    evaluation_mode = "DISABLED"
+  }
+}
+```
+
+Record whether Binary Authorization is enforced, disabled, or not applicable, and whether NetworkPolicy is enabled or replaced by documented provider-managed controls. Disabled controls in production should be **High** unless an exception is documented.
+
+---
+
 ## Section 5 -- Storage
 
 Evaluate Cloud Storage configurations against CIS GCP v2.0.0 Section 5 recommendations.
