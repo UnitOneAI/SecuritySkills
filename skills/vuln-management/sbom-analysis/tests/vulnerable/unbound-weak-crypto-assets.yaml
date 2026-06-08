@@ -1,0 +1,31 @@
+scenario: unbound-weak-crypto-assets
+artifact_type: cyclonedx-cbom
+crypto_assets:
+  - asset: legacy-signing-cert
+    type: certificate
+    algorithm: sha1WithRSAEncryption
+    key_length: 1024
+    component_binding: missing
+    owner: missing
+    expires_at: "2028-12-31T00:00:00Z"
+    rotation_cadence: missing
+    storage_protection: filesystem
+  - asset: payment-token-hmac
+    type: algorithm
+    algorithm: HMAC-MD5
+    component_binding: missing
+    owner: payments-platform
+    rotation_cadence: annual
+scope:
+  production_release: true
+  encryption_or_signing_in_scope: true
+expected_findings:
+  - id: SBOM-CRYPTO-02
+    severity: medium
+    reason: cryptographic assets are not bound to the components or services that use them
+  - id: SBOM-CRYPTO-03
+    severity: high
+    reason: weak SHA-1/RSA-1024 and MD5-based algorithms lack migration justification
+  - id: SBOM-CRYPTO-04
+    severity: medium
+    reason: key ownership, rotation, and storage protection evidence is incomplete

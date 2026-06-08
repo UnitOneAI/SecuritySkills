@@ -1,0 +1,19 @@
+scenario: test-certificate-out-of-release-scope
+artifact_type: cyclonedx-sbom
+components:
+  - name: integration-test-fixtures
+    scope: excluded-from-release
+    crypto_assets:
+      - asset: localhost-test-cert
+        type: certificate
+        algorithm: sha1WithRSAEncryption
+        key_length: 1024
+        component_binding: test-harness
+        owner: qa
+        expires_at: "2030-01-01T00:00:00Z"
+release_evidence:
+  production_artifact_manifest_excludes:
+    - integration-test-fixtures
+  ci_policy_blocks_test_materials_in_release: true
+expected_status: pass
+false_positive_guardrail: development-only test certificates should not be production crypto findings when scope evidence proves they are excluded from released artifacts

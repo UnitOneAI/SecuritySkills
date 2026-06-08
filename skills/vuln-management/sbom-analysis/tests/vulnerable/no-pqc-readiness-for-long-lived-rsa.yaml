@@ -1,0 +1,24 @@
+scenario: no-pqc-readiness-for-long-lived-rsa
+artifact_type: crypto_inventory
+crypto_assets:
+  - asset: customer-archive-encryption-key
+    type: public_key
+    algorithm: RSA-OAEP
+    key_length: 4096
+    component_binding: archive-service
+    owner: data-platform
+    storage_protection: kms
+    data_retention_years: 12
+    rotation_cadence: 365d
+    pqc_readiness: missing
+  - asset: api-mtls-root-ca
+    type: certificate
+    algorithm: ECDSA-P256
+    component_binding: api-gateway
+    owner: platform-security
+    expires_at: "2031-01-01T00:00:00Z"
+    pqc_readiness: missing
+expected_findings:
+  - id: SBOM-CRYPTO-05
+    severity: medium
+    reason: long-lived public-key cryptography protects retained data without crypto-agility or PQC migration evidence

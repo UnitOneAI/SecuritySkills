@@ -237,6 +237,39 @@ License Analysis:
 - Conflicts Detected:   [N] -- list specific conflicts
 ```
 
+### Step 5A: Cryptographic Material Inventory and CBOM Readiness
+
+If the SBOM or an accompanying Cryptography Bill of Materials (CBOM) is provided, assess whether cryptographic assets are inventoried well enough for algorithm deprecation, key-rotation, certificate-expiry, and post-quantum migration planning.
+
+**Framework mapping:** CycloneDX 1.6+ CBOM concepts, NIST SP 800-57 key lifecycle, NIST PQC migration planning
+
+Do not fail NTIA SBOM completeness solely because a CycloneDX 1.5 or SPDX 2.3 SBOM lacks CBOM fields. Instead, create a separate cryptographic-inventory finding when crypto assets are in scope but unsupported, incomplete, stale, or not bound to the components that use them.
+
+**Evidence to collect:**
+
+- Cryptographic algorithms and modes: RSA, ECDSA, Ed25519, AES-GCM, ChaCha20-Poly1305, SHA-256, SHA-1, MD5, custom or proprietary crypto.
+- Keys and certificates: key type, length, usage, storage location, hardware-backed status, creation date, expiration date, rotation owner.
+- Protocols and libraries: TLS versions, SSH algorithms, JOSE/JWT algorithms, mTLS certificates, OpenSSL/BoringSSL/libcrypto versions.
+- Asset binding: which component, service, endpoint, container image, or package uses each crypto asset.
+- PQC readiness: inventory of public-key algorithms requiring migration, data retention horizon, crypto-agility plan, and replacement candidates.
+
+**What to look for:**
+
+```
+SBOM-CRYPTO-01: No crypto asset inventory for software that performs encryption, signing, mTLS, JWT issuance, or SSH access
+SBOM-CRYPTO-02: Cryptographic assets are listed but not bound to specific components, services, packages, or endpoints
+SBOM-CRYPTO-03: Weak or deprecated algorithms appear in the CBOM/SBOM without migration justification (MD5, SHA-1 signatures, RSA < 2048, TLS 1.0/1.1)
+SBOM-CRYPTO-04: Keys or certificates lack owner, expiration, rotation cadence, or storage-protection evidence
+SBOM-CRYPTO-05: Long-lived public-key cryptography is present but no PQC migration or crypto-agility assessment exists
+SBOM-CRYPTO-06: Vendor VEX or risk acceptance references cryptographic mitigation but does not identify the actual algorithm/key/protocol evidence
+```
+
+**False-positive guardrails:**
+
+- Do not treat a general-purpose dependency such as OpenSSL as proof that the application uses every algorithm the library supports; require usage evidence.
+- Do not flag development-only test certificates as production key-management findings when scope evidence proves they are excluded from released artifacts.
+- Mark crypto inventory **Not Evaluable** when only marketing statements such as "uses strong encryption" are supplied without SBOM/CBOM fields, certificate metadata, protocol configuration, or component binding.
+
 ---
 
 ## Findings Classification
@@ -323,6 +356,13 @@ conflicts), and overall classification.]
 **Conflicts Detected:** [Yes/No]
 [If yes, list each conflict with affected components and remediation guidance]
 
+### Cryptographic Material Inventory
+[If a CBOM, crypto inventory, or cryptography-relevant SBOM data is provided]
+
+| Asset | Type | Algorithm / Protocol | Component Binding | Owner | Rotation / Expiry | Storage Protection | PQC Readiness | Status |
+|---|---|---|---|---|---|---|---|---|
+| [certificate/key/library/protocol] | [key/cert/protocol/library] | [RSA-2048/TLS 1.2/etc.] | [component/service] | [owner] | [date/cadence] | [HSM/KMS/file/unknown] | [assessed/not assessed] | [Pass/Fail/Not Evaluable] |
+
 ### Overall Classification
 **Rating:** [Critical Supply Chain Risk | Elevated Risk | Acceptable | Strong]
 **Rationale:** [2-3 sentences explaining the rating]
@@ -349,6 +389,11 @@ A lightweight SBOM standard supporting multiple use cases (software, hardware, s
 - Specification: https://cyclonedx.org/docs/1.5/
 - Schema: https://github.com/CycloneDX/specification
 - Tool Center: https://cyclonedx.org/tool-center/
+
+### CycloneDX CBOM (Cryptography Bill of Materials)
+CycloneDX 1.6+ supports cryptography-focused inventory data for algorithms, keys, certificates, protocols, and related properties. Use CBOM evidence to assess crypto asset ownership, rotation, expiration, weak algorithm exposure, and post-quantum readiness separately from NTIA SBOM completeness.
+- CycloneDX CBOM: https://cyclonedx.org/capabilities/cbom/
+- CycloneDX 1.6 JSON Reference: https://cyclonedx.org/docs/1.6/json/
 
 ### SPDX 2.3 (Linux Foundation / ISO/IEC 5962:2021)
 An international open standard (ISO 5962) for communicating SBOM information including components, licenses, copyrights, and security references. SPDX 2.3 is the latest stable release in the 2.x line.
@@ -381,6 +426,10 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 
 5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
 
+6. **Equating dependency presence with cryptographic usage.** A package may include weak algorithms for compatibility without the product using them. Require component binding, protocol configuration, certificate metadata, or runtime evidence before opening a crypto finding.
+
+7. **Treating CBOM gaps as NTIA SBOM failures.** CBOM improves cryptographic risk analysis but is not one of the seven NTIA minimum SBOM elements. Keep crypto inventory findings separate so compliance scoring remains accurate.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -398,6 +447,8 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 - NTIA Minimum Elements for an SBOM: https://www.ntia.gov/sites/default/files/publications/sbom_minimum_elements_report_0.pdf
 - NTIA SBOM FAQ: https://www.ntia.gov/page/software-bill-materials
 - CycloneDX 1.5 Specification: https://cyclonedx.org/docs/1.5/
+- CycloneDX CBOM: https://cyclonedx.org/capabilities/cbom/
+- CycloneDX 1.6 JSON Reference: https://cyclonedx.org/docs/1.6/json/
 - CycloneDX GitHub: https://github.com/CycloneDX/specification
 - SPDX 2.3 Specification: https://spdx.github.io/spdx-spec/v2.3/
 - SPDX License List: https://spdx.org/licenses/

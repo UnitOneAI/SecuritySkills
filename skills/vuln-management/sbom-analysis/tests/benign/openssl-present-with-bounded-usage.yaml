@@ -1,0 +1,21 @@
+scenario: openssl-present-with-bounded-usage
+artifact_type: sbom-plus-protocol-config
+components:
+  - name: openssl
+    version: 3.2.1
+    purl: pkg:generic/openssl@3.2.1
+crypto_usage_evidence:
+  component_binding: api-gateway
+  protocols:
+    - TLS 1.3
+  cipher_suites:
+    - TLS_AES_256_GCM_SHA384
+    - TLS_CHACHA20_POLY1305_SHA256
+  disabled_algorithms:
+    - MD5
+    - SHA1 signatures
+    - RSA key exchange
+    - TLS 1.0
+    - TLS 1.1
+expected_status: pass
+false_positive_guardrail: general-purpose crypto library presence is not proof that every algorithm in the library is used
