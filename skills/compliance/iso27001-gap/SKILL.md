@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -316,10 +316,23 @@ Use the following maturity scoring:
 Build or review the SoA. For each of the 93 Annex A controls, document:
 
 ```
-| Control ID | Control Title | Applicable? | Justification (if excluded) | Implementation Status | Maturity Score | Gap Description |
+| Control ID | Control Title | Applicable? | Justification (if excluded) | Risk/Requirement Link | Evidence Owner | Evidence Date | Implementation Status | Maturity Score | Gap Description |
 ```
 
 Exclusions are permitted only where the control is genuinely not applicable to the ISMS scope. A control cannot be excluded solely because it is difficult to implement.
+
+**SoA evidence linkage matrix:** before marking a control as implemented or excluded, tie the SoA decision to risk treatment, legal/contractual requirements, and current evidence.
+
+| Control ID | Applicable | Inclusion/Exclusion Rationale | Risk/Requirement Link | Treatment Decision | Evidence Artifact | Evidence Owner | Evidence Date | Currentness | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [A.x.y] | [Yes/No] | [reason] | [risk ID/legal/contract/customer requirement] | [treat/accept/avoid/transfer/N/A] | [policy/config/report/ticket/register] | [team/person] | [YYYY-MM-DD] | [Current/Stale/Unknown] | [gaps] |
+
+For each SoA row:
+- Link included controls to at least one risk treatment decision, legal requirement, contractual requirement, interested-party requirement, or business justification.
+- Link excluded controls to an explicit scope rationale that shows the exclusion does not affect ISMS conformity.
+- Record evidence owner, evidence artifact, and evidence date for implemented controls.
+- Mark evidence as `Stale` if it predates the current assessment cycle, no longer matches ISMS scope, or lacks proof of operating effectiveness.
+- Mark control status as `Unknown` when risk linkage, exclusion rationale, evidence owner, or evidence date cannot be produced.
 
 ---
 
@@ -409,6 +422,10 @@ Classify each finding using the following severity levels:
 - Controls applicable: [count] / 93
 - Controls excluded: [count] — [list with justification]
 - Average maturity of applicable controls: [score] / 5.0
+
+| Control ID | Applicable | Inclusion/Exclusion Rationale | Risk/Requirement Link | Treatment Decision | Evidence Artifact | Evidence Owner | Evidence Date | Currentness | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [A.x.y] | [Yes/No] | [reason] | [risk ID/legal/contract/customer requirement] | [treat/accept/avoid/transfer/N/A] | [policy/config/report/ticket/register] | [team/person] | [YYYY-MM-DD] | [Current/Stale/Unknown] | [gaps] |
 
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
@@ -512,6 +529,8 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 4. **Neglecting the 11 new controls introduced in the 2022 revision.** Organizations transitioning from 2013 often miss that controls like A.5.7 (Threat intelligence), A.5.23 (Cloud services security), A.8.9 (Configuration management), A.8.11 (Data masking), A.8.12 (Data leakage prevention), and A.8.16 (Monitoring activities) require explicit consideration in the SoA even if determined not applicable.
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
+
+6. **Publishing a SoA without risk and evidence links.** A Statement of Applicability that lists controls as included or excluded but omits the risk/requirement link, treatment decision, evidence owner, and evidence date is difficult to defend in certification audit. Each SoA decision should trace to the risk treatment process and current evidence.
 
 ---
 
