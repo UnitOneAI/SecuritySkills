@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -325,6 +325,15 @@ Exclusions are permitted only where the control is genuinely not applicable to t
 
 ### Step 6: Internal Audit Readiness (Clause 9.2)
 
+
+Require audit-program evidence that proves scope, criteria, risk-based sampling, impartiality, reporting, and corrective-action tracking before marking Clause 9.2 ready.
+
+| Audit Area | Scope / Criteria | Risk-Based Sampling Basis | Auditor / Impartiality Evidence | Records Sampled | Management Reporting | Corrective Action Link | Currentness | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[process/control]` | `[clause/control/criteria]` | `[risk, importance, prior results]` | `[independence evidence]` | `[records/interviews/tests]` | `[report recipient/date]` | `[owner, due date, RCA, verification]` | `Current / Stale / Unknown` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when an audit schedule exists but sampling, impartiality, or corrective-action evidence is missing.
+
 Assess internal audit program against requirements:
 
 - Audit program planned, taking into account importance of processes and results of previous audits
@@ -413,6 +422,12 @@ Classify each finding using the following severity levels:
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
 
+## Internal Audit Evidence Matrix
+
+| Audit Area | Scope / Criteria | Sampling Basis | Impartiality | Sampled Evidence | Reporting | Corrective Action | Currentness | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[area]` | `[criteria]` | `[basis]` | `[evidence]` | `[sample]` | `[report]` | `[action]` | `Current / Stale / Unknown` | `Pass / Fail / Unknown` |
+
 ## Prioritized Remediation Roadmap
 
 ### Phase 1: Critical (0-30 days)
@@ -500,6 +515,8 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 - **Security domains**: Governance and Ecosystem, Protection, Defence, Resilience
 
 ---
+
+- Treating a calendar invite or summary slide as internal-audit readiness without risk-based sampling, impartiality, management reporting, and corrective-action evidence.
 
 ## Common Pitfalls
 
