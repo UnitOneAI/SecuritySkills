@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -105,6 +105,16 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ---
 
+### AWS Control Evidence Freshness
+
+Require current, scoped evidence for each AWS CIS control result.
+
+| Control | Evidence Type | Artifact / Query | Account / Region Scope | Owner | Evidence Date | Coverage | Freshness | Assumptions | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[evidence_type]` | `[artifact/query]` | `[account/region_scope]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[freshness]` | `[assumptions]` | `Current / Stale / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
@@ -145,6 +155,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 3 | Logging | X/11 | Y | Z | nn% |
 | 4 | Monitoring | X/16 | Y | Z | nn% |
 | 5 | Networking | X/6 | Y | Z | nn% |
+
+### AWS Control Evidence Freshness
+
+| Control | Evidence Type | Artifact / Query | Account / Region Scope | Owner | Evidence Date | Coverage | Freshness | Assumptions | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[evidence_type]` | `[artifact/query]` | `[account/region_scope]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[freshness]` | `[assumptions]` | `Current / Stale / Unknown` |
 
 ### Detailed Findings
 
@@ -202,6 +218,8 @@ Produce the final report using the structure defined in the Output Format sectio
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
 
 ---
+
+- Scoring AWS controls from stale screenshots or single-region evidence without account, region, date, and coverage metadata.
 
 ## Prompt Injection Safety Notice
 
