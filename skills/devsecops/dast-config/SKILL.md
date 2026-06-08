@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -473,6 +473,21 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 - Deduplication is applied before metrics reporting.
 - Triage workflow assigns findings to owning teams with SLAs.
 
+For every High or Critical DAST finding, record manual validation evidence
+before creating a remediation ticket:
+
+```
+| Finding ID | Alert Type | Affected URL/Endpoint | Parameter | Raw Evidence | Reproduction Steps | Validation Result | False Positive Rationale | Owner | Ticket |
+```
+
+Validation requirements:
+- Preserve the scanner alert ID, request/response evidence, payload class, and affected parameter without exposing secrets or sensitive data.
+- Reproduce the issue manually or with a controlled replay in a non-production environment where active testing is authorized.
+- Record whether the finding is confirmed, partially confirmed, duplicate, accepted risk, or false positive.
+- For false positives, document the technical reason (for example encoded output, parameter not executed, WAF-only response, or scanner heuristic mismatch).
+- Link confirmed findings to an owner and remediation ticket with severity and SLA.
+- Do not use raw DAST severity alone as the final severity; calibrate based on exploitability, authentication context, data exposure, and compensating controls.
+
 **Finding classification:** No results triage process is **Medium**. Injection rules set to IGNORE or WARN is **Critical**. No deduplication leading to alert fatigue is **Medium**.
 
 ---
@@ -527,7 +542,14 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 - **Control Reference:** OWASP Top 10 AXX / WSTG-XXXX-XX
 - **File:** <path to config file>
 - **Description:** <what was found>
+- **Validation Evidence:** <request/response, payload, reproduction steps, validation result, and severity calibration>
 - **Remediation:** <concrete fix with example>
+
+### DAST Finding Validation Evidence
+
+| Finding ID | Alert Type | Affected URL/Endpoint | Parameter | Raw Evidence | Reproduction Steps | Validation Result | False Positive Rationale | Owner | Ticket |
+|------------|------------|-----------------------|-----------|--------------|--------------------|-------------------|--------------------------|-------|--------|
+| <id> | <alert> | <endpoint> | <param> | <redacted req/resp> | <steps> | Confirmed/FP/Duplicate | <reason> | <team> | <ticket> |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item>
@@ -584,6 +606,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
+6. **Filing scanner output without reproduction evidence.** A raw alert is not enough for an engineering ticket. Include redacted request/response evidence, payload class, affected parameter, reproduction steps, validation result, and severity calibration so owners can fix the issue without re-triaging from scratch.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -614,4 +638,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **1.0.1** -- Added manual validation evidence gates for High and Critical DAST findings.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
