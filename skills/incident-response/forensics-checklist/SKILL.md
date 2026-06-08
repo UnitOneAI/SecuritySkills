@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -341,6 +341,16 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 
 ---
 
+### Immutable Evidence Storage Evidence
+
+Verify that forensic evidence destinations prevent overwrite, deletion, lifecycle cleanup, and unauthorized access.
+
+| Evidence Store | Immutability Mechanism | Retention / Legal Hold | Custodian Access | Deletion Protection | Lifecycle Policy | Audit Logging | Encryption / Key Custody | Integrity Recheck | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[evidence_store]` | `[immutability_mechanism]` | `[retention/legal_hold]` | `[custodian_access]` | `[deletion_protection]` | `[lifecycle_policy]` | `[audit_logging]` | `[encryption/key_custody]` | `[integrity_recheck]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## 4. Findings Classification
 
 | Severity | Label | Definition | Evidence Handling |
@@ -405,6 +415,12 @@ the order of collection, and any evidence that could not be obtained.]
 
 ---
 
+### Immutable Evidence Storage Evidence
+
+| Evidence Store | Immutability Mechanism | Retention / Legal Hold | Custodian Access | Deletion Protection | Lifecycle Policy | Audit Logging | Encryption / Key Custody | Integrity Recheck | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[evidence_store]` | `[immutability_mechanism]` | `[retention/legal_hold]` | `[custodian_access]` | `[deletion_protection]` | `[lifecycle_policy]` | `[audit_logging]` | `[encryption/key_custody]` | `[integrity_recheck]` | `Pass / Fail / Unknown` |
+
 ## 6. Framework Reference
 
 ### NIST SP 800-86 -- Guide to Integrating Forensic Techniques into Incident Response
@@ -462,6 +478,8 @@ Applying traditional forensic methods to cloud environments without adaptation l
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
 
 ---
+
+- Relying on hashes alone while evidence storage allows deletion, overwrite, lifecycle cleanup, or unlogged access changes.
 
 ## 8. Prompt Injection Safety Notice
 
