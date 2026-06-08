@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -91,6 +91,16 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 10A: Managed Disk and Snapshot Export Evidence
+
+Review managed disk and snapshot export paths separately from VM network posture. Capture SAS generation permissions and network controls before rating disk export risk.
+
+| Resource | Resource Group | NetworkAccessPolicy | PublicNetworkAccess | Disk Access / Private Endpoint | Begin/End GetAccess RBAC | SAS Duration | Policy Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `Disk / Snapshot` | `[rg]` | `[policy]` | `[enabled/disabled]` | `[diskAccessId/private endpoint]` | `[role/action evidence]` | `[seconds]` | `[Azure Policy/IaC/query]` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when public export is allowed with broad RBAC or long SAS durations and no Disk Access/private endpoint restriction.
+
 ### Step 11: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
@@ -142,6 +152,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
 
+#### Managed Disk Export Evidence
+
+| Resource | RG | Network Policy | Public Access | Disk Access / Private Endpoint | RBAC Evidence | SAS Duration | Policy Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[disk/snapshot]` | `[rg]` | `[policy]` | `[state]` | `[control]` | `[roles]` | `[duration]` | `[evidence]` | `Pass / Fail / Unknown` |
+
 ### Detailed Findings
 
 #### [CIS X.Y.Z] <Recommendation Title>
@@ -191,6 +207,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Level 2** -- Defense-in-depth settings for security-sensitive environments. May require more operational overhead.
 
 ---
+
+- Inferring Azure disk export safety from VM private networking or encryption without checking disk/snapshot export controls, SAS generation RBAC, and Disk Access evidence.
 
 ## Common Pitfalls
 
