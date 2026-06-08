@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -269,6 +269,43 @@ Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.g
 - [ ] Cryptographic keys are not hard-coded -- loaded from a key management system.
 - [ ] TLS certificates and configurations are not bypassed or weakened in code.
 
+### 5.4 Cryptographic Agility and Migration Gates
+
+Acceptable crypto today can still be a future incident if data formats, tokens, or signatures cannot be migrated when algorithms, key sizes, libraries, compliance rules, or emergency key rotations change. Review cryptographic code for migration readiness, not only point-in-time algorithm strength.
+
+**Review gates:**
+
+| Gate | What to Verify | Failure Signal |
+|---|---|---|
+| Artifact metadata | Ciphertexts, password hashes, signatures, JWTs, cookies, and encrypted blobs carry algorithm ID, key ID, version, or envelope metadata | Reviewers cannot determine which algorithm/key produced stored artifacts |
+| Central crypto policy | Algorithms, key sizes, KDF parameters, token issuers, and allowed legacy formats are defined in one versioned policy layer | Constants are scattered across handlers, models, migrations, and clients |
+| Migration path | Re-encryption, re-signing, password-hash upgrade, token reissue, or certificate/key rollover jobs exist and are tested | Only new writes use the new algorithm; old data is left to fail at read time |
+| Legacy compatibility window | Fallback decrypt/verify/read paths are time-bound with owner, removal date, and telemetry | Legacy algorithm support has no expiry or removal plan |
+| Fail-closed parsing | Unknown algorithms, retired key IDs, malformed envelopes, downgrade attempts, and mixed-version records fail safely | Code silently defaults to old algorithm, first key, or insecure parser branch |
+| Test fixtures | Tests cover old-format reads, new-format writes, mixed-version data, rollback, idempotent migration, and retired-key rejection | Unit tests only exercise fresh happy-path encryption |
+| Migration telemetry | Metrics show remaining legacy artifacts, fallback usage, migration error rate, and removal readiness | Operators cannot prove when fallback code is safe to delete |
+
+**What to look for:**
+
+```
+SCR-CRYPTO-AGILITY-01: Encrypted or signed artifacts lack algorithm/key/version metadata
+SCR-CRYPTO-AGILITY-02: Crypto constants are scattered instead of controlled by a central versioned policy
+SCR-CRYPTO-AGILITY-03: No tested migration path for re-encryption, re-signing, hash upgrade, or token reissue
+SCR-CRYPTO-AGILITY-04: Legacy decrypt/verify fallback has no owner, expiry, or removal criteria
+SCR-CRYPTO-AGILITY-05: Unknown algorithm, retired key ID, malformed envelope, or downgrade attempt does not fail closed
+SCR-CRYPTO-AGILITY-06: Missing fixtures for old-format reads, new-format writes, mixed-version data, and idempotent migration
+SCR-CRYPTO-AGILITY-07: No telemetry proving how much legacy cryptographic data remains before fallback removal
+```
+
+**Severity guidance:**
+
+| Context | Severity | Rationale |
+|---|---|---|
+| Unknown/retired algorithm or key falls back to weaker crypto in production | **Critical** | Downgrade path can preserve access to compromised or deprecated protection |
+| No metadata on long-lived encrypted records or signed tokens | **High** | Safe bulk migration is unreliable and may cause data loss or weak fallback |
+| Legacy fallback exists with no owner, expiry, or telemetry | **Medium** | Technical debt can become permanent and mask compliance drift |
+| Missing migration fixtures but format metadata and policy are present | **Low** | Test coverage gap with bounded operational risk |
+
 ---
 
 ## Step 6: Error Handling and Logging
@@ -445,7 +482,7 @@ The final review output must be structured as follows:
 **Scope:** [list of files reviewed]
 **Languages:** [detected languages and frameworks]
 **Date:** [review date]
-**Reviewer:** AI Agent -- secure-code-review skill v1.0.0
+**Reviewer:** AI Agent -- secure-code-review skill v1.1.0
 
 ### Summary
 - Critical: [count]
@@ -492,7 +529,7 @@ The final review output must be structured as follows:
 | V3 | Session Management | Session token lifecycle |
 | V4 | Access Control | Authorization enforcement |
 | V5 | Validation, Sanitization and Encoding | Input/output safety |
-| V6 | Stored Cryptography | Encryption and hashing |
+| V6 | Stored Cryptography | Encryption, hashing, and crypto migration readiness |
 | V7 | Error Handling and Logging | Safe failure and audit trails |
 | V8 | Data Protection | Data-at-rest and in-transit controls |
 | V9 | Communication | Transport layer security |
@@ -540,6 +577,8 @@ The final review output must be structured as follows:
 4. **Treating authentication as authorization.** Verifying that a user is logged in is not the same as verifying they are permitted to perform the requested action. Every endpoint must enforce both authentication and authorization, including ownership checks for resource-level access.
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
+
+6. **Treating cryptography as static.** A system can use strong algorithms today and still be unsafe to operate if old ciphertexts, hashes, signatures, or tokens cannot be identified, migrated, or retired without weak fallback behavior.
 
 ---
 
