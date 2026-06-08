@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -395,6 +395,36 @@ Grep: "draft|staging|preview|dry_run|dry.run|simulate|sandbox_mode" in **/*.{py,
 | Rollback mechanisms exist but are not tested or lack operator documentation | Medium |
 | No classification of agent actions by reversibility | Medium |
 
+#### Step 6.1 -- Emergency Stop and Rollback Drill Evidence Gate
+
+Do not mark rollback capability as in place based only on code paths, documentation, or a platform feature claim. For agentic systems, operators must be able to stop an unsafe workflow, prevent additional tool calls, and restore or compensate for completed actions within a measured recovery window.
+
+Require:
+
+- **Kill-switch trigger:** a documented operator action, API, feature flag, policy rule, or circuit breaker that stops the affected agent workflow.
+- **Scope of stop:** evidence whether the stop halts one agent, one session, one tenant, one tool class, or all agents globally.
+- **Tool-call containment:** proof that queued, retrying, or delegated tool calls are cancelled or blocked after the stop condition is set.
+- **State capture:** before/after state, snapshots, transaction IDs, deployment versions, or action ledger entries needed to reverse or compensate actions.
+- **Rollback or compensation execution:** tested restoration, undo, reversal, or manual recovery steps for each action category the agent can perform.
+- **Operator runbook:** clear owner, escalation path, command/location, required approvals, and communications plan for emergency use.
+- **Drill evidence:** timestamped test or tabletop record with scenario, trigger, elapsed time to stop, elapsed time to recover, failures, and follow-up actions.
+
+```
+Emergency Stop and Rollback Drill Evidence:
+- Scenario:              [prompt injection | runaway loop | bad deployment | data write | other]
+- Agent / Workflow:      [name]
+- Stop Scope:            [session | tenant | tool class | global]
+- Stop Trigger:          [control/API/runbook step]
+- Queued Calls Blocked:  [Yes | No | Not Tested]
+- State Evidence:        [snapshot/action ledger/transaction/deployment version]
+- Recovery Method:       [rollback | compensation | manual repair | not possible]
+- Time to Stop:          [duration]
+- Time to Recover:       [duration]
+- Operator Runbook:      [path/link]
+- Follow-up Actions:     [tickets/findings]
+- Status:                [Pass | Partial | Fail | Not Tested]
+```
+
 ---
 
 ### Step 7 -- Multi-Agent Trust Boundaries
@@ -521,6 +551,12 @@ Glob: **/security_architecture*
 | Rollback Capability | [rating] | [one-line summary] | [priority] |
 | Multi-Agent Trust Boundaries | [rating] | [one-line summary] | [priority] |
 
+## Emergency Stop and Rollback Drill Evidence
+
+| Scenario | Agent / Workflow | Stop Scope | Queued Calls Blocked | Recovery Method | Time to Stop | Time to Recover | Runbook | Status |
+|---|---|---|---|---|---|---|---|---|
+| [scenario] | [agent/workflow] | [scope] | [Yes/No/Not Tested] | [rollback/compensation/manual/not possible] | [duration] | [duration] | [path/link] | [Pass/Partial/Fail/Not Tested] |
+
 ## Recommendations
 [Prioritized list of architectural improvements]
 
@@ -568,6 +604,8 @@ Glob: **/security_architecture*
 4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+
+6. **Confusing a kill switch with recovery.** Stopping an agent prevents additional damage, but it does not undo queued tool calls, completed writes, deployments, messages, or payments. Emergency controls need both stop evidence and recovery evidence, measured in drills before production incidents.
 
 ---
 
