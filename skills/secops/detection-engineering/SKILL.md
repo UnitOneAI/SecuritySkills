@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -304,6 +304,15 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 
 ### Step 6: Detection-as-Code Practices
 
+
+Before deploying generated backend queries, prove the conversion preserves Sigma rule semantics for the target SIEM and does not introduce unsupported logic or backend limits.
+
+| Sigma Rule | Target Backend | Converter / Version | Conversion Command | Field Mapping Evidence | Unsupported Modifier Handling | Logic Parity Evidence | Sample Execution | Runtime / Limits | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule]` | `[Sentinel/Splunk/Elastic/Chronicle/QRadar]` | `[tool/version]` | `[command]` | `[mapped fields]` | `[handling]` | `[comparison]` | `[positive/negative]` | `[cost/limit]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the Sigma YAML is valid but backend conversion output was not executed or reviewed for semantic parity.
+
 Manage detection rules as code artifacts in version control.
 
 **Repository structure:**
@@ -388,6 +397,12 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+
+### Backend Conversion Evidence
+
+| Rule | Backend | Converter | Command | Field Mapping | Unsupported Logic | Parity | Samples | Runtime | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule]` | `[backend]` | `[tool]` | `[command]` | `[mapping]` | `[handling]` | `[evidence]` | `[samples]` | `[limits]` | `Pass / Fail / Unknown` |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -495,6 +510,10 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
 ---
+
+### Pitfall 6: Trusting Valid Sigma Without Backend Parity
+
+A valid Sigma rule can still fail after conversion because of field mapping drift, unsupported modifiers, case sensitivity, or expensive generated queries.
 
 ## 8. Prompt Injection Safety Notice
 
