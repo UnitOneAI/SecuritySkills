@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -346,6 +346,22 @@ Score each subcategory on a 0-4 scale aligned with CSF Tiers:
 
 Determine the overall organizational Tier based on aggregated assessment across all functions.
 
+For every subcategory score, record the evidence basis before finalizing the
+score:
+- Evidence source or artifact name (policy, risk register, ticket export, audit report, system screenshot, configuration, training record, interview notes)
+- Artifact owner or accountable team
+- Evidence date and freshness relative to the assessment period
+- Scope covered by the evidence (enterprise-wide, business unit, system, region, supplier population, sample size)
+- Whether the support is direct artifact evidence, observed implementation, sampling result, or interview-only assertion
+- Scoring rationale linking the evidence to the selected 0-4 score
+- Confidence rating: High, Medium, or Low
+- Assumptions, missing artifacts, and validation still needed
+
+Do not assign High confidence to interview-only claims, stale artifacts, or
+evidence that covers only a narrow sample unless the limitation is explicitly
+called out and independently corroborated. If evidence is missing or weak, keep
+the score conservative and mark the validation needed.
+
 ---
 
 ### Step 5: Organizational Profile Development
@@ -357,6 +373,9 @@ Document the current state for each function/category/subcategory:
 ```
 | Function | Category | Subcategory | Current Score | Evidence | Gaps |
 ```
+
+For each evidence entry, include enough detail for a reviewer to re-check the
+score without relying on the assessor's memory.
 
 #### 5.2 Target Profile
 
@@ -378,6 +397,26 @@ For each subcategory where Current < Target:
 - Estimate effort, cost, and timeline
 - Assign ownership
 - Map to informative references (specific controls from ISO 27001, NIST SP 800-53, CIS Controls, etc.)
+
+#### 5.4 Profile Evidence and Confidence Gate
+
+Before presenting the Current Profile or Target Profile as final, build a
+profile evidence table:
+
+```
+| Subcategory | Score | Evidence Source | Artifact Owner | Evidence Date | Coverage | Evidence Type | Confidence | Assumptions / Validation Needed |
+```
+
+Use the table to gate profile quality:
+- High confidence: current, directly relevant evidence covers the assessed scope and supports the score
+- Medium confidence: evidence is relevant but partial, sampled, aging, or needs limited corroboration
+- Low confidence: evidence is missing, interview-only, stale, or does not cover the assessed scope
+- Unsupported scores must be identified as validation gaps, not treated as confirmed maturity
+- Target scores must be traceable to risk appetite, regulatory obligations, business objectives, or accepted community profiles
+
+If many critical subcategories have Low confidence, state that the assessment is
+preliminary and prioritize evidence collection before using the profile for
+investment or audit decisions.
 
 ---
 
@@ -458,6 +497,13 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 |-------------|-------------|---------|--------|-----|----------|-----------------|
 | GV.OC-01 | Organizational mission informs CSRM | [0-4] | [0-4] | [delta] | [H/M/L] | [refs] |
 | ... | ... | ... | ... | ... | ... | ... |
+
+### Profile Evidence Confidence
+
+| Subcategory | Score | Evidence Source | Artifact Owner | Evidence Date | Coverage | Evidence Type | Confidence | Assumptions / Validation Needed |
+|-------------|-------|-----------------|----------------|---------------|----------|---------------|------------|---------------------------------|
+| GV.OC-01 | [0-4] | [artifact/interview/sample] | [owner] | [date] | [scope/sample] | [direct/observed/interview] | [H/M/L] | [gaps] |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
 
 ### IDENTIFY (ID)
 [same table format]
@@ -575,6 +621,8 @@ Tier 4 — Adaptive
 3. **Assessing subcategories in isolation without considering dependencies.** CSF functions are interdependent. Detection capabilities (DE) are meaningless without response capabilities (RS). Protection (PR) without asset identification (ID.AM) leaves gaps. The assessment must consider the maturity chain across functions, not just individual subcategory scores.
 
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
+
+5. **Treating unverified statements as control evidence.** Interviews are useful for scoping and context, but they are not the same as a current policy, ticket trail, system export, test result, or sampled implementation evidence. Unsupported profile scores should carry Low confidence and clear validation actions, especially when they affect critical services, regulatory obligations, or executive investment decisions.
 
 ---
 
