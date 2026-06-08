@@ -1,0 +1,46 @@
+tool: codeql-and-semgrep
+pipeline:
+  pull_request_scan:
+    enabled: true
+    required_status_check: false
+    fail_on_new_critical_high: false
+  scheduled_full_scan:
+    enabled: false
+baseline:
+  file: sast-baseline.json
+  scope: all_findings
+  owner: null
+  created_at: "2025-01-01"
+  expires: null
+  retirement_plan: null
+sarif:
+  upload_path: code-scanning-api
+  partialFingerprints: missing
+  stable_result_identity: unverified
+suppressions:
+  - kind: inline
+    example: "# nosemgrep"
+    rule_id: missing
+    reason: missing
+    owner: missing
+    ticket: missing
+    expires: missing
+    last_reviewed: missing
+  - kind: codeql-query-filter
+    scope: entire-rule
+    rule_id: js/xss
+    reason: noisy
+    compensating_coverage: missing
+expected_findings:
+  - SAST-LIFE-01
+  - SAST-LIFE-02
+  - SAST-LIFE-03
+  - SAST-LIFE-04
+  - SAST-LIFE-05
+  - SAST-LIFE-06
+  - SAST-LIFE-07
+  - SAST-LIFE-08
+reason: >
+  The rollout baselines all findings indefinitely, does not block new high-risk
+  findings, lacks scheduled reconciliation, has weak SARIF identity evidence, and
+  stores suppressions without owner, reason, expiry, or compensating coverage.

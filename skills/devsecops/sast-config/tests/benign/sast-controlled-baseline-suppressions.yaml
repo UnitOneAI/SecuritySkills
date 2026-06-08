@@ -1,0 +1,44 @@
+tool: codeql-and-semgrep
+pipeline:
+  pull_request_scan:
+    enabled: true
+    required_status_check: codeql-and-semgrep
+    fail_on_new_critical_high: true
+  scheduled_full_scan:
+    enabled: true
+    cadence: weekly
+    reconciles_baseline: true
+baseline:
+  file: sast-baseline.json
+  scope: legacy_findings_only
+  owner: appsec-team
+  created_at: "2026-06-01"
+  expires: "2026-09-01"
+  retirement_plan: SEC-9001
+sarif:
+  upload_path: upload-sarif-action
+  partialFingerprints: present
+  stable_result_identity: verified
+suppressions:
+  - kind: inline
+    example: "# nosemgrep: python.django.security.injection.sql.sql-injection"
+    rule_id: python.django.security.injection.sql.sql-injection
+    reason: false_positive
+    evidence: ORM parameter binding verified in SEC-1234
+    owner: appsec-team
+    ticket: SEC-1234
+    expires: "2026-07-15"
+    last_reviewed: "2026-06-15"
+  - kind: codeql-query-filter
+    scope: test-fixtures-only
+    rule_id: js/xss
+    reason: test_only_finding
+    owner: appsec-team
+    ticket: SEC-5678
+    expires: "2026-08-01"
+    compensating_coverage: production_paths_still_scanned
+expected_decision: pass
+reason: >
+  The baseline is temporary and limited to legacy findings, PR checks block new
+  high-risk findings, scheduled full scans reconcile drift, SARIF identity is
+  stable, and suppressions have owners, reasons, tickets, expiry, and review dates.

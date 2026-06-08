@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -368,6 +368,51 @@ value = request.args.get("id")  # nosemgrep: python.django.security.injection.sq
 
 ---
 
+#### 5.3 Baseline and Suppression Lifecycle
+
+SAST baselines and suppressions are risk decisions, not permanent hiding places. Review them as lifecycle-controlled artifacts with owners, expiry, and reconciliation against pull-request gates and scheduled full scans.
+
+**Baseline evidence to collect:**
+
+| Evidence | What to Verify |
+|----------|----------------|
+| Baseline scope | Baseline applies only to pre-existing findings, not new Critical/High findings introduced by a PR. |
+| Owner and expiry | Baseline has a named owner, creation date, expiry date, and retirement plan. |
+| New-finding enforcement | Required PR status check blocks new Critical/High findings even when old findings remain in the baseline. |
+| Full-scan reconciliation | Scheduled full scans compare current findings to the baseline and fail or alert on stale, growing, or unowned baseline entries. |
+| SARIF identity | SARIF uploads preserve stable result identity using `partialFingerprints` or equivalent tool fingerprints so alerts are not duplicated or lost between scans. |
+| Suppression register | Inline, config, SARIF, dashboard, and ignore-file suppressions are listed with rule id, file/path, reason category, owner, ticket, expiry, and last review date. |
+
+**Finding triggers:**
+
+| ID | Trigger | Severity Guidance |
+|----|---------|-------------------|
+| SAST-LIFE-01 | Baseline has no owner, expiry, retirement plan, or review cadence | High |
+| SAST-LIFE-02 | PR gate allows new Critical/High findings because all findings are treated as already-baselined | Critical |
+| SAST-LIFE-03 | Scheduled full scan does not reconcile baseline drift, stale findings, removed code, or suppressed findings | Medium; High for regulated or internet-facing apps |
+| SAST-LIFE-04 | SARIF uploads lack stable fingerprints / result identity evidence, causing duplicate, reopened, or lost alerts | Medium; High when baseline decisions depend on GitHub code scanning alert identity |
+| SAST-LIFE-05 | Suppression lacks rule id, reason, owner, ticket, expiry, or last-reviewed date | High for injection/auth/crypto rules; Medium otherwise |
+| SAST-LIFE-06 | Suppression disables an entire rule, ruleset, path, or language without compensating coverage evidence | High |
+| SAST-LIFE-07 | Inline suppressions such as `nosemgrep` or CodeQL query filters have no external register or periodic audit | Medium; High when used in production security-sensitive code |
+| SAST-LIFE-08 | Diff-only PR scanning is used without scheduled full-repository scanning | Medium |
+
+**Suppression reason categories:**
+
+| Reason | Required Evidence |
+|--------|-------------------|
+| False positive | Why the data flow or pattern is unreachable / sanitized, plus reviewer and ticket. |
+| Accepted risk | Business owner approval, compensating control, expiry, and re-review date. |
+| Test-only finding | Path evidence proving the code is test fixture / intentionally vulnerable sample, plus exclusion scope. |
+| Tool limitation | Rule defect, upstream issue or local rule fix plan, and interim monitoring. |
+| Legacy baseline | Retirement owner, target date, and proof that new findings still block PRs. |
+
+**False-positive boundaries:**
+
+- A temporary baseline is acceptable during rollout when it has an owner, expiry, and new-finding enforcement.
+- Inline suppressions are acceptable when they identify the rule, explain the safe condition, link to a ticket, and appear in a suppression register.
+- Missing SARIF `partialFingerprints` is alert-tracking risk, not automatically a source-code vulnerability. Record whether the upload path or tool supplies equivalent stable fingerprints.
+- Diff-aware PR scanning improves speed, but it must be paired with scheduled full-repository scans to catch cross-file flows and stale suppressions.
+
 ### Step 6: CI Integration Review
 
 #### 6.1 CI Pipeline Integration Patterns
@@ -475,6 +520,15 @@ jobs:
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
 
+### Baseline and Suppression Lifecycle
+
+| Item | Status | Owner | Expiry / Review Date | Evidence | Risk |
+|------|--------|-------|----------------------|----------|------|
+| Baseline scope | Controlled / Uncontrolled / None | <owner> | <date> | <baseline file/check> | <risk> |
+| New-finding gate | Blocks / Warns / Missing | <owner> | <date> | <required status check> | <risk> |
+| SARIF identity | Stable / Weak / Not used | <owner> | <date> | <partialFingerprints or equivalent> | <risk> |
+| Suppression register | Complete / Partial / Missing | <owner> | <date> | <register path/dashboard> | <risk> |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -556,12 +610,16 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
 - Semgrep Registry: https://semgrep.dev/r
+- Semgrep Ignore Files and Code: https://semgrep.dev/docs/ignoring-files-folders-code
 - CodeQL Documentation: https://codeql.github.com/docs/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
+- GitHub SARIF Support for Code Scanning: https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning
+- SARIF v2.1.0 Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/sarif-v2.1.0-errata01-complete.pdf
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added baseline and suppression lifecycle gates covering new-finding enforcement, SARIF identity evidence, suppression ownership, expiry, and full-scan reconciliation.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
