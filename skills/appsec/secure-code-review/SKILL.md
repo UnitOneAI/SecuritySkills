@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -406,6 +406,16 @@ Remediation: Validate the URL scheme (allow only `https`), resolve the hostname 
 
 ---
 
+## Exploitability Evidence Gates for High and Critical Findings
+
+Before assigning High or Critical severity, prove attacker reachability and source-to-sink flow. Pattern matches alone are not enough when framework controls, centralized policies, deployment configuration, or unreachable code may block exploitation.
+
+| Finding | Entry Point | Attacker-Controlled Source | Vulnerable Sink | Source-to-Sink Trace | Preconditions | Missing / Bypassed Control | False-Positive Checks | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[finding id]` | `[route, job, handler, API, parser]` | `[input source]` | `[dangerous operation]` | `[file/function path]` | `[role, auth, tenant, config, mode]` | `[validation, authz, encoding, policy]` | `[framework protection, upstream validation, unreachable code]` | `Pass / Fail / Unknown` |
+
+Downgrade or mark `Unknown` when the vulnerable sink cannot be reached from an attacker-controlled entry point under realistic preconditions.
+
 ## Findings Classification
 
 Each finding produced by this review must include the following fields:
@@ -455,6 +465,12 @@ The final review output must be structured as follows:
 - Informational: [count]
 
 ### Findings
+
+##### Exploitability Evidence
+
+| Entry Point | Source | Sink | Trace | Preconditions | Missing / Bypassed Control | False-Positive Checks | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `[entry]` | `[source]` | `[sink]` | `[trace]` | `[conditions]` | `[control]` | `[checks]` | `Pass / Fail / Unknown` |
 
 #### SCR-001: [Title]
 - **Severity:** [Critical|High|Medium|Low|Informational]
@@ -528,6 +544,8 @@ The final review output must be structured as follows:
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
 ---
+
+- Rating a pattern match as High or Critical without proving attacker reachability, source-to-sink flow, exploit preconditions, and missing or bypassed controls.
 
 ## Common Pitfalls
 
