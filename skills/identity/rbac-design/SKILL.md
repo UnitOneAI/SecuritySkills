@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -314,6 +314,35 @@ RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
 5. **Gap analysis** — identify outlier permissions that do not fit any cluster (candidates for ABAC)
 6. **Test assignment** — simulate new role model against historical access requests
 
+#### Role Mining Dataset Quality Gate
+
+Before accepting mined roles as target-state recommendations, document the quality and scope of the mining dataset:
+
+```
+Role Mining Dataset Evidence:
+- Source systems: [IdP / IAM / application RBAC / database ACLs / cloud IAM / SaaS admin exports]
+- Extraction date: [YYYY-MM-DD]
+- Observation window: [start - end, or "point-in-time only"]
+- Population denominator: [users, groups, roles, permissions, resources]
+- Coverage gaps: [systems/users/permissions excluded]
+- Entitlement expansion: [direct / inherited / nested group / JIT / temporary / break-glass]
+- Account filtering: [dormant / orphaned / service / test / contractor / emergency]
+- Permission-use evidence: [last-used, access logs, ticket history, unavailable]
+- Clustering threshold and rationale: [overlap %, algorithm, manual rules]
+- Business owner validation: [owner, date, decision, exceptions]
+- Outlier disposition: [ABAC candidate / exception / retire / owner-approved role]
+- Direct-assignment remediation: [removed / converted to role / justified exception]
+- Mining confidence: [High / Medium / Low / Not Evaluable]
+```
+
+Evidence rules:
+- Do not promote mined roles when the dataset lacks an extraction date, source-system coverage, or user/permission denominators.
+- Expand inherited and nested assignments before clustering. A direct-only export can understate privilege, while group-only exports can hide direct grants and emergency exceptions.
+- Filter or explicitly separate dormant accounts, orphaned accounts, break-glass accounts, test users, service accounts, contractors, and temporary project users before deriving standard job-function roles.
+- Treat permission-use evidence as a trimming input, not the sole source of truth. Unused privileged access should be retired or owner-approved before being encoded into a role.
+- Require resource or business owner signoff for each candidate role before target-state promotion.
+- Preserve outlier disposition. Outliers should become ABAC conditions, time-bound exceptions, or retired permissions; do not create single-user roles by default.
+
 **What to look for:**
 
 ```
@@ -323,6 +352,10 @@ RBAC-MINE-03: Mined roles not reviewed by application/resource owners
 RBAC-MINE-04: Outlier permissions force creation of single-user roles (should use ABAC)
 RBAC-MINE-05: No periodic re-mining cadence to catch drift (recommended: annually)
 RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may create conflicts)
+RBAC-MINE-07: Mining dataset lacks source coverage, extraction date, or population denominator
+RBAC-MINE-08: Direct, inherited, nested-group, JIT, or temporary entitlements not normalized before clustering
+RBAC-MINE-09: Dormant, orphaned, service, test, emergency, or contractor accounts mixed into standard-role mining
+RBAC-MINE-10: Candidate roles promoted without owner signoff, outlier disposition, or direct-assignment remediation
 ```
 
 #### Role Rationalization Targets
@@ -392,6 +425,11 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 ### Detailed Findings
 [Findings table]
 
+### Role Mining Dataset Quality
+| Source System | Extraction Date | Observation Window | Population Denominator | Entitlement Expansion | Account Filters Applied | Permission-Use Evidence | Owner Validation | Outlier Disposition | Mining Confidence |
+|---|---|---|---|---|---|---|---|---|---|
+| [IdP/app/cloud/SaaS] | [date] | [window] | [users/groups/roles/permissions] | [direct/inherited/nested/JIT/temp] | [filters] | [last-used/logs/tickets/none] | [owner/date/status] | [ABAC/exception/retire/role] | [High/Medium/Low/NE] |
+
 ### Design Recommendations
 [Architecture diagram or pattern with framework justification]
 
@@ -435,7 +473,8 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 4. **Over-engineering hierarchies** — deep hierarchies (>3 levels) become impossible to audit. Favor flatter models with constraints.
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
-7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+7. **Trusting dirty role-mining data** — stale users, emergency accounts, contractor access, direct grants, and unexpanded nested groups can all turn privilege creep into "recommended" roles. Validate the dataset before clustering.
+8. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
 
 ---
 
@@ -481,4 +520,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-08 | Added role-mining dataset quality evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
