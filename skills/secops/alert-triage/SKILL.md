@@ -104,6 +104,45 @@ Connect the alert data with surrounding context to build a picture of what happe
 | Lateral Movement (TA0008) | Collection (TA0009), Exfiltration (TA0010) -- what was the objective? |
 | Command and Control (TA0011) | All tactics -- C2 implies an active intrusion; look for the full chain |
 
+### Phase 2A: Validate Enrichment Freshness and Provenance
+
+Before using enrichment data to classify or prioritize an alert, verify that each enrichment source is current, attributable, and applicable to the alert timestamp.
+
+**Enrichment evidence to validate:**
+
+- **Asset inventory:** CMDB/EDR/cloud inventory timestamp, asset owner, criticality, environment, exposure, and decommission status.
+- **Identity context:** directory/HR timestamp, user role, privilege level, employment status, group membership, service-account owner, and normal working hours.
+- **Threat intelligence:** feed name, lookup timestamp, indicator first-seen/last-seen, confidence, expiration, source type, and whether the indicator was active at alert time.
+- **GeoIP / ASN / reputation:** provider, lookup timestamp, confidence, proxy/VPN/Tor classification, and known benign scanner/cloud provider tags.
+- **Historical disposition:** prior case ID, rule version, tuning status, and whether the environment/rule/asset changed since the prior disposition.
+
+**Freshness guidance:**
+
+| Enrichment Type | Suggested Freshness Gate | Not Evaluable When |
+|---|---|---|
+| Asset criticality/exposure | Current within 24-72 hours for P1/P2 decisions | CMDB timestamp missing or asset recently reimaged/decommissioned |
+| User privilege/status | Current within 24 hours for privileged-user alerts | Directory/HR sync timestamp missing or user state changed after alert |
+| Threat intelligence | Lookup performed during triage; feed includes source and confidence | IOC reputation copied from an old ticket or feed timestamp missing |
+| GeoIP / ASN / scanner tags | Lookup performed during triage or provider update timestamp recorded | Used as sole FP reason with no provider/time/source |
+| Historical disposition | Prior case reviewed against current rule/asset context | Previous BTP/FP copied without checking drift |
+
+**What to look for:**
+
+```
+TRIAGE-ENRICH-01: Priority lowered based on stale or timestamp-less asset criticality/exposure data
+TRIAGE-ENRICH-02: User privilege or employment status is used without current directory/HR evidence
+TRIAGE-ENRICH-03: Threat-intel reputation is copied from an old case or feed without lookup timestamp, confidence, or last-seen data
+TRIAGE-ENRICH-04: GeoIP/ASN/provider tag is used as the sole false-positive reason without corroborating evidence
+TRIAGE-ENRICH-05: Historical benign disposition is reused despite rule, asset, user, or environment drift
+TRIAGE-ENRICH-06: Enrichment timestamp occurs after containment/remediation and is treated as if it reflected alert-time state
+```
+
+**False-positive guardrails:**
+
+- Do not escalate solely because enrichment is missing; classify confidence as lower and document `Not Evaluable` enrichment fields.
+- Do not close as BTP/FP solely because an IP belongs to a cloud provider, VPN, scanner, or CDN; require activity context and expected ownership.
+- Do not use current asset/user state as proof of alert-time state when the asset or identity changed after the alert timestamp.
+
 ### Phase 3: Classify
 
 Assign a disposition and priority based on collected and correlated data.
@@ -234,6 +273,13 @@ Produce the triage decision as a structured report:
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
 
+### Enrichment Provenance
+| Enrichment | Source | Lookup / Sync Time | Applies to Alert Time? | Confidence | Impact on Decision |
+|------------|--------|--------------------|------------------------|------------|--------------------|
+| Asset criticality | [CMDB/EDR/cloud inventory] | [timestamp] | [Yes/No/Not Evaluable] | [High/Medium/Low] | [priority/disposition impact] |
+| User context | [Directory/HR/IAM] | [timestamp] | [Yes/No/Not Evaluable] | [High/Medium/Low] | [priority/disposition impact] |
+| Threat intel | [feed/platform] | [timestamp] | [Yes/No/Not Evaluable] | [High/Medium/Low] | [priority/disposition impact] |
+
 ### Recommended Actions
 - [ ] [Action 1 -- e.g., isolate host, disable account, block IP]
 - [ ] [Action 2 -- e.g., collect forensic artifacts, memory dump]
@@ -318,6 +364,10 @@ Investigating an alert in isolation without checking for activity before and aft
 ### Pitfall 5: Delaying Escalation While Seeking Perfect Information
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
+
+### Pitfall 6: Trusting Enrichment Without Freshness or Provenance
+
+Asset criticality, user privilege, threat-intel reputation, GeoIP labels, and historical dispositions can drift quickly. A stale CMDB record can hide a crown-jewel asset, a copied IOC lookup can miss active campaign changes, and a previous benign disposition can become invalid after rule or environment changes. Record source, lookup time, confidence, and alert-time applicability before using enrichment to lower priority or close an alert.
 
 ---
 

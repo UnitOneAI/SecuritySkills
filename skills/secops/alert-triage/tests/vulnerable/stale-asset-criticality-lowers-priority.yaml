@@ -1,0 +1,22 @@
+scenario: stale-asset-criticality-lowers-priority
+alert:
+  id: alert-2026-001
+  timestamp: "2026-06-09T02:15:00Z"
+  rule: suspicious-powershell-on-server
+  proposed_priority: P4
+asset_enrichment:
+  source: cmdb
+  hostname: app-prod-07
+  criticality: low
+  environment: dev
+  synced_at: "2026-05-20T00:00:00Z"
+cloud_inventory:
+  hostname: app-prod-07
+  criticality: crown-jewel
+  environment: production
+  internet_facing: true
+  observed_at: "2026-06-09T02:12:00Z"
+expected_findings:
+  - id: TRIAGE-ENRICH-01
+    severity: high
+    reason: priority is lowered using stale CMDB criticality despite current cloud inventory showing production crown-jewel exposure

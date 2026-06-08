@@ -1,0 +1,21 @@
+scenario: not-evaluable-enrichment-keeps-confidence-low
+alert:
+  id: alert-2026-004
+  timestamp: "2026-06-09T05:00:00Z"
+  rule: unusual-login-location
+triage_decision:
+  disposition: needs_investigation
+  priority: P3
+  confidence: low
+enrichment:
+  asset_context:
+    status: not_evaluable
+    reason: cmdb_sync_timestamp_missing
+  user_context:
+    status: not_evaluable
+    reason: hr_feed_unavailable
+  geoip:
+    status: not_evaluable
+    reason: provider_lookup_unavailable
+expected_status: pass
+false_positive_guardrail: missing enrichment should lower confidence and be documented, not automatically escalate or close the alert

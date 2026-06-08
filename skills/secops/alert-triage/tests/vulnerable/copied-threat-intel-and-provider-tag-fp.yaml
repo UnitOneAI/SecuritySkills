@@ -1,0 +1,26 @@
+scenario: copied-threat-intel-and-provider-tag-fp
+alert:
+  id: alert-2026-002
+  timestamp: "2026-06-09T03:05:00Z"
+  rule: outbound-connection-to-rare-domain
+  proposed_disposition: false_positive
+indicator:
+  domain: suspicious-example.invalid
+threat_intel:
+  copied_from_case: case-2026-010
+  prior_lookup_at: "2026-05-01T10:00:00Z"
+  confidence: missing
+  last_seen: missing
+geoip:
+  provider_tag: cloud_provider
+  lookup_at: missing
+corroboration:
+  expected_business_owner: missing
+  matching_change_ticket: missing
+expected_findings:
+  - id: TRIAGE-ENRICH-03
+    severity: medium
+    reason: threat-intel reputation is copied from an old case without current lookup timestamp, confidence, or last-seen data
+  - id: TRIAGE-ENRICH-04
+    severity: medium
+    reason: cloud provider tag is used as the sole false-positive reason without ownership or activity context

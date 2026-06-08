@@ -1,0 +1,24 @@
+scenario: current-enrichment-supports-escalation
+alert:
+  id: alert-2026-003
+  timestamp: "2026-06-09T04:00:00Z"
+  rule: suspicious-admin-token-use
+asset_enrichment:
+  source: edr_inventory
+  hostname: idp-prod-01
+  criticality: critical
+  environment: production
+  synced_at: "2026-06-09T03:55:00Z"
+user_enrichment:
+  source: directory
+  username: svc-idp-admin
+  privilege_level: privileged_service_account
+  owner: identity-platform
+  synced_at: "2026-06-09T03:58:00Z"
+threat_intel:
+  source: internal-ti
+  lookup_at: "2026-06-09T04:03:00Z"
+  confidence: high
+  indicator_last_seen: "2026-06-09T03:50:00Z"
+expected_status: pass
+false_positive_guardrail: current attributable enrichment can support escalation when timestamps and alert-time applicability are documented
