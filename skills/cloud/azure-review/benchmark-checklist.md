@@ -556,6 +556,102 @@ resource "azurerm_disk_encryption_set" {
 
 Check for orphaned disks without encryption.
 
+### Supplemental -- Managed Disk and Snapshot Export Gates
+
+These gates are supplemental to the CIS VM disk checks. Use them to prevent false negatives where VM network posture and disk encryption are strong, but managed disk or snapshot export is still available through a SAS URL.
+
+#### Disk and snapshot network export policy
+
+Review managed disks and snapshots for import/export network controls:
+
+```bash
+az disk list --query "[].{id:id,name:name,resourceGroup:resourceGroup,networkAccessPolicy:networkAccessPolicy,publicNetworkAccess:publicNetworkAccess,diskAccessId:diskAccessId}"
+
+az snapshot list --query "[].{id:id,name:name,resourceGroup:resourceGroup,networkAccessPolicy:networkAccessPolicy,publicNetworkAccess:publicNetworkAccess,diskAccessId:diskAccessId}"
+```
+
+Terraform/Bicep fields to inspect:
+
+```hcl
+resource "azurerm_managed_disk" "example" {
+  network_access_policy = "DenyAll"   # Prefer DenyAll when export is not required
+  public_network_access_enabled = false
+  disk_access_id = azurerm_disk_access.example.id
+}
+
+resource "azurerm_snapshot" "example" {
+  network_access_policy = "DenyAll"
+  public_network_access_enabled = false
+  disk_access_id = azurerm_disk_access.example.id
+}
+```
+
+Fail or mark Not Evaluable when production-derived disks/snapshots have unknown export policy, `publicNetworkAccess` enabled without a documented business need, or no evidence that public export is denied or restricted to private endpoint access.
+
+#### Disk Access and Private Endpoint evidence
+
+When export is allowed through private access, verify the Disk Access resource and private endpoint connection:
+
+```bash
+az disk-access list
+
+az network private-endpoint-connection list \
+  --id <disk-access-resource-id>
+```
+
+Required evidence:
+
+- Disk Access resource ID and Region
+- Private endpoint connection state is `Approved`
+- Associated disks/snapshots are in the intended subscription and Region
+- DNS/private link routing evidence where available
+- Azure Policy assignment and exemption evidence if policy enforces disk public network access
+
+#### RBAC begin/end get access permissions
+
+Identify principals that can generate or revoke disk/snapshot SAS URLs:
+
+```bash
+az role assignment list --all --include-inherited
+
+az role definition list --custom-role-only true \
+  --query "[?permissions[?actions[?contains(@, 'Microsoft.Compute/disks/beginGetAccess/action') || contains(@, 'Microsoft.Compute/snapshots/beginGetAccess/action')]]]"
+```
+
+Review built-in and custom roles for:
+
+```text
+Microsoft.Compute/disks/beginGetAccess/action
+Microsoft.Compute/disks/endGetAccess/action
+Microsoft.Compute/snapshots/beginGetAccess/action
+Microsoft.Compute/snapshots/endGetAccess/action
+```
+
+Fail when broad owner/operator groups can generate export SAS URLs for sensitive disks/snapshots without ticketed approval, short duration, and revocation evidence.
+
+#### SAS duration and revocation evidence
+
+For approved exports, record:
+
+- Requesting principal
+- Disk or snapshot ID
+- Access level and duration
+- Ticket or change approval
+- Expiration timestamp
+- `revoke-access` evidence or automated expiration control
+
+```bash
+az disk grant-access \
+  --resource-group <rg> \
+  --name <disk-name> \
+  --access-level Read \
+  --duration-in-seconds 3600
+
+az disk revoke-access \
+  --resource-group <rg> \
+  --name <disk-name>
+```
+
 ### CIS 7.5 -- Ensure that Only Approved Extensions Are Installed
 
 Audit VM extensions for unauthorized or unnecessary extensions.
