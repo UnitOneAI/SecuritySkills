@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -50,6 +50,16 @@ Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories:
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
 
 ---
+
+## Authorization Evidence Matrix for API1/API5
+
+When assessing Broken Object Level Authorization (API1) or Broken Function Level Authorization (API5), create an authorization matrix that proves both allowed and denied behavior. Each row must tie an endpoint or resolver to the expected policy and the concrete enforcement evidence.
+
+| Endpoint / Operation | Object / Resource | Actor Role | Ownership / Tenant Context | Expected Decision | Actual Decision | Evidence Source | Enforcement Point | API Mapping | Positive / Negative Test Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[method path or resolver]` | `[object type/id scope]` | `[role/service/user]` | `[owner, non-owner, tenant A/B]` | `Allow / Deny` | `Allow / Deny` | `[test, spec, policy, middleware, route guard]` | `[controller, resolver, middleware, policy engine]` | `API1 / API5` | `[test name, request, log, CI link]` | `Pass / Fail / Unknown` |
+
+Flag a finding when actual behavior allows a non-owner, wrong tenant, or unauthorized role to access an object or function. Mark `Unknown` when only the happy path is tested or when enforcement is implied by naming conventions without policy, guard, or test evidence.
 
 ## Findings Classification
 
@@ -111,6 +121,12 @@ The final review output must be structured as follows:
 
 **Total Findings:** [count]
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
+
+### Authorization Evidence Matrix
+
+| Endpoint / Operation | Resource | Actor / Role | Ownership / Tenant Context | Expected | Actual | Evidence Source | Enforcement Point | OWASP Mapping | Test Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[operation]` | `[resource]` | `[actor]` | `[context]` | `Allow / Deny` | `Allow / Deny` | `[artifact]` | `[guard/policy]` | `API1 / API5` | `[positive and negative test]` | `Pass / Fail / Unknown` |
 
 ### Findings
 
@@ -201,6 +217,7 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 ---
 
+- Reviewing only role names or route declarations and skipping negative tests for non-owner, cross-tenant, and lower-privilege actors.
 ## Common Pitfalls
 
 1. **Confusing authentication with authorization.** An API that verifies the user's identity (authentication) but does not verify the user's permission to access the specific resource or function (authorization) is vulnerable to both BOLA (API1) and BFLA (API5). These are distinct checks that must both be present.
