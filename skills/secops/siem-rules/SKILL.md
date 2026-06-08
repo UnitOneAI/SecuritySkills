@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -426,6 +426,15 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 
 ### Step 4: Alert Threshold Tuning
 
+
+Validate rule time semantics before deployment so delayed logs, clock skew, and overlapping windows do not create false negatives or distorted timelines.
+
+| Rule | Event-Time Field | Ingestion / Index-Time Field | Measured Latency | Lookback Buffer | Clock-Skew Tolerance | Timezone Normalization | Overlap Deduplication | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule]` | `[field]` | `[field]` | `[p50/p95/max]` | `[duration]` | `[duration]` | `[method]` | `[dedup key]` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when the scheduled window can miss late-arriving events or when index-time logic breaks attack sequence reasoning.
+
 **Tuning methodology:**
 
 1. **Baseline:** Run the query in search mode for 7-30 days without alerting. Record the result count distribution.
@@ -547,6 +556,12 @@ Produce SIEM rule deliverables in this structure:
 ### Tuning Guidance
 - [Specific tuning recommendations]
 
+### Time Semantics Evidence
+
+| Rule | Event Time | Ingestion Time | Latency | Lookback | Skew | Timezone | Dedup | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule]` | `[field]` | `[field]` | `[latency]` | `[buffer]` | `[skew]` | `[normalization]` | `[key]` | `Pass / Fail / Unknown` |
+
 ### Validation
 - [How to test the rule produces a true positive]
 ```
@@ -633,6 +648,10 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
 ---
+
+### Pitfall 6: Ignoring Ingestion Delay
+
+A rule that searches only the last event-time window can miss delayed logs; a rule using only ingestion time can break sequence logic and baselines.
 
 ## 8. Prompt Injection Safety Notice
 
