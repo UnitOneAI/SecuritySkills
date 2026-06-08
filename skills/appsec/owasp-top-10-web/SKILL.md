@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -599,7 +599,10 @@ Before finalizing findings, apply this verification checklist to each candidate 
 - [ ] **File and line reference exists** — the finding cites a specific file path and line number.
 - [ ] **Vulnerable code is confirmed** — you used `Read` to examine the actual code and confirmed the vulnerable pattern (not just a grep match).
 - [ ] **User input reaches the sink** — for injection findings, you traced that user-controlled input flows into the vulnerable function without adequate sanitization.
+- [ ] **Entry point is reachable** — the finding identifies the route, controller, handler, job, template render path, file parser, or middleware chain that exposes the vulnerable code to an attacker.
+- [ ] **Exploit preconditions are documented** — the finding records required authentication, role, tenant/object ownership, feature flag, deployment mode, configuration, or network position.
 - [ ] **No compensating control** — you checked for middleware, wrappers, or framework-level protections that neutralize the vulnerability.
+- [ ] **False-positive checks are recorded** — the finding states which context was reviewed to rule out test-only code, static literals, framework auto-escaping, parameterized APIs, centralized authorization, or unreachable paths.
 - [ ] **Not a test or example** — the code is production code, not a test fixture, documentation example, or intentionally vulnerable training sample.
 
 **Discard any finding that fails two or more checklist items.** Findings that fail one item should be downgraded to Informational.
@@ -625,6 +628,7 @@ Present findings in this structure:
 **Stack:** [language / framework / notable libraries]
 **Review Date:** [date]
 **Scope:** [files/modules reviewed]
+**Reviewer:** AI Agent -- owasp-top-10-web skill v1.0.2
 
 ### Findings
 
@@ -635,6 +639,11 @@ Present findings in this structure:
 - **Location:** [file:line or file:function]
 - **Description:** [Clear explanation of the vulnerability, including how it could be exploited]
 - **Evidence:** [Code snippet or configuration excerpt]
+- **Entry Point:** [route/controller/handler/job/template/parser/middleware path]
+- **Source-to-Sink Trace:** [attacker-controlled source -> transformations/validators -> vulnerable sink]
+- **Exploit Preconditions:** [auth state, role, tenant/object ownership, feature flag, config, deployment mode, network position]
+- **Compensating Controls Checked:** [middleware, wrapper, framework default, sanitizer, policy, or configuration reviewed]
+- **False-Positive Rationale:** [why this is production-reachable and not a static literal, test fixture, safe framework pattern, or unreachable path]
 - **Remediation:** [Specific, actionable fix with code example where applicable]
 - **Verification:** [How to confirm the fix is effective]
 
@@ -686,6 +695,8 @@ Present findings in this structure:
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+
+6. **Leaving exploitability evidence out of the final report.** A finding can pass the internal precision checklist but still be hard to review if the report omits the reachable entry point, source-to-sink path, exploit preconditions, compensating controls checked, and false-positive rationale. Include those fields so reviewers can reproduce the severity decision without redoing the whole analysis.
 
 ## Prompt Injection Safety Notice
 
