@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -172,17 +172,21 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
    - Missing rotation automation (note in recommendations, not as a finding)
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
+6. **Separate exposure from control maturity.** A **Secret Exposure Finding** requires evidence that a credential, key, token, certificate, or secret-bearing file is present in code, history, logs, collaboration text, artifacts, or another reviewed surface. A **Secrets Control Gap** covers missing or weak prevention, detection, or rotation controls. Control gaps may be High or Medium risk, but they must not be counted as leaked-secret findings unless an actual secret is present.
 
 #### 2.3 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
-| Tool | Configuration File | CI Integration |
+| Tool / Control | Evidence Source | CI / Prevention Integration |
 |------|-------------------|----------------|
-| **Gitleaks** | `.gitleaks.toml` | GitHub Actions, GitLab CI |
-| **TruffleHog** | Command-line or `.trufflehog.yml` | Pre-commit hook, CI |
-| **detect-secrets** | `.secrets.baseline` | Pre-commit hook, CI |
-| **git-secrets** | `.git/hooks/pre-commit` | Git hook |
+| **Gitleaks** | `.gitleaks.toml`, `.gitleaksignore`, CI logs | GitHub Actions, GitLab CI, pre-commit |
+| **TruffleHog** | Command-line, `.trufflehog.yml`, CI logs | Pre-commit hook, CI, scheduled scans |
+| **detect-secrets** | `.secrets.baseline`, audit output | Pre-commit hook, CI |
+| **git-secrets** | `.git/hooks/pre-commit`, repo docs | Git hook |
+| **GitHub Secret Protection / secret scanning** | Repo/org security settings, alerts API/export, push protection status | Push protection, PR checks, alert workflows |
+| **GitLab Secret Detection** | `.gitlab-ci.yml`, `.gitlab/secret-detection-ruleset.toml`, project/group settings | Pipeline secret detection, secret push protection |
+| **Cloud/source-host scanners** | Provider console/export, policy-as-code, org security reports | Org-level scanning, push/merge protection, alert routing |
 
 **What to verify:**
 
@@ -191,8 +195,29 @@ Verify that at least one secret detection tool is configured and integrated:
 - Baseline file is maintained (for detect-secrets).
 - Custom rules cover organization-specific secret formats.
 - Allowlist entries are documented with justification (false positive suppression must not create blind spots).
+- Platform-native scanners are recorded separately from repo-visible config. If GitHub Secret Protection, GitLab Secret Detection, or an organization-level scanner is enabled outside the repository, record that evidence before declaring "no tooling."
+- If platform settings or alert exports are not available, record `Unknown / not observed` instead of assuming no scanner exists.
 
-**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+**Control-gap classification:** No evidence of repo-local or platform-native secret detection is a **High control gap**, not a Secret Exposure Finding. Detection in CI only with no pre-commit or push protection is a **Medium control gap**. Excessive allowlist entries without justification are a **Medium control gap**. Do not mark scanner absence as Critical unless an actual exposed, active, or unrotated credential is also found.
+
+#### 2.4 Platform and Collaboration-Surface Secret Coverage
+
+Repository files and git history are not the only places secrets appear. When platform exports, APIs, or maintainer-provided evidence are available, review or record coverage for:
+
+- Pull request titles, bodies, comments, and review comments.
+- Issue titles, bodies, and comments.
+- Discussions, wikis, snippets, and public or organization-owned gists.
+- CI logs, uploaded artifacts, release notes, package metadata, and generated documentation.
+- Secret scanning alerts that include validity, provider notification, dismissal, or remediation state.
+
+**What to verify:**
+
+- Whether GitHub/GitLab/platform-native scanning covers collaboration text and secret gists, not only commits.
+- Whether alerts distinguish active/verified, inactive/revoked, unknown-validity, rotated, dismissed false positive, and purged-from-history states.
+- Whether the team has an owner and SLA for triaging platform-native secret alerts.
+- Whether collaboration-surface review was performed, was unavailable, or is explicitly out of scope.
+
+**Finding classification:** Active or unrotated credentials in collaboration surfaces are **Critical Secret Exposure Findings**. Inactive, revoked, or fully rotated historical credentials should record the remaining risk and may be **Medium/Low** depending on exposure duration and purge status. Missing collaboration-surface coverage is a **Medium control gap**, not proof that no exposure exists.
 
 ---
 
@@ -236,7 +261,7 @@ Secrets removed from current files may still exist in git history. Verify:
 - If a secret was committed historically and rotated, the rotation is confirmed (not just file deletion).
 - BFG Repo Cleaner or `git filter-repo` has been used to purge high-sensitivity secrets from history when warranted.
 
-**Finding classification:** Known unrotated secrets in git history is **Critical**. No git history scanning capability is **High**.
+**Finding classification:** Known unrotated secrets in git history are **Critical Secret Exposure Findings**. No git history scanning capability is a **High control gap** unless an actual historical credential is found.
 
 ---
 
@@ -273,7 +298,7 @@ resource "vault_audit" "syslog" {
 }
 ```
 
-**Finding classification:** No centralized secrets manager (secrets in config files or environment variables only) is **High**. Secrets manager deployed but audit logging disabled is **High**.
+**Control-gap classification:** No centralized secrets manager (secrets in config files or environment variables only) is a **High control gap**. Secrets manager deployed but audit logging disabled is a **High control gap**. If actual plaintext credentials are found in source, artifacts, or logs, report those separately as Secret Exposure Findings.
 
 ---
 
@@ -296,7 +321,7 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 - Rotation events are logged and monitored.
 - Failed rotations trigger alerts.
 
-**Finding classification:** No rotation for secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**.
+**Control-gap classification:** No rotation for secrets older than 180 days is a **High control gap**. Manual rotation process only is a **Medium control gap**. Rotation configured but not monitored is a **Medium control gap**. Escalate to a Secret Exposure Finding only when a concrete exposed or unrotated credential is present.
 
 ---
 
@@ -348,18 +373,30 @@ spec:
     kind: SecretStore
 ```
 
-**Finding classification:** Agents using long-lived static credentials is **High**. No JIT credential mechanism for automated systems is **Medium**. Token TTL exceeding 10x task duration is **Medium**.
+**Control-gap classification:** Agents using long-lived static credentials are a **High control gap** when the credential value is not exposed. No JIT credential mechanism for automated systems is a **Medium control gap**. Token TTL exceeding 10x task duration is a **Medium control gap**. If an agent credential value is present in code, logs, artifacts, or prompts, report that separately as a Secret Exposure Finding.
 
 ---
 
 ## Findings Classification
 
+Use two separate classifications so exposed credentials are not mixed with control maturity gaps.
+
+### Secret Exposure Findings
+
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
-| **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
+| **Critical** | Active, verified, or likely-active credential in current code, git history, `.env`, CI logs, collaboration surfaces, artifacts, or generated output; production private key or certificate exposed; historical secret known to be unrotated. |
+| **High** | Secret value exposed with unknown validity; credential embedded in deploy/config paths but environment or privilege is limited; rotated secret remains broadly accessible in history or artifacts without purge/expiry evidence. |
+| **Medium** | Inactive/revoked credential with incomplete purge/provider-notification evidence; development credential exposed outside intended scope; sensitive token metadata exposed without the full secret value. |
+| **Low** | Non-sensitive placeholders, documented examples, or low-risk secret metadata that still need cleanup but do not grant access. |
+
+### Secrets Control Gaps
+
+| Severity | Definition |
+|----------|-----------|
+| **High** | No evidence of any repo-local or platform-native secret detection; no git history scanning capability; no centralized secrets manager for real production secrets; no rotation for secrets older than 180 days; vault audit logging disabled. |
+| **Medium** | Detection in CI only with no pre-commit or push protection; missing collaboration-surface coverage; manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext environment variables instead of vault injection. |
+| **Low** | Missing secret type documentation; secret naming convention inconsistencies; unclear alert ownership; development-only examples lacking explanatory comments. |
 
 ---
 
@@ -376,10 +413,20 @@ spec:
 
 ### Secret Detection Tooling Status
 
-| Tool | Deployed | Pre-commit | CI Pipeline | History Scan | Custom Rules |
-|------|----------|-----------|-------------|--------------|-------------|
-| Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
-| detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
+| Tool / Control | Evidence Source | Deployed | Pre-commit / Push Protection | CI Pipeline | History Scan | Custom Rules | Notes |
+|------|-----------------|----------|------------------------------|-------------|--------------|--------------|-------|
+| Gitleaks | Repo config / CI logs | Yes/No/Unknown | Yes/No/Unknown | Yes/No/Unknown | Yes/No/Unknown | Yes/No | <notes> |
+| detect-secrets | Baseline / hook config | Yes/No/Unknown | Yes/No/Unknown | Yes/No/Unknown | N/A | Yes/No | <notes> |
+| GitHub Secret Protection | Repo/org settings / alerts export | Yes/No/Unknown | Yes/No/Unknown | N/A | Yes/No/Unknown | Yes/No | <notes> |
+| GitLab Secret Detection | Project/group settings / pipeline | Yes/No/Unknown | Yes/No/Unknown | Yes/No/Unknown | Yes/No/Unknown | Yes/No | <notes> |
+
+### Platform and Collaboration Surface Coverage
+
+| Surface | Reviewed | Scanner Coverage | Evidence | Limitation |
+|---------|----------|------------------|----------|------------|
+| Pull requests | Yes/No/Unavailable | Yes/No/Unknown | <source> | <gap or N/A> |
+| Issues / Discussions / Wikis | Yes/No/Unavailable | Yes/No/Unknown | <source> | <gap or N/A> |
+| CI logs / artifacts | Yes/No/Unavailable | Yes/No/Unknown | <source> | <gap or N/A> |
 
 ### Secrets Inventory (by type, NOT values)
 
@@ -389,13 +436,24 @@ spec:
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
 
-### Findings
+### Secret Exposure Findings
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
 - **Control Reference:** OWASP Secrets Mgmt / NIST SP 800-57 Section X
 - **File:** <path to config file>
+- **Surface:** code / git history / CI log / artifact / issue / PR / discussion / wiki / gist
+- **Secret State:** active / inactive-revoked / unknown-validity / rotated / purged-from-history / provider-notified
 - **Description:** <what was found -- NEVER include actual secret values>
+- **Remediation:** <concrete fix>
+
+### Secrets Control Gaps
+
+#### [G-001] <Control Gap Title>
+- **Severity:** High / Medium / Low
+- **Control Reference:** OWASP Secrets Mgmt / NIST SP 800-57 Section X
+- **Evidence:** <missing or weak control evidence>
+- **Impact:** <what exposure risk this control gap creates without claiming a secret was found>
 - **Remediation:** <concrete fix>
 
 ### Prioritized Remediation Plan
@@ -442,6 +500,10 @@ spec:
 
 4. **Ignoring secret sprawl across multiple secrets managers.** Large organizations often have Vault, AWS Secrets Manager, Azure Key Vault, and application-specific secret stores running simultaneously. Without a unified inventory, secrets expire unmonitored and rotation gaps emerge. Maintain a single source of truth for secret metadata (type, owner, rotation schedule, storage location).
 
+5. **Treating missing scanner config as a leaked-secret finding.** A repository can have no `.gitleaks.toml` or `.secrets.baseline` while still being covered by platform-native secret scanning or organization-level push protection. Conversely, missing tooling is a control gap even when no secret is present. Do not classify scanner absence as a Critical Secret Exposure Finding unless the review also finds an actual exposed credential.
+
+6. **Only scanning the git tree.** Secrets can appear in pull request comments, issue bodies, discussions, wikis, gists, CI logs, and release artifacts. If those surfaces cannot be reviewed, record the limitation instead of claiming the repository is clean.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -461,6 +523,9 @@ This skill processes configuration files and code that may contain secret values
 - OWASP Secrets Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 - NIST SP 800-57 Part 1 Rev 5: https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final
 - NIST SP 800-57 Part 1 Rev 5 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf
+- GitHub Secret Scanning: https://docs.github.com/code-security/secret-scanning/introduction/about-secret-scanning
+- GitHub Push Protection: https://docs.github.com/code-security/secret-scanning/push-protection-for-repositories-and-organizations
+- GitLab Secret Detection: https://docs.gitlab.com/user/application_security/secret_detection/
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
@@ -471,5 +536,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.1.0** -- Separate Secret Exposure Findings from Secrets Control Gaps; add platform-native scanner, collaboration-surface coverage, and validity/remediation-state guidance.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
