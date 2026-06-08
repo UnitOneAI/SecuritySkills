@@ -6,13 +6,13 @@ description: >
   integration, scan policies, or authenticated scanning setups. Produces a DAST
   maturity assessment covering scan policy configuration, active vs passive
   scanning, API scanning, authentication handling, and results deduplication.
-tags: [devsecops, dast, zap, burp]
+tags: [devsecops, dast, zap, burp, recorded-flows]
 role: [security-engineer, appsec-engineer]
 phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -34,7 +34,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Review of existing DAST integration in CI/CD pipelines.
 - Authenticated scanning setup or troubleshooting.
 - API security testing configuration (REST, GraphQL).
-- DAST results triage workflow design.
+- DAST results triage workflow design.`r`n- Recorded browser flows, HAR files, Postman collections, or seed fixtures used to reach authenticated or multi-step states.
 - Compliance audits requiring dynamic testing evidence (PCI DSS 6.3.2, SOC 2).
 
 ---
@@ -331,6 +331,36 @@ env:
 
 ---
 
+#### 4.2 Recorded Flow, Token Replay, and Seed Data Safety
+
+Treat recorded browser flows, HAR files, Postman collections, and seed fixtures as security-sensitive DAST configuration. They can make a scan appear authenticated while silently replaying stale state, one-time tokens, or unsafe shared test data.
+
+Required evidence:
+
+| Gate | Evidence to Capture | Fail / Not Evaluable Condition |
+|------|---------------------|--------------------------------|
+| Flow freshness | Recording date, target build/version, route coverage delta, and last successful replay against the deployed build | Flow is older than the deployed build, route coverage changed, or freshness cannot be proven |
+| One-time token handling | Proof that CSRF tokens, OAuth state/nonce, PKCE verifier, MFA/OTP values, signed URLs, and reset links are regenerated dynamically | Static HAR/Postman/browser recording replays one-time or signed values |
+| Authenticated state assertion | Specific post-login assertion, expected role, logged-out detector, and fail-closed behavior | Scanner continues unauthenticated or in the wrong role after setup failure |
+| Seed data isolation | Per-run disposable fixtures, database snapshot restore, tenant isolation, or cleanup job evidence | Active scan mutates shared staging data without reset or ownership evidence |
+| State-changing request safety | Idempotency proof, safe test accounts, explicit exclusions, or rollback evidence for create/update/delete actions | Destructive or non-idempotent requests are in scope without isolated data |
+| Multi-role separation | Separate users, cookies, bearer tokens, browser storage, and scanner contexts for each role | Admin/user/guest scans reuse the same session, token, or storage context |
+
+Use these finding IDs when reporting gaps:
+
+```text
+DAST-STATE-01: Recording replays static CSRF, OAuth state, nonce, MFA/OTP, signed URL, or reset-link values
+DAST-STATE-02: Recorded flow has no deployed-build freshness or route coverage validation
+DAST-STATE-03: Scanner continues after login/setup fails or reaches the wrong role
+DAST-STATE-04: Active scan mutates shared seed data without reset, disposable fixtures, or tenant isolation
+DAST-STATE-05: Multi-role scan reuses cookies, bearer tokens, local storage, or browser context
+DAST-STATE-06: State-changing requests are neither idempotent nor explicitly excluded
+```
+
+**Finding classification:** Static replay of one-time authentication/session material is **High**. Scanner continuation after failed authentication is **Critical** when it causes authenticated surfaces to be missed. Shared mutable seed data without reset is **High** for active scans. Missing freshness evidence is **Medium**.
+
+---
+
 ### Step 5: CI/CD DAST Integration
 
 #### 5.1 Pipeline Integration Patterns
@@ -517,8 +547,7 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Scope restrictions | Yes/No | <include/exclude paths> |
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
-| API scanning | Yes/No | <OpenAPI/GraphQL import> |
-| Results deduplication | Yes/No | <dedup method> |
+| API scanning | Yes/No | <OpenAPI/GraphQL import> |`r`n| Recorded flow/state safety | Yes/No | <flow freshness, token regeneration, seed isolation, fail-closed auth assertion> |`r`n| Results deduplication | Yes/No | <dedup method> |`r`n`r`n### Recorded Flow and Seed Data Evidence`r`n| Artifact | Target Build | Token Handling | Auth State Assertion | Seed Data Strategy | Multi-Role Separation | Status |`r`n|----------|--------------|----------------|----------------------|-------------------|-----------------------|--------|`r`n| <HAR/Postman/browser flow/fixture> | <version/date> | Dynamic/Static/Not Evaluable | <assertion/fail-closed behavior> | Isolated/Restored/Shared | Separate/Reused/Not Evaluable | Pass/Fail/Not Evaluable |
 
 ### Findings
 
@@ -584,6 +613,10 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
+6. **Trusting stale recorded flows.** A HAR, Postman collection, or browser recording can continue to replay old routes, static one-time tokens, or wrong-role sessions after the application changes. Require deployed-build freshness checks and fail-closed authenticated-state assertions.
+
+7. **Using shared seed data for active scans.** Active DAST can create, update, or delete records. Use disposable fixtures, isolated tenants, or snapshot restore evidence so scans do not contaminate staging data or hide authorization failures.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -609,9 +642,13 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP API Security Top 10: https://owasp.org/API-Security/
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
 - SARIF Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
+- ZAP Authentication: https://www.zaproxy.org/docs/desktop/start/features/authentication/
+- ZAP Automation Framework authentication: https://www.zaproxy.org/docs/automate/automation-framework/#authentication
+- OWASP WSTG Authentication Testing: https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/04-Authentication_Testing/
+- OWASP WSTG Session Management Testing: https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/06-Session_Management_Testing/
 
 ---
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
+- **1.1.0** -- Adds recorded-flow freshness, one-time token replay, seed data isolation, authenticated-state assertion, and multi-role separation evidence gates.`r`n- **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
