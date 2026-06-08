@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -435,6 +435,16 @@ jobs:
 
 ---
 
+### Step 7: Custom Rule Fixture Evidence
+
+Trust custom Semgrep rules or CodeQL queries only when positive and negative fixtures prove expected behavior and can be rerun during CI or local regression.
+
+| Rule / Query | Engine | Positive Fixture | Negative Fixture | Expected Result Annotation | Regression Command | Last Run Evidence | Drift / Coverage Limit | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule id]` | `Semgrep / CodeQL / other` | `[vulnerable sample]` | `[safe sample]` | `[expected finding/no finding]` | `[command]` | `[CI/local output]` | `[unsupported patterns]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when a custom rule has no safe fixture or no repeatable regression command.
+
 ## Findings Classification
 
 | Severity | Definition |
@@ -474,6 +484,12 @@ jobs:
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+
+### Custom Rule Fixture Evidence
+
+| Rule | Engine | Positive Fixture | Negative Fixture | Expected Result | Regression Command | Evidence | Limits | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[rule]` | `[engine]` | `[positive]` | `[negative]` | `[expected]` | `[command]` | `[output]` | `[limits]` | `Pass / Fail / Unknown` |
 
 ### Findings
 
@@ -523,6 +539,8 @@ jobs:
 | 10 | 434 | Unrestricted Upload of File with Dangerous Type |
 
 ---
+
+- Accepting a custom SAST rule because it parses or fires once without positive/negative fixtures, expected annotations, and repeatable regression evidence.
 
 ## Common Pitfalls
 
