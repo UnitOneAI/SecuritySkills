@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -239,6 +239,16 @@ License Analysis:
 
 ---
 
+### VEX Applicability Evidence
+
+Validate that each VEX statement applies to the exact product, component, vulnerability, and release before downgrading risk.
+
+| Product Identity | Component Identity | Vulnerability ID | VEX Status | Justification Evidence | VEX Timestamp | SBOM / Release Match | Source Authenticity | Downgrade Decision | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[product_identity]` | `[component_identity]` | `[vulnerability_id]` | `[vex_status]` | `[justification_evidence]` | `[vex_timestamp]` | `[sbom/release_match]` | `[source_authenticity]` | `[downgrade_decision]` | `Sufficient / Insufficient / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 Classify the overall SBOM analysis into one of the following states:
@@ -327,6 +337,12 @@ conflicts), and overall classification.]
 **Rating:** [Critical Supply Chain Risk | Elevated Risk | Acceptable | Strong]
 **Rationale:** [2-3 sentences explaining the rating]
 
+### VEX Applicability Evidence
+
+| Product Identity | Component Identity | Vulnerability ID | VEX Status | Justification Evidence | VEX Timestamp | SBOM / Release Match | Source Authenticity | Downgrade Decision | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[product_identity]` | `[component_identity]` | `[vulnerability_id]` | `[vex_status]` | `[justification_evidence]` | `[vex_timestamp]` | `[sbom/release_match]` | `[source_authenticity]` | `[downgrade_decision]` | `Sufficient / Insufficient / Unknown` |
+
 ### Recommendations
 1. [Highest-priority actionable recommendation]
 2. [Second priority recommendation]
@@ -382,6 +398,8 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
 
 ---
+
+- Downgrading vulnerability priority from a VEX statement that does not match the assessed product, component, vulnerability, or release.
 
 ## Prompt Injection Safety Notice
 
