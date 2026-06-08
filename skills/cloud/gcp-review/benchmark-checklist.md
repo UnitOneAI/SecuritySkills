@@ -295,6 +295,54 @@ resource "google_project_service" {
 
 ---
 
+
+## Security Command Center Findings and Mute Rules -- Operational Validation
+
+These checks supplement the CIS benchmark review. Record them separately from CIS pass/fail scoring because SCC muted findings can disappear from default views while remaining active.
+
+**Active finding baseline before dashboard or mute filters:**
+
+```bash
+gcloud scc findings list organizations/ORG_ID \
+  --location=global \
+  --filter='state="ACTIVE"' \
+  --field-mask='finding.category,finding.severity,finding.state,finding.mute,finding.event_time,finding.resource_name' \
+  --format=json
+```
+
+Fail when high or critical active findings lack an owner, ticket, remediation plan, or accepted-risk record. Mark Not Evaluable if only summarized dashboards or muted-filtered views are available.
+
+**Mute configuration inventory:**
+
+```bash
+gcloud scc muteconfigs list \
+  --organization=ORG_ID \
+  --location=global \
+  --format='table(name,type,filter,description,updateTime)'
+```
+
+Review static mute rules for narrow filters, approved categories/resources, owner, justification, compensating control, and review date. Broad filters across production assets, high/critical categories, or all resources should fail unless there is explicit risk acceptance and time-bounded review evidence.
+
+Review dynamic mute rules for expiration or recertification cadence, automation owner, and evidence that stale rules are removed. Long-lived dynamic mutes without review evidence should fail.
+
+**Bulk mute and audit evidence:**
+
+```bash
+gcloud logging read \
+  'protoPayload.serviceName="securitycenter.googleapis.com" AND (protoPayload.methodName:"Mute" OR protoPayload.methodName:"mute")' \
+  --freshness=90d \
+  --format=json
+```
+
+Treat bulk mute activity as a change-controlled exception. Capture requester, approver, affected category/resource scope, rollback plan, and follow-up tracking. Fail broad bulk mutes without approval or without remediation/risk-acceptance links for the underlying active findings.
+
+**Common fail conditions:**
+
+- Review evidence starts from SCC dashboards after mute filters instead of raw active findings.
+- Muted active high/critical findings lack ticket, owner, remediation target, or accepted-risk approval.
+- Static mute rules use broad filters such as entire projects, all severities, all categories, or production resource prefixes without narrow justification.
+- Dynamic mute rules do not expire and have no recertification cadence.
+- Bulk mute operations lack change record, approver, affected scope, or rollback/remediation tracking.
 ## Section 3 -- Networking
 
 Evaluate network configurations against CIS GCP v2.0.0 Section 3 recommendations.
