@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -240,7 +240,60 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 
 ---
 
-### Step 4 -- Model Memorization Risk Assessment
+### Step 4 -- Cross-Border Transfer, Data Residency, and Subprocessor Review
+
+Assess whether AI data leaves the expected jurisdiction or tenant boundary through third-party LLM providers, observability systems, vector stores, evaluation vendors, or human-review subprocessors. This gate should run before rating privacy controls as complete because a system can redact inputs and enforce retention locally while still sending prompts, embeddings, logs, or fine-tuning data to an unapproved region or subprocessor.
+
+**What to look for in code and configuration:**
+
+- LLM, embedding, vector database, analytics, or tracing providers configured without an explicit region, residency tier, or data processing addendum.
+- Prompts, completions, embeddings, fine-tuning files, evaluation datasets, or human-review queues sent to vendors whose subprocessors are not documented.
+- EU, UK, Swiss, healthcare, education, or financial data transferred to another jurisdiction without Standard Contractual Clauses (SCCs), a transfer impact assessment (TIA), adequacy basis, or equivalent contractual mechanism.
+- Region fallback, multi-region failover, queue replication, support access, telemetry export, or crash-reporting paths that can move AI data outside the approved residency boundary.
+- Provider terms that allow abuse monitoring, safety review, or service improvement retention, but the review records only the main inference region.
+- DPA, BAA, or vendor contract commitments that apply to the primary API but not to embeddings, batch jobs, fine-tuning, evals, logging, or support tooling.
+
+**Detection methods using allowed tools:**
+
+```
+# Find provider and region configuration
+Grep: "region|residency|location|data_zone|data.region|azure.openai|bedrock|vertex|openai|anthropic" in **/*.{py,ts,js,yaml,yml,json,toml,env}
+Grep: "endpoint|base_url|api_base|deployment|project_id|tenant_id" in **/*.{py,ts,js,yaml,yml,json,toml,env}
+
+# Check transfer and vendor governance evidence
+Grep: "dpa|subprocessor|standard.contractual|SCC|transfer.impact|adequacy|tia|baa|hipaa" in **/*.{md,txt,yaml,yml,json}
+Grep: "retention|abuse.monitoring|human.review|support.access|telemetry|trace|observability" in **/*.{py,ts,js,yaml,yml,json,md}
+
+# Check data paths that often bypass the main LLM region
+Grep: "embedding|vector|fine.tune|finetune|batch|eval|feedback|analytics|crash|sentry|datadog|langsmith|phoenix" in **/*.{py,ts,js,yaml,yml,json,toml}
+```
+
+**Transfer and residency evidence matrix:**
+
+| Evidence Gate | What Must Be Documented | Not Evaluable When |
+|---|---|---|
+| Data categories | Prompt, completion, embedding, log, fine-tune, eval, support, and telemetry data classes | Data flow omits any AI-specific data store or vendor path |
+| Jurisdiction and region | Source data subject region, processing region, storage region, failover region, and support-access region | Config uses global/default endpoints or vendor-managed routing with no contractual region evidence |
+| Transfer mechanism | Adequacy decision, SCCs, TIA, BAA, DPA, or other approved transfer basis | Cross-border processing is present but legal/contractual basis is not available |
+| Subprocessors | Current subprocessor list, notification process, and services covered | Provider or observability vendor can add subprocessors without review or notice |
+| Retention by provider | API abuse-monitoring retention, service logs, human review, fine-tune file retention, and deletion SLA | Only application retention is documented, not provider-side retention |
+| Residency exceptions | Explicit exception owner, expiry, approved data classes, compensating controls, and user notice | "No training" or "enterprise plan" is used as a proxy for residency evidence |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| EU/UK/Swiss personal data transferred to a non-adequate jurisdiction with no SCCs/TIA or equivalent transfer basis | Critical |
+| PHI sent to an AI provider or subprocessor without a BAA or HIPAA-aligned contractual safeguard | Critical |
+| Provider region is unpinned or can fail over outside the approved residency boundary for PII-bearing prompts, embeddings, or logs | High |
+| Subprocessor list, support access, or provider retention is unknown for AI data paths | High |
+| Contract covers chat inference but not embeddings, fine-tuning, batch, eval, telemetry, or human-review workflows | High |
+| Residency exception lacks owner, expiry, data-class limit, or compensating controls | Medium |
+| Data transfer evidence exists but is not linked to the specific model deployment or vendor endpoint | Medium |
+
+---
+
+### Step 5 -- Model Memorization Risk Assessment
 
 Evaluate the risk that models deployed in the system have memorized and can reproduce personal data from their training corpus.
 
@@ -288,7 +341,7 @@ Grep: "dedup|deduplicate|exact_match|near_duplicate|minhash|simhash" in **/*.py
 
 ---
 
-### Step 5 -- EU AI Act Data Governance Requirements
+### Step 6 -- EU AI Act Data Governance Requirements
 
 Assess compliance with the EU AI Act's data governance requirements for AI systems deployed in or affecting EU residents.
 
@@ -338,7 +391,7 @@ Glob: **/technical_documentation*
 
 ---
 
-### Step 6 -- Consent Management for AI Training Data
+### Step 7 -- Consent Management for AI Training Data
 
 Assess whether consent mechanisms for AI training data usage are implemented, enforceable, and aligned with regulatory requirements.
 
@@ -411,7 +464,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Transfer/Residency | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -430,6 +483,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
+| Transfer, residency, and subprocessors | [Yes/Partial/No/Not Evaluable] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
@@ -450,7 +504,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | NIST AI RMF 1.0 | MANAGE 2.4 | Mechanisms for tracking and responding to AI privacy risks |
 | NIST AI RMF 1.0 | GOVERN 1.1 | Legal and regulatory requirements applicable to the AI system |
 | OWASP Top 10 for LLMs (2025) | LLM02 | Sensitive Information Disclosure -- model reveals training data, PII, or confidential information |
-| GDPR | Art. 5, 6, 13, 17, 22, 25, 35 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, DPIA |
+| GDPR | Art. 5, 6, 13, 17, 22, 25, 28, 35, 44, 46 | Principles, legal basis, transparency, erasure, automated decisions, privacy by design, processors, DPIA, and international transfers |
 | EU AI Act | Art. 10, 11, 13 | Data governance for high-risk AI, technical documentation, transparency |
 | CCPA/CPRA | Sec. 1798.100-199 | Consumer rights regarding personal information used in AI systems |
 
@@ -472,6 +526,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
+6. **Equating "no training on customer data" with residency compliance.** A provider can disable model training while still retaining API logs, routing requests through global infrastructure, granting support access from another jurisdiction, or sending telemetry to subprocessors. Residency review must map every AI data path, including embeddings, evals, batch jobs, traces, and human-review queues.
+
 ---
 
 ## References
@@ -480,6 +536,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - OWASP Top 10 for LLM Applications (2025), LLM02: Sensitive Information Disclosure -- https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
 - EU AI Act, Regulation (EU) 2024/1689 -- https://eur-lex.europa.eu/eli/reg/2024/1689
 - GDPR, Regulation (EU) 2016/679 -- https://eur-lex.europa.eu/eli/reg/2016/679
+- European Commission, Standard Contractual Clauses for international transfers -- https://commission.europa.eu/law/law-topic/data-protection/international-dimension-data-protection/standard-contractual-clauses-scc_en
+- EDPB Recommendations 01/2020 on supplementary measures after Schrems II -- https://www.edpb.europa.eu/our-work-tools/our-documents/recommendations/recommendations-012020-measures-supplement-transfer_en
 - CCPA/CPRA, California Civil Code Sec. 1798.100-199 -- https://leginfo.legislature.ca.gov/
 - Carlini, N. et al. (2021). "Extracting Training Data from Large Language Models." USENIX Security Symposium. arXiv:2012.07805
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
