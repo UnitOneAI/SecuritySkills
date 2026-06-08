@@ -7,13 +7,13 @@ description: >
   RDS encryption. Walks through all five benchmark sections, evaluates each
   recommendation, and produces a prioritized findings report with remediation
   guidance mapped to specific CIS control IDs.
-tags: [cloud, aws, cis-benchmark]
+tags: [cloud, aws, cis-benchmark, snapshot-sharing]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +55,7 @@ The CIS Amazon Web Services Foundations Benchmark v3.0.0 is a consensus-driven s
 - S3 bucket policies and ACL configurations
 - VPC, security group, and NACL definitions
 - CloudTrail and CloudWatch configuration files
+- RDS DB snapshot attributes, EBS snapshot permissions, AMI launch permissions, and EBS Block Public Access state when live AWS evidence is available
 
 ---
 
@@ -99,7 +100,21 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Public Snapshot and Image Sharing Evidence Gates
+
+Evaluate backup and image artifacts separately from live resource posture. A private or encrypted live RDS instance, EBS volume, or EC2 instance does not prove that manual snapshots, copied backups, or AMIs are private.
+
+Required evidence when live AWS output is available:
+
+- RDS manual snapshot inventory and each relevant snapshot's `restore` attribute, including whether `all` or unapproved account IDs are present.
+- EBS snapshot `createVolumePermission` for in-scope Regions, plus each Region's account-level EBS Block Public Access state.
+- AMI `launchPermission` attributes for account-owned AMIs, especially AMIs backed by production or sensitive snapshots.
+- Region/account coverage for the evidence. Mark missing Regions as Not Evaluable rather than assuming a pass from another Region.
+- Data sensitivity, owner, ticket, expiration/review date, and approved recipient list for any private cross-account snapshot or AMI sharing.
+
+Fail public RDS snapshots, EBS snapshots, or AMIs when attributes allow `all` unless an effective account/Region block clearly prevents access and the raw public attribute is still tracked for cleanup. Treat `block-new-sharing` as prevention for future EBS public sharing only; it does not prove already-public snapshots are private. Report public snapshot and AMI exposure outside the CIS pass/fail total if the benchmark control does not directly map to the artifact.
+
+### Step 8: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -158,6 +173,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Public Snapshot and Image Sharing Evidence
+
+| Artifact Type | Region | Artifact ID | Public Attribute | Block Public Access / Effective Control | Data Sensitivity | Status | Required Action |
+|---------------|--------|-------------|------------------|-----------------------------------------|------------------|--------|-----------------|
+| RDS snapshot / EBS snapshot / AMI | <region> | <snapshot-or-image-id> | restore/createVolumePermission/launchPermission | <mode or N/A> | <known/unknown> | Pass/Fail/Not Evaluable | <remediation or evidence needed> |
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -199,7 +220,7 @@ Produce the final report using the structure defined in the Output Format sectio
 3. **Confusing CloudTrail multi-region with organization trail.** CIS 3.1 requires multi-region, not necessarily an organization trail. Both are valid, but the control checks `is_multi_region_trail`.
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
-6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."`r`n7. **Assuming private live resources mean private backups or images.** RDS `publicly_accessible = false`, encrypted EBS volumes, or private instances do not prove that manual snapshots or AMIs are private; verify snapshot and image sharing attributes directly.
 
 ---
 
@@ -226,9 +247,13 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
+- AWS RDS snapshot sharing: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ShareSnapshot.html
+- AWS RDS public snapshots: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ShareSnapshot.Public.html
+- AWS EBS snapshot sharing permissions: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-modifying-snapshot-permissions.html
+- AWS EBS Block Public Access for snapshots: https://docs.aws.amazon.com/ebs/latest/userguide/block-public-access-snapshots-enable.html
 
 ---
 
 ## Changelog
 
-- **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
+- **1.1.0** -- Adds public RDS snapshot, EBS snapshot, AMI launch-permission, and EBS Block Public Access evidence gates.`r`n- **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
