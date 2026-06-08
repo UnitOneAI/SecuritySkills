@@ -290,7 +290,7 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Is there a formal change management process?
   - Are changes tested before deployment to production?
   - Is there segregation of duties between development, testing, and deployment?
-  - Are emergency change procedures defined?
+  - Are emergency change procedures defined?`n  - Do emergency changes retain ticket, incident reason, approval SLA, segregation-of-duties, validation, rollback, abort, and post-implementation review evidence?
 - Evidence to look for:
   - Change management policy
   - CI/CD pipeline configurations showing approval gates, automated testing, and deployment controls
@@ -551,7 +551,7 @@ After scoring, calculate:
 | CC7.3 | Incident response plan; severity classification matrix; triage procedures |
 | CC7.4 | Tabletop exercise records; IR team roster; communication templates; post-incident review records |
 | CC7.5 | DR plan; BC plan; backup configs; backup restoration test records |
-| CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; segregation of duties evidence |
+| CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; emergency-change tickets; rollback plans; abort criteria; smoke-test/health-check evidence; post-implementation review sign-offs; segregation of duties evidence |
 | CC9.1 | Risk treatment plans; business impact analysis; risk acceptance sign-off records |
 | CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs |
 | A1.1 | Capacity monitoring dashboards; auto-scaling configs; capacity planning documentation |
