@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -48,6 +48,12 @@ Key changes in v4.0:
 - **Roles and responsibilities**: Explicitly documented for every requirement (x.1.1 pattern)
 - **Automated log review mechanisms**: Required (10.4.1.1)
 - **Security awareness training expansion**: Phishing training required (5.4.1)
+
+### POI Tamper and Substitution Evidence
+
+| Device ID | Location | Inspection Date | Inspector | Tamper Evidence | Substitution Check | Inventory Match | Training / Procedure | Exception | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[device_id]` | `[location]` | `[inspection_date]` | `[inspector]` | `[tamper_evidence]` | `[substitution_check]` | `[inventory_match]` | `[training/procedure]` | `[exception]` | `Pass / Fail / Unknown` |
 
 ### Validation Types
 
@@ -389,6 +395,16 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 
 ---
 
+### POI Tamper and Substitution Evidence
+
+Require device inspection, inventory, chain-of-custody, and substitution controls for PCI POI device reviews.
+
+| Device ID | Location | Inspection Date | Inspector | Tamper Evidence | Substitution Check | Inventory Match | Training / Procedure | Exception | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[device_id]` | `[location]` | `[inspection_date]` | `[inspector]` | `[tamper_evidence]` | `[substitution_check]` | `[inventory_match]` | `[training/procedure]` | `[exception]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Classification | Definition | Compliance Impact |
@@ -521,6 +537,8 @@ Maintain an Information Security Policy:                Requirement 12
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
 
 ---
+
+- Accepting a POI device inventory without current tamper inspection, substitution checks, and accountable inspection evidence.
 
 ## Prompt Injection Safety Notice
 
