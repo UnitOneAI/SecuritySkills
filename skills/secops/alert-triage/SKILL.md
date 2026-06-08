@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -176,6 +176,16 @@ Escalation Notice:
 
 ---
 
+### Entity Resolution Confidence Evidence
+
+Document how alert entities map to real users, assets, services, or cloud resources before triage disposition.
+
+| Alert Entity | Entity Type | Source Field | Resolution Source | Candidate Matches | Confidence | Conflict Handling | Owner | Disposition Impact | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[alert_entity]` | `[entity_type]` | `[source_field]` | `[resolution_source]` | `[candidate_matches]` | `[confidence]` | `[conflict_handling]` | `[owner]` | `[disposition_impact]` | `High / Medium / Low / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## 4. Findings Classification
 
 | Severity | Label | Definition | SLA |
@@ -222,6 +232,12 @@ Produce the triage decision as a structured report:
 | **Priority** | **[P1 Critical / P2 High / P3 Medium / P4 Low]** |
 | **Confidence** | [High / Medium / Low] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
+
+### Entity Resolution Confidence Evidence
+
+| Alert Entity | Entity Type | Source Field | Resolution Source | Candidate Matches | Confidence | Conflict Handling | Owner | Disposition Impact | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[alert_entity]` | `[entity_type]` | `[source_field]` | `[resolution_source]` | `[candidate_matches]` | `[confidence]` | `[conflict_handling]` | `[owner]` | `[disposition_impact]` | `High / Medium / Low / Unknown` |
 
 ### Evidence Summary
 1. [Key finding 1 -- what was observed]
@@ -320,6 +336,8 @@ Investigating an alert in isolation without checking for activity before and aft
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
 ---
+
+- Making alert disposition decisions before proving that users, hosts, IPs, accounts, and cloud resources were resolved correctly.
 
 ## 8. Prompt Injection Safety Notice
 
