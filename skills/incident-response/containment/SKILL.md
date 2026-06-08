@@ -122,6 +122,35 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **Kerberos ticket reset** | Reset krbtgt account password (twice, per Microsoft guidance) | Golden ticket attack, domain compromise | Domain-wide impact; requires careful planning |
 | **MFA token reset** | Deregister and re-enroll MFA devices | MFA bypass, SIM swap, device compromise | Individual users |
 
+### Step 2.5: Cloud Managed Identity and Metadata-Service Containment
+
+Cloud-hosted incidents require containment beyond host shutdown or subnet isolation. If an attacker can keep using instance profiles, managed identities, workload identity federation, OAuth grants, or metadata-service token endpoints, powering off or isolating the original system may not revoke the cloud control-plane access already obtained.
+
+**What to look for:**
+
+```
+CONT-CLOUD-ID-01: Containment plan isolates the VM/container but does not revoke or detach the affected cloud managed identity, instance profile, service account, or workload identity binding
+CONT-CLOUD-ID-02: Metadata service access remains reachable from compromised workloads after suspected SSRF, web shell, container escape, or credential theft
+CONT-CLOUD-ID-03: AWS IMDSv1 remains enabled, hop limit is too broad, or IMDSv2 token enforcement evidence is missing for affected instances
+CONT-CLOUD-ID-04: Azure managed identity tokens, role assignments, or VM extension paths are not reviewed after compromise of a VM, app service, or container workload
+CONT-CLOUD-ID-05: GCP service account attachment, metadata concealment, or metadata-server access controls are not reviewed after workload compromise
+CONT-CLOUD-ID-06: Temporary cloud credentials are rotated or deleted without invalidating active sessions, OAuth grants, refresh tokens, federation trust, or assumed-role paths
+CONT-CLOUD-ID-07: Metadata-service egress blocks are applied only at perimeter firewalls, not at host, container, service mesh, or workload policy enforcement points
+CONT-CLOUD-ID-08: Validation evidence does not prove failed metadata token retrieval, denied managed identity API calls, and no new cloud control-plane actions from the compromised principal
+```
+
+**Containment actions to plan:**
+
+| Action | Target | Use When | Validation Evidence |
+|---|---|---|---|
+| Detach or disable managed identity | AWS instance profile, Azure managed identity, GCP attached service account, Kubernetes workload identity | Cloud workload compromise, SSRF, web shell, container escape, exposed metadata token | Identity no longer attached; privileged API call using affected principal fails |
+| Restrict metadata-service access | `169.254.169.254`, cloud metadata hostnames, IMDS endpoints | SSRF or local code execution can request metadata tokens | Metadata token request from affected workload fails; host/container egress policy shows enforcement |
+| Enforce metadata hardening | AWS IMDSv2 required, low hop limit, Azure/GCP metadata request protections | Metadata endpoint must remain available for business continuity | Configuration export shows hardened metadata mode; test request without required headers fails |
+| Revoke cloud control-plane paths | Role assignments, IAM bindings, OAuth grants, federation trust, refresh tokens, API keys | Token theft or identity misuse observed | Cloud audit logs show denied calls and no new actions by compromised principal |
+| Preserve cloud evidence before destructive action | CloudTrail, Azure Activity Logs, GCP Audit Logs, metadata configuration export | Identity containment may destroy or change evidence | Log export timestamp, hash/reference, and owner are recorded |
+
+> **Gate:** For cloud workload incidents, do not mark containment effective until the plan accounts for managed identity revocation, metadata-service isolation or hardening, active session/token invalidation, cloud audit evidence preservation, and validation of denied control-plane activity.
+
 ### Step 3: Long-Term Containment
 
 Long-term containment allows the organization to maintain operations while keeping the attacker blocked. These actions prepare the environment for eradication.
@@ -215,12 +244,15 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+| Cloud managed identity contained | Attempt privileged cloud API action using affected principal or session | API call denied; no new control-plane actions in cloud audit logs |
+| Metadata-service access blocked or hardened | Attempt metadata token retrieval from affected workload path | Metadata token request fails or requires hardened metadata controls |
 
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
 - New compromised accounts appearing after credential reset
 - Attacker activity from systems outside the containment perimeter
 - New persistence mechanisms deployed after containment actions
+- Continued cloud API activity from a supposedly contained managed identity, instance profile, service account, or assumed role
 
 If containment fails, escalate to full network isolation and engage external incident response support.
 
@@ -278,6 +310,11 @@ threat severity and business criticality, and expected impact on operations.]
 | Action | Target | ATT&CK Technique Countered | Status | Owner | ETA |
 |---|---|---|---|---|---|
 | [Action] | [System/Account/Network] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] |
+
+### Cloud Identity and Metadata-Service Containment
+| Principal/Workload | Managed Identity Action | Metadata-Service Control | Session/Token Invalidation | Cloud Audit Evidence | Validation Result |
+|---|---|---|---|---|---|
+| [instance/profile/service-account/workload] | [detach/disable/re-scope] | [blocked/hardened/exception] | [revoked/expired/denied] | [CloudTrail/Activity Logs/Audit Logs reference] | [metadata/API call denied] |
 
 ### Long-Term Containment Actions
 | Action | Target | Duration | Status | Owner |
@@ -348,6 +385,10 @@ Disconnecting a business-critical production system from the network stops the a
 
 Implementing containment actions without verifying they work is a common failure mode. Firewall rules may not apply to the correct interface or direction. DNS sinkholes may not affect systems using hardcoded DNS servers. Credential resets may not invalidate existing Kerberos tickets. After every containment action, validate effectiveness through monitoring -- confirm that the specific attacker activity the action was intended to block has actually stopped.
 
+### Pitfall 5: Treating Host Isolation as Cloud Identity Containment
+
+Stopping, quarantining, or firewalling a cloud workload does not necessarily revoke tokens already minted from its metadata service or remove permissions attached to its managed identity. For SSRF, web shell, or container escape incidents, include metadata-service restrictions, identity detachment or re-scoping, session invalidation, and cloud audit validation.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -376,3 +417,6 @@ This skill processes incident data including attacker-controlled indicators (IP 
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+13. **AWS EC2 Instance Metadata Service Configuration** -- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
+14. **Azure Instance Metadata Service** -- https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service
+15. **Google Cloud VM Metadata** -- https://cloud.google.com/compute/docs/metadata/overview
