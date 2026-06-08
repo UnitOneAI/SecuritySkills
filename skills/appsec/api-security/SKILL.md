@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -41,6 +41,19 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
+**Authorization evidence matrix:** for every endpoint or GraphQL operation that reads, modifies, deletes, exports, or administers user or tenant data, document object-level and function-level authorization evidence before marking API1:2023 or API5:2023 as passing.
+
+| Endpoint/Operation | Object/Resource | Actor Role | Ownership/Tenant Context | Expected Decision | Actual Decision | Evidence | API Risk | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [method path / GraphQL operation] | [object type/id pattern] | [anonymous/user/admin/service] | [own object/other user's object/cross-tenant/admin scope] | [Allow/Deny] | [Allow/Deny/Unknown] | [test case, spec rule, policy file, middleware, resolver, or route guard] | [API1/API5] | [gaps] |
+
+For BOLA and BFLA review:
+- Include at least one positive case and one negative case for each sensitive object or privileged operation.
+- Verify same-tenant own-object access, same-tenant other-object access, cross-tenant access, anonymous access, and lower-privilege role access where applicable.
+- Record the concrete enforcement point such as route middleware, resolver guard, policy engine rule, ownership predicate, or service-layer check.
+- Treat undocumented or untestable decisions as `Unknown`, not as passing evidence.
+- If the negative case succeeds, if enforcement only exists in the client/UI, or if object ownership is not checked server-side, report API1/API5 with the matrix row as evidence.
+
 ---
 
 ## Steps 2-11: OWASP API Security Top 10:2023 Evaluation (API1-API10)
@@ -66,6 +79,9 @@ Each finding produced by this review must include the following fields:
 | **Location** | File path and line number(s), or OpenAPI spec path |
 | **Description** | What the vulnerability is and why it matters |
 | **Evidence** | Relevant code snippet or spec excerpt demonstrating the issue |
+| **Authorization Matrix Row** | Endpoint, role, object/tenant context, expected decision, actual decision, and evidence supporting API1/API5 findings |
+| **Positive/Negative Test Evidence** | Passing allowed-access case and denied unauthorized-access case, or rationale when direct testing is not possible |
+| **Enforcement Point** | Route middleware, resolver guard, service-layer policy, ownership predicate, or gateway rule that should enforce the decision |
 | **Remediation** | Specific fix with code example where possible |
 | **Status** | Open, Mitigated, Accepted Risk, False Positive |
 
@@ -92,7 +108,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -125,10 +141,18 @@ The final review output must be structured as follows:
   ```[language]
   [code snippet]
   ```
+- **Authorization Matrix Row:** [endpoint/operation | role | object/tenant context | expected decision | actual decision | evidence]
+- **Positive/Negative Test Evidence:** [allowed case and denied case, or rationale if unavailable]
+- **Enforcement Point:** [middleware/resolver guard/service-layer policy/ownership predicate/gateway rule]
 - **Remediation:** [specific fix with code example]
 - **Status:** Open
 
 [Repeat for each finding]
+
+### Authorization Evidence Matrix
+| Endpoint/Operation | Object/Resource | Actor Role | Ownership/Tenant Context | Expected Decision | Actual Decision | Evidence | API Risk | Notes |
+|---|---|---|---|---|---|---|---|---|
+| [method path / GraphQL operation] | [object type/id pattern] | [role] | [own object/other object/cross-tenant/admin scope] | [Allow/Deny] | [Allow/Deny/Unknown] | [test/spec/policy/middleware/resolver] | [API1/API5] | [notes] |
 ```
 
 ---
@@ -207,13 +231,15 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 2. **Relying solely on API gateway controls.** API gateways can enforce rate limiting, authentication, and coarse-grained authorization, but they cannot enforce object-level authorization, property-level filtering, or business logic protections. These controls must be implemented in the application layer.
 
-3. **Treating GraphQL as inherently different from REST for security.** GraphQL shares all the same authorization, authentication, and injection risks as REST. The query language adds additional concerns (depth attacks, introspection, alias abuse) but does not eliminate any REST security requirements.
+3. **Marking BOLA/BFLA as passing without negative authorization evidence.** A route guard or OpenAPI security scheme does not prove object-level or function-level authorization. Record an authorization matrix with own-object, other-object, cross-tenant, anonymous, and lower-privilege cases where applicable, and verify that denied cases fail server-side.
 
-4. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification.
+4. **Treating GraphQL as inherently different from REST for security.** GraphQL shares all the same authorization, authentication, and injection risks as REST. The query language adds additional concerns (depth attacks, introspection, alias abuse) but does not eliminate any REST security requirements.
 
-5. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
+5. **Testing only documented endpoints.** Shadow APIs -- endpoints that exist in code but are absent from documentation -- are among the most common sources of vulnerabilities. Always compare the routing table in code against the published API specification.
 
-6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
+6. **Applying rate limiting only to authentication endpoints.** Every API endpoint requires rate limiting proportional to its cost and sensitivity. Data-heavy endpoints, search functions, and export operations are frequent targets for abuse even when properly authenticated.
+
+7. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
 ---
 
