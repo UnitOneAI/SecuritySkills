@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -118,14 +118,26 @@ Analyze EPSS score trajectory to identify vulnerabilities with increasing exploi
 
 1. Retrieve current EPSS score and percentile for each CVE
 2. Compare against 7-day, 30-day, and 90-day historical scores (EPSS API: `https://api.first.org/data/v1/epss?cve=[CVE-ID]`)
-3. Calculate the trend direction and magnitude
+3. Calculate the trend direction, magnitude, percentile movement, and history quality
 
 #### EPSS Trend Classification
 
+Relative EPSS movement is useful only after the current probability, absolute delta, and history quality are meaningful. Treat relative-only growth from near-zero baselines as a monitoring signal, not an automatic SLA escalation. FIRST EPSS is a probability input for risk-based vulnerability management; SSVC remains the primary action driver.
+
+Before classifying a relative increase as `Surging` or `Rising`, require all of the following evidence:
+
+- Current EPSS score is above the local action floor (default: `>= 0.01` for relative `Rising`, `>= 0.05` for relative `Surging`).
+- Absolute 30-day delta is above the local movement floor (default: `>= 0.005` for relative `Rising`, `>= 0.02` for relative `Surging`).
+- 30-day prior score is non-zero, present, and from a fresh source date.
+- Percentile movement supports the probability change, or the report explains why percentile is unavailable.
+- SSVC factors, KEV status, exploit intelligence, asset exposure, or human impact support any SLA escalation recommendation.
+
 | Trend | Definition | Action |
 |---|---|---|
-| **Surging** | EPSS increased by >= 0.2 (absolute) or >= 200% (relative) in 30 days | Escalate one SLA tier immediately; flag for out-of-cycle patching |
-| **Rising** | EPSS increased by >= 0.05 (absolute) or >= 50% (relative) in 30 days | Monitor closely; prepare patch for next available window |
+| **Surging** | EPSS increased by >= 0.2 absolute in 30 days, or relative growth >= 200% with current EPSS and absolute-delta floors satisfied | Escalate one SLA tier only when supported by SSVC, KEV, exploit intelligence, exposure, or local policy; otherwise flag for urgent review |
+| **Rising** | EPSS increased by >= 0.05 absolute in 30 days, or relative growth >= 50% with current EPSS and absolute-delta floors satisfied | Monitor closely; prepare patch for next available window |
+| **Low-Baseline Monitor** | Relative growth threshold is met, but current EPSS, absolute delta, or percentile movement remains below the local action floor | Maintain current SSVC-driven SLA; monitor continued growth and document the low absolute probability |
+| **Insufficient History** | 30-day prior EPSS is missing, zero, stale, first-seen, or otherwise unsuitable for relative-change calculation | Do not classify as Surging/Rising from relative change; collect fresh history and use current EPSS, KEV, SSVC, and exposure |
 | **Stable** | EPSS change < 0.05 in 30 days | Maintain current SLA tier |
 | **Declining** | EPSS decreased by >= 0.05 in 30 days | May support risk acceptance for Scheduled/Defer tier findings |
 
@@ -136,8 +148,14 @@ EPSS Trend Analysis:
 - 7-day prior EPSS:    [score]
 - 30-day prior EPSS:   [score]
 - 90-day prior EPSS:   [score]
-- Trend:               [Surging | Rising | Stable | Declining]
-- Trend Impact:        [Escalate tier | Monitor | Maintain | Supports deferral]
+- Absolute Delta:      [current - 30-day prior]
+- Relative Delta:      [% change or Not Calculable]
+- Percentile Movement: [increase/decrease/no material movement]
+- History Status:      [Complete | Missing | Zero Baseline | Stale | First Seen]
+- Source Date:         [YYYY-MM-DD]
+- Trend:               [Surging | Rising | Low-Baseline Monitor | Insufficient History | Stable | Declining]
+- Trend Impact:        [Escalate tier | Urgent review | Monitor | Maintain | Supports deferral]
+- Escalation Basis:    [SSVC/KEV/exploit intelligence/exposure/local policy, or Not Applicable]
 ```
 
 ### Step 4: Compensating Controls Assessment
@@ -278,7 +296,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Patch Prioritization Report
 **Date:** [YYYY-MM-DD]
-**Skill:** patch-prioritization v1.0.0
+**Skill:** patch-prioritization v1.0.1
 **Frameworks:** SSVC 2.1, EPSS v3, CISA KEV
 **Reviewer:** AI-assisted (human review required for P0/P1 actions and risk acceptances)
 
@@ -303,9 +321,9 @@ findings requiring immediate action.]
 ### EPSS Trend Alerts
 [List any CVEs with Surging or Rising EPSS trends and recommended tier adjustments]
 
-| CVE ID | Current EPSS | 30-day Prior | Trend | Recommended Action |
-|---|---|---|---|---|
-| [CVE-ID] | [score] | [score] | [Surging/Rising] | [Action] |
+| CVE ID | Current EPSS | 30-day Prior | Absolute Delta | Relative Delta | Percentile Movement | History Status | Trend | Recommended Action |
+|---|---|---|---|---|---|---|---|---|
+| [CVE-ID] | [score] | [score] | [delta] | [% or Not Calculable] | [movement] | [Complete/Missing/Zero Baseline/Stale/First Seen] | [Surging/Rising/Low-Baseline Monitor/Insufficient History] | [Action] |
 
 ### Prioritized Patch Schedule
 
@@ -370,9 +388,13 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 
 3. **Allowing risk exceptions to auto-renew without review.** Risk acceptances that roll over indefinitely create a shadow backlog of unpatched vulnerabilities. Every exception must have a hard expiration date and mandatory re-evaluation. Track exception aging as a KPI and report to leadership quarterly.
 
-4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
+4. **Ignoring EPSS trend direction.** A CVE with a meaningful absolute EPSS increase (e.g., from 0.02 to 0.15 in two weeks) can signal that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
 
-5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+5. **Escalating near-zero EPSS baselines from relative change alone.** A score moving from `0.0005` to `0.0016` may be a large percentage increase while still representing a very low absolute probability. Do not let relative-only movement override SSVC, exposure, KEV, exploit intelligence, or local policy floors.
+
+6. **Treating missing EPSS history as a trend.** New, zero-baseline, stale, or unavailable historical EPSS data should produce `Insufficient History`, not `Surging`. Use current EPSS, KEV, SSVC, and asset context until enough history is available.
+
+7. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
 
 ---
 
@@ -400,3 +422,10 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 - ISO 27005:2022 (Risk Treatment): https://www.iso.org/standard/80585.html
 - PCI DSS 4.0 Requirement 6.3.3: https://www.pcisecuritystandards.org/
 - ITIL 4 Change Enablement: https://www.axelos.com/certifications/itil-service-management
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added EPSS trend guardrails for near-zero baselines, missing or stale history, relative-change policy floors, percentile movement, source freshness, and SSVC-supported SLA escalation decisions.
+- **1.0.0** -- Initial release. SSVC 2.1, EPSS v3, CISA KEV, compensating controls, patch scheduling, and risk exception workflow.
