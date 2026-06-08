@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -113,6 +113,21 @@ Evaluate all container and Kubernetes configurations against CIS Docker Benchmar
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
+### Step 6b: Policy Exception Evidence Gate
+
+When Pod Security Admission, OPA/Gatekeeper, Kyverno, admission webhooks, or namespace policy labels are present, check whether any workload, namespace, image, service account, or policy violation is exempted from enforcement.
+
+For every exception, record:
+
+- **Exception mechanism:** Namespace label, policy exclude block, webhook bypass, constraint exemption, Helm value override, annotation, or admission controller configuration.
+- **Scope:** Exact namespace, workload, service account, image, capability, host namespace, hostPath, hostPort, or RBAC permission covered by the exception.
+- **Owner and approval:** Named business/system owner, security approver, ticket, change request, or risk acceptance record.
+- **Expiration:** Review date or expiry date. Treat exceptions without expiry as persistent risk.
+- **Compensating controls:** NetworkPolicy, runtime detection, read-only root filesystem, restricted RBAC, image signing, monitoring, or other controls that reduce the exception risk.
+- **Enforcement evidence:** Whether the policy engine still blocks non-exempt resources and whether dry-run/audit mode findings are reviewed.
+
+Do not mark a policy domain as passing solely because a policy engine exists. Broad, ownerless, or non-expiring exceptions should be reported as findings because they can nullify the intended CIS and Pod Security Standard controls.
+
 ---
 
 ### Step 7: Compile Assessment Report
@@ -184,6 +199,12 @@ Produce the final report using the structure defined in the Output Format sectio
 |----------|-----------|-----------|------------|
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
+
+### Policy Exception Evidence
+
+| Policy Engine / Control | Exception Mechanism | Scope | Owner / Approval | Expiration | Compensating Controls | Enforcement Evidence | Risk |
+|---|---|---|---|---|---|---|---|
+| [PSA/Gatekeeper/Kyverno/webhook] | [label/exclude/annotation/override] | [namespace/workload/image/SA] | [owner/ticket] | [date/none] | [controls] | [audit/block evidence] | [Low/Medium/High] |
 
 ### Prioritized Remediation Plan
 
@@ -257,6 +278,7 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Policy engines can be neutralized by exceptions.** Pod Security Admission, Gatekeeper, Kyverno, and custom webhooks only help when exceptions are narrow, owned, expiring, and monitored. Treat broad namespace exemptions or permanent exclude rules as findings, not as evidence of control coverage.
 
 ---
 
