@@ -6,13 +6,13 @@ description: >
   or security program maturity. Walks through all Common Criteria (CC1-CC9) plus
   selected additional criteria, identifies gaps, and produces a remediation
   roadmap with evidence requirements and 90-day action plan.
-tags: [compliance, soc2, audit]
+tags: [compliance, soc2, audit, change-management]
 role: [vciso, security-engineer]
 phase: [assess, operate]
 frameworks: [AICPA-TSC, NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -318,7 +318,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - [ ] Implement formal access provisioning and deprovisioning procedures (CC6.1, CC6.2, CC6.3, CC6.5)
 - [ ] Conduct initial quarterly access review (CC6.1)
 - [ ] Deploy centralized logging and SIEM or log aggregation (CC7.1, CC7.2)
-- [ ] Implement change management controls in CI/CD pipeline (CC8.1)
+- [ ] Implement change management controls in CI/CD pipeline (CC8.1)`n- [ ] Collect emergency-change rollback, abort criteria, segregation-of-duties, retroactive approval SLA, and post-implementation review evidence for sampled emergency changes (CC8.1)
 - [ ] Document and publish incident response plan (CC7.3, CC7.4)
 - [ ] Initiate vendor inventory and begin collecting vendor SOC 2 reports (CC9.2)
 - [ ] Conduct initial risk assessment (CC3.2)
@@ -368,7 +368,13 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
 6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
 7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+7. **Emergency Change Evidence Matrix**: For any emergency production changes in the audit period, include sampled CC8.1 evidence with rollback, abort criteria, segregation-of-duties, approval SLA, validation, and post-implementation review status.
 
+
+### Emergency Change Evidence Matrix (CC8.1)
+| Change ID | Emergency Reason | Incident/Risk Link | Approval Evidence | SoD Evidence | Validation Evidence | Rollback / Abort Evidence | Post-Implementation Review | Finding ID / Status |
+|---|---|---|---|---|---|---|---|---|
+| [CHG-ID] | [reason] | [incident/vuln/outage/customer impact] | [pre/retro approval + SLA] | [requester/approver/deployer/verifier] | [CI/smoke/health evidence] | [specific rollback + abort criteria] | [reviewer/date/follow-up] | [Pass or SOC2-CC8-EMERG-*] |
 ## Prompt Injection Safety Notice
 
 This skill processes user-supplied content including compliance documentation, policies, and configuration files. The agent must adhere to the following safety constraints:
@@ -384,7 +390,7 @@ This skill processes user-supplied content including compliance documentation, p
 ## Cross-References
 
 - **NIST CSF 2.0 Mapping**: CC1-CC2 maps to Govern (GV), CC3 to Identify (ID), CC5-CC6 to Protect (PR), CC7 to Detect (DE) and Respond (RS), CC7.5 to Recover (RC).
-- **ISO 27001:2022**: CC6 maps to Annex A.8 (Technology Controls), CC8 maps to Annex A.8.32 (Change Management), CC9.2 maps to Annex A.5.19-5.22 (Supplier Relationships).
+- **ISO 27001:2022**: CC6 maps to Annex A.8 (Technology Controls), CC8 maps to Annex A.8.32 (Change Management), CC9.2 maps to Annex A.5.19-5.22 (Supplier Relationships).`n- **ITIL Change Enablement**: Emergency changes should retain authorization, implementation, rollback, and post-implementation review evidence even when the workflow is expedited.
 - **CIS Controls v8**: CC6.1 maps to CIS Control 6 (Access Control Management), CC6.8 maps to CIS Control 10 (Malware Defenses), CC7.1 maps to CIS Control 7 (Continuous Vulnerability Management).
 
 ## Limitations
@@ -393,3 +399,10 @@ This skill processes user-supplied content including compliance documentation, p
 - The gap analysis is based on information available in the codebase and documentation. It cannot assess controls that exist only in human processes without documentation.
 - Scoring is subjective and should be validated by the organization's security leadership and, ideally, a qualified auditor.
 - This analysis uses the 2017 AICPA Trust Services Criteria (with 2022 updates). Verify with your auditor that these criteria are current for your engagement.
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added CC8.1 emergency-change rollback, segregation-of-duties, retroactive approval, and post-implementation review evidence gates.
+- **1.0.0** -- Initial SOC 2 Type II readiness gap analysis workflow.
