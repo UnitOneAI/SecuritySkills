@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -83,6 +83,15 @@ Gather all data associated with the alert. Do not make a disposition decision un
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
 
 ### Phase 2: Correlate
+
+
+For phishing alerts with images, PDFs, screenshots, QR codes, or visual lures, collect safe visual payload evidence and identity correlation before closing as false positive.
+
+| Alert | Visual Payload | Safe Extraction Method | Decoded Destination | Recipient Scope | URL Telemetry | Identity / MFA Correlation | Mobile / Unmanaged Risk | Disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[alert id]` | `[attachment/image/QR]` | `[sandbox/OCR/QR decoder]` | `[domain/url/category]` | `[users/groups]` | `[click/rewrite evidence]` | `[sign-in, MFA, impossible travel]` | `[risk note]` | `TP / BTP / FP / Unknown` |
+
+Mark `Unknown` when no text URL is present but visual payloads were not safely extracted or correlated with identity events.
 
 Connect the alert data with surrounding context to build a picture of what happened.
 
@@ -223,6 +232,12 @@ Produce the triage decision as a structured report:
 | **Confidence** | [High / Medium / Low] |
 | **Escalation Required** | [Yes -- to IR team / Yes -- to Tier 2 / No] |
 
+### Visual Phishing Evidence
+
+| Alert | Payload | Extraction | Destination | Recipients | URL Telemetry | Identity Correlation | Mobile Risk | Disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[alert]` | `[payload]` | `[method]` | `[dest]` | `[scope]` | `[evidence]` | `[evidence]` | `[risk]` | `TP / BTP / FP / Unknown` |
+
 ### Evidence Summary
 1. [Key finding 1 -- what was observed]
 2. [Key finding 2 -- corroborating or contradicting evidence]
@@ -320,6 +335,10 @@ Investigating an alert in isolation without checking for activity before and aft
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
 ---
+
+### Pitfall 6: Closing Visual Phishing Without Payload Extraction
+
+No text URL or enterprise click event is not enough to close QR, image-only, or PDF phishing when unmanaged mobile scanning and identity events may show compromise.
 
 ## 8. Prompt Injection Safety Notice
 
