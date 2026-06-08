@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-ASVS, CWE-Top-25, OWASP-Top-10]
 difficulty: intermediate
 time_estimate: "15-45min per module"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -406,6 +406,16 @@ Remediation: Validate the URL scheme (allow only `https`), resolve the hostname 
 
 ---
 
+## SSRF URL Parser and Redirect Evidence Gates
+
+For SSRF review, validate the full fetch path rather than only the initially submitted URL. Parser differentials, redirect chains, DNS rebinding, alternate IP encodings, and metadata endpoints must be explicitly covered.
+
+| Entry Point | Canonical Parser Shared | Redirect Revalidation | DNS / Final IP Pinning | Private / Link-Local Deny | Metadata Endpoint Deny | Alternate IP Encoding Tests | Protocol / Method Control | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[route, job, importer, webhook, previewer]` | `[validator and client parser evidence]` | `[30x target validation]` | `[resolver and TOCTOU evidence]` | `[loopback, RFC1918, multicast, IPv6 mapped]` | `[AWS/Azure/GCP metadata]` | `[decimal, octal, hex, dotted integer]` | `[scheme/method allowlist]` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when validation and fetch code parse URLs differently, follow redirects without revalidation, or allow internal/metadata targets after DNS resolution.
+
 ## Findings Classification
 
 Each finding produced by this review must include the following fields:
@@ -455,6 +465,12 @@ The final review output must be structured as follows:
 - Informational: [count]
 
 ### Findings
+
+##### SSRF Fetch-Path Evidence
+
+| Parser Consistency | Redirect Revalidation | DNS / IP Evidence | Metadata Deny | Alternate Encoding Tests | Protocol Control | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| `[evidence]` | `[evidence]` | `[evidence]` | `[evidence]` | `[tests]` | `[control]` | `Pass / Fail / Unknown` |
 
 #### SCR-001: [Title]
 - **Severity:** [Critical|High|Medium|Low|Informational]
@@ -528,6 +544,8 @@ The final review output must be structured as follows:
 | CWE-306 | Missing Authentication for Critical Function | Step 3 |
 
 ---
+
+- Reviewing SSRF controls only against the initial URL while skipping parser consistency, redirect revalidation, DNS rebinding, alternate IP encodings, and metadata endpoint blocking.
 
 ## Common Pitfalls
 
