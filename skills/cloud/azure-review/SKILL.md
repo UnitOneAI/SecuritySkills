@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -88,6 +88,31 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### App Service Deployment-Plane Basic Authentication Evidence
+
+For every App Service, Function App, and deployment slot in scope, verify the deployment plane separately from the application runtime. Disabling FTP traffic or enabling App Service Authentication on the app does not prove that basic publishing credentials are disabled for SCM/Kudu, WebDeploy, Local Git, ZipDeploy, or FTP publishing endpoints.
+
+Require evidence for:
+
+1. **SCM/Kudu basic auth policy** -- `Microsoft.Web/sites/basicPublishingCredentialsPolicies/scm` exists with `properties.allow = false`, or the equivalent AzureRM field disables WebDeploy/SCM publishing basic auth.
+2. **FTP publishing basic auth policy** -- `Microsoft.Web/sites/basicPublishingCredentialsPolicies/ftp` exists with `properties.allow = false`, or the equivalent AzureRM field disables FTP publishing basic auth.
+3. **Slots and Function Apps** -- the same policies are evaluated for deployment slots and function apps, not only production web apps.
+4. **Deployment method replacement** -- CI/CD uses Entra ID/OIDC, managed identity, service principal federation, or another non-basic deployment path before disabling publishing credentials.
+5. **Credential exposure and rotation** -- publish profiles, Local Git credentials, WebDeploy credentials, and stored pipeline secrets are rotated or invalidated after disabling basic auth.
+6. **Policy coverage** -- Azure Policy, Defender for Cloud recommendations, or configuration exports prove the setting is enforced across subscriptions and resource groups.
+
+Use this output table when App Service resources exist:
+
+| App/Slot | Resource Type | SCM Basic Auth | FTP Basic Auth | Deployment Method | Publish Profile Exposure | Policy Evidence | Status |
+|---|---|---|---|---|---|---|---|
+| `[name]` | `[web/function/slot]` | `[disabled/enabled/unknown]` | `[disabled/enabled/unknown]` | `[OIDC/managed identity/SP/basic]` | `[none/rotated/exposed/unknown]` | `[policy/export/file]` | `[pass/fail/not evaluable]` |
+
+Severity guidance:
+
+- **High:** SCM/Kudu or WebDeploy basic auth remains enabled on production or internet-exposed apps, especially when publish profiles or deployment credentials are stored in CI/CD secrets.
+- **Medium:** FTP publishing basic auth remains enabled, slots are not evaluated, or deployment credentials were not rotated after policy changes.
+- **Low:** Evidence is missing for policy enforcement in non-production subscriptions where runtime access is otherwise restricted.
+- **Not Evaluable:** App Service resources are present but the review lacks basic publishing credential policy exports or IaC definitions.
 
 ---
 
@@ -183,7 +208,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | 6 | Networking | NSG rules (RDP, SSH, UDP, HTTP), flow log retention, traffic analytics |
 | 7 | Virtual Machines | Azure Bastion, managed disks, disk encryption with CMK, approved extensions, endpoint protection |
 | 8 | Key Vault | Key/secret expiration, soft delete, purge protection, RBAC authorization, private endpoints |
-| 9 | App Service | Authentication, HTTPS redirect, TLS version, client certificates, Entra ID registration, HTTP/2, FTP disabled |
+| 9 | App Service | Authentication, HTTPS redirect, TLS version, client certificates, Entra ID registration, HTTP/2, FTP disabled, SCM/FTP basic publishing credentials disabled |
 
 ### CIS Profile Levels
 
@@ -200,6 +225,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Confusing runtime authentication with deployment-plane authentication.** App Service Authentication protects the hosted application. It does not prove that SCM/Kudu, WebDeploy, Local Git, ZipDeploy, or FTP basic publishing credentials are disabled.
 
 ---
 
@@ -225,10 +251,13 @@ Produce the final report using the structure defined in the Output Format sectio
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
+- Disable Basic Authentication for Azure App Service Deployment: https://learn.microsoft.com/en-us/azure/app-service/configure-basic-auth-disable
+- Microsoft.Web/sites/basicPublishingCredentialsPolicies Resource: https://learn.microsoft.com/en-us/azure/templates/microsoft.web/sites/basicpublishingcredentialspolicies
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added App Service deployment-plane basic publishing credential evidence gates for SCM/Kudu and FTP.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.

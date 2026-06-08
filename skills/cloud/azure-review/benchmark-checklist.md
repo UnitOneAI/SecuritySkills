@@ -704,3 +704,69 @@ resource "azurerm_linux_web_app" {
   }
 }
 ```
+
+### Additional App Service Gate -- Disable SCM and FTP Basic Publishing Credentials
+
+FTP disabled is not enough by itself. Review the App Service deployment plane and verify that basic publishing credentials are disabled for both SCM/Kudu/WebDeploy and FTP publishing. Apply the same check to Linux web apps, Windows web apps, Function Apps, and deployment slots.
+
+AzureRM examples:
+
+```hcl
+resource "azurerm_linux_web_app" "example" {
+  ftp_publish_basic_authentication_enabled       = false
+  webdeploy_publish_basic_authentication_enabled = false
+}
+
+resource "azurerm_windows_web_app" "example" {
+  ftp_publish_basic_authentication_enabled       = false
+  webdeploy_publish_basic_authentication_enabled = false
+}
+```
+
+ARM/Bicep/AzAPI evidence should show both `ftp` and `scm` child policies with `allow = false`:
+
+```bicep
+resource scmPolicy 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2024-04-01' = {
+  parent: webApp
+  name: 'scm'
+  properties: {
+    allow: false
+  }
+}
+
+resource ftpPolicy 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2024-04-01' = {
+  parent: webApp
+  name: 'ftp'
+  properties: {
+    allow: false
+  }
+}
+```
+
+Live-environment evidence:
+
+```bash
+az resource show \
+  --resource-group <resource-group> \
+  --namespace Microsoft.Web \
+  --resource-type basicPublishingCredentialsPolicies \
+  --parent sites/<app-name> \
+  --name scm \
+  --query properties.allow
+
+az resource show \
+  --resource-group <resource-group> \
+  --namespace Microsoft.Web \
+  --resource-type basicPublishingCredentialsPolicies \
+  --parent sites/<app-name> \
+  --name ftp \
+  --query properties.allow
+```
+
+Review checklist:
+
+- [ ] Both SCM and FTP basic publishing credential policies are explicitly disabled.
+- [ ] Web apps, Function Apps, and deployment slots are all in scope.
+- [ ] CI/CD deployment uses Entra ID/OIDC, managed identity, or federated service principal authentication instead of publish-profile basic auth.
+- [ ] Publish profiles, Local Git credentials, WebDeploy credentials, and stored deployment secrets are rotated or invalidated after disabling basic auth.
+- [ ] Azure Policy, Defender for Cloud, or configuration exports prove the setting is enforced across subscriptions and resource groups.
