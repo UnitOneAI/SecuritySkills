@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -89,6 +89,26 @@ Also locate supporting configuration:
 
 Record all discovered files. If no AWS configurations are found, report that finding and halt.
 
+Build an evidence inventory before scoring controls:
+
+```
+| Evidence Source | Type | Account/Region Coverage | Export/Observation Date | Controls Supported | Limitations |
+|-----------------|------|-------------------------|-------------------------|--------------------|-------------|
+| terraform/*.tf | IaC | [accounts/regions] | [git commit/date] | [CIS IDs] | [live drift unknown] |
+| aws-cli-output.json | CLI export | [accounts/regions] | [timestamp] | [CIS IDs] | [missing services/regions] |
+```
+
+For each control, distinguish between:
+- **IaC intent:** desired state from Terraform, CloudFormation, CDK, or policy files
+- **Live/exported state:** AWS CLI, Security Hub, Config, or console export evidence
+- **Partial evidence:** only some accounts, regions, services, or resource types covered
+- **Missing evidence:** no reliable artifact for the control
+
+Do not mark a control as Pass when the only evidence is stale, partial, or an
+unvalidated IaC declaration for an environment where live drift is in scope.
+Use Not Evaluable or document a lower-confidence result until current evidence
+covers the assessed account and region set.
+
 ---
 
 ### Step 2 through Step 6: CIS Benchmark Evaluation (Sections 1-5)
@@ -102,6 +122,12 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 ### Step 7: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
+
+Before finalizing, verify that every Passed or Failed control references a
+specific evidence source from the inventory, including the evidence type,
+account/region coverage, and freshness. If multiple evidence sources conflict,
+prefer current live/exported state for deployed environments and record the IaC
+drift or documentation mismatch as a finding.
 
 ---
 
@@ -127,6 +153,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Framework: CIS Amazon Web Services Foundations Benchmark v3.0.0
 - Files reviewed: <list of IaC files>
+- Evidence basis: <IaC / CLI export / live configuration / mixed>
+- Evidence freshness: <export dates or git commit range>
+- Account/Region coverage: <accounts and regions assessed>
+- Evidence limitations: <missing accounts, regions, services, or live-state gaps>
 
 ### Executive Summary
 - Total CIS recommendations evaluated: <N>/62
@@ -156,6 +186,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Evidence Source:** <IaC file / CLI export / Security Hub / AWS Config / live observation>
+- **Evidence Date:** <timestamp, commit, or observation date>
+- **Coverage:** <account(s), region(s), services, sample size>
+- **Confidence:** High / Medium / Low
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -200,6 +234,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Treating IaC as proof of deployed AWS state without freshness checks.** Terraform or CloudFormation shows intended configuration, not necessarily the live account. When drift, console changes, partial regional exports, or stale CLI output are possible, record the evidence limitation and lower the confidence instead of presenting the control as fully verified.
 
 ---
 
@@ -231,4 +266,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added evidence source, freshness, coverage, and confidence gates for AWS CIS review conclusions.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
