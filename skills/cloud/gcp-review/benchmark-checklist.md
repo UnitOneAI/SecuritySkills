@@ -534,6 +534,61 @@ resource "google_compute_instance" {
 
 ---
 
+
+### Supplemental -- Custom Image and Snapshot IAM Sharing Gates
+
+These checks supplement VM and storage controls because images and snapshots can expose disk-derived data even when running VMs are private and encrypted.
+
+**Custom image IAM policies:**
+
+```bash
+gcloud compute images list \
+  --project=IMAGE_PROJECT_ID \
+  --no-standard-images \
+  --format='table(name,family,status,creationTimestamp,archiveSizeBytes)'
+
+gcloud compute images get-iam-policy IMAGE_NAME \
+  --project=IMAGE_PROJECT_ID \
+  --format=json
+```
+
+Fail when `roles/compute.imageUser` is granted to `allAuthenticatedUsers`, unapproved domains, or external groups for production-derived, sensitive, or unknown-sensitivity images. Record owner, approval, expiration/review date, and sanitization evidence for approved sharing.
+
+**Snapshot IAM policies:**
+
+```bash
+gcloud compute snapshots list \
+  --project=PROJECT_ID \
+  --format='table(name,diskSizeGb,storageLocations,status,creationTimestamp)'
+
+gcloud compute snapshots get-iam-policy SNAPSHOT_NAME \
+  --project=PROJECT_ID \
+  --format=json
+```
+
+Fail when snapshots are shared outside approved projects, groups, or service accounts without data-sensitivity, sanitization, owner, and review evidence. Treat snapshot IAM separately from VM disk CMEK and instance network posture.
+
+**Project-level discoverability and inherited access:**
+
+```bash
+gcloud projects get-iam-policy IMAGE_PROJECT_ID \
+  --flatten='bindings[].members' \
+  --filter='bindings.role:(roles/viewer OR roles/browser OR roles/compute.imageUser)' \
+  --format='table(bindings.role,bindings.members)'
+```
+
+Review project Viewer/Browser grants because users may need project visibility to discover shared images in the console. Project-level `roles/compute.imageUser` can also grant access across many images, so record whether sharing is artifact-level or inherited.
+
+**Cloud Asset Inventory cross-check:**
+
+```bash
+gcloud asset search-all-iam-policies \
+  --scope=organizations/ORG_ID \
+  --query='policy:roles/compute.imageUser OR policy:allAuthenticatedUsers' \
+  --format=json
+```
+
+Mark Not Evaluable when image/snapshot inventory or IAM policy exports are unavailable. Do not infer a pass from private VMs, Shielded VM, disk CMEK, or absence of `allUsers`; custom images can be public to `allAuthenticatedUsers`.
 ## Section 5 -- Storage
 
 Evaluate Cloud Storage configurations against CIS GCP v2.0.0 Section 5 recommendations.
