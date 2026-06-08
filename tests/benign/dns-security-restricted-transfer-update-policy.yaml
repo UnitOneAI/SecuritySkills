@@ -1,0 +1,41 @@
+scenario: authoritative_zone_with_restricted_transfer_and_update_policy
+skill: dns-security
+expected_result: do_not_flag_authoritative_transaction_control_gap
+dns_config:
+  server: bind9-primary
+  zone: corp.example
+  zone_type: public_authoritative
+  named_conf: |
+    key "xfr-secondary-a" {
+      algorithm hmac-sha256;
+      secret "redacted";
+    };
+
+    key "dhcp-ddns-key" {
+      algorithm hmac-sha256;
+      secret "redacted";
+    };
+
+    zone "corp.example" {
+      type primary;
+      file "/etc/bind/zones/db.corp.example";
+      allow-transfer { key "xfr-secondary-a"; 192.0.2.53; };
+      update-policy {
+        grant "dhcp-ddns-key" subdomain "dynamic.corp.example" A TXT;
+      };
+      also-notify { 192.0.2.53 key "xfr-secondary-a"; };
+    };
+  dnssec:
+    signed: true
+    ds_record_published: true
+  transaction_controls:
+    tsig_for_axfr_ixfr: configured
+    approved_secondaries:
+      - 192.0.2.53
+    update_policy: scoped_by_key_subdomain_and_record_type
+    transfer_logging: enabled
+    failed_tsig_alerting: enabled
+why_this_should_pass: >
+  Zone transfer and dynamic update paths are restricted to approved secondaries
+  and scoped TSIG keys, with logging and failed-authentication alerting, so the
+  authoritative transaction-control evidence is sufficient.

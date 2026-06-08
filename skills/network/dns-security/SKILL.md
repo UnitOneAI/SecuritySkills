@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -153,6 +153,41 @@ dnssec
 - **Negative trust anchor (NTA) policy:** Document any NTAs that disable validation for specific domains. Each NTA must have a documented justification and expiration.
 
 **Finding classification:** DNSSEC validation disabled on recursive resolvers is **High**. Stale trust anchors are **Medium**. Undocumented NTAs are **Medium**.
+
+---
+
+#### 2.3 Authoritative DNS Transaction Controls (NIST SP 800-81 Rev 2, Sections 3 and 6)
+
+Authoritative DNS changes and replication paths must be authenticated and scoped. DNSSEC protects record integrity for validators, but it does not prevent unauthorized zone transfers, dynamic updates, or secondary-server synchronization abuse.
+
+For each authoritative zone, verify:
+
+- **Zone transfer ACLs:** `allow-transfer` is limited to approved secondary nameserver IPs or key names. Flag `allow-transfer { any; };` or missing ACLs on public authoritative zones.
+- **TSIG for AXFR/IXFR:** Full and incremental transfers use TSIG keys or an equivalent authenticated channel. Record key algorithm, key owner, rotation owner, and secondary server mapping.
+- **Dynamic update controls:** `allow-update` is not open to `any` or broad networks. Prefer `update-policy` rules scoped by TSIG key, record name, and record type.
+- **Notify/secondary inventory:** `also-notify`, `primaries`, and secondary server lists match the approved zone replication inventory. Unknown secondary targets are High severity.
+- **Split-horizon consistency:** Internal and external DNS views do not leak internal records through transfer ACL mistakes, shared secondary targets, or broad update rules.
+- **Change logging:** Zone transfers, dynamic updates, failed TSIG authentication, NOTIFY events, and serial changes are logged and monitored.
+
+**Patterns to check:**
+
+```
+# BAD: public zone data can be copied by anyone
+allow-transfer { any; };
+
+# BAD: unauthenticated dynamic updates
+allow-update { any; };
+
+# BETTER: transfers restricted to approved secondaries and TSIG key
+allow-transfer { key "xfr-secondary-a"; 192.0.2.53; };
+
+# BETTER: dynamic updates scoped to a key, name, and record type
+update-policy {
+    grant "dhcp-ddns-key" name "host1.example.com" A TXT;
+};
+```
+
+**Finding classification:** Open AXFR/IXFR on public authoritative zones is **Critical**. Unauthenticated or broad dynamic update is **Critical**. Missing TSIG on inter-organization zone transfers is **High**. Unknown secondary or NOTIFY targets are **High**. Missing transfer/update logging is **Medium**.
 
 ---
 
@@ -298,9 +333,9 @@ abcdef0123456789.dnscat.example.com TXT
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; public AXFR/IXFR; unauthenticated broad dynamic update. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; missing TSIG for inter-organization zone transfers; unknown secondary targets. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; missing transfer/update logging. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -327,6 +362,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### Authoritative Transaction Controls
+
+| Zone | Transfer ACL | TSIG | Dynamic Update Policy | Approved Secondaries | Logging | Status |
+|------|--------------|------|----------------------|----------------------|---------|--------|
+| example.com | Restricted/Open/Missing | Yes/No | Scoped/Open/Disabled | Matched/Unknown | Enabled/Disabled | Pass/Fail |
 
 ### Findings
 
@@ -384,6 +425,8 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Signing a zone while leaving transfers or updates open.** DNSSEC does not protect the authoritative server from leaking full zone contents via AXFR or accepting unauthorized dynamic updates. Treat `allow-transfer { any; };`, `allow-update { any; };`, missing TSIG, and unknown secondary targets as transaction-control failures even when DNSSEC validation succeeds.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -403,6 +446,10 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
+- RFC 1995 -- Incremental Zone Transfer in DNS: https://datatracker.ietf.org/doc/html/rfc1995
+- RFC 2136 -- Dynamic Updates in the Domain Name System: https://datatracker.ietf.org/doc/html/rfc2136
+- RFC 2845 -- Secret Key Transaction Authentication for DNS (TSIG): https://datatracker.ietf.org/doc/html/rfc2845
+- RFC 5936 -- DNS Zone Transfer Protocol (AXFR): https://datatracker.ietf.org/doc/html/rfc5936
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719

@@ -1,0 +1,29 @@
+scenario: authoritative_zone_with_open_transfer_and_update
+skill: dns-security
+expected_result: flag_authoritative_transaction_control_failure
+dns_config:
+  server: bind9-primary
+  zone: corp.example
+  zone_type: public_authoritative
+  named_conf: |
+    zone "corp.example" {
+      type primary;
+      file "/etc/bind/zones/db.corp.example";
+      allow-transfer { any; };
+      allow-update { any; };
+      also-notify { 198.51.100.77; };
+    };
+  dnssec:
+    signed: true
+    ds_record_published: true
+  transaction_controls:
+    tsig_for_axfr_ixfr: missing
+    approved_secondaries:
+      - 192.0.2.53
+    update_policy: missing
+    transfer_logging: disabled
+why_this_should_fail: >
+  DNSSEC is enabled, but the public authoritative zone permits unrestricted
+  AXFR/IXFR and unauthenticated dynamic updates. The unknown NOTIFY target and
+  missing TSIG/logging evidence should be treated as authoritative DNS
+  transaction-control failures.
