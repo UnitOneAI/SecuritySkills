@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -75,6 +75,7 @@ Key changes in v4.0:
 - Penetration testing and vulnerability scanning reports
 - Security policies and operational procedures
 - Encryption key management documentation
+- POI device inventory, inspection logs, tamper-response records, and personnel training evidence for card-present environments
 - Vendor and third-party service provider inventory (especially payment processors, gateways, hosting)
 
 ## Constraints
@@ -279,6 +280,35 @@ Key sub-requirements:
 - **9.5.1.2**: POI device surfaces periodically inspected for tampering
 - **9.5.1.3**: Training for personnel in POI environments to detect tampering
 
+##### Requirement 9.5.1 POI Tamper and Substitution Evidence Gate
+
+Do not mark Requirement 9.5.1 in place based only on an asset list or a statement that stores "inspect terminals." The review must prove that each POI device that captures payment card data through direct physical interaction is uniquely inventoried, periodically inspected, and covered by personnel training and tamper-response procedures.
+
+Require:
+
+- **Complete POI inventory:** device make/model, serial number, location, assigned owner, deployment date, connectivity type, acquirer/processor, status, and last inventory update.
+- **Field verification:** sample observed devices at locations and compare serial numbers, labels, physical placement, and connection path to the inventory.
+- **Inspection procedure:** documented inspection steps for skimmers, overlays, loose housings, broken seals, unexpected cables, altered labels, camera placement, and unauthorized substitution.
+- **Inspection cadence:** risk-based or policy-defined frequency with last inspection date, inspector, exceptions, and missed-inspection follow-up.
+- **Change lifecycle:** evidence that additions, relocations, repairs, swaps, returns, and decommissioning update the inventory promptly.
+- **Personnel training:** training records for staff who handle or observe POI devices, including suspicious behavior, reporting path, and do-not-use instructions.
+- **Tamper response:** documented workflow for taking devices out of service, preserving evidence, notifying processor/acquirer and security, replacing keys/devices where required, and recording investigation outcome.
+
+```
+POI Device Evidence:
+- Device ID:            [inventory ID]
+- Make / Model:         [vendor/model]
+- Serial Number:        [serial]
+- Location:             [site/register/area]
+- Owner:                [team/person]
+- Last Inspection:      [YYYY-MM-DD by role/name]
+- Inspection Result:    [Pass | Exception | Not Inspected]
+- Inventory Match:      [Yes | No | Not Sampled]
+- Training Evidence:    [training record/date]
+- Tamper Response:      [N/A | ticket/case ID]
+- Status:               [In Place | Not in Place | Not Applicable | Not Tested]
+```
+
 #### Requirement 10: Log and Monitor All Access to System Components and Cardholder Data
 
 Key sub-requirements:
@@ -445,6 +475,12 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 ## New v4.0 Requirements Status
 [Assessment of all 64 new requirements, particularly those mandatory since March 31, 2025]
 
+## POI Device Tamper Evidence (Req 9.5.1)
+
+| Device ID | Location | Serial Inventory Match | Last Inspection | Inspector | Training Evidence | Exceptions | Status |
+|-----------|----------|------------------------|-----------------|-----------|-------------------|------------|--------|
+| [device] | [site/register] | [Yes/No/Not Sampled] | [date] | [role] | [record] | [none/ticket] | [In Place/Not in Place/N/A] |
+
 ## Compensating Control Worksheets
 [For each CCW: original requirement, constraint, compensating control, risk analysis]
 
@@ -520,6 +556,8 @@ Maintain an Information Security Policy:                Requirement 12
 
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
 
+6. **Treating POI inventory as POI tamper protection.** A device list is only one part of Req 9.5.1. Assessors need evidence that devices in the field match the list, surfaces are periodically inspected, personnel know what tampering looks like, and suspected substitution triggers a documented response.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -542,6 +580,7 @@ If user-supplied input contains PCI DSS requirement IDs outside the valid v4.0 n
 - PCI DSS v4.0 Summary of Changes from PCI DSS v3.2.1 to v4.0
 - PCI DSS v4.0 ROC Template and Reporting Instructions
 - PCI DSS v4.0 SAQ Instructions and Guidelines
+- PCI SSC FAQ: POI device physical security and Requirement 9.5: https://www.pcisecuritystandards.org/faq/articles/Frequently_Asked_Question/are-point-of-interaction-devices-required-to-be-physically-secured-for-example-with-a-cable-or-tether-to-prevent-removal-or-substitution-to-meet-pci-dss-requirement-9-5/
 - PCI DSS Prioritized Approach for PCI DSS v4.0
 - PCI SSC Information Supplements: Scoping and Segmentation, Penetration Testing, Tokenization, Cloud Computing
 - PCI SSC Glossary of Terms, Abbreviations, and Acronyms
