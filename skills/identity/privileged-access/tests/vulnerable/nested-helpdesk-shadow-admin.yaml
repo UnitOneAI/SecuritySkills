@@ -1,0 +1,27 @@
+scenario: nested-helpdesk-shadow-admin
+platform: active-directory
+evidence_type: group_membership_export
+privileged_inventory:
+  named_admin_groups:
+    - Domain Admins
+    - Enterprise Admins
+  pam_onboarded_groups:
+    - Domain Admins
+group_paths:
+  - principal: helpdesk-tier2
+    nested_through:
+      - workstation-admins
+      - delegated-account-operators
+    effective_capabilities:
+      - reset_privileged_user_passwords
+      - modify_mfa_methods
+      - add_members_to_server-admins
+    pam_coverage: none
+    access_review_evidence: missing
+expected_findings:
+  - id: PAM-SHADOW-01
+    severity: high
+    reason: nested delegated groups grant privileged identity administration but are absent from the PAM inventory
+  - id: PAM-SHADOW-04
+    severity: high
+    reason: helpdesk role can reset privileged credentials without dual control or review evidence

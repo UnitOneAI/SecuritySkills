@@ -133,6 +133,43 @@ PAM-INV-10: Third-party/vendor privileged access not inventoried
 | **Databases** | DBA accounts, `sa` (SQL Server), `sys`/`system` (Oracle), `postgres` superuser |
 | **Kubernetes** | `cluster-admin` ClusterRoleBinding holders, namespace admins |
 
+### Step 1A: Shadow Administrator and Transitive Privilege Discovery
+
+**Objective:** Detect accounts that are effectively privileged even when they are not listed in a named admin group or onboarded to PAM.
+
+**NIST SP 800-53 Reference:** AC-6(5) -- Privileged Accounts; AC-6(7) -- Review of User Privileges
+**CIS Controls v8 Reference:** Control 5.4 -- Restrict Administrator Privileges
+
+Shadow administrators often appear through indirect paths: nested groups, delegated directory rights, CI/CD service accounts, cloud IAM wildcard policies, Kubernetes impersonation, or emergency access exceptions. Treat these as privileged when they can create, modify, assume, reset, approve, or impersonate privileged identities.
+
+**Evidence to collect:**
+
+- **Transitive group expansion:** nested Active Directory, Entra ID, LDAP, or IdP groups that eventually grant administrator roles.
+- **Privilege-escalating IAM permissions:** cloud policies allowing `iam:PassRole`, `sts:AssumeRole`, `iam:*`, role assignment writes, service account key creation, or owner/editor grants.
+- **Delegated identity administration:** password reset, MFA reset, group membership write, app consent, role eligibility management, or privileged approval rights.
+- **Automation and CI/CD principals:** build agents, deployment bots, Terraform runners, and ticketing integrations that can modify admin roles or privileged infrastructure.
+- **Break-glass and exception paths:** emergency accounts, temporary overrides, or vendor accounts excluded from PAM onboarding or periodic access review.
+
+**What to look for:**
+
+```
+PAM-SHADOW-01: Nested groups grant administrator access but are absent from the privileged account inventory
+PAM-SHADOW-02: Cloud IAM policy permits privilege escalation (PassRole/AssumeRole/role assignment write) without PAM controls
+PAM-SHADOW-03: CI/CD or automation principal can create or modify privileged roles without JIT approval
+PAM-SHADOW-04: Helpdesk or delegated admin role can reset MFA/passwords for privileged users without dual control
+PAM-SHADOW-05: Service account keys, SSH certificates, or kubeconfigs provide privileged access outside vault/session recording
+PAM-SHADOW-06: Break-glass or vendor exceptions are excluded from access review, alerting, or post-use rotation
+PAM-SHADOW-07: Privileged approval rights are self-approvable or held by the same team requesting elevation
+PAM-SHADOW-08: IAM conditions, permission boundaries, or deny policies are assumed but not evidenced
+```
+
+**False-positive guardrails:**
+
+- Do not flag a nested group solely because it is nested; flag it when the resolved effective permissions reach privileged functions.
+- Do not flag read-only auditor, security reader, or log-reader roles unless they can alter security controls, secrets, or privileged identity state.
+- Do not treat a CI/CD principal as privileged only because it deploys application code; require evidence that it can change identity, infrastructure, secrets, production break-glass access, or administrative control planes.
+- Mark the result **Not Evaluable** when only screenshots or role names are supplied without policy JSON, group membership export, role assignment data, or equivalent evidence.
+
 ---
 
 ### Step 2: PAM Tool Assessment
@@ -400,6 +437,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 
 ### Findings by Category
 - Privileged Account Inventory (Step 1): [count]
+- Shadow Administrator / Transitive Privilege Discovery (Step 1A): [count]
 - PAM Tool Assessment (Step 2): [count]
 - JIT Access (Step 3): [count]
 - Break-Glass Procedures (Step 4): [count]
@@ -408,6 +446,11 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 
 ### Detailed Findings
 [Findings table]
+
+### Shadow Administrator Evidence
+| Principal | Privilege Path | Effective Capability | PAM/JIT Coverage | Review Evidence | Status |
+|---|---|---|---|---|---|
+| [group/service account/user] | [nested group, IAM policy, CI role, delegated admin] | [what it can administer] | [covered/not covered] | [export, policy, ticket, approval] | [Pass/Fail/Not Evaluable] |
 
 ### Remediation Roadmap
 - Immediate (0-7 days): [critical findings — credential exposure, uncontrolled root access]
@@ -457,6 +500,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+9. **Counting only named admin groups** — effective privilege can be hidden behind nested groups, delegated role assignment rights, CI/CD deployment identities, or IAM permissions that can create new administrators.
+10. **Accepting role names without policy evidence** — labels such as "operator" or "support" are not enough. Resolve the actual allowed actions, deny conditions, permission boundaries, and group expansion before closing a shadow-admin finding.
 
 ---
 
@@ -502,4 +547,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-09 | Add shadow administrator and transitive privilege discovery evidence gates. |
 | 1.0.0 | 2025-03-06 | Initial release |

@@ -1,0 +1,22 @@
+scenario: read-only-security-reader
+platform: azure
+evidence_type: role_assignment_export
+principal:
+  name: secops-audit-readers
+  type: group
+role_assignments:
+  - role: Security Reader
+    scope: /providers/Microsoft.Management/managementGroups/prod
+    allowed_actions:
+      - Microsoft.Security/*/read
+      - Microsoft.Authorization/roleAssignments/read
+    denied_actions:
+      - Microsoft.Authorization/roleAssignments/write
+      - Microsoft.Authorization/elevateAccess/action
+      - Microsoft.KeyVault/vaults/secrets/write
+effective_capabilities:
+  can_modify_privileged_identity: false
+  can_reset_mfa_or_password: false
+  can_assume_admin_role: false
+expected_status: pass
+false_positive_guardrail: read-only security roles should not be reported as shadow admins without write, reset, assume, or approve capability

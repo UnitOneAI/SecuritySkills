@@ -1,0 +1,28 @@
+scenario: cicd-passrole-shadow-admin
+platform: aws
+evidence_type: iam_policy_json
+principal:
+  type: service_account
+  name: github-actions-prod-deployer
+  pam_onboarded: false
+  jit_required: false
+policy_statements:
+  - effect: Allow
+    actions:
+      - iam:PassRole
+      - iam:AttachRolePolicy
+      - sts:AssumeRole
+    resources:
+      - arn:aws:iam::123456789012:role/prod-admin
+      - arn:aws:iam::123456789012:role/*
+controls_claimed:
+  permission_boundary: not_provided
+  deny_policy: not_provided
+  approval_ticket: missing
+expected_findings:
+  - id: PAM-SHADOW-02
+    severity: high
+    reason: CI/CD principal can pass or assume privileged roles without PAM or JIT evidence
+  - id: PAM-SHADOW-03
+    severity: high
+    reason: automation can modify privileged role policy outside an approval-gated workflow

@@ -1,0 +1,30 @@
+scenario: deployer-with-boundary-and-jit
+platform: aws
+evidence_type: iam_policy_and_change_ticket
+principal:
+  type: service_account
+  name: github-actions-service-deployer
+  pam_onboarded: true
+  jit_required: true
+policy_statements:
+  - effect: Allow
+    actions:
+      - ecs:UpdateService
+      - codedeploy:CreateDeployment
+    resources:
+      - arn:aws:ecs:us-east-1:123456789012:service/prod/*
+permission_boundary:
+  denies:
+    - iam:*
+    - sts:AssumeRole
+    - organizations:*
+approval:
+  change_ticket: CHG-2026-0612
+  approver: release-manager
+  expires_at: "2026-06-09T12:00:00Z"
+effective_capabilities:
+  can_modify_privileged_identity: false
+  can_change_secrets: false
+  can_admin_control_plane: false
+expected_status: pass
+false_positive_guardrail: deployment automation is not a PAM finding when policy evidence proves it cannot alter identity, secrets, or administrative control planes
