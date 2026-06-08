@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -190,6 +190,20 @@ Rules with zero hit counts over an extended period (30+ days) indicate stale pol
 - Rules referencing decommissioned IP addresses, subnets, or services.
 - Rules with comments referencing past projects or temporary access.
 
+Before recommending removal or downgrade, record unused-rule evidence:
+
+```
+| Rule ID | Source | Destination | Service | Hit Count | Counter Baseline | Last Hit | Observation Window | Secondary Evidence | Removal Confidence |
+```
+
+Evidence requirements:
+- Record when counters were last reset, or the firewall uptime/failover event that establishes the counter baseline.
+- Record the observation window used to judge inactivity; do not use a zero counter with an unknown baseline as proof of disuse.
+- Cross-check with SIEM logs, flow logs, change tickets, asset inventory, or owner confirmation when available.
+- Identify whether the source, destination, or service object is decommissioned, expired, or still active.
+- Mark removal confidence as High, Medium, or Low based on counter reliability and secondary evidence.
+- For business-critical paths, require an owner-approved monitoring window or staged disable before permanent removal.
+
 **Finding classification:** Unused rules present for 90+ days are **Medium**. Rules referencing decommissioned resources are **High** (may indicate orphaned access paths).
 
 ---
@@ -298,6 +312,8 @@ Produce the final report using the following structure.
 - **Rule(s):** <rule number(s) or line(s)>
 - **Description:** <what was found>
 - **Evidence:** <specific rule text or configuration snippet>
+- **Operational Evidence:** <hit counter baseline, last-hit timestamp, flow/SIEM evidence, ticket, or owner confirmation>
+- **Confidence:** High / Medium / Low
 - **Remediation:** <concrete fix with example>
 
 ### Default Deny Status
@@ -309,6 +325,11 @@ Produce the final report using the following structure.
 ### Shadowed Rules Summary
 | Shadowed Rule | Position | Shadowing Rule | Position | Impact |
 |---------------|----------|----------------|----------|--------|
+
+### Unused Rule Evidence
+| Rule ID | Source | Destination | Service | Hit Count | Counter Baseline | Last Hit | Observation Window | Secondary Evidence | Removal Confidence |
+|---------|--------|-------------|---------|-----------|------------------|----------|--------------------|--------------------|--------------------|
+| <rule> | <src> | <dst> | <svc> | <count> | <uptime/reset/failover> | <timestamp/never> | <days> | <logs/ticket/owner> | High/Medium/Low |
 
 ### Egress Filtering Status
 | Protocol/Port | Restricted | Authorized Destinations |
@@ -361,6 +382,8 @@ Produce the final report using the following structure.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
+6. **Removing rules from a short or unknown observation window.** A rule can be quiet during normal business days but required for month-end jobs, quarterly data transfers, disaster recovery, vendor support, or incident response. Use a documented observation window and secondary evidence before classifying the rule as safe to remove.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -386,4 +409,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.0.1** -- Added unused-rule hit counter baseline and operational evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
