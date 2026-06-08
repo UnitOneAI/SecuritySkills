@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,6 +52,7 @@ Before beginning triage, gather or confirm:
 
 - [ ] **Alert details:** Rule name, severity, timestamp, source system (SIEM, EDR, IDS, cloud security).
 - [ ] **Alert data:** The raw event(s) that triggered the alert -- including all available fields (source IP, destination IP, username, hostname, process name, command line, file hash, URL).
+- [ ] **Message or visual payload:** If the alert involves email, chat, SMS, PDF, image, or QR code content, collect the original message, headers, attachment hash, decoded URL, and safe-rendered screenshot/OCR output.
 - [ ] **ATT&CK mapping:** If the alert rule maps to a MITRE ATT&CK technique, note the technique ID.
 - [ ] **Asset context:** What is the affected asset? (Server, workstation, cloud instance, network device.) What is its business criticality? (Revenue-generating, customer-facing, development, test.)
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
@@ -77,6 +78,7 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **User directory** | Username, role, department, manager, account status | Active Directory, Azure AD, HR system |
 | **EDR telemetry** | Process tree, file activity, network connections from the endpoint | CrowdStrike, Defender for Endpoint, SentinelOne |
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
+| **Email / message artifact** | Original message headers, sender authentication results, attachments, embedded images, QR codes, decoded URLs | Email gateway, M365 Defender, Google Admin, secure sandbox |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
 
@@ -103,6 +105,35 @@ Connect the alert data with surrounding context to build a picture of what happe
 | Credential Access (TA0006) | Lateral Movement (TA0008) -- were stolen credentials used to move? |
 | Lateral Movement (TA0008) | Collection (TA0009), Exfiltration (TA0010) -- what was the objective? |
 | Command and Control (TA0011) | All tactics -- C2 implies an active intrusion; look for the full chain |
+
+#### QR Code / Visual Phishing Evidence Gate
+
+For alerts involving QR codes, image-only lures, PDF attachments, or chat/email messages that move the clickable URL out of normal text controls, do not classify the alert until the visual payload has been safely decoded and correlated with user activity. QR phishing commonly bypasses URL rewriting, link detonation, and workstation proxy controls by pushing the user to scan with a mobile device.
+
+Require:
+
+- **Original artifact preservation:** message ID, sender, recipient, headers, authentication results (SPF/DKIM/DMARC where available), attachment hash, and storage location.
+- **Safe visual extraction:** OCR or sandbox-rendered screenshot of the image/PDF; decode QR values without browsing to the destination from an analyst workstation.
+- **Decoded destination analysis:** normalized URL, registered domain, final redirect chain from a safe sandbox, URL reputation, domain age if available, and mismatch with the claimed sender/brand.
+- **Delivery and exposure scope:** count of recipients, forwarding/reply-all spread, mailbox locations, quarantine/removal status, and whether the same QR payload appeared in other messages.
+- **User interaction evidence:** email open/click telemetry, mobile device browser history where available, identity-provider sign-in attempts, MFA prompts, token grants, or password reset events after delivery.
+- **Cross-device context:** whether the QR code likely moved the user from managed workstation controls to unmanaged mobile, personal email, or consumer browser context.
+- **Containment decision:** quarantine delivered messages, block decoded URL/domain, revoke sessions or tokens for interacted users, and escalate to IR if credentials were entered or suspicious sign-ins followed.
+
+```
+QR / Visual Phishing Evidence:
+- Alert ID:             [SIEM/case ID]
+- Message ID:           [email/chat/message ID]
+- Artifact Type:        [QR image | PDF | screenshot | chat image | other]
+- Attachment Hash:      [SHA-256 or N/A]
+- Decoded URL:          [redacted/safe normalized URL]
+- Redirect Final URL:   [final URL or Not Evaluable]
+- Sender Auth:          [SPF/DKIM/DMARC pass/fail/aligned]
+- Recipient Scope:      [N recipients / groups]
+- User Interaction:     [None | Opened | Scanned | Credentials entered | Unknown]
+- Follow-on Identity Events: [sign-in/MFA/token/session evidence]
+- Disposition Impact:   [Escalate | Contain | Tune | Not Evaluable]
+```
 
 ### Phase 3: Classify
 
@@ -234,6 +265,15 @@ Produce the triage decision as a structured report:
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
 
+### QR / Visual Phishing Evidence (if applicable)
+| Field | Value |
+|-------|-------|
+| Artifact Type | [QR image / PDF / screenshot / N/A] |
+| Decoded URL | [redacted URL or Not Evaluable] |
+| Recipient Scope | [count/groups] |
+| User Interaction | [None/Open/Scanned/Credentials entered/Unknown] |
+| Follow-on Identity Events | [sign-ins/MFA/token/session events] |
+
 ### Recommended Actions
 - [ ] [Action 1 -- e.g., isolate host, disable account, block IP]
 - [ ] [Action 2 -- e.g., collect forensic artifacts, memory dump]
@@ -319,6 +359,10 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Treating QR Phishing as a Normal URL Alert
+
+QR codes and image-only lures can hide the destination from mail security controls and move the user onto an unmanaged mobile browser. Do not close these as low confidence because no text URL was clicked. Decode the visual payload safely, check identity-provider telemetry after delivery, and scope recipients before deciding BTP/FP.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -344,3 +388,5 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+10. **Microsoft Incident Response Phishing Investigation Playbook** -- https://learn.microsoft.com/en-us/security/operations/incident-response-playbook-phishing
+11. **FBI PSA: QR codes used to initiate fraud schemes** -- https://www.fbi.gov/investigate/cyber/alerts/psa/unsolicited-packages-containing-qr-codes-used-to-initiate-fraud-schemes
