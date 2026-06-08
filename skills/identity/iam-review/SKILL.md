@@ -366,6 +366,42 @@ IAM-ZT-10: Implicit trust for internal service-to-service communication
 
 ---
 
+### Step 7.5: Token and Session Assurance
+
+**Objective:** Verify that authentication controls continue to hold after initial MFA, especially for device-code flows, push approval, refresh-token replay, risk changes, and resource apps that may not honor continuous access evaluation.
+
+Generic MFA, Conditional Access, or CAE labels are not enough. The review must collect evidence that tokens are issued, refreshed, revoked, and challenged according to risk and session policy.
+
+**What to look for:**
+
+```
+IAM-SESSION-01: Device-code flow is unrestricted or lacks approved-client scope, compliant-device requirements, or monitoring evidence
+IAM-SESSION-02: Push MFA lacks number matching, additional context, request throttling, or equivalent MFA fatigue protection
+IAM-SESSION-03: Sign-in risk, user risk, or conditional access policy is report-only, disabled, or scoped to a subset without documented exclusion review
+IAM-SESSION-04: Refresh-token revocation is not tested after user disablement, password reset, credential compromise, or risk-state change
+IAM-SESSION-05: Continuous Access Evaluation is enabled at the tenant but unsupported, unverified, or unlogged for critical resource apps
+IAM-SESSION-06: Sign-in frequency, persistent browser session, or token lifetime settings allow excessive access duration for privileged or high-risk users
+IAM-SESSION-07: Risky users, risky sign-ins, impossible travel, or MFA fatigue signals are not reviewed with remediation evidence
+IAM-SESSION-08: Legacy authentication, excluded clients, guest users, break-glass accounts, or service principals bypass token/session assurance controls
+```
+
+**Token/session evidence matrix:**
+
+| Evidence Area | Reviewer Must Confirm |
+|---|---|
+| Device-code policy | Device-code flow is blocked, scoped to approved clients, or requires compliant device / phishing-resistant conditions |
+| MFA push protection | Number matching, additional context, rate limiting, and admin-safe methods are enforced for push approvals |
+| Risk policy mode | Sign-in risk, user risk, and conditional access policies are in enforce mode, with exclusions reviewed and justified |
+| Refresh-token revocation test | Disablement, password reset, risk change, and session revocation events invalidate refresh-token replay attempts |
+| CAE resource coverage | Critical apps support and log CAE events; unsupported apps have shorter sessions or compensating controls |
+| Sign-in frequency | Session lifetime, persistent browser, and reauthentication settings match privilege and risk level |
+| Legacy auth status | Basic auth, legacy clients, device-code exceptions, and guest/break-glass exclusions are blocked or risk-accepted |
+| Risky sign-in review evidence | Risk detections are reviewed, remediated, and tracked to closure with timestamps and owner evidence |
+
+> **Gate:** Do not credit MFA, Conditional Access, or CAE as effective unless device-code flow, push fatigue protections, risk policy enforcement mode, refresh-token revocation tests, CAE resource coverage, sign-in frequency, legacy-auth exclusions, and risky sign-in review evidence are documented.
+
+---
+
 ## Output Format
 
 ### Findings Table
@@ -410,6 +446,12 @@ For each finding, produce a row with:
 - Stale Accounts (Step 5): [count]
 - JIT Access (Step 6): [count]
 - Zero Trust (Step 7): [count]
+- Token and Session Assurance (Step 7.5): [count]
+
+### Token and Session Assurance Evidence
+| Scope | Device-Code Policy | MFA Push Protection | Risk Policy Mode | Refresh-Token Revocation Test | CAE Resource Coverage | Sign-In Frequency | Legacy Auth Status | Risky Sign-In Review Evidence |
+|---|---|---|---|---|---|---|---|---|
+| [tenant/app/user group] | [blocked/scoped/exception] | [number matching/context/throttle] | [enforced/report-only/excluded] | [tested/not tested/result] | [covered/unsupported/compensated] | [hours/persistent session] | [blocked/allowed/excluded] | [owner/date/result] |
 
 ### Detailed Findings
 [Findings table — see above]
@@ -504,8 +546,18 @@ This skill processes user-supplied content including IAM policies, access config
 
 ---
 
+## References
+
+- Microsoft Entra Conditional Access grant controls: https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-conditional-access-grant
+- Microsoft Entra MFA number matching: https://learn.microsoft.com/en-us/entra/identity/authentication/how-to-mfa-number-match
+- Microsoft Entra Continuous Access Evaluation: https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-continuous-access-evaluation
+- Microsoft Entra revoke user access: https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-08 | Added token and session assurance gates for device-code flow, MFA fatigue, risk policy mode, refresh-token revocation, CAE coverage, and risky sign-in review evidence |
 | 1.0.0 | 2025-03-06 | Initial release |
