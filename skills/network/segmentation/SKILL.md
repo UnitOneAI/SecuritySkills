@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -245,6 +245,16 @@ Document or verify the existence of a segmentation testing process:
 
 ---
 
+### Segmentation Path Validation Evidence
+
+Require per-path validation so zone diagrams and route tables are backed by tested traffic evidence.
+
+| Source Zone | Destination Zone | Protocol / Port | Expected Decision | Observed Decision | Test Method | Evidence Artifact | Owner | Date | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[source_zone]` | `[destination_zone]` | `[protocol/port]` | `[expected_decision]` | `[observed_decision]` | `[test_method]` | `[evidence_artifact]` | `[owner]` | `[date]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition |
@@ -283,6 +293,12 @@ Document or verify the existence of a segmentation testing process:
 | DMZ         | App       | Firewall    | Restricted | Pass |
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
+
+### Segmentation Path Validation Evidence
+
+| Source Zone | Destination Zone | Protocol / Port | Expected Decision | Observed Decision | Test Method | Evidence Artifact | Owner | Date | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[source_zone]` | `[destination_zone]` | `[protocol/port]` | `[expected_decision]` | `[observed_decision]` | `[test_method]` | `[evidence_artifact]` | `[owner]` | `[date]` | `Pass / Fail / Unknown` |
 
 ### Findings
 
@@ -346,6 +362,8 @@ Document or verify the existence of a segmentation testing process:
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
 ---
+
+- Accepting a segmentation diagram without packet, flow-log, firewall, or route validation for each critical path.
 
 ## Prompt Injection Safety Notice
 
