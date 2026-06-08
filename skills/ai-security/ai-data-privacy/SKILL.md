@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -238,6 +238,34 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 | No automated purge mechanism for expired AI data | Medium |
 | Audit logs contain full prompt/completion text with no redaction | Low |
 
+#### Step 3.1 -- DSAR and Deletion Propagation Evidence Gate
+
+Do not mark AI data deletion controls as in place based only on an application-level delete button, retention policy, or user preference flag. For AI systems, data subject access request (DSAR), erasure, and consent-withdrawal workflows must prove that deletion propagates to every derived AI data store or that a documented legal/technical exception applies.
+
+Require:
+
+- **Request intake and identity proofing:** deletion/erasure requests are tracked with requester identity verification, scope, deadline, and regulatory basis.
+- **Source-to-derived data map:** personal data is mapped from source records to prompts, conversation logs, analytics events, embeddings, vector metadata, RAG source documents, fine-tuning datasets, evaluation datasets, model checkpoints, caches, and backups.
+- **Propagation workflow:** deletion jobs remove or tombstone matching records in each AI store, including vector IDs and chunk metadata, not only the source document.
+- **Derived artifact handling:** fine-tuning datasets, model checkpoints, and memorization-risk artifacts either support deletion/retraining/unlearning or have a documented exception and risk acceptance.
+- **Backup and archive handling:** backups follow a documented purge, expiry, or restore-time deletion process so erased data is not silently reintroduced.
+- **Verification evidence:** post-delete queries or audit logs prove that the subject's data no longer appears in active AI stores and that exceptions are listed.
+- **SLA and reprocessing guard:** request deadlines, failed-delete retries, and safeguards against re-ingesting deleted data are documented.
+
+```
+Deletion Propagation Evidence:
+- Request ID:             [ticket/case]
+- Data Subject Scope:     [user/account/document identifiers]
+- Regulatory Basis:       [GDPR Art. 17 | CCPA delete request | consent withdrawal | policy]
+- Source Stores:          [systems]
+- Derived AI Stores:      [vector DB, logs, datasets, checkpoints, cache, backups]
+- Propagation Status:     [Complete | Partial | Exception | Not Tested]
+- Verification Query:     [query/log reference]
+- Exceptions:             [legal hold, backup expiry, model retraining infeasible, none]
+- Re-ingestion Guard:     [tombstone/blocklist/control]
+- SLA Status:             [Met | Missed | Not Measured]
+```
+
 ---
 
 ### Step 4 -- Model Memorization Risk Assessment
@@ -430,9 +458,16 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
+| DSAR/deletion propagation | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
+
+## Deletion Propagation Evidence
+
+| Request ID | Source Stores | Derived AI Stores | Propagation Status | Verification Evidence | Exceptions | Re-ingestion Guard | SLA Status |
+|---|---|---|---|---|---|---|---|
+| [case] | [systems] | [vector/logs/datasets/checkpoints/backups] | [Complete/Partial/Exception/Not Tested] | [query/log] | [none/exception] | [control] | [Met/Missed/Not Measured] |
 
 ## Recommendations
 [Prioritized list of remediation actions with regulatory alignment]
@@ -472,6 +507,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
+6. **Treating vector deletion as source deletion.** Deleting a source document without deleting its embeddings, chunk metadata, cached retrieval results, and derived evaluation or fine-tuning copies leaves personal data available to the AI system. Verify deletion from every derived store and maintain tombstones or blocklists to prevent re-ingestion.
+
 ---
 
 ## References
@@ -480,7 +517,9 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - OWASP Top 10 for LLM Applications (2025), LLM02: Sensitive Information Disclosure -- https://genai.owasp.org/llmrisk/llm02-sensitive-information-disclosure/
 - EU AI Act, Regulation (EU) 2024/1689 -- https://eur-lex.europa.eu/eli/reg/2024/1689
 - GDPR, Regulation (EU) 2016/679 -- https://eur-lex.europa.eu/eli/reg/2016/679
+- Data Protection Commission: Right to erasure under GDPR Articles 17 and 19 -- https://www.dataprotection.ie/en/individuals/know-your-rights/right-erasure-articles-17-19-gdpr
 - CCPA/CPRA, California Civil Code Sec. 1798.100-199 -- https://leginfo.legislature.ca.gov/
+- California Privacy Rights under the CCPA -- https://privacy.ca.gov/california-privacy-rights/rights-under-the-california-consumer-privacy-act/
 - Carlini, N. et al. (2021). "Extracting Training Data from Large Language Models." USENIX Security Symposium. arXiv:2012.07805
 - Carlini, N. et al. (2023). "Quantifying Memorization Across Neural Language Models." ICLR 2023. arXiv:2202.07646
 - Ippolito, D. et al. (2023). "Preventing Verbatim Memorization in Language Models Gives a False Sense of Privacy." arXiv:2210.17546
