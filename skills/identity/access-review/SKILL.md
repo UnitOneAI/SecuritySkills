@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -128,6 +128,15 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 ---
 
 ### Step 2: Entitlement Review and Certification
+
+
+Certification completion is not enough by itself. Capture decision-level attestation evidence showing that the certifier understood the entitlement, had the correct relationship to the identity, made a deliberate decision, and linked revocations to enforcement.
+
+| Campaign | Identity | Entitlement | Permission Meaning | Certifier | Certifier Relationship | Decision | Timestamp | Batch Size | Decision Duration | Enforcement Ticket | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[campaign]` | `[user/service account]` | `[role/group/permission]` | `[plain-language access meaning]` | `[reviewer]` | `[manager, app owner, data owner]` | `Keep / Revoke / Modify / Unknown` | `[time]` | `[count]` | `[duration]` | `[ticket for revoke/modify]` | `High / Medium / Low` |
+
+Use `Low` confidence for bulk approvals, very short decision durations, unclear permission meaning, wrong certifier relationship, or missing enforcement evidence.
 
 **Objective:** Validate that every entitlement is appropriate, necessary, and approved.
 
@@ -352,6 +361,12 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 - Segregation of Duties (Step 5): [count]
 - Enforcement & Evidence (Step 6): [count]
 
+#### Certification Attestation Evidence
+
+| Campaign | Identity | Entitlement | Permission Meaning | Certifier | Relationship | Decision | Timestamp | Batch Size | Duration | Enforcement Ticket | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[campaign]` | `[identity]` | `[entitlement]` | `[meaning]` | `[certifier]` | `[relationship]` | `Keep / Revoke / Modify / Unknown` | `[time]` | `[count]` | `[duration]` | `[ticket]` | `High / Medium / Low` |
+
 ### Detailed Findings
 [Findings table]
 
@@ -391,6 +406,8 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 See the mapping table in the Framework Quick Reference section above for sub-control details.
 
 ---
+
+- Treating campaign completion as proof of meaningful review when decisions lack entitlement meaning, correct certifier relationship, deliberate timing, and revoke enforcement evidence.
 
 ## Common Pitfalls
 
