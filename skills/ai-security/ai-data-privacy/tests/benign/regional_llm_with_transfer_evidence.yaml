@@ -1,0 +1,30 @@
+name: benign_regional_llm_with_transfer_evidence
+description: AI assistant processes EU customer prompts in a pinned EU deployment with documented vendor contracts and scoped provider retention.
+data_subject_regions:
+  - EU
+ai_data_paths:
+  prompts:
+    provider: Azure OpenAI
+    endpoint: https://example-eu.openai.azure.com
+    configured_region: westeurope
+    contains_personal_data: true
+  embeddings:
+    provider: Azure AI Search
+    endpoint: https://example-search.search.windows.net
+    configured_region: westeurope
+    contains_personal_data: true
+contractual_evidence:
+  dpa: "MS-DPA-2026-01"
+  sccs: "EU-SCC-2021-module-2"
+  transfer_impact_assessment: "TIA-AI-SUPPORT-2026-Q1"
+  subprocessors_reviewed_at: "2026-05-15"
+provider_retention:
+  abuse_monitoring_days: 30
+  support_access_regions:
+    - EU
+residency_exception:
+  required: false
+expected_skill_result:
+  finding: "No transfer/residency finding"
+  severity: Informational
+  reason: "AI data paths are region-pinned and mapped to DPA, SCC, TIA, subprocessor, and provider-retention evidence."

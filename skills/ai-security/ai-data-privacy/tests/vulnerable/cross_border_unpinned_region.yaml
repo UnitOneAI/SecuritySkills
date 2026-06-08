@@ -1,0 +1,27 @@
+name: vulnerable_cross_border_unpinned_region
+description: AI support assistant sends EU customer prompts and embeddings to a global provider endpoint without region pinning or transfer evidence.
+data_subject_regions:
+  - EU
+ai_data_paths:
+  prompts:
+    provider: ExampleLLM
+    endpoint: https://api.example-llm.com/v1/chat
+    configured_region: global
+    contains_personal_data: true
+  embeddings:
+    provider: ExampleVector
+    endpoint: https://vectors.example.com
+    configured_region: global
+    contains_personal_data: true
+contractual_evidence:
+  dpa: missing
+  sccs: missing
+  transfer_impact_assessment: missing
+  subprocessors: unknown
+provider_retention:
+  abuse_monitoring_days: unknown
+  support_access_regions: unknown
+expected_skill_result:
+  finding: "Transfer/residency evidence gap"
+  severity: Critical
+  reason: "EU personal data is processed by global endpoints with no SCCs, TIA, subprocessor evidence, or provider-side retention evidence."
