@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -238,6 +238,17 @@ A risk acceptance is only valid when ALL of the following conditions are met:
 
 #### Exception Request Template
 
+
+#### Risk Exception Evidence Matrix
+
+Every delayed patch or SLA exception must include auditable exception evidence. Do not accept informal statements, stale tickets, or missing approvals as a valid exception.
+
+| Vulnerability / Asset | Original SLA | New Deadline | Business Justification | Compensating Control Evidence | Residual Risk | Approver / Approval Date | Expiration / Review Date | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[CVE/control gap and affected systems]` | `[deadline]` | `[revised deadline]` | `[reason patch cannot be applied]` | `[WAF rule, segmentation, EDR, config, monitoring evidence]` | `[remaining exposure]` | `[risk owner and date]` | `[expiry/review date]` | `Pending / Approved / Denied / Expired` |
+
+Mark an exception `Expired` when the review date has passed or the compensating control evidence is stale. Mark it `Pending` when the business justification exists but approval, residual-risk acceptance, or expiration date is missing.
+
 ```
 Risk Exception Request:
 - Exception ID:        [EXC-YYYY-NNNN]
@@ -327,12 +338,22 @@ findings requiring immediate action.]
 |---|---|---|---|---|---|
 | [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] |
 
+### Risk Exception Evidence Matrix
+
+| Vulnerability / Asset | Original SLA | New Deadline | Business Justification | Compensating Control Evidence | Residual Risk | Approver / Date | Expiration / Review | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[item]` | `[original date]` | `[new date]` | `[justification]` | `[evidence]` | `[risk]` | `[approver/date]` | `[review date]` | `Pending / Approved / Denied / Expired` |
+
 ### Recommendations
 1. [Highest-priority actionable recommendation]
 2. [Second priority recommendation]
 3. [Process improvement recommendation if applicable]
 
-### References
+### Common Pitfalls
+
+- Counting an exception as approved when it lacks an accountable approver, expiration date, current compensating-control evidence, or explicit residual-risk acceptance.
+
+## References
 - SSVC 2.1: https://certcc.github.io/SSVC/
 - EPSS API: https://api.first.org/data/v1/epss
 - CISA KEV: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
@@ -385,6 +406,10 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 - All SLA assignments and tier changes must be traceable to specific framework criteria documented in this skill.
 
 ---
+
+## Common Pitfalls
+
+- Counting an exception as approved when it lacks an accountable approver, expiration date, current compensating-control evidence, or explicit residual-risk acceptance.
 
 ## References
 
