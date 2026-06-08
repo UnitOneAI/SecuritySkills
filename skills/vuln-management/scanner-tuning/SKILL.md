@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -48,6 +48,7 @@ Before starting, collect or confirm:
 - [ ] **Current scan policies:** Existing scan policy names, configurations, and plugin/check selections
 - [ ] **Scan scope:** Target IP ranges, hostnames, applications, containers, or cloud accounts
 - [ ] **Authentication status:** Are scans currently authenticated (credentialed) or unauthenticated?
+- [ ] **Credential safety controls:** Scan account scope, lockout thresholds, vault/PAM source, rotation/TTL, and failed-authentication handling
 - [ ] **False positive examples:** Specific findings suspected or confirmed as false positives, with evidence
 - [ ] **Scan frequency:** Current scan schedule and any performance constraints
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
@@ -163,6 +164,36 @@ Evaluate and configure credential-based (authenticated) scanning for improved ac
 3. **Vault integration:** Store scan credentials in an enterprise secret management solution, not in the scanner's local credential store
 4. **Per-platform credentials:** Maintain separate credentials for Windows (local admin or domain account), Linux/Unix (root or sudo-enabled account), network devices (read-only SNMP community/SSH), databases (read-only DB account), and VMware/cloud APIs
 5. **Credential verification:** Run a credential verification scan before full scan to confirm authentication success across all targets
+
+#### Credential Safety and Lockout Evidence Gate
+
+Credentialed scanning improves accuracy only when authentication succeeds safely. Treat scanner credentials as production access paths and require evidence that failed authentication, lockout risk, and privilege drift cannot silently reduce scan quality or disrupt operations.
+
+| Evidence Area | Required Evidence | Tuning Decision |
+|---|---|---|
+| **Dedicated principals** | Scanner service accounts are dedicated by platform/environment and are not reused for human interactive login or unrelated automation | Shared or reused admin accounts are a tuning defect; require dedicated principals before full production rollout |
+| **Least privilege and privilege drift** | Current group membership, sudo/local admin rights, cloud roles, and database permissions are reviewed against scanner requirements | Overprivileged or unreviewed accounts require remediation or documented exception |
+| **Account lockout alignment** | Domain, IdP, PAM, and local lockout thresholds are compared with scanner concurrency, retry, and credential ordering settings | Concurrency/retry settings must stay below lockout thresholds; pilot new credentials against a small OU/subnet before broad scans |
+| **Vault/PAM controls** | Vault source, checkout TTL, rotation policy, scanner storage behavior, and access audit trail are documented | Missing vault/PAM evidence requires compensating controls and tighter credential rotation |
+| **Authentication success denominator** | Per-platform target counts show successful, failed, and unattempted credentialed checks | Failed authentication assets are **Not Evaluable** or unauthenticated coverage gaps, not clean credentialed results |
+| **Failure thresholds and abort behavior** | Scan policy stops, alerts, or rolls back when credential failures spike above the approved threshold | Policies that continue after mass authentication failure risk account lockout and false negatives |
+
+```
+Credential Safety Evidence:
+- Credential Principal:      [DOMAIN\svc-scan | ssh key name | API role | DB account]
+- Credential Scope:          [Windows prod | Linux staging | network devices | cloud account]
+- Credential Source:         [CyberArk | HashiCorp Vault | Scanner-native | Other]
+- Vault/PAM TTL:             [N minutes/hours or N/A]
+- Rotation Policy:           [Every N days or event-driven]
+- Lockout Threshold:         [N failed attempts / N minutes, source of policy]
+- Scanner Retry/Concurrency: [Retry count, max simultaneous hosts/checks]
+- Targets Attempted:         [N]
+- Authenticated Success:     [N] ([%])
+- Failed Authentication:     [N] ([%], marked Not Evaluable)
+- Unattempted Targets:       [N] ([%], reason)
+- Abort/Alert Threshold:     [Failure rate or count]
+- Last Privilege Review:     [YYYY-MM-DD, reviewer]
+```
 
 ```
 Authentication Configuration:
@@ -290,9 +321,9 @@ Classify the overall scanner tuning state into one of the following:
 | Classification | Definition | Criteria |
 |---|---|---|
 | **Poorly Tuned** | Scanner produces unreliable results | False positive rate > 30%, unauthenticated only, no severity overrides documented, no cross-scanner correlation |
-| **Basic** | Scanner operational but significant tuning gaps | False positive rate 15-30%, partial credential coverage, some ad-hoc overrides without documentation |
-| **Tuned** | Scanner produces reliable, actionable results | False positive rate < 15%, full credentialed scanning, documented overrides, regular policy review |
-| **Optimized** | Scanner program is mature and well-integrated | False positive rate < 5%, multi-scanner correlation, automated result ingestion, severity overrides with CVSS 4.0 justification, scan scheduling aligned with change management |
+| **Basic** | Scanner operational but significant tuning gaps | False positive rate 15-30%, partial credential coverage, some ad-hoc overrides without documentation, credential safety evidence incomplete |
+| **Tuned** | Scanner produces reliable, actionable results | False positive rate < 15%, full credentialed scanning, documented overrides, regular policy review, failed-authentication assets tracked separately from clean results |
+| **Optimized** | Scanner program is mature and well-integrated | False positive rate < 5%, multi-scanner correlation, automated result ingestion, severity overrides with CVSS 4.0 justification, scan scheduling aligned with change management, vault/PAM and lockout controls monitored |
 
 ---
 
@@ -303,7 +334,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.0
+**Skill:** scanner-tuning v1.0.1
 **Frameworks:** CVSS 4.0, CWE
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
 
@@ -321,6 +352,12 @@ Highlight the most impactful tuning recommendations.]
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
 | Port Range | [Current range] | [Recommended range] | [Priority] |
+
+### Credential Safety Evidence
+
+| Principal/Scope | Source | Success Rate | Failed Auth Assets | Lockout Control | Vault/PAM Control | Decision |
+|---|---|---:|---:|---|---|---|
+| [svc account / platform] | [vault/scanner-native] | [N%] | [N] | [threshold/retry evidence] | [TTL/rotation/audit] | [Accept / Fix / Not Evaluable] |
 
 ### False Positive Analysis
 
@@ -399,6 +436,10 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
+6. **Counting failed authentication as a clean credentialed scan.** If scanner credentials fail, the affected assets were not assessed with local checks. Report those assets as Not Evaluable or unauthenticated coverage gaps rather than marking missing local findings as clean results.
+
+7. **Using overprivileged scanner accounts without drift review.** Credentialed scans often need elevated access for accurate patch and configuration checks, but unreviewed group membership, sudo rights, or cloud roles expand blast radius. Review privileges and vault/PAM audit trails on a recurring schedule.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -424,6 +465,11 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - Qualys VMDR Documentation: https://www.qualys.com/documentation/
 - Tenable Nessus Documentation: https://docs.tenable.com/nessus/
 - Rapid7 InsightVM Documentation: https://docs.rapid7.com/insightvm/
+- Tenable Nessus Credentials: https://docs.tenable.com/nessus/Content/Credentials.htm
+- Tenable Nessus Credentialed Checks: https://docs.tenable.com/nessus/Content/NessusCredentialedChecks.htm
+- Qualys Insufficient Privileges: https://docs.qualys.com/en/vm/latest/authentication/insufficient_privileges.htm
+- Qualys Authentication Vaults: https://docs.qualys.com/en/vm/10.35.1.0/authentication/vaults/how_to_use_vaults.htm
+- Rapid7 Configuring Scan Credentials: https://docs.rapid7.com/insightvm/configuring-scan-credentials/
 - Greenbone/OpenVAS: https://greenbone.github.io/docs/
 - Trivy: https://aquasecurity.github.io/trivy/
 - Grype: https://github.com/anchore/grype
