@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [CycloneDX-1.5, SPDX-2.3, VEX-CSAF, NTIA-SBOM-Minimum-Elements]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -160,6 +160,23 @@ When a VEX status is "Not Affected," the document must include one of these just
 | **vulnerable_code_cannot_be_controlled_by_adversary** | The vulnerable code is present and reachable but attacker-controlled input cannot reach it | Requires threat model or data-flow analysis |
 | **inline_mitigations_already_exist** | Built-in mitigations (ASLR, sandboxing, etc.) prevent exploitation | Verify mitigations are active and effective |
 
+#### VEX Status Evidence Validation Gate
+
+Before accepting any VEX status as risk-reducing evidence, validate that the VEX statement applies to the exact product, version, component, and vulnerability being assessed.
+
+For each VEX entry, record:
+
+- **Product identity match:** VEX product name, version, supplier, CPE, purl, SWID, or other product identifier matches the SBOM software under review.
+- **Component identity match:** Affected component name, version, purl, CPE, or bom-ref maps to a component in the SBOM.
+- **Vulnerability match:** CVE, GHSA, OSV, or vendor advisory identifier matches the vulnerability under review.
+- **Status evidence:** `not_affected`, `fixed`, `affected`, or `under_investigation` status is explicitly present; do not infer status from narrative text alone.
+- **Justification evidence:** `not_affected` statements include a CSAF/OpenVEX justification and supporting rationale. Treat missing justification as unresolved.
+- **Timestamp and freshness:** VEX issued/updated timestamp is newer than or aligned with the SBOM build/release timestamp. Flag stale VEX when the SBOM or software release post-dates the VEX without an updated statement.
+- **Source authenticity:** VEX source is the software supplier, component supplier, or a trusted coordinator; unsigned or unauthenticated third-party claims require independent validation.
+- **Evidence sufficiency:** Code-path, configuration, runtime, or mitigation claims are backed by vendor attestation, code analysis, deployment configuration, or test evidence appropriate to the risk tier.
+
+Do not downgrade vulnerability priority based on a VEX statement when product identity, component identity, vulnerability ID, status, timestamp, or justification cannot be validated.
+
 ```
 VEX Assessment:
 - VEX Format:          [CSAF 2.0 | CycloneDX VEX | OpenVEX]
@@ -168,6 +185,19 @@ VEX Assessment:
 - Affected:            [N] (require remediation)
 - Fixed:               [N] (verify deployment)
 - Under Investigation: [N] (monitor for updates)
+```
+
+```
+VEX Evidence Validation:
+- Product Identity Match:    [Pass/Fail/Partial -- identifiers checked]
+- Component Identity Match:  [Pass/Fail/Partial -- SBOM refs checked]
+- Vulnerability Match:       [Pass/Fail -- CVE/GHSA/OSV/advisory IDs]
+- Status Explicit:           [Pass/Fail -- no inferred statuses]
+- Justification Present:     [Pass/Fail/N/A -- required for Not Affected]
+- Timestamp Freshness:       [Fresh/Stale/Unknown -- compare VEX updated vs SBOM/release]
+- Source Authenticity:       [Trusted/Untrusted/Unknown]
+- Evidence Sufficiency:      [Sufficient/Insufficient/Needs human review]
+- Priority Downgrade Allowed:[Yes/No -- No unless all required checks pass]
 ```
 
 ### Step 4: Transitive Dependency Analysis
@@ -259,7 +289,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## SBOM Analysis Report
 **Date:** [YYYY-MM-DD]
-**Skill:** sbom-analysis v1.0.0
+**Skill:** sbom-analysis v1.0.1
 **Frameworks:** CycloneDX 1.5, SPDX 2.3, VEX (CSAF), NTIA Minimum Elements
 **Reviewer:** AI-assisted (human review required for license conflicts and risk decisions)
 
@@ -299,6 +329,13 @@ conflicts), and overall classification.]
 | CVE ID | Component | VEX Status | Justification | Action |
 |---|---|---|---|---|
 | [CVE-ID] | [component] | [Not Affected/Affected/Fixed/Under Investigation] | [justification if Not Affected] | [action] |
+
+### VEX Evidence Validation
+[If VEX documents are provided]
+
+| CVE ID | Product Match | Component Match | Status Explicit | Justification | Freshness | Source Authenticity | Evidence Sufficiency | Downgrade Allowed |
+|---|---|---|---|---|---|---|---|---|
+| [CVE-ID] | [Pass/Fail/Partial] | [Pass/Fail/Partial] | [Pass/Fail] | [Pass/Fail/N/A] | [Fresh/Stale/Unknown] | [Trusted/Untrusted/Unknown] | [Sufficient/Insufficient/Review] | [Yes/No] |
 
 ### Transitive Dependency Risk
 
@@ -380,6 +417,8 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 4. **Overlooking license implications in SaaS deployments.** AGPL-3.0 triggers copyleft obligations for network use (SaaS), unlike GPL which only triggers on distribution. Organizations running AGPL-licensed components in SaaS products may have unrecognized compliance obligations. Always flag AGPL components regardless of distribution model.
 
 5. **Failing to track SBOM freshness.** An SBOM is a point-in-time snapshot. Software composition changes with every dependency update, build, or deployment. SBOMs older than the most recent build/release are potentially inaccurate. Check the SBOM timestamp against the software's actual release date and flag stale SBOMs.
+
+6. **Applying VEX statements to the wrong product or version.** A valid VEX document for one product edition, build, deployment profile, or component version does not automatically apply to another. Match product identifiers, component identifiers, vulnerability IDs, and timestamps before accepting any VEX-based priority downgrade.
 
 ---
 
