@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +55,7 @@ Before beginning triage, gather or confirm:
 - [ ] **ATT&CK mapping:** If the alert rule maps to a MITRE ATT&CK technique, note the technique ID.
 - [ ] **Asset context:** What is the affected asset? (Server, workstation, cloud instance, network device.) What is its business criticality? (Revenue-generating, customer-facing, development, test.)
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
+- [ ] **Entity resolution context:** How were IPs, hostnames, cloud instance IDs, device IDs, usernames, UPNs, SIDs, and service accounts mapped to the affected asset/user? What is the confidence and timestamp of that mapping?
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
 
@@ -75,12 +76,38 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Alert payload** | Full alert details, raw events, matched rule logic | SIEM (Sentinel, Splunk, QRadar) |
 | **Asset inventory** | Hostname, IP, OS, owner, business unit, criticality tier | CMDB, asset management |
 | **User directory** | Username, role, department, manager, account status | Active Directory, Azure AD, HR system |
+| **Entity resolution sources** | DHCP/VPN/NAT mappings, EDR device IDs, cloud instance IDs, asset inventory timestamps, user SID/UPN aliases | DHCP, VPN, IAM, EDR, CMDB, cloud asset inventory |
 | **EDR telemetry** | Process tree, file activity, network connections from the endpoint | CrowdStrike, Defender for Endpoint, SentinelOne |
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
 
 **NIST SP 800-61 alignment:** This phase corresponds to Section 3.2 "Detection and Analysis" -- specifically the initial analysis and validation of the alert before classification.
+
+### Entity Resolution and Confidence Gate
+
+Do not assign disposition or priority until the affected user, host, and network entities are resolved with enough confidence for the decision being made. Alerts often contain unstable identifiers: DHCP or VPN IPs, NAT egress addresses, recycled hostnames, cloud instance names, container IDs, UPN aliases, email aliases, renamed accounts, service accounts, or SIDs. A single raw field is not proof that the entity is correct.
+
+For each alert, verify:
+
+1. **Identifier inventory** -- list every identifier in the alert payload: IP, hostname, FQDN, device ID, cloud instance ID, MAC address, username, UPN, email alias, SID, service account, process user, and account domain.
+2. **Time-aligned mapping** -- map identifiers using records valid at the alert timestamp, not only the current CMDB or directory state.
+3. **Cross-source corroboration** -- compare at least two relevant sources when available, such as SIEM raw event, DHCP/VPN logs, EDR device inventory, cloud asset inventory, IdP sign-in logs, HR/directory data, and CMDB ownership.
+4. **Ambiguity handling** -- flag NAT, shared jump hosts, VDI pools, shared service accounts, recycled hostnames, stale CMDB records, and cloud auto-scaling instances as ambiguous until corroborated.
+5. **Confidence assignment** -- label entity mapping confidence as High, Medium, or Low and explain what evidence supports that level.
+6. **Priority guardrail** -- do not downgrade a high-impact alert based on asset/user context when entity confidence is Low. Escalate or continue investigation until the mapping is resolved.
+
+Use this matrix in the triage report when entity ambiguity could affect disposition, priority, owner routing, or containment:
+
+| Raw Identifier | Candidate Entity | Mapping Source | Source Timestamp | Corroboration | Confidence | Ambiguity / Gap |
+|---|---|---|---|---|---|---|
+| `[IP/host/user/etc.]` | `[asset/user/account]` | `[DHCP/EDR/CMDB/IdP/etc.]` | `[time]` | `[supporting source]` | `[High/Medium/Low]` | `[NAT/stale/shared/etc.]` |
+
+**Confidence guidance:**
+
+- **High:** time-aligned telemetry from authoritative sources agrees, such as EDR device ID plus DHCP lease plus cloud instance ID.
+- **Medium:** one authoritative source exists but a second source is missing, delayed, or indirect.
+- **Low:** only a raw alert field, current CMDB value, shared IP, shared account, NAT address, or stale inventory entry supports the mapping.
 
 ### Phase 2: Correlate
 
@@ -209,11 +236,16 @@ Produce the triage decision as a structured report:
 | ATT&CK Tactic | [Execution (TA0002) or N/A] |
 
 ### Affected Entities
-| Entity | Value | Context |
-|--------|-------|---------|
-| Host | [hostname / IP] | [Asset criticality: Critical/High/Medium/Low] |
-| User | [username] | [Role, privilege level] |
-| Process | [process name] | [Expected / Unexpected for this host/user] |
+| Entity | Value | Context | Mapping Confidence |
+|--------|-------|---------|--------------------|
+| Host | [hostname / IP / device ID] | [Asset criticality: Critical/High/Medium/Low] | [High/Medium/Low] |
+| User | [username / UPN / SID] | [Role, privilege level] | [High/Medium/Low] |
+| Process | [process name] | [Expected / Unexpected for this host/user] | [High/Medium/Low or N/A] |
+
+### Entity Resolution
+| Raw Identifier | Candidate Entity | Mapping Source | Source Timestamp | Corroboration | Confidence | Ambiguity / Gap |
+|---|---|---|---|---|---|---|
+| [IP/host/user/etc.] | [asset/user/account] | [DHCP/EDR/CMDB/IdP/etc.] | [time] | [supporting source] | [High/Medium/Low] | [NAT/stale/shared/etc.] |
 
 ### Triage Decision
 | Field | Value |
@@ -307,6 +339,10 @@ Classifying an alert as a false positive based solely on the alert payload witho
 
 SIEM-assigned alert severity (Critical/High/Medium/Low) reflects the detection rule author's general assessment, not the specific risk to your environment. A "Medium" severity alert on a domain controller is more urgent than a "High" severity alert on an isolated test server. Always factor in asset criticality, user privilege, and business context when assigning priority.
 
+### Pitfall 2a: Trusting Raw Alert Entities Without Time-Aligned Resolution
+
+An IP, hostname, or username in the alert payload may not identify the actual affected entity. DHCP leases, VPN concentrators, NAT gateways, VDI pools, cloud auto-scaling, renamed accounts, and shared service accounts can all point to the wrong owner or priority. Resolve entities at the alert timestamp and record mapping confidence before using asset or user context to close or downgrade an alert.
+
 ### Pitfall 3: Closing Alerts Without Documenting the Disposition Rationale
 
 Marking an alert as "False Positive" or "Benign" without recording why leads to repeated investigation of the same alert pattern and prevents detection engineering from tuning the rule. Every closed alert should include the specific reason for the disposition, enabling trend analysis and rule improvement.
@@ -344,3 +380,10 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added entity resolution and mapping-confidence evidence gates for alert triage.
+- **1.0.0** -- Initial alert triage workflow with collect, correlate, classify, and escalate phases.
