@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -283,6 +283,16 @@ Configure scan schedules to balance coverage, freshness, and operational impact.
 
 ---
 
+### Step 7: False Positive Suppression Lifecycle Evidence
+
+Before marking a scanner result as a false positive or suppressing it, record lifecycle evidence that proves the suppression is scoped, owned, time-bound, and revalidated after material changes.
+
+| Finding / Rule | Affected Scope | Suppression Scope | False Positive Evidence | Approver / Owner | Created | Expiration / Revalidation Date | Revalidation Trigger | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[scanner finding or rule]` | `[asset, package, endpoint, repo]` | `[exact rule/path/asset boundary]` | `[test, code path, scanner diff, compensating control]` | `[business or security owner]` | `[date]` | `[date]` | `[plugin update, package change, rebuild, exposure change]` | `Active / Expired / Revoked` |
+
+Mark `Expired` when the revalidation date has passed or the trigger occurred without renewed evidence. Mark `Revoked` when the evidence no longer supports the false-positive decision.
+
 ## Findings Classification
 
 Classify the overall scanner tuning state into one of the following:
@@ -321,6 +331,12 @@ Highlight the most impactful tuning recommendations.]
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
 | Port Range | [Current range] | [Recommended range] | [Priority] |
+
+#### Suppression Lifecycle Evidence
+
+| Finding / Rule | Affected Scope | Suppression Scope | FP Evidence | Approver / Owner | Created | Expiration / Revalidation | Trigger | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[finding]` | `[scope]` | `[suppression boundary]` | `[evidence]` | `[owner]` | `[date]` | `[date]` | `[trigger]` | `Active / Expired / Revoked` |
 
 ### False Positive Analysis
 
@@ -386,6 +402,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - CWE/CVE Mapping: https://cwe.mitre.org/data/index.html
 
 ---
+
+- Leaving false-positive suppressions permanent or global without owner approval, revalidation triggers, expiration dates, and current evidence.
 
 ## Common Pitfalls
 
