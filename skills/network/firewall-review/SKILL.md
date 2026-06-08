@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -260,6 +260,16 @@ Produce the final report using the following structure.
 
 ---
 
+### Remote Access VPN and Split-Tunnel Evidence
+
+Capture VPN route, DNS, posture, and egress-control evidence before accepting remote access firewall posture.
+
+| VPN Profile | User Group | Split Tunnel Mode | Routed Prefixes | DNS Path | Device Posture | Egress Control | Logging | Exception | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[vpn_profile]` | `[user_group]` | `[split_tunnel_mode]` | `[routed_prefixes]` | `[dns_path]` | `[device_posture]` | `[egress_control]` | `[logging]` | `[exception]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition |
@@ -288,6 +298,12 @@ Produce the final report using the following structure.
 - High findings: <count>
 - Medium findings: <count>
 - Low findings: <count>
+
+### Remote Access VPN and Split-Tunnel Evidence
+
+| VPN Profile | User Group | Split Tunnel Mode | Routed Prefixes | DNS Path | Device Posture | Egress Control | Logging | Exception | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[vpn_profile]` | `[user_group]` | `[split_tunnel_mode]` | `[routed_prefixes]` | `[dns_path]` | `[device_posture]` | `[egress_control]` | `[logging]` | `[exception]` | `Pass / Fail / Unknown` |
 
 ### Findings
 
@@ -362,6 +378,8 @@ Produce the final report using the following structure.
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
 ---
+
+- Reviewing perimeter firewall rules while ignoring remote-access VPN routes, split tunneling, DNS leakage, and endpoint posture.
 
 ## Prompt Injection Safety Notice
 
