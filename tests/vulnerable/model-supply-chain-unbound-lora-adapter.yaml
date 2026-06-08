@@ -1,0 +1,36 @@
+scenario: production_lora_adapter_without_base_binding
+skill: model-supply-chain
+expected_result: flag_adapter_composition_provenance_gap
+model_bundle:
+  name: support-chat-prod
+  base_model:
+    source: huggingface
+    model_id: example-org/support-llm
+    revision: latest
+    checksum: missing
+    model_card: partial
+  adapters:
+    - name: escalation-router-lora
+      source: third_party_registry
+      revision: v3
+      checksum: sha256-from-same-registry
+      adapter_card: missing
+      training_data_summary: missing
+  composition:
+    hot_loaded: true
+    merge_order: not_documented
+    target_modules: not_documented
+    quantization: nf4
+    tokenizer_revision: not_documented
+    compatibility_constraints: missing
+    safety_regression_tests: standard_benchmarks_only
+    signed_bundle_manifest: missing
+deployment:
+  environment: production
+  rollback_bundle: missing
+why_this_should_fail: >
+  The adapter is treated as a small configuration artifact even though it is
+  hot-loaded into production. The base model is unpinned and unverified, the
+  adapter checksum is self-referential, and there is no signed composition
+  manifest binding base model, adapter, tokenizer, quantization, merge order,
+  or safety evaluation evidence.

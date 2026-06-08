@@ -1,0 +1,45 @@
+scenario: signed_adapter_composition_bound_to_base_model
+skill: model-supply-chain
+expected_result: do_not_flag_adapter_composition_gap
+model_bundle:
+  name: support-chat-prod
+  base_model:
+    source: internal_model_registry
+    model_id: example-org/support-llm
+    revision: 9f2c1a8
+    checksum: sha256:base-model-digest
+    signature: cosign_verified
+    model_card: complete
+  adapters:
+    - name: escalation-router-lora
+      source: internal_model_registry
+      revision: 4b7e2d1
+      checksum: sha256:adapter-digest
+      signature: cosign_verified
+      adapter_card: complete
+      training_data_summary: reviewed
+      license: compatible
+  composition:
+    hot_loaded: false
+    merge_order:
+      - base_model
+      - escalation-router-lora
+    target_modules:
+      - q_proj
+      - v_proj
+    quantization: nf4
+    merge_script_revision: 2c9d0e7
+    tokenizer_revision: 9f2c1a8
+    compatibility_constraints:
+      approved_base_model_revision: 9f2c1a8
+      disallowed_combinations: documented
+    safety_regression_tests: passed
+    signed_bundle_manifest: cosign_verified
+    slsa_provenance: present
+deployment:
+  environment: production
+  rollback_bundle: support-chat-prod-previous
+why_this_should_pass: >
+  The deployed model bundle binds the base model, adapter, tokenizer,
+  quantization, merge script, compatibility constraints, provenance, safety
+  regression results, and signed bundle manifest before production promotion.

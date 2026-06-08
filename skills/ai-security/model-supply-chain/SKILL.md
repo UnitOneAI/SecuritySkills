@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -82,6 +82,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
 | Access controls on model storage | Cloud storage IAM, artifact registry permissions | Determines who can replace or modify model weights |
 | Adapter/plugin sources | LoRA configs, adapter download code | Third-party adapters inherit the same supply chain risks |
+| Adapter composition manifest | PEFT/LoRA configs, serving manifests, model registry metadata | Confirms base model, adapter, quantization, merge order, and checksums are bound together |
 
 ---
 
@@ -130,6 +131,42 @@ Glob: **/config.json
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
+
+---
+
+#### Step 1.1 -- Adapter and Composition Provenance
+
+Parameter-efficient adapters (LoRA, QLoRA, PEFT, IA3, prefix/prompt tuning) are model artifacts with their own supply chain. They must not be treated as harmless configuration simply because they are smaller than full model weights.
+
+For every adapter or merged model, require a composition manifest that binds:
+
+- Base model source, publisher, exact revision/commit, format, checksum, license, and model card.
+- Adapter source, publisher, exact revision/commit, format, checksum, license, training data summary, and model card or adapter card.
+- Quantization and merge parameters: quantization method, target modules, rank, alpha, merge order, merge script version, framework versions, and random seed where applicable.
+- Compatibility constraints: approved base model family/version, tokenizer revision, architecture, safety policy version, and disallowed composition pairs.
+- Verification evidence before loading: signature, attestation, registry digest, or independently trusted checksum for both base and adapter.
+- Promotion controls: reviewed composition manifest, reproducible merge job, signed merged artifact, and rollback to prior known-good model bundle.
+
+**Detection methods using allowed tools:**
+
+```
+# Find adapter and composition references
+Grep: "LoraConfig|PeftModel|load_adapter|merge_and_unload|adapter_name|adapter_config|qlora|peft" in **/*.{py,yaml,yml,json,toml}
+Grep: "base_model_name_or_path|adapter_model|target_modules|r=|lora_alpha|revision|trust_remote_code" in **/*.{py,yaml,yml,json,toml}
+Glob: **/adapter_config.json
+Glob: **/*adapter*.{json,yaml,yml}
+Glob: **/*lora*.{json,yaml,yml}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Adapter is hot-loaded or merged into production without binding to a specific base model revision and checksum | High |
+| Multiple adapters are composed without documented merge order, compatibility constraints, or safety regression testing | High |
+| Adapter checksum/signature is verified but base model is unpinned or unverified | High |
+| Adapter card lacks training data, intended use, or license information for production use | Medium |
+| Quantization or merge parameters are undocumented for the deployed bundle | Medium |
 
 ---
 
@@ -382,6 +419,12 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|---|---|
 | [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
 
+## Adapter Composition Inventory
+
+| Bundle | Base Model Revision / Digest | Adapter Revision / Digest | Merge Order | Quantization | Compatibility Checked | Signed |
+|---|---|---|---|---|---|---|
+| [bundle] | [revision + digest] | [revision + digest] | [order] | [method] | [Yes/No] | [Yes/No] |
+
 ## Findings
 
 ### Finding [N]: [Title]
@@ -401,6 +444,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Domain | Current State | Target State | Gap Severity |
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
+| Adapter composition | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
@@ -441,6 +485,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
 
+6. **Treating adapters as configuration instead of deployable artifacts.** LoRA and PEFT adapters can materially change model behavior, safety posture, and licensing obligations. A signed adapter is still unsafe if it can be merged into an unpinned base model, composed with other adapters in an undocumented order, or deployed without a signed bundle manifest that binds base, adapter, tokenizer, quantization, and safety evaluation evidence.
+
 ---
 
 ## References
@@ -456,3 +502,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 - Hugging Face. "Safetensors: A Simple and Safe Serialization Format" -- https://huggingface.co/docs/safetensors
 - NIST AI Risk Management Framework 1.0 -- https://www.nist.gov/aiframework
 - Open Source Security Foundation (OpenSSF) -- https://openssf.org
+
+## Changelog
+
+- **1.0.1** -- Add adapter composition provenance gates for LoRA/PEFT base-model binding, merge order, quantization, and bundle signing.
