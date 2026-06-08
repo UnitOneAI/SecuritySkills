@@ -13,7 +13,7 @@ phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -115,6 +115,16 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
+### Step 6A: Policy Exception Evidence
+
+Review admission and policy-control exceptions because broad exemptions can nullify Pod Security Admission, Gatekeeper, Kyverno, or webhook controls.
+
+| Policy Control | Exception Mechanism | Exact Scope | Owner / Approval | Expiration / Review Date | Compensating Controls | Non-Exempt Enforcement Evidence | Status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[PSA/Gatekeeper/Kyverno/webhook]` | `[namespace label, exclude, override]` | `[namespace, workload, service account]` | `[record]` | `[date]` | `[control]` | `[blocked/audit evidence]` | `Active / Expired / Revoked` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when exceptions are broad, permanent, ownerless, or not paired with evidence that non-exempt resources are still enforced.
+
 ### Step 7: Compile Assessment Report
 
 
@@ -163,6 +173,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
+
+#### Policy Exception Evidence
+
+| Control | Mechanism | Scope | Approval | Expiration | Compensating Control | Enforcement Evidence | Status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[mechanism]` | `[scope]` | `[approval]` | `[date]` | `[control]` | `[evidence]` | `Active / Expired / Revoked` | `Pass / Fail / Unknown` |
 
 ### Detailed Findings
 
@@ -247,6 +263,8 @@ Produce the final report using the structure defined in the Output Format sectio
 | seccompProfile | -- | RuntimeDefault or Localhost |
 
 ---
+
+- Counting Kubernetes policy engines as effective while ignoring broad namespace exemptions, exclude blocks, non-expiring overrides, and missing non-exempt enforcement evidence.
 
 ## Common Pitfalls
 
