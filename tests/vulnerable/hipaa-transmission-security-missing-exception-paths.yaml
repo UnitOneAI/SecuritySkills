@@ -1,0 +1,42 @@
+scenario: ephi_transmission_security_missing_exception_paths
+skill: hipaa-review
+expected_result: flag_164_312e_transmission_security_gap
+entity:
+  type: covered_entity
+  systems:
+    - ehr
+    - patient_portal
+    - claims_gateway
+    - support_vendor_portal
+transmission_evidence:
+  primary_api:
+    ephi_elements:
+      - patient_id
+      - lab_result
+      - diagnosis_code
+    protection: tls_enabled
+    tls_version: not_documented
+    certificate_validation: not_documented
+    integrity_control: not_documented
+  exception_workflows:
+    support_exports:
+      destination: external_vendor_portal
+      ephi_elements:
+        - patient_name
+        - encounter_notes
+      encryption: not_documented
+      integrity_control: missing
+      baa_reference: VND-443
+    claims_resubmission_email:
+      destination: billing_partner
+      ephi_elements:
+        - claim_id
+        - diagnosis_code
+      encryption: missing
+      integrity_control: missing
+      addressable_rationale: missing
+why_this_should_fail: >
+  The review cannot mark 45 CFR 164.312(e) compliant from a generic TLS
+  statement when exception paths transmit ePHI to vendors and billing partners
+  without documented encryption, certificate validation, integrity controls, or
+  an addressable-specification rationale.

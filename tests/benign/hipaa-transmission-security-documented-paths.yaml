@@ -1,0 +1,57 @@
+scenario: ephi_transmission_security_documented_paths
+skill: hipaa-review
+expected_result: do_not_flag_164_312e_gap
+entity:
+  type: business_associate
+  systems:
+    - ehr_integration_api
+    - edi_gateway
+    - secure_support_portal
+transmission_register:
+  api_exchange:
+    ephi_elements:
+      - patient_id
+      - appointment_status
+    source: ehr_integration_api
+    destination: covered_entity_api
+    encryption: tls_1_3
+    certificate_validation: enforced
+    downgrade_prevention: hsts_and_modern_cipher_policy
+    integrity_control: signed_payload_digest
+    evidence:
+      - api-gateway-tls-policy-2026-06
+      - integration-signature-runbook
+  edi_claims:
+    ephi_elements:
+      - subscriber_id
+      - diagnosis_code
+      - procedure_code
+    source: edi_gateway
+    destination: payer_clearinghouse
+    encryption: as2_tls_1_2_or_higher
+    integrity_control: edi_control_totals_and_mic
+    reconciliation: daily_exception_report_reviewed
+    evidence:
+      - edi-as2-config-export
+      - claims-reconciliation-sop
+  support_portal_exports:
+    ephi_elements:
+      - patient_name
+      - encounter_summary
+    destination: secure_support_portal
+    encryption: portal_tls_1_3
+    integrity_control: sha256_file_hash_logged
+    access_control: case_scoped_download_link_with_expiry
+    baa_reference: CE-BAA-2026-014
+addressable_decisions:
+  encryption:
+    status: implemented_for_all_external_paths
+    owner: security_official
+  integrity_controls:
+    status: implemented_or_reconciled_by_path
+    owner: compliance
+why_this_should_pass: >
+  Each ePHI transmission path has source, destination, encryption evidence,
+  integrity evidence, exception handling, and ownership, so the review has
+  sufficient evidence for 45 CFR 164.312(e) without relying on a generic TLS
+  assertion.

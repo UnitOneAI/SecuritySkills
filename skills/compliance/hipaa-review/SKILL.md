@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -71,6 +71,7 @@ The HIPAA Security Rule (45 CFR Part 164, Subpart C) establishes national standa
 - Business Associate Agreements (BAAs) inventory
 - Incident response and breach notification procedures
 - Access control configurations and user provisioning processes
+- Transmission security evidence for ePHI paths (API, email, EDI, SFTP, backups, vendor portals, webhooks)
 - Backup and disaster recovery documentation
 - Workforce training records
 - Prior OCR audit findings or corrective action plans
@@ -334,6 +335,17 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Implement a mechanism to encrypt ePHI whenever deemed appropriate
 - Note: Encryption of ePHI in transit is strongly recommended by OCR. Unencrypted transmission of ePHI over the internet is a frequent enforcement target.
 
+Transmission security evidence review:
+- Build a transmission path register for every ePHI flow that crosses systems, networks, organizations, or support workflows.
+- Include primary and exception paths: EHR and patient portal APIs, claims/EDI, email, SFTP, backups, webhook callbacks, vendor portal exports, support attachments, and manual file transfers.
+- For each path, require evidence of:
+  - ePHI elements, source, destination, owner, and Business Associate or external recipient when applicable
+  - Transport protections such as TLS version, certificate validation, downgrade prevention, mTLS/VPN/SFTP/AS2 controls, or documented equivalent measures
+  - Integrity controls such as message authentication, signatures, checksums, EDI control totals, tamper-evident queues, or reconciliation that detects improper modification
+  - Exception handling for email, manual exports, legacy interfaces, or emergency workarounds, including documented risk rationale when encryption or integrity controls are not implemented
+- Do not mark 164.312(e) compliant solely because "TLS is enabled" or traffic is "internal" if the actual ePHI routes, protocol versions, certificate validation, and exception paths are not evidenced.
+- Flag high severity when ePHI is transmitted over the internet or to a third party without encryption, integrity protection, or a documented addressable-specification rationale.
+
 ---
 
 ### Step 5: Organizational Requirements (45 CFR 164.314)
@@ -460,6 +472,13 @@ Assess:
 ## Breach Notification Readiness
 [Assessment of breach response procedures, notification capability, HHS reporting readiness]
 
+## Transmission Security Assessment
+- ePHI Transmission Paths: [count, systems, recipients, external/BA flows]
+- Encryption Evidence: [implemented, alternative control, missing, or undocumented by path]
+- Integrity Evidence: [implemented, alternative control, missing, or undocumented by path]
+- Exception Paths: [email, manual exports, vendor portal downloads, emergency transfers, legacy protocols]
+- 164.312(e) Gaps: [missing route inventory, weak protocol, no certificate validation, no integrity control, undocumented addressable decision]
+
 ## Risk Analysis Gap Summary
 [Specific deficiencies in the organization's risk analysis per 164.308(a)(1)(ii)(A)]
 
@@ -570,6 +589,8 @@ Policies, Procedures, and Documentation — 164.316
 4. **Confusing HIPAA Security Rule with HIPAA Privacy Rule.** The Security Rule (Subpart C) applies only to ePHI and focuses on technical, physical, and administrative safeguards. The Privacy Rule (Subpart E) covers all PHI including paper records and addresses permitted uses and disclosures. A Security Rule review does not satisfy Privacy Rule obligations and vice versa.
 
 5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
+
+6. **Treating a TLS checkbox as complete transmission security.** 164.312(e) requires review of actual ePHI transmission paths, including exception workflows and third-party transfers. A generic "TLS enabled" statement does not prove certificate validation, downgrade resistance, integrity controls, encrypted email/file-transfer workflows, or documented addressable-specification rationale for legacy routes.
 
 ---
 
