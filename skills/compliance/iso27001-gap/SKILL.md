@@ -335,6 +335,23 @@ Assess internal audit program against requirements:
 - Corrective actions taken without undue delay
 - Nonconformities and corrective actions tracked to closure
 
+Require an internal-audit program evidence table before marking Clause 9.2 ready:
+
+| Audit Area | Criteria | Scope | Risk/Prior Finding Link | Sample Population | Sample Method | Auditor | Independence Evidence | Result | Management Reported | Corrective Action Link |
+|------------|----------|-------|-------------------------|-------------------|---------------|---------|-----------------------|--------|---------------------|------------------------|
+| [process/control] | [ISO clause/control IDs] | [systems/sites/period] | [risk register / prior audit / process criticality] | [records/users/vendors/tickets] | [judgmental/statistical/100%/rationale] | [name/role] | [no self-audit / conflict check / external or peer reviewer] | [conforming/nonconforming] | [date/audience/evidence] | [CAPA ID or N/A] |
+
+Raise a finding when any of these are missing:
+
+- **ISO-AUDIT-01:** audit program has no risk-based prioritization or prior-finding linkage.
+- **ISO-AUDIT-02:** audit criteria and scope are not defined per audit engagement.
+- **ISO-AUDIT-03:** auditor independence is asserted but not evidenced.
+- **ISO-AUDIT-04:** sampling method, sample population, or sample rationale is missing.
+- **ISO-AUDIT-05:** audit results are not reported to relevant management with retained evidence.
+- **ISO-AUDIT-06:** corrective actions lack owner, due date, root cause, implementation evidence, or effectiveness verification.
+
+For small organizations where one person owns security, risk, and compliance, do not require a large audit department. Require a documented independence strategy such as peer review, external reviewer, board-level review, or a conflict-of-interest declaration with compensating review.
+
 ---
 
 ### Step 7: Management Review Readiness (Clause 9.3)
@@ -412,6 +429,16 @@ Classify each finding using the following severity levels:
 
 ## Risk Assessment Findings
 [Summary of risk methodology review, gaps in risk register, treatment plan status]
+
+## Internal Audit Program Evidence
+| Audit Area | Criteria | Scope | Risk/Prior Finding Link | Sample Method | Auditor | Independence Evidence | Result | Management Reported | Corrective Action Link |
+|---|---|---|---|---|---|---|---|---|---|
+| [process/control] | [ISO clause/control IDs] | [systems/sites/period] | [risk/prior finding/process criticality] | [population/count/method/rationale] | [name/role] | [evidence] | [result] | [date/audience/evidence] | [CAPA ID or N/A] |
+
+## Corrective Action Closure
+| Finding | Root Cause | Owner | Due Date | Action Taken | Effectiveness Evidence | Closure Date | Status |
+|---|---|---|---|---|---|---|---|
+| [finding ID] | [root cause] | [owner] | [date] | [implemented action] | [retest/review/sample] | [date] | [open/closed/overdue] |
 
 ## Prioritized Remediation Roadmap
 
@@ -512,6 +539,10 @@ Each control in ISO 27002:2022 is tagged with five attributes:
 4. **Neglecting the 11 new controls introduced in the 2022 revision.** Organizations transitioning from 2013 often miss that controls like A.5.7 (Threat intelligence), A.5.23 (Cloud services security), A.8.9 (Configuration management), A.8.11 (Data masking), A.8.12 (Data leakage prevention), and A.8.16 (Monitoring activities) require explicit consideration in the SoA even if determined not applicable.
 
 5. **Scope exclusions without adequate justification.** Excluding organizational units, locations, or controls from ISMS scope requires documented justification demonstrating the exclusion does not affect the organization's ability or responsibility to provide information security. Auditors will challenge poorly justified exclusions.
+
+6. **Treating an audit calendar as an audit program.** A quarterly schedule and summary slide do not prove Clause 9.2 readiness. The program needs criteria, scope, risk/prior-finding linkage, sampling rationale, auditor independence evidence, management reporting, and retained workpapers.
+
+7. **Closing corrective actions without effectiveness evidence.** Clause 10.2 corrective action closure should include root cause, owner, due date, implementation evidence, and verification that the fix worked. A ticket marked "done" is not enough for audit readiness.
 
 ---
 
