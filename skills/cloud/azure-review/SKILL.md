@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -97,6 +97,16 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ---
 
+### Azure Control Evidence Freshness
+
+Require current, scoped evidence for each Azure CIS control result.
+
+| Control | Evidence Type | Artifact / Query | Subscription / Tenant Scope | Owner | Evidence Date | Coverage | Freshness | Assumptions | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[evidence_type]` | `[artifact/query]` | `[subscription/tenant_scope]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[freshness]` | `[assumptions]` | `Current / Stale / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
@@ -141,6 +151,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 7 | Virtual Machines | X | Y | Z | nn% |
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
+
+### Azure Control Evidence Freshness
+
+| Control | Evidence Type | Artifact / Query | Subscription / Tenant Scope | Owner | Evidence Date | Coverage | Freshness | Assumptions | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[evidence_type]` | `[artifact/query]` | `[subscription/tenant_scope]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[freshness]` | `[assumptions]` | `Current / Stale / Unknown` |
 
 ### Detailed Findings
 
@@ -202,6 +218,8 @@ Produce the final report using the structure defined in the Output Format sectio
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
+
+- Scoring Azure controls from stale screenshots or partial subscriptions without owner, date, coverage, and provenance.
 
 ## Prompt Injection Safety Notice
 
