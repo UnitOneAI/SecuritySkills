@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -99,6 +99,16 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Step 6A: Public Snapshot Sharing Evidence
+
+Review RDS, EBS, AMI, and backup snapshot sharing directly. Live resource privacy and encryption do not prove copied data is protected.
+
+| Snapshot / AMI | Region | Attribute Checked | Public Principal | Block Public Access State | Encryption / KMS | Copy / Backup Source | Remediation Status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[snapshot or AMI]` | `[region]` | `restore / createVolumePermission / launchPermission` | `all / Group=all / none` | `[blocked, block-new-sharing, unblocked]` | `[key/evidence]` | `[manual, AWS Backup, AMI]` | `[private/delete/accepted]` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when snapshot or AMI permissions expose data publicly, or when block-public-access state is absent/incomplete for the relevant Region.
+
 ### Step 7: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
@@ -146,6 +156,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 4 | Monitoring | X/16 | Y | Z | nn% |
 | 5 | Networking | X/6 | Y | Z | nn% |
 
+#### Public Snapshot Sharing Evidence
+
+| Snapshot / AMI | Region | Attribute | Public Principal | BPA State | Encryption | Source | Status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[resource]` | `[region]` | `[attribute]` | `[principal]` | `[state]` | `[key]` | `[source]` | `[status]` | `Pass / Fail / Unknown` |
+
 ### Detailed Findings
 
 #### [CIS X.Y] <Recommendation Title>
@@ -191,6 +207,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Level 2** -- Defense-in-depth settings for security-sensitive environments. May impact usability or performance and require more operational overhead.
 
 ---
+
+- Marking AWS storage private because the live RDS instance or EBS volume is private/encrypted while skipping public RDS snapshot, EBS snapshot, AMI launch permission, and regional block-public-access evidence.
 
 ## Common Pitfalls
 
