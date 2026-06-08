@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -212,6 +212,15 @@ Patch Schedule Entry:
 
 ### Step 6: Risk Acceptance and Exception Management
 
+
+Separate delayed patch exceptions from end-of-life or no-patch situations. Unsupported products need lifecycle evidence, not ordinary SLA extensions.
+
+| Product / Asset | EOL / No-Patch Evidence | Exploitation Status | Vendor Support Path | Migration / Retirement Plan | Isolation Control | Extended Support / Compensating Evidence | Owner / Deadline | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[product and systems]` | `[vendor notice/advisory]` | `[KEV/EPSS/exploit]` | `[supported version/contract]` | `[plan/date]` | `[network/app isolation]` | `[control evidence]` | `[owner/date]` | `Managed / Blocked / Unknown` |
+
+Mark `Blocked` when no supported fix stream, migration, retirement, or tested isolation path exists for actively exposed assets.
+
 For vulnerabilities that cannot be remediated within the SLA, document a formal risk acceptance or exception.
 
 **Framework mapping:** NIST SP 800-39 (Risk Management), ISO 27005:2022 (Risk Treatment)
@@ -320,6 +329,12 @@ findings requiring immediate action.]
 |---|---|---|---|---|
 | [CVE-ID] | [type] | [Full/Partial] | [+N days] | [date] |
 
+#### EOL and No-Patch Lifecycle Evidence
+
+| Product / Asset | EOL Evidence | Exploitation | Support Path | Migration / Retirement | Isolation | Compensating Evidence | Owner / Date | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[asset]` | `[evidence]` | `[status]` | `[path]` | `[plan]` | `[control]` | `[evidence]` | `[owner]` | `Managed / Blocked / Unknown` |
+
 ### Risk Exceptions
 [List all active risk acceptance/exception records]
 
@@ -361,6 +376,8 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 - Machine-readable feed: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
 
 ---
+
+- Handling unsupported or end-of-life technology as a normal patch delay without migration, retirement, extended-support, or tested isolation evidence.
 
 ## Common Pitfalls
 
