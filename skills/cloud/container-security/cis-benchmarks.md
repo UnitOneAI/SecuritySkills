@@ -596,6 +596,70 @@ Evaluate container runtime configurations against NIST SP 800-190 countermeasure
 | **CM-4:** Use immutable tags or digests | `image: nginx@sha256:...` preferred over `image: nginx:1.25` |
 | **CM-5:** Remove unnecessary packages | No curl, wget, netcat, or shells in production images |
 
+#### Image Provenance and Admission Evidence Chain
+
+Reviewers must tie image security evidence to the artifact that is actually
+deployed. A signed tag, a scanned build output, or a Helm template default is
+not sufficient unless it matches the rendered production image digest.
+
+**Evidence to collect:**
+
+| Evidence | Required proof |
+|----------|----------------|
+| Rendered workload image | `kubectl get`, rendered Helm output, Kustomize build output, or release manifest showing the production image reference |
+| Resolved digest | Registry digest or workload status proving the exact `sha256` digest deployed |
+| Build provenance | Source commit, CI run, builder identity, and registry artifact for the digest |
+| Signature or attestation | Cosign/Notary/admission result for the deployed digest and trusted signer identity |
+| SBOM or scan | SBOM, vulnerability scan, or attestation whose subject digest equals the deployed digest |
+| Admission enforcement | Kyverno, Gatekeeper, admission webhook, or registry policy in enforce mode for production |
+| Exception lifecycle | Owner, justification, expiry, compensating controls, and resolved digest for any tag or policy exception |
+
+**Failure patterns:**
+
+```yaml
+# FAIL: Signed tag evidence does not prove the deployed digest.
+review_evidence:
+  signed_image: registry.example.com/app/api:1.4.2
+  signed_digest: sha256:aaa...
+runtime:
+  resolved_digest: sha256:bbb...
+```
+
+```yaml
+# FAIL: Production policy only audits unsigned images.
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signature
+spec:
+  validationFailureAction: Audit
+```
+
+```yaml
+# FAIL: Environment values replace a pinned image with a mutable tag.
+image:
+  repository: registry.example.com/app/api
+  tag: latest
+```
+
+```text
+# FAIL: SBOM subject does not match workload digest.
+Workload digest: sha256:bbb...
+SBOM subject:    sha256:aaa...
+```
+
+**Finding IDs:**
+
+| ID | Finding |
+|----|---------|
+| CONT-PROV-01 | Deployed image uses a mutable tag without resolved digest evidence or exception lifecycle |
+| CONT-PROV-02 | Signature or attestation evidence does not match the deployed digest |
+| CONT-PROV-03 | SBOM or vulnerability scan evidence cannot be linked to the deployed digest |
+| CONT-PROV-04 | Admission policy is audit-only or not scoped to production namespaces |
+| CONT-PROV-05 | Signer identity, issuer, or certificate SAN is not constrained to trusted build workflows |
+| CONT-PROV-06 | Helm, Kustomize, or environment values override a pinned image with a mutable tag |
+| CONT-PROV-07 | Production image exception lacks owner, justification, expiry, or compensating controls |
+| CONT-PROV-08 | Registry lifecycle or retention policy can remove evidence needed to verify deployed images |
+
 ### NIST 800-190: Orchestrator Countermeasures
 
 | Countermeasure | What to Check |

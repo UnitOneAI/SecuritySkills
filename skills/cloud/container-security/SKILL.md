@@ -58,10 +58,13 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 
 - Access to Dockerfiles and container build configurations
 - Kubernetes manifests (YAML), Helm charts, or Kustomize overlays
+- Rendered production manifests or release artifacts that show the image reference
+  actually deployed
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
-- Container registry configurations (if available)
+- Container registry configurations, signature verification output, SBOMs, and
+  admission policy configuration (if available)
 
 ---
 
@@ -107,7 +110,43 @@ Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kusto
 
 ---
 
-### Step 2 through Step 6: CIS Benchmark and NIST SP 800-190 Evaluation
+### Step 2: Verify Image Provenance and Admission Evidence Chain
+
+For production workloads, verify that the deployed image is the same artifact
+that was built, scanned, signed, attested, and admitted by policy. Do not rely
+only on Dockerfile templates, Helm defaults, image tags, or CI claims.
+
+**Evidence chain to require:**
+
+- [ ] Rendered manifest or live workload records the production image reference.
+- [ ] Image reference resolves to an immutable digest, or tag exceptions include
+      owner, justification, expiry, and the resolved digest at deployment time.
+- [ ] Build provenance links the digest to a source commit, CI run, builder, and
+      artifact registry location.
+- [ ] Signature or attestation verification is performed against the deployed
+      digest and trusted signer identity, not only a mutable tag.
+- [ ] SBOM or vulnerability scan evidence is tied to the same deployed digest.
+- [ ] Admission policy is in enforce mode for production namespaces, or the
+      exception has compensating controls and expiry.
+- [ ] Helm, Kustomize, and environment-specific values do not override a pinned
+      or verified image reference with a mutable tag.
+
+**Finding IDs:**
+
+```
+CONT-PROV-01: Deployed image uses a mutable tag without resolved digest evidence or exception lifecycle
+CONT-PROV-02: Signature or attestation evidence does not match the deployed digest
+CONT-PROV-03: SBOM or vulnerability scan evidence cannot be linked to the deployed digest
+CONT-PROV-04: Admission policy is audit-only or not scoped to production namespaces
+CONT-PROV-05: Signer identity, issuer, or certificate SAN is not constrained to trusted build workflows
+CONT-PROV-06: Helm, Kustomize, or environment values override a pinned image with a mutable tag
+CONT-PROV-07: Production image exception lacks owner, justification, expiry, or compensating controls
+CONT-PROV-08: Registry lifecycle or retention policy can remove evidence needed to verify deployed images
+```
+
+---
+
+### Step 3 through Step 7: CIS Benchmark and NIST SP 800-190 Evaluation
 
 Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
 
@@ -115,7 +154,7 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 8: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -157,6 +196,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Domain | Framework | Critical | High | Medium | Low | Pass |
 |--------|-----------|----------|------|--------|-----|------|
 | Dockerfile Security | CIS Docker 4.x | X | X | X | X | X |
+| Image Provenance | NIST 800-190 | X | X | X | X | X |
 | Pod Security | CIS K8s 5.2.x | X | X | X | X | X |
 | RBAC | CIS K8s 5.1.x | X | X | X | X | X |
 | Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
@@ -178,6 +218,12 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration>
 - **Remediation:** <fix with code example>
 
+### Image Provenance Evidence Matrix
+
+| Workload | Namespace | Rendered Image | Resolved Digest | Build/CI Evidence | Signature/Attestation | SBOM/Scan Digest | Admission Mode | Exception |
+|----------|-----------|----------------|-----------------|-------------------|-----------------------|------------------|----------------|-----------|
+| deploy/api | production | registry.example.com/app/api@sha256:... | sha256:... | commit + CI run | cosign pass, trusted identity | sha256:... | enforce | none |
+
 ### Pod Security Standards Compliance Matrix
 
 | Workload | Namespace | PSS Level | Violations |
@@ -193,6 +239,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ### Summary
 - Dockerfiles reviewed: <N>
+- Production image references reviewed: <N>
 - Kubernetes workloads reviewed: <N>
 - Overall Pod Security Standard level: <Privileged / Baseline / Restricted>
 - Critical findings: <N>
@@ -257,6 +304,7 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **`imagePullPolicy: Always` is not provenance.** It changes pull behavior but does not prove the image was built from the reviewed commit, signed by a trusted identity, scanned, or admitted in enforce mode.
 
 ---
 
@@ -284,9 +332,11 @@ Produce the final report using the structure defined in the Output Format sectio
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
+- Kubernetes Dynamic Admission Control: https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
+- Sigstore Cosign Verification: https://docs.sigstore.dev/cosign/verifying/verify/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF
 
 ---
