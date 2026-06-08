@@ -13,7 +13,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-86, RFC-3227]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -98,6 +98,38 @@ CUSTODY LOG:
 - Use tamper-evident bags or containers for physical media
 - Compute and record cryptographic hashes (SHA-256 minimum) at collection time and verify at each transfer
 - Maintain a continuous, unbroken record from collection through final disposition
+
+### Step 1b: Verify Immutable Evidence Storage Controls
+
+Before collecting evidence, confirm that the destination storage prevents accidental or malicious alteration after acquisition. Hashes prove detection of tampering, but they do not prevent evidence deletion, overwrite, or unauthorized access.
+
+**Evidence storage control requirements:**
+
+| Control | What to Verify | Examples |
+|---|---|---|
+| **Write protection** | Evidence destination prevents modification after write or requires privileged break-glass approval | Hardware write blocker, WORM storage, S3 Object Lock, immutable blob policy |
+| **Retention / legal hold** | Retention period and legal hold match the incident, regulatory, and legal preservation requirements | Object retention mode, legal hold flag, records retention policy |
+| **Access control** | Only authorized responders and legal/forensic custodians can read or transfer evidence | Dedicated evidence bucket/share, least-privilege IAM, MFA-protected access |
+| **Deletion protection** | No routine lifecycle rule, cleanup job, or admin shortcut can delete evidence before retention expires | Lifecycle policy review, delete-marker protection, change approval |
+| **Audit logging** | Reads, writes, deletes, retention changes, and access-policy changes are logged to a separate protected location | CloudTrail data events, storage audit logs, SIEM forwarding |
+| **Encryption and key custody** | Evidence is encrypted and key access is limited to authorized custodians | KMS key policy, HSM-backed key, separate key administrators |
+| **Integrity re-verification** | Hashes are re-verified after upload, transfer, and before analysis | SHA-256 manifest, signed checksum file, transfer verification log |
+
+**Evidence Storage Controls Record:**
+
+```
+Evidence Storage Controls:
+- Storage Location:       [bucket/share/drive/path]
+- Write Protection:       [Enabled/Disabled -- describe mechanism]
+- Retention / Legal Hold: [Enabled/Disabled/N/A -- retention period]
+- Access Control:         [custodians/groups with access]
+- Deletion Protection:    [Enabled/Disabled -- lifecycle rule reviewed]
+- Audit Logging:          [Enabled/Disabled -- log destination]
+- Encryption / Key Owner: [KMS/HSM/manual -- key custodians]
+- Verification Manifest:  [path to SHA-256 manifest or signed checksum]
+```
+
+If immutable or write-protected storage is unavailable, record the compensating controls and treat evidence admissibility and integrity as higher risk.
 
 ### Step 2: Collect Evidence in Order of Volatility (RFC 3227)
 
@@ -360,7 +392,7 @@ Produce the evidence collection report with these exact sections:
 ```markdown
 ## Forensic Evidence Collection Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** forensics-checklist v1.0.0
+**Skill:** forensics-checklist v1.0.1
 **Frameworks:** NIST SP 800-86, RFC 3227
 **Examiner:** [Name or "AI-assisted -- human examiner required for court-admissible evidence"]
 
@@ -388,6 +420,11 @@ the order of collection, and any evidence that could not be obtained.]
 
 ### Chain of Custody
 [Include chain of custody form for each evidence item]
+
+### Evidence Storage Controls
+| Storage Location | Write Protection | Retention / Legal Hold | Access Control | Deletion Protection | Audit Logging | Encryption / Key Owner | Verification Manifest |
+|---|---|---|---|---|---|---|---|
+| [bucket/share/drive/path] | [Enabled/Disabled + mechanism] | [period/status] | [custodians/groups] | [Enabled/Disabled] | [log destination] | [KMS/HSM/manual + owner] | [path/hash manifest] |
 
 ### Integrity Verification
 | Evidence ID | Acquisition Hash | Verification Hash | Match |
@@ -460,6 +497,10 @@ Applying traditional forensic methods to cloud environments without adaptation l
 ### Pitfall 5: Overwriting Evidence with Collection Activity
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
+
+### Pitfall 6: Hashes Without Immutable Storage
+
+A SHA-256 hash can reveal that evidence changed, but it does not stop an attacker, administrator, lifecycle job, or mistaken responder from deleting or overwriting the evidence. Preserve forensic artifacts in write-protected or immutable storage with retention, access control, audit logging, and independent hash re-verification.
 
 ---
 
