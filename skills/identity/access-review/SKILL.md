@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -35,6 +35,7 @@ Invoke this skill when:
 - Performing quarterly or semi-annual access certification campaigns
 - Auditing user entitlements for least privilege compliance
 - Investigating orphaned accounts (owner departed, no reassignment)
+- Reviewing service-account credentials, API keys, PATs, OAuth grants, deploy keys, webhook secrets, or CI/CD tokens
 - Detecting role explosion (excessive number of roles with overlapping permissions)
 - Validating segregation of duties (SoD) controls
 - Preparing for SOC 2, ISO 27001, PCI DSS, or HIPAA audits that require evidence of access reviews
@@ -99,6 +100,7 @@ Access reviews are the operational heartbeat of identity governance. NIST SP 800
 
 Identify:
 
+- **Non-human credential sources** - API keys, PATs, OAuth grants, deploy keys, webhook secrets, CI/CD tokens, bot credentials
 - **In-scope systems** — production environments, SaaS applications, infrastructure platforms, databases, internal tools
 - **In-scope identity types** — human users, service accounts, shared accounts, external/guest accounts
 - **Entitlement sources** — IdP group memberships, cloud IAM roles, application-level permissions, database grants
@@ -113,6 +115,7 @@ AR-SCOPE-03: Service accounts excluded from review population
 AR-SCOPE-04: SaaS applications not included in centralized review (shadow IT gap)
 AR-SCOPE-05: No single authoritative source for entitlements (CIS 6.7 — centralize access control)
 AR-SCOPE-06: Guest/external accounts not included in review scope
+AR-SCOPE-07: Non-human credentials excluded from the review population
 ```
 
 **Recommended cadences:**
@@ -122,6 +125,7 @@ AR-SCOPE-06: Guest/external accounts not included in review scope
 | Privileged / admin accounts | Quarterly (90 days) | AC-6(7), CIS 5.4 |
 | Standard user accounts | Semi-annually (180 days) | AC-2(j) |
 | Service accounts | Quarterly (90 days) | CIS 5.5 |
+| API keys / PATs / OAuth grants / deploy keys | Quarterly (90 days) | AC-2, AC-6 |
 | External / guest accounts | Quarterly (90 days) | AC-2 |
 | Break-glass / emergency accounts | Monthly (30 days) | AC-6(1) |
 
@@ -191,7 +195,73 @@ AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle man
 
 ---
 
-### Step 4: Role Explosion Detection
+### Step 4: Non-Human Credential and API Access Review
+
+**Objective:** Treat non-human credentials as first-class review objects, not merely attributes of service accounts.
+
+**NIST SP 800-53 Reference:** AC-2 - Account Management; AC-6 - Least Privilege
+**CIS Controls v8 Reference:** Control 5.5 - Establish and Maintain an Inventory of Service Accounts; Control 6.1 - Establish an Access Granting Process; Control 6.2 - Establish an Access Revoking Process
+
+Inventory every credential that can authenticate automation, integrations, or third parties:
+
+| Credential Type | Evidence to Capture | Review Focus |
+|---|---|---|
+| API keys | Key ID, owning system, scope, last used, expiry, storage location | Broad scopes, never-expiring keys, inactive-but-enabled keys |
+| Personal access tokens | Human owner, automation dependency, repo/org scope, last rotation | Human-owned production automation and role-change drift |
+| OAuth grants / app consents | Client ID, tenant, consent approver, requested scopes, last sign-in | Stale vendor integrations and excessive delegated scopes |
+| Deploy keys / SSH keys | Repository, environment, write access, owner, rotation date | Shared keys and production write access without backup owner |
+| Webhook secrets | Endpoint, event types, signing algorithm, storage location | Unsigned webhooks, reused secrets, unknown receiver owner |
+| CI/CD tokens | Pipeline, environment, protected variable status, secret manager reference | Copied ticket secrets and missing emergency revocation path |
+| Bot accounts | Account owner, backup owner, credential list, allowed systems | Bot identity reviewed but attached credentials ignored |
+
+**Minimum evidence matrix:**
+
+| Field | Required Evidence |
+|---|---|
+| Credential identity | Key/token/grant/deploy-key ID without exposing secret values |
+| Owner and backup owner | Named accountable team/person plus fallback approver |
+| System and business process | Integration, app, pipeline, vendor, or automation purpose |
+| Exact scope | Resource, tenant, environment, action, IP, and time constraints where available |
+| Lifecycle | Created date, last used date, last rotated date, expiry date, planned retirement date |
+| Storage | Approved secrets manager, protected CI variable, HSM/KMS, or documented exception |
+| Approval evidence | Ticket, access request, contract/SOW, or app-consent record |
+| Revocation path | Tested procedure and expected blast radius if revoked urgently |
+
+**What to look for:**
+
+```
+AR-NHI-01: Credential inventory omits API keys, PATs, OAuth grants, deploy keys, webhook secrets, or CI/CD tokens
+AR-NHI-02: Non-human credential lacks named owner and backup owner
+AR-NHI-03: Credential scope is broader than the system, tenant, environment, or business process requires
+AR-NHI-04: Credential has no created, last-used, last-rotated, or expiry evidence
+AR-NHI-05: Unused credential remains active beyond policy threshold without exception
+AR-NHI-06: Human-owned PAT or deploy key powers production automation
+AR-NHI-07: Secret stored outside approved secrets manager or copied from tickets/chat/history
+AR-NHI-08: Emergency revocation path is missing, untested, or owner-dependent
+AR-NHI-09: Third-party OAuth/API integration retained after project shutdown, vendor offboarding, or owner departure
+AR-NHI-10: Rotation evidence cannot be reconciled to the credential currently deployed in production
+```
+
+**Evidence quality for non-human credentials:**
+
+| Evidence Quality | Acceptable Signals | Review Decision |
+|---|---|---|
+| Reliable | Inventory covers credential type, owner, exact scope, last-used data, rotation/expiry, approved storage, and revocation runbook | Can certify if business need remains valid |
+| Weak | Owner exists but scope, storage, last-used, or rotation evidence is incomplete | Certify only with time-bound remediation |
+| Not evaluable | Secret value is known but ID, owner, system, or storage source cannot be proven | Treat as high-risk until rotated or revoked |
+
+**Severity guidance:**
+
+| Context | Severity | Rationale |
+|---|---|---|
+| Production credential with admin/write scope, no owner, or human-owned automation | **Critical** | Immediate unauthorized change or persistence risk |
+| Broad OAuth/PAT/API scopes with no expiry or rotation evidence | **High** | Privilege persists outside normal lifecycle controls |
+| Stale third-party integration with unclear business owner | **Medium** | Offboarding and vendor-access risk |
+| Missing backup owner but current owner and rotation evidence exist | **Low** | Process resilience gap |
+
+---
+
+### Step 5: Role Explosion Detection
 
 **Objective:** Identify uncontrolled growth in role definitions that undermines RBAC governance.
 
@@ -222,7 +292,7 @@ AR-ROLE-08: Custom roles duplicating built-in/managed role permissions
 
 ---
 
-### Step 5: Segregation of Duties Analysis
+### Step 6: Segregation of Duties Analysis
 
 **Objective:** Detect SoD violations where a single identity holds conflicting entitlements.
 
@@ -266,7 +336,7 @@ AR-SOD-07: SoD conflicts in service accounts (single account spans multiple func
 
 ---
 
-### Step 6: Remediation Enforcement and Evidence Collection
+### Step 7: Remediation Enforcement and Evidence Collection
 
 **Objective:** Verify that review outcomes are enforced and evidence is retained for audit.
 
@@ -333,7 +403,7 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 - Systems reviewed: [list]
 - Identity provider(s): [list]
 - Review period: [start date] to [end date]
-- Population: [X human users, Y service accounts, Z total entitlements]
+- Population: [X human users, Y service accounts, Z total entitlements, N non-human credentials]
 
 ### Executive Summary
 [2-3 sentences: overall entitlement hygiene, critical gaps, top priority actions]
@@ -348,9 +418,10 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 - Review Scope & Cadence (Step 1): [count]
 - Entitlement Certification (Step 2): [count]
 - Orphaned Accounts (Step 3): [count]
-- Role Explosion (Step 4): [count]
-- Segregation of Duties (Step 5): [count]
-- Enforcement & Evidence (Step 6): [count]
+- Non-Human Credentials (Step 4): [count]
+- Role Explosion (Step 5): [count]
+- Segregation of Duties (Step 6): [count]
+- Enforcement & Evidence (Step 7): [count]
 
 ### Detailed Findings
 [Findings table]
@@ -402,6 +473,8 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
 7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
 
+8. **Credential-level blind spot** - A service account can have an owner while its PATs, OAuth grants, deploy keys, or CI tokens are stale, human-owned, or stored outside approved secret management.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -434,6 +507,7 @@ This skill processes identity and entitlement data that may contain adversarial 
 | `identity/iam-review.md` | Broader IAM security assessment covering authentication, service accounts, and zero trust alignment |
 | `identity/rbac-design.md` | Designing or refactoring roles when role explosion is detected |
 | `identity/privileged-access.md` | Deep dive on PAM controls when privileged account findings surface |
+| `devsecops/secrets-management.md` | Validate storage, rotation, and exposure controls for credential findings |
 | `identity/zero-trust-assessment.md` | When access review findings indicate need for continuous verification |
 | `compliance/soc2-gap.md` | Mapping access review findings to SOC 2 CC6.1-CC6.3 |
 
@@ -443,4 +517,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-06-08 | Added non-human credential and API access evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
