@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -398,6 +398,16 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 
 ---
 
+### Profile Evidence Confidence
+
+Tie current and target profile scores to evidence source, scope, confidence, and validation needs.
+
+| Function / Category | Subcategory | Score | Evidence Source | Owner | Evidence Date | Coverage | Confidence | Validation Needed | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[function/category]` | `[subcategory]` | `[score]` | `[evidence_source]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[confidence]` | `[validation_needed]` | `High / Medium / Low / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Classification | Definition | Organizational Impact |
@@ -500,6 +510,12 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 
 ---
 
+### Profile Evidence Confidence
+
+| Function / Category | Subcategory | Score | Evidence Source | Owner | Evidence Date | Coverage | Confidence | Validation Needed | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[function/category]` | `[subcategory]` | `[score]` | `[evidence_source]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[confidence]` | `[validation_needed]` | `High / Medium / Low / Unknown` |
+
 ## Framework Reference
 
 ### NIST CSF 2.0 Complete Function/Category Structure
@@ -577,6 +593,8 @@ Tier 4 — Adaptive
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
 
 ---
+
+- Treating interview statements or stale artifacts as equal to current implementation evidence when scoring NIST CSF profiles.
 
 ## Prompt Injection Safety Notice
 
