@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -34,6 +34,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Review of existing DAST integration in CI/CD pipelines.
 - Authenticated scanning setup or troubleshooting.
 - API security testing configuration (REST, GraphQL).
+- GraphQL DAST review where mutation safety, schema sourcing, or introspection fallback evidence is needed.
 - DAST results triage workflow design.
 - Compliance audits requiring dynamic testing evidence (PCI DSS 6.3.2, SOC 2).
 
@@ -80,6 +81,14 @@ Use Glob and Grep to locate DAST tool configurations, scan policies, and CI inte
 **/Jenkinsfile*
 **/docker-compose*test*
 **/docker-compose*security*
+
+# GraphQL scan inputs
+**/*.graphql
+**/*.gql
+**/schema.json
+**/schema.graphql
+**/*graphql*.yaml
+**/*graphql*.yml
 ```
 
 Categorize by:
@@ -265,10 +274,35 @@ jobs:
 **What to verify:**
 
 - Introspection is available on the target (required for automatic query generation).
+- If introspection is disabled, an offline schema artifact or introspection JSON is supplied from the same release being scanned.
 - Query depth limits are set to prevent resource exhaustion during scanning.
-- Mutations are handled carefully (exclude destructive mutations from active scanning).
+- Mutations are handled safely through explicit allowlists, denylist exclusions for destructive operations, dry-run/test-mode flags, disposable seeded data, or a resettable ephemeral environment.
+- Mutation coverage is documented separately from query coverage so "GraphQL scan ran" is not treated as proof that state-changing operations were tested safely.
+- Scanner-generated arguments are bounded and type-aware; optional argument generation does not create high-volume, cross-tenant, or destructive requests without seed data.
+- Schema drift is checked by tying the GraphQL schema artifact to the deployed commit, image digest, or release version.
 
-**Finding classification:** No API scanning for applications with API endpoints is **High**. OpenAPI spec out of date is **Medium**. No GraphQL scanning for GraphQL endpoints is **Medium**.
+**GraphQL mutation safety evidence:**
+
+| Evidence | What to Record |
+|---|---|
+| Schema source | Live introspection, schema file, introspection JSON, gateway schema registry, or build artifact |
+| Schema freshness | Commit SHA, image digest, release version, or registry version |
+| Mutation inventory | Mutation name, object type, side effect, required role, and tenant/object scope |
+| Safe scan decision | Allow, exclude, dry-run only, seeded-only, manual validation, or not evaluable |
+| Data safety control | Disposable tenant, reset job, test payment provider, dry-run flag, mock integration, or rollback plan |
+| Argument strategy | Static seed values, generated values, fuzzed values, max args, and type handling |
+| Auth/session binding | Identity used for each mutation and whether CSRF/session refresh applies |
+| Result handling | Expected success/deny/error response and cleanup evidence |
+
+**High-risk mutation patterns:**
+
+- `delete*`, `remove*`, `reset*`, `refund*`, `charge*`, `transfer*`, `invite*`, `disable*`, `rotate*`, `promote*`, and similar state-changing operations included in active scans without safe seed data.
+- GraphQL scans that enable optional arguments or fuzzing against shared staging data without rollback or disposable tenants.
+- Production-like payment, email, webhook, or identity integrations used during mutation scans without sandbox endpoints.
+- Introspection disabled in the target but no matching offline schema artifact is supplied, causing query-only or stale-schema coverage.
+- Mutations excluded for safety but no compensating manual/API test evidence exists for authorization and validation.
+
+**Finding classification:** No API scanning for applications with API endpoints is **High**. OpenAPI spec out of date is **Medium**. No GraphQL scanning for GraphQL endpoints is **Medium**. Destructive GraphQL mutations included in active DAST without resettable data or sandbox integrations is **High**. Stale or missing GraphQL schema evidence is **Medium**.
 
 ---
 
@@ -482,8 +516,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; destructive GraphQL mutations scanned without sandbox, rollback, or disposable seed data. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI or GraphQL schema evidence out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -508,6 +542,12 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | A03 Injection | 8 | No | Yes | None |
 | A05 Security Misconfiguration | 12 | Yes | Yes | None |
 | A07 Auth Failures | 0 | No | No | GAP |
+
+### GraphQL Scan Safety
+
+| Schema Source | Schema Version | Query Coverage | Mutation Safety Model | Destructive Mutations | Seed/Reset Evidence | Residual Gap |
+|---------------|----------------|----------------|-----------------------|-----------------------|--------------------|--------------|
+| <introspection/schema file> | <sha/version> | Yes/No | allowlist/denylist/dry-run/seeded/manual | excluded/tested/not evaluable | <job/ticket> | <gap> |
 
 ### Scan Configuration Status
 
@@ -584,6 +624,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
+6. **Treating a GraphQL scan as safe because it only has depth limits.** Depth and argument limits reduce resource abuse, but they do not make mutations safe. State-changing GraphQL operations need explicit allowlists, seeded disposable data, sandbox integrations, or manual validation evidence.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -607,6 +649,7 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - ZAP GitHub Actions: https://www.zaproxy.org/docs/docker/github-actions/
 - ZAP Scan Rules: https://www.zaproxy.org/docs/alerts/
 - OWASP API Security Top 10: https://owasp.org/API-Security/
+- ZAP GraphQL Support: https://www.zaproxy.org/docs/desktop/addons/graphql-support/
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
 - SARIF Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
 
@@ -614,4 +657,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **1.0.1** -- Add GraphQL DAST mutation safety, schema freshness, destructive-operation exclusion, and seed/reset evidence gates.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.

@@ -1,0 +1,46 @@
+scenario: graphql_dast_mutations_without_safety_controls
+skill: dast-config
+expected_result: flag_graphql_mutation_safety_gap
+description: >
+  GraphQL DAST is enabled with depth limits, but mutation scanning can execute
+  destructive operations against shared staging data without seed/reset evidence
+  or a current schema artifact.
+evidence:
+  zap_graphql_job:
+    endpoint: https://staging.example.com/graphql
+    introspection_available: false
+    offline_schema_artifact: null
+    max_query_depth: 5
+    max_args_count: 10
+    optional_args_enabled: true
+    args_type: BOTH
+  mutation_inventory:
+    - name: deleteUser
+      side_effect: deletes user account
+      scan_decision: included
+      data_safety_control: none
+    - name: refundPayment
+      side_effect: sends payment refund request
+      scan_decision: included
+      data_safety_control: production-like payment provider
+    - name: rotateApiKey
+      side_effect: invalidates existing API key
+      scan_decision: included
+      data_safety_control: none
+  environment:
+    target: shared-staging
+    disposable_tenant: false
+    reset_job: false
+    sandbox_integrations:
+      payment: false
+      email: false
+      webhook: false
+  compensating_evidence:
+    manual_authorization_tests: false
+    mutation_denylist: false
+    dry_run_flag: false
+assertions:
+  - destructive mutations are included in active scanning
+  - no offline schema proves coverage when introspection is disabled
+  - shared staging has no disposable seed data or reset job
+  - payment and identity side effects are not sandboxed

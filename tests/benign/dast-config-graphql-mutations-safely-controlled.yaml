@@ -1,0 +1,49 @@
+scenario: graphql_dast_mutations_safely_controlled
+skill: dast-config
+expected_result: do_not_flag_graphql_mutation_safety_gap
+description: >
+  GraphQL DAST uses a current schema artifact, separates query and mutation
+  coverage, and only executes mutations with disposable seed data, dry-run
+  controls, sandbox integrations, and cleanup evidence.
+evidence:
+  zap_graphql_job:
+    endpoint: https://staging.example.com/graphql
+    introspection_available: false
+    offline_schema_artifact: artifacts/graphql/schema-2026-06-08.json
+    schema_commit_sha: f4f3374e2524262971c3bc3709f7b3d83a3e5367
+    max_query_depth: 5
+    max_args_count: 8
+    optional_args_enabled: false
+  mutation_inventory:
+    - name: updateProfile
+      side_effect: updates seeded profile fixture
+      scan_decision: allow_seeded
+      data_safety_control: disposable tenant tenant-dast-001
+      expected_cleanup: reset job dast-reset-2026-06-08
+    - name: refundPayment
+      side_effect: refund request
+      scan_decision: dry_run_only
+      data_safety_control: payment sandbox plus dryRun argument
+      expected_cleanup: no external side effect
+    - name: deleteUser
+      side_effect: deletes user account
+      scan_decision: excluded_manual_validation
+      data_safety_control: manual authorization test SEC-2188
+      expected_cleanup: not executed by scanner
+  environment:
+    target: ephemeral-staging
+    disposable_tenant: true
+    reset_job: true
+    sandbox_integrations:
+      payment: true
+      email: true
+      webhook: true
+  report:
+    query_coverage_recorded: true
+    mutation_safety_table_recorded: true
+    residual_gap: none
+assertions:
+  - schema artifact is tied to the scanned release
+  - destructive mutations are excluded or dry-run only
+  - executed mutations use disposable seed data and cleanup
+  - mutation coverage is documented separately from query coverage
