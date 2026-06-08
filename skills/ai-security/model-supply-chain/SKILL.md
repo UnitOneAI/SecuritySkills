@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -130,6 +130,19 @@ Glob: **/config.json
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
+
+**Model artifact verification evidence:** every production or evaluation model artifact must have evidence that ties the deployed artifact to an independently trusted source, not only a Yes/No statement.
+
+| Model | Artifact | Source URL/Registry | Revision/Commit | SHA-256 Digest | Signature/Attestation | Trust Root | Verification Source | Verified By/At | Result | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [model] | [weights/adapter/tokenizer/config] | [registry/path] | [commit/tag/version] | [digest] | [sigstore/cosign/SLSA/in-toto/model card/N/A] | [publisher key/internal registry/attestation service] | [release page/internal ingestion record/CI log] | [person/system timestamp] | [Pass/Fail/Unknown] | [exceptions] |
+
+For artifact verification:
+- Record the exact model revision, commit hash, or immutable version used at build and deploy time.
+- Record SHA-256 for model weights, adapters, tokenizer files, and critical configuration files that affect inference behavior.
+- Record signature, attestation, or SLSA provenance details when available, including the trust root used to verify them.
+- Treat checksums stored only beside the downloaded artifact or in the same mutable model repository as self-referential evidence, not independent verification.
+- Mark verification as `Unknown` or `Fail` when the digest, revision, verification source, or trust root cannot be produced.
 
 ---
 
@@ -378,9 +391,15 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ## Model Inventory
 
-| Model | Source | Format | Checksum Verified | Pinned Version | Model Card |
-|---|---|---|---|---|---|
-| [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
+| Model | Source | Format | Revision/Commit | SHA-256 Digest | Signature/Attestation | Trust Root | Model Card |
+|---|---|---|---|---|---|---|---|
+| [name] | [source] | [format] | [commit/tag/version] | [digest or Unknown] | [sigstore/cosign/SLSA/in-toto/N/A] | [publisher key/internal registry/attestation service/Unknown] | [Complete/Partial/Missing] |
+
+## Artifact Verification Evidence
+
+| Model | Artifact | Source URL/Registry | Revision/Commit | SHA-256 Digest | Signature/Attestation | Verification Source | Verified By/At | Result | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [model] | [weights/adapter/tokenizer/config] | [registry/path] | [commit/tag/version] | [digest] | [signature/provenance reference] | [independent release/internal ingestion/CI log] | [person/system timestamp] | [Pass/Fail/Unknown] | [exceptions] |
 
 ## Findings
 
@@ -440,6 +459,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 4. **Assuming Hugging Face models are vetted.** Hugging Face Hub is a hosting platform, not a curation service. Any user can upload any model. While Hugging Face has introduced malware scanning and model signing capabilities, the majority of hosted models have no cryptographic provenance. Treat Hugging Face models as untrusted artifacts requiring verification, the same way you treat npm packages.
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
+
+6. **Treating Yes/No verification fields as evidence.** A model inventory that says "checksum verified: yes" is not enough for audit or incident response. Record the actual digest, immutable revision, signature or attestation reference, trust root, verification source, and verifier timestamp so a reviewer can reproduce the supply chain decision.
 
 ---
 
