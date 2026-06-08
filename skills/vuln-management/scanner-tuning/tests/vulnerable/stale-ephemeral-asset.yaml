@@ -1,0 +1,26 @@
+scan_result:
+  scanner: tenable
+  finding_id: CVE-2024-3094
+  scanner_asset_id: tenable-asset-4f0a-old
+  asset_key_used_downstream: 10.40.12.18
+  hostname: ip-10-40-12-18.ec2.internal
+  cloud_instance_id: i-0abc1111old
+  ami_id: ami-legacy-2024-03
+  scan_completed_at: "2026-06-01T01:10:00Z"
+  detected_package: xz-libs-5.6.0
+current_inventory:
+  ip: 10.40.12.18
+  cloud_instance_id: i-0def2222new
+  ami_id: ami-hardened-2026-06
+  launched_at: "2026-06-08T09:20:00Z"
+  inventory_collected_at: "2026-06-08T09:25:00Z"
+  package_status:
+    xz-libs: 5.4.6-3.el9.patched
+expected_result:
+  classification: stale-evidence
+  required_action: re-scan-current-instance-before-suppression-or-severity-override
+  required_evidence:
+    - scanner_asset_id
+    - current_cloud_instance_id
+    - inventory_collected_at
+    - launch_timestamp

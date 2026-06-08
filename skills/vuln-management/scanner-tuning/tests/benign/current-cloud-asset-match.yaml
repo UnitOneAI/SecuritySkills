@@ -1,0 +1,23 @@
+scan_result:
+  scanner: qualys
+  finding_id: QID-376157
+  cve: CVE-2026-10001
+  scanner_asset_id: qualys-asset-92aa-current
+  asset_key_used_downstream: i-0def2222new
+  cloud_instance_id: i-0def2222new
+  private_ip: 10.40.12.18
+  scan_completed_at: "2026-06-08T09:30:00Z"
+current_inventory:
+  cloud_instance_id: i-0def2222new
+  private_ip: 10.40.12.18
+  launched_at: "2026-06-08T09:20:00Z"
+  inventory_collected_at: "2026-06-08T09:35:00Z"
+manual_validation:
+  package_manager_check: vulnerable-package-not-installed
+  authenticated_rescan: not-vulnerable
+expected_result:
+  classification: confirmed-false-positive
+  suppression_scope:
+    scanner_asset_id: qualys-asset-92aa-current
+    cloud_instance_id: i-0def2222new
+  required_review: quarterly-or-on-asset-identity-change

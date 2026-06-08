@@ -1,0 +1,20 @@
+scanner_finding:
+  scanner: trivy
+  finding_id: CVE-2025-12345
+  image_reference: registry.example.com/payments/api:latest
+  digest_at_scan: sha256:oldvulnerabledigest
+  scan_completed_at: "2026-06-05T02:00:00Z"
+  affected_package: openssl
+runtime_inventory:
+  workload: payments-api
+  namespace: production
+  image_reference: registry.example.com/payments/api:latest
+  running_digest: sha256:newpatchdigest
+  deployed_at: "2026-06-08T10:00:00Z"
+  inventory_collected_at: "2026-06-08T10:05:00Z"
+expected_result:
+  classification: replaced-image-digest
+  required_action: bind-finding-and-suppression-to-image-digest-not-tag
+  do_not_accept:
+    - suppression scoped only to registry.example.com/payments/api:latest
+    - false-positive decision without running digest evidence

@@ -1,0 +1,27 @@
+scanner_finding:
+  scanner: grype
+  finding_id: CVE-2026-20002
+  image_reference: registry.example.com/reporting/worker:2026.06.08
+  image_digest: sha256:currentdigest
+  scan_completed_at: "2026-06-08T11:00:00Z"
+runtime_inventory:
+  workload: reporting-worker
+  namespace: production
+  running_digest: sha256:currentdigest
+  deployed_at: "2026-06-08T10:40:00Z"
+  inventory_collected_at: "2026-06-08T11:05:00Z"
+manual_validation:
+  vulnerable_binary_removed_in_final_layer: true
+  second_scanner_result: not-vulnerable
+suppression:
+  scope:
+    image_digest: sha256:currentdigest
+    package: libexample
+    cve: CVE-2026-20002
+  expires_at: "2026-09-08"
+expected_result:
+  classification: confirmed-false-positive
+  do_not_invalidate_until:
+    - image_digest_changes
+    - package_changes
+    - suppression_expiry
