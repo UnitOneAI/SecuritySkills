@@ -6,13 +6,13 @@ description: >
   integrates LLM APIs, builds RAG pipelines, or deploys AI-powered features.
   Produces a structured findings report mapped to LLM01-LLM10 with severity
   ratings, CWE mappings, and prioritized remediation guidance.
-tags: [ai-security, llm, appsec]
+tags: [ai-security, llm, appsec, data-flow]
 role: [appsec-engineer, security-engineer, vciso]
 phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,7 +52,25 @@ Before beginning the review, collect the following:
 - [ ] **Authentication and authorization context** — how user identity propagates through the LLM pipeline, whether the model inherits user permissions or operates with elevated privileges.
 - [ ] **Rate limiting and quota configuration** — per-user and per-session limits on model invocations.
 - [ ] **Data classification** — what sensitivity level of data flows into or out of the model (PII, PHI, financial, credentials).
-- [ ] **Deployment topology** — self-hosted vs. third-party API, data residency, network boundaries.
+- [ ] **Deployment topology** — self-hosted vs. third-party API, data residency, network boundaries.`r`n- [ ] **Data-flow evidence map** — entry points, trust boundaries, controls, sinks, evidence locations, and result status for each LLM flow reviewed.
+
+### Data-Flow Evidence Gate
+
+Before finalizing LLM01, LLM02, LLM05, LLM06, LLM08, or LLM10 findings, document the concrete LLM data flow. A prompt, retriever, parser, tool definition, or output renderer is only one part of the issue; severity should be based on the path from entry point to downstream sink.
+
+Required evidence fields:
+
+| Field | What to Capture |
+|-------|-----------------|
+| Entry point / data source | Route, form, API, upload, ingestion job, vector collection, tool result, or model output source |
+| Trust boundary crossed | User-to-server, document-store-to-prompt, model-to-application, model-to-tool, tool-to-external-system, or application-to-user |
+| Control reviewed | Validation, prompt boundary, retrieval filter, tenant authorization, output schema validation, encoding/sanitization, tool allowlist, confirmation gate, rate limit, or quota |
+| Downstream sink | Prompt template, retriever, model API, tool call, database write, file system, external API, log, vector store, HTML/Markdown renderer, or user response |
+| Evidence location | File/function/config/policy/log/test that proves the control result |
+| Result | Pass, Fail, Unknown, or Not Applicable |
+| False-positive checks | Context that could make the issue safe, unreachable, test-only, out-of-scope, or already controlled |
+
+Mark a finding's data-flow result as `Unknown` when the entry point, trust boundary, reviewed control, or downstream sink cannot be identified. Do not mark that category fully reviewed or assign Critical severity without a complete data-flow path, active exploitation evidence, or a working reproduction.
 
 ---
 
@@ -422,12 +440,18 @@ Structure the findings report as follows:
 - **CWE:** CWE-XXX
 - **Location:** [file path, function, configuration]
 - **Description:** [What was found]
-- **Evidence:** [Code snippet, configuration excerpt, or architectural observation]
+- **Evidence:** [Code snippet, configuration excerpt, or architectural observation]`r`n- **Entry Point / Data Source:** [route/form/API/upload/document source/tool output/model output]`r`n- **Trust Boundary Crossed:** [user->server, data store->prompt, model->application, model->tool, tool->external system, app->user]`r`n- **Control Reviewed:** [validation, retrieval filter, authorization, output handling, tool gate, rate limit, quota, confirmation]`r`n- **Downstream Sink:** [prompt, retriever, model API, tool call, DB, file, log, vector store, renderer, user response]`r`n- **Data-Flow Result:** [Pass / Fail / Unknown / N/A]`r`n- **False-Positive Checks:** [safe context reviewed or reason still exploitable]
 - **Impact:** [What an attacker could achieve]
 - **Remediation:** [Specific, actionable fix with code example if applicable]
 - **Priority:** P1 | P2 | P3 | P4
 
 [Repeat for each finding]
+
+## LLM Data-Flow Evidence Matrix
+
+| Flow ID | OWASP Category | Entry Point / Source | Trust Boundary | Control Reviewed | Downstream Sink | Evidence Location | Result | Notes |
+|---------|----------------|----------------------|----------------|------------------|-----------------|-------------------|--------|-------|
+| FLOW-001 | LLM0X | <source> | <boundary> | <control> | <sink> | <file/config/test> | Pass/Fail/Unknown/N/A | <notes> |
 
 ## Summary Table
 
@@ -474,7 +498,7 @@ These are the five most frequent mistakes agents make when performing LLM securi
 
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
-5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.`r`n`r`n6. **Reporting LLM risks without data-flow evidence.** A prompt, retriever, parser, or tool definition is not enough by itself. Record the entry point, trust boundary, reviewed control, downstream sink, evidence location, result, and false-positive checks so the finding is reproducible and severity matches the actual LLM data path.
 
 ---
 
@@ -506,4 +530,4 @@ When performing a review using this skill:
 - LLM07:2025 System Prompt Leakage: https://genai.owasp.org/llmrisk/llm07-system-prompt-leakage/
 - LLM08:2025 Vector and Embedding Weaknesses: https://genai.owasp.org/llmrisk/llm08-vector-and-embedding-weaknesses/
 - LLM09:2025 Misinformation: https://genai.owasp.org/llmrisk/llm09-misinformation/
-- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/
+- LLM10:2025 Unbounded Consumption: https://genai.owasp.org/llmrisk/llm10-unbounded-consumption/`r`n`r`n## 10. Changelog`r`n`r`n- **1.1.0** -- Adds LLM data-flow evidence gate and matrix for entry point, trust boundary, reviewed control, downstream sink, evidence location, result, and false-positive checks.`r`n- **1.0.0** -- Initial OWASP Top 10 for LLM Applications 2025 review guidance.
