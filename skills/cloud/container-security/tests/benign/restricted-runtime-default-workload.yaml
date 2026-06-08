@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: production
+  labels:
+    workload.unitone.ai/trust-level: trusted
+spec:
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: registry.example.com/payments@sha256:abc123
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            appArmorProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata
+handler: kata
+overhead:
+  podFixed:
+    cpu: "250m"
+    memory: "256Mi"
+scheduling:
+  nodeSelector:
+    runtime: kata
+  tolerations:
+    - key: runtime
+      operator: Equal
+      value: kata
+      effect: NoSchedule
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: customer-plugin-runner
+  namespace: plugins
+  labels:
+    workload.unitone.ai/trust-level: untrusted
+spec:
+  template:
+    spec:
+      runtimeClassName: kata
+      nodeSelector:
+        runtime: kata
+      tolerations:
+        - key: runtime
+          operator: Equal
+          value: kata
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: registry.example.com/plugin-runner@sha256:def456
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+      restartPolicy: Never

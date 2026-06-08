@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: customer-plugin-runner
+  namespace: plugins
+  labels:
+    workload.unitone.ai/trust-level: untrusted
+    workload.unitone.ai/code-origin: customer-supplied
+spec:
+  template:
+    spec:
+      securityContext:
+        seccompProfile:
+          type: Unconfined
+      containers:
+        - name: runner
+          image: registry.example.com/plugin-runner:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            appArmorProfile:
+              type: Unconfined
+            capabilities:
+              drop: ["ALL"]
+      restartPolicy: Never
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata
+handler: kata
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-code
+  namespace: plugins
+spec:
+  selector:
+    matchLabels:
+      app: customer-code
+  template:
+    metadata:
+      labels:
+        app: customer-code
+        workload.unitone.ai/trust-level: untrusted
+    spec:
+      runtimeClassName: kata
+      containers:
+        - name: app
+          image: registry.example.com/customer-code@sha256:deadbeef
+          securityContext:
+            seccompProfile:
+              type: Localhost
+              localhostProfile: profiles/customer-code.json

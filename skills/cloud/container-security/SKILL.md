@@ -6,14 +6,15 @@ description: >
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
   hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
+  management, including supplemental runtime isolation evidence for high-risk
+  workloads. Produces a prioritized findings report with remediation guidance.
 tags: [cloud, containers, kubernetes, docker]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -32,6 +33,8 @@ This skill performs a structured security review of container images and Kuberne
 - **NIST SP 800-190** (Application Container Security Guide) -- Countermeasures for image, registry, orchestrator, container, and host OS risks.
 
 The review covers Dockerfiles, Kubernetes manifests, Helm charts, and supporting configurations. Each finding is mapped to specific CIS recommendation IDs or NIST SP 800-190 countermeasure categories.
+
+For untrusted, multi-tenant, plugin, CI/build, notebook, customer-supplied, or high-risk workloads, the skill also evaluates supplemental runtime isolation evidence. These checks cover `RuntimeClass`, sandbox runtime mapping, seccomp, AppArmor, SELinux, localhost profile distribution, node pool isolation, and exception evidence without requiring sandbox runtimes for ordinary trusted workloads that already satisfy Restricted Pod Security controls.
 
 ---
 
@@ -61,6 +64,7 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
 - NetworkPolicy definitions
 - Pod Security Standard configurations or OPA/Gatekeeper policies
+- RuntimeClass definitions, node pool labels/taints, and seccomp/AppArmor/SELinux profile evidence
 - Container registry configurations (if available)
 
 ---
@@ -115,7 +119,25 @@ For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure table
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Supplemental Runtime Isolation Evidence
+
+Classify workloads by trust level before requiring sandbox runtime evidence:
+
+- **Standard trusted workloads:** may pass with Restricted Pod Security controls, `RuntimeDefault` seccomp/AppArmor, dropped capabilities, non-root execution, read-only root filesystem, and resource limits.
+- **High-risk workloads:** untrusted code execution, CI/build runners, customer plugins, notebooks, multi-tenant workloads, internet-exposed processing of hostile content, or workloads with broad secrets/network reach should have explicit runtime isolation evidence.
+
+For high-risk workloads, verify:
+
+1. `runtimeClassName` maps to a reviewed `RuntimeClass` handler such as gVisor, Kata Containers, or a documented organization sandbox runtime.
+2. RuntimeClass `overhead`, node labels, taints/tolerations, node selectors, and affinity constrain scheduling to the intended runtime-capable node pool.
+3. Pod, container, init container, sidecar, and ephemeral container seccomp/AppArmor settings are `RuntimeDefault` or reviewed `Localhost`, not `Unconfined`.
+4. `Localhost` profiles include profile distribution evidence across eligible nodes.
+5. SELinux options are reviewed when the Linux distribution and cluster policy use SELinux labels; mark non-Linux or Windows-only workloads not applicable.
+6. Exceptions to sandboxing or runtime profiles include owner, reason, namespace/workload scope, expiry, and compensating controls.
+
+---
+
+### Step 8: Compile Assessment Report
 
 
 Produce the final report using the structure defined in the Output Format section.
@@ -184,6 +206,25 @@ Produce the final report using the structure defined in the Output Format sectio
 |----------|-----------|-----------|------------|
 | deploy/app | production | Baseline (not Restricted) | runAsRoot, no seccomp |
 | deploy/worker | production | Privileged | privileged: true |
+
+### Runtime Isolation Evidence Matrix
+
+| Workload | Namespace | Trust Level | RuntimeClass | Handler | Seccomp | AppArmor | SELinux | Node Isolation | Status |
+|----------|-----------|-------------|--------------|---------|---------|----------|---------|----------------|--------|
+| job/plugin-runner | plugins | Untrusted code | <missing> | <none> | RuntimeDefault | <missing> | N/A | <missing> | Fail |
+
+#### [CONTAINER-RUNTIME-NN] <Runtime Isolation Finding>
+- **Status:** Pass / Fail / Not Applicable / Not Evaluable
+- **Severity:** Critical / High / Medium / Low
+- **Workload Trust Level:** Trusted / Sensitive / Untrusted / Multi-tenant / Build or CI
+- **RuntimeClass Evidence:** <runtimeClassName, handler, overhead, node scheduling evidence>
+- **Profile Evidence:** <seccomp/AppArmor/SELinux effective profile evidence>
+- **File:** <path>
+- **Line(s):** <line numbers>
+- **Resource:** <Deployment/StatefulSet/Job name>
+- **Container:** <container, initContainer, or ephemeralContainer name>
+- **Description:** <what was found>
+- **Remediation:** <fix with code example>
 
 ### Prioritized Remediation Plan
 
@@ -257,6 +298,9 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Sandbox runtime is risk-based, not universal.** Do not fail every trusted workload without `runtimeClassName`; require sandbox runtime evidence for untrusted, multi-tenant, plugin, CI/build, notebook, or high-risk workloads.
+9. **`Localhost` profiles are node-local.** A manifest that references a seccomp or AppArmor localhost profile needs evidence that the profile is loaded on every eligible node.
+10. **Missing profile fields differ from explicit `Unconfined`.** A missing seccomp/AppArmor field may inherit cluster defaults, but explicit `Unconfined` is a direct runtime isolation finding unless narrowly justified.
 
 ---
 
@@ -283,6 +327,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - NIST SP 800-190 Application Container Security Guide: https://csrc.nist.gov/publications/detail/sp/800-190/final
 - Kubernetes Pod Security Standards: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
+- Kubernetes RuntimeClass: https://kubernetes.io/docs/concepts/containers/runtime-class/
+- Kubernetes seccomp: https://kubernetes.io/docs/reference/node/seccomp/
+- Kubernetes AppArmor: https://kubernetes.io/docs/tutorials/security/apparmor/
+- Kubernetes Security Context: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
@@ -293,4 +341,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added supplemental runtime isolation evidence gates for RuntimeClass, sandbox runtimes, seccomp, AppArmor, SELinux, node pool scheduling, localhost profile distribution, and risk-based exceptions.
 - **1.0.0** -- Initial release. Full coverage of CIS Docker Benchmark v1.6.0 Section 4-5, CIS Kubernetes Benchmark v1.9.0 Sections 1-5, and NIST SP 800-190 countermeasures across all five risk categories.

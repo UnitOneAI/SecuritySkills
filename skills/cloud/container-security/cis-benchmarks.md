@@ -690,3 +690,191 @@ spec:
 - Capabilities beyond the allowed set (only `NET_BIND_SERVICE` is permitted)
 - `procMount` other than `Default`
 - `appArmorProfile` of `unconfined`
+
+---
+
+## Supplemental Runtime Isolation Evidence Review
+
+These supplemental checks help reviewers decide when the container runtime boundary is sufficient and when a stronger sandbox runtime or profile evidence is required. Report these findings as `CONTAINER-RUNTIME-*` so CIS benchmark scoring remains mapped to the official Docker and Kubernetes controls.
+
+### CONTAINER-RUNTIME-01 -- Classify workload trust before requiring sandbox runtime
+
+Do not require `runtimeClassName` for every workload. First classify the workload.
+
+**Higher-risk workload indicators:**
+
+```yaml
+metadata:
+  namespace: plugins
+  labels:
+    workload.unitone.ai/trust-level: untrusted
+    workload.unitone.ai/code-origin: customer-supplied
+```
+
+Examples that usually require stronger isolation evidence:
+
+- Customer-supplied code, plugin runners, notebook execution, browser automation, CI/build workers, code interpreters, or test sandboxes.
+- Multi-tenant workloads where one customer or team can influence code executed next to another tenant.
+- Workloads with broad secret access, privileged network reach, sensitive host integrations, or hostile internet content parsing.
+
+Standard trusted application workloads can pass with Restricted Pod Security controls and `RuntimeDefault` profiles when other controls are present.
+
+### CONTAINER-RUNTIME-02 -- Verify RuntimeClass mapping for high-risk workloads
+
+**What to look for:**
+
+```yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata
+handler: kata
+overhead:
+  podFixed:
+    cpu: "250m"
+    memory: "256Mi"
+scheduling:
+  nodeSelector:
+    runtime: kata
+  tolerations:
+    - key: runtime
+      operator: Equal
+      value: kata
+      effect: NoSchedule
+```
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: customer-plugin-runner
+  namespace: plugins
+spec:
+  template:
+    spec:
+      runtimeClassName: kata
+      nodeSelector:
+        runtime: kata
+```
+
+**Fail patterns:**
+
+```yaml
+# High-risk workload missing sandbox runtime evidence
+metadata:
+  name: customer-plugin-runner
+  namespace: plugins
+spec:
+  template:
+    spec:
+      containers:
+        - name: runner
+```
+
+**Review requirements:**
+
+- For high-risk workloads, verify `runtimeClassName` maps to a reviewed RuntimeClass handler such as gVisor, Kata Containers, or a documented organization sandbox runtime.
+- Confirm RuntimeClass `scheduling` and workload `nodeSelector`, affinity, and tolerations keep the pod on runtime-capable nodes.
+- Confirm RuntimeClass `overhead` is present or resource quotas account for sandbox overhead when the runtime requires it.
+- Record a pass for standard trusted workloads that do not need sandboxing but still meet Restricted Pod Security requirements.
+
+### CONTAINER-RUNTIME-03 -- Distinguish missing profiles from explicit Unconfined profiles
+
+**Critical fail patterns:**
+
+```yaml
+securityContext:
+  seccompProfile:
+    type: Unconfined
+```
+
+```yaml
+securityContext:
+  appArmorProfile:
+    type: Unconfined
+```
+
+**Review requirements:**
+
+- Check pod-level and container-level `securityContext` fields for containers, init containers, sidecars, and ephemeral containers.
+- Treat explicit `Unconfined` seccomp or AppArmor profiles as High or Critical depending on workload trust, privileges, and host access.
+- Treat missing fields as Not Evaluable or inherited when cluster-level default evidence exists; do not automatically equate missing YAML with `Unconfined`.
+- Prefer `RuntimeDefault` for standard workloads and reviewed `Localhost` profiles for workloads requiring custom syscall or MAC policies.
+
+### CONTAINER-RUNTIME-04 -- Require distribution evidence for Localhost profiles
+
+**What to look for:**
+
+```yaml
+securityContext:
+  seccompProfile:
+    type: Localhost
+    localhostProfile: profiles/audit-tight.json
+```
+
+```yaml
+securityContext:
+  appArmorProfile:
+    type: Localhost
+    localhostProfile: profiles/k8s-apparmor-example-deny-write
+```
+
+**Review requirements:**
+
+- Confirm the profile is loaded on every node where the workload can schedule.
+- Verify DaemonSet, node image, machine config, bootstrap script, or managed-node evidence that distributes the profile.
+- Check workload node selectors, affinity, and tolerations so pods do not land on nodes missing the profile.
+- If distribution evidence is unavailable, mark profile enforcement Not Evaluable rather than passing from manifest references alone.
+
+### CONTAINER-RUNTIME-05 -- Review SELinux applicability and options
+
+**What to look for:**
+
+```yaml
+securityContext:
+  seLinuxOptions:
+    type: container_t
+```
+
+**Review requirements:**
+
+- For Linux distributions and managed platforms that use SELinux labels, review `seLinuxOptions`, namespace/platform defaults, and volume label behavior.
+- Flag broad or privileged SELinux types for application workloads unless they are platform-required and narrowly scoped.
+- Mark SELinux controls Not Applicable for Windows containers and Not Evaluable when the node OS policy is unknown.
+
+### CONTAINER-RUNTIME-06 -- Verify node pool isolation for sandboxed workloads
+
+**Review requirements:**
+
+- Check RuntimeClass scheduling, workload selectors, taints/tolerations, and node affinity together.
+- Verify sandbox node pools do not co-host sensitive trusted workloads unless that is the documented design.
+- Confirm system DaemonSets needed by the runtime are present and limited to sandbox-capable nodes.
+- Include cluster autoscaler or node provisioner labels when they determine which node class is created.
+
+### CONTAINER-RUNTIME-07 -- Calibrate severity by trust level and host interaction
+
+**Severity guidance:**
+
+- Critical: untrusted code runs without sandbox runtime evidence and also has host namespace, hostPath, privileged mode, broad secrets, or broad network reach.
+- High: untrusted or multi-tenant workload lacks sandbox RuntimeClass or uses explicit `Unconfined` seccomp/AppArmor.
+- Medium: localhost profile references lack distribution evidence, sandbox RuntimeClass lacks scheduling/overhead evidence, or cluster default profile evidence is missing.
+- Low: trusted workload lacks optional sandboxing but meets Restricted Pod Security controls.
+
+### CONTAINER-RUNTIME-08 -- Use risk-based exceptions
+
+Exceptions to sandbox runtime or runtime profiles should include:
+
+- owner
+- reason
+- namespace and workload scope
+- expiry date or review cadence
+- compensating controls
+- evidence that the exception is enforced narrowly
+
+```yaml
+metadata:
+  annotations:
+    security.unitone.ai/runtime-exception-owner: "platform-security"
+    security.unitone.ai/runtime-exception-ticket: "SEC-1234"
+    security.unitone.ai/runtime-exception-expiry: "2026-09-30"
+```
