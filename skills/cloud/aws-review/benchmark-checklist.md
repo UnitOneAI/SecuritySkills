@@ -251,6 +251,61 @@ publicly_accessible = true
 publicly_accessible = false
 ```
 
+
+### Public Snapshot and AMI Sharing -- Operational Validation
+
+These checks supplement CIS Section 2 storage review because backup and image artifacts can expose data even when the live resource is private or encrypted.
+
+**RDS manual snapshot sharing:**
+
+```bash
+aws rds describe-db-snapshots \
+  --snapshot-type manual \
+  --include-public \
+  --query 'DBSnapshots[*].[DBSnapshotIdentifier,DBSnapshotArn,Engine,Encrypted,SnapshotCreateTime]' \
+  --output table
+
+aws rds describe-db-snapshot-attributes \
+  --db-snapshot-identifier <snapshot-id> \
+  --query 'DBSnapshotAttributesResult.DBSnapshotAttributes[?AttributeName==`restore`]'
+```
+
+Fail when the `restore` attribute includes `all`, or when production-derived private sharing lacks an approved account list, owner, ticket, expiration, or review date. Encrypted RDS snapshots cannot be public, but private cross-account sharing still needs approval evidence.
+
+**EBS snapshot sharing and Regional block public access:**
+
+```bash
+aws ec2 describe-snapshots \
+  --owner-ids self \
+  --query 'Snapshots[*].[SnapshotId,StartTime,Encrypted,Description]' \
+  --output table
+
+aws ec2 describe-snapshot-attribute \
+  --snapshot-id <snapshot-id> \
+  --attribute createVolumePermission
+
+aws ec2 get-snapshot-block-public-access-state \
+  --region <region>
+```
+
+Fail when `createVolumePermission` includes `Group=all` without an effective Regional block. Record the exact block mode: `block-all-sharing` blocks all public sharing, while `block-new-sharing` only prevents new public sharing and does not prove existing public snapshots have been made private.
+
+**AMI launch permissions:**
+
+```bash
+aws ec2 describe-images \
+  --owners self \
+  --query 'Images[*].[ImageId,Name,CreationDate,BlockDeviceMappings[*].Ebs.SnapshotId]' \
+  --output table
+
+aws ec2 describe-image-attribute \
+  --image-id <ami-id> \
+  --attribute launchPermission
+```
+
+Fail when `launchPermission` includes `Group=all` for AMIs backed by sensitive, production, or unknown-sensitivity snapshots. Do not treat AMI launch permissions and EBS snapshot `createVolumePermission` as interchangeable; capture both evidence paths when AMIs are in scope.
+
+**Required report fields:** artifact type, Region, artifact ID, public attribute, explicit shared accounts, EBS Block Public Access mode, data sensitivity, evidence source, owner/approval, and remediation or risk-acceptance tracking.
 ### CIS 2.4.1 -- Ensure that encryption is enabled for EFS file systems
 
 Check for EFS encryption configuration:
