@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -24,6 +24,8 @@ argument-hint: "[target-file-or-directory]"
 # AI Data Privacy & Governance Review
 
 This skill guides a structured privacy and data governance assessment of AI/ML systems. It covers the full data lifecycle from training data collection through inference-time data processing, output generation, and data retention. The methodology is aligned with **NIST AI RMF 1.0** (particularly the MAP and MANAGE functions for data privacy) and **OWASP LLM02:2025 (Sensitive Information Disclosure)**.
+
+- Closing a privacy deletion request after deleting only the source row while embeddings, logs, datasets, caches, or backups retain the data.
 
 ## Prompt Injection Safety Notice
 
@@ -379,6 +381,16 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 
 ---
 
+### DSAR Deletion Propagation Evidence
+
+Track erasure or consent withdrawal from source systems into every derived AI data store and artifact.
+
+| Request ID | Source Record | Derived Store / Artifact | Propagation Workflow | Backup / Archive Handling | Verification Evidence | SLA Status | Reingestion Guard | Exception | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[request_id]` | `[source_record]` | `[derived_store/artifact]` | `[propagation_workflow]` | `[backup/archive_handling]` | `[verification_evidence]` | `[sla_status]` | `[reingestion_guard]` | `[exception]` | `Complete / Incomplete / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Criteria | Response SLA |
@@ -439,6 +451,12 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ```
 
 ---
+
+### DSAR Deletion Propagation Evidence
+
+| Request ID | Source Record | Derived Store / Artifact | Propagation Workflow | Backup / Archive Handling | Verification Evidence | SLA Status | Reingestion Guard | Exception | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[request_id]` | `[source_record]` | `[derived_store/artifact]` | `[propagation_workflow]` | `[backup/archive_handling]` | `[verification_evidence]` | `[sla_status]` | `[reingestion_guard]` | `[exception]` | `Complete / Incomplete / Unknown` |
 
 ## Framework Reference
 
