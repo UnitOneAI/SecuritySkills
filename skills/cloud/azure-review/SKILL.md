@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -78,6 +78,26 @@ Use Glob to locate all Azure-related infrastructure definitions.
 
 Record all discovered files. If no Azure configurations are found, report that finding and halt.
 
+Build an evidence inventory before scoring controls:
+
+```
+| Evidence Source | Type | Subscription/Region Coverage | Export/Observation Date | Controls Supported | Limitations |
+|-----------------|------|------------------------------|-------------------------|--------------------|-------------|
+| main.bicep | IaC | [subscriptions/regions] | [git commit/date] | [CIS IDs] | [live drift unknown] |
+| az-export.json | Azure CLI export | [subscriptions/regions] | [timestamp] | [CIS IDs] | [missing resource groups/services] |
+```
+
+For each control, distinguish between:
+- **IaC intent:** desired state from Terraform, Bicep, ARM templates, or policy files
+- **Live/exported state:** Azure CLI, Azure Resource Graph, Defender for Cloud, Azure Policy, or portal export evidence
+- **Partial evidence:** only some subscriptions, regions, resource groups, or resource types covered
+- **Missing evidence:** no reliable artifact for the control
+
+Do not mark a control as Pass when the only evidence is stale, partial, or an
+unvalidated IaC declaration for an environment where live drift is in scope.
+Use Not Evaluable or document a lower-confidence result until current evidence
+covers the assessed subscription and region set.
+
 ---
 
 ### Step 2 through Step 10: CIS Benchmark Evaluation (Sections 1-9)
@@ -94,6 +114,12 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 ### Step 11: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
+
+Before finalizing, verify that every Passed or Failed control references a
+specific evidence source from the inventory, including the evidence type,
+subscription/region coverage, and freshness. If multiple evidence sources
+conflict, prefer current live/exported state for deployed environments and
+record the IaC drift or documentation mismatch as a finding.
 
 ---
 
@@ -119,6 +145,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Framework: CIS Microsoft Azure Foundations Benchmark v2.1.0
 - Files reviewed: <list of IaC files>
+- Evidence basis: <IaC / CLI export / live configuration / mixed>
+- Evidence freshness: <export dates or git commit range>
+- Subscription/Region coverage: <subscriptions and regions assessed>
+- Evidence limitations: <missing subscriptions, regions, resource groups, services, or live-state gaps>
 
 ### Executive Summary
 - Total CIS recommendations evaluated: <N>
@@ -152,6 +182,10 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Evidence Source:** <IaC file / Azure CLI export / Defender for Cloud / Azure Policy / live observation>
+- **Evidence Date:** <timestamp, commit, or observation date>
+- **Coverage:** <subscription(s), region(s), resource groups, services, sample size>
+- **Confidence:** High / Medium / Low
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -200,6 +234,7 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
 5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+7. **Treating IaC as proof of deployed Azure state without freshness checks.** Terraform, Bicep, or ARM templates show intended configuration, not necessarily the live subscription. When drift, portal changes, partial subscription exports, or stale `az` output are possible, record the evidence limitation and lower the confidence instead of presenting the control as fully verified.
 
 ---
 
@@ -231,4 +266,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added evidence source, freshness, coverage, and confidence gates for Azure CIS review conclusions.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.
