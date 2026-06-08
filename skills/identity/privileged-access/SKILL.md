@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -225,6 +225,15 @@ PAM-JIT-10: No escalation path when JIT approver is unavailable
 
 ### Step 4: Break-Glass Procedures
 
+
+A written break-glass runbook is not enough. Capture drill evidence that emergency credentials, logging, termination, and post-use recovery actually work.
+
+| Drill Date | Scenario | Participant / Custody | Access Path | Scope / Duration | Termination Evidence | Alerts / Logs / Recording | Recovery Objective | Rotation / Reseal Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[date]` | `[scenario]` | `[authorized user, dual control]` | `[PAM/vault/path]` | `[scope/time]` | `[session end]` | `[SIEM/PAM/session]` | `[RTO/RPO]` | `[credential rotation/reseal]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when break-glass access is documented but has not been tested end to end within the review period.
+
 **Objective:** Assess emergency access procedures for completeness, security, and testability.
 
 **NIST SP 800-53 Reference:** AC-2(2) — Automated Temporary and Emergency Account Management
@@ -406,6 +415,12 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 - Session Recording (Step 5): [count]
 - Credential Vaulting (Step 6): [count]
 
+#### Break-Glass Drill Evidence
+
+| Date | Scenario | Custody | Access Path | Scope / Duration | Termination | Alerts / Logs | Recovery | Rotation / Reseal | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[date]` | `[scenario]` | `[evidence]` | `[path]` | `[scope]` | `[evidence]` | `[evidence]` | `[result]` | `[evidence]` | `Pass / Fail / Unknown` |
+
 ### Detailed Findings
 [Findings table]
 
@@ -446,6 +461,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | **5.3** | Disable Dormant Accounts | Disable admin accounts inactive > 45 days |
 
 ---
+
+- Treating a break-glass runbook as tested without evidence for access, alerting, recording, termination, recovery objective, and post-use rotation or resealing.
 
 ## Common Pitfalls
 
