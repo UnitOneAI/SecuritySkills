@@ -7,13 +7,13 @@ description: >
   classification, containment decisions, stakeholder notification, or evidence
   preservation. Produces an incident response plan with severity determination,
   containment decision tree, communication templates, and escalation criteria.
-tags: [incident-response, ir, playbook]
+tags: [incident-response, ir, playbook, communication-integrity]
 role: [soc-analyst, security-engineer, vciso]
 phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -60,6 +60,7 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Business context** -- What business functions do the affected systems support? Revenue impact, customer impact, regulatory exposure.
 - [ ] **Current state** -- Is the attack ongoing, contained, or resolved? What actions have already been taken?
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
+- [ ] **Communication channel trust** -- Which email, chat, bridge, paging, ticketing, endpoint-management, and IR-retainer channels are trusted, degraded, or potentially monitored by the adversary?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
 
@@ -109,6 +110,35 @@ Verify that the foundational elements for incident response are in place. If gap
 | External IR retainer (if applicable) | [ ] | |
 | Regulatory notification requirements documented | [ ] | GDPR, HIPAA, state laws, SEC |
 | Evidence storage with chain-of-custody procedures | [ ] | |
+
+#### Step 1.1: Communication Channel Integrity Gate
+
+For SEV-1 and SEV-2 incidents, do not assume normal business communications are safe. Record evidence that the IR team assessed each coordination channel before using it for containment orders, stakeholder notifications, or regulatory decisions.
+
+**Channel integrity review:**
+
+| Channel | Trust Status | Evidence Required | Decision |
+|---------|--------------|-------------------|----------|
+| Corporate email | [Trusted / Degraded / Suspect] | Mailbox access review, forwarding rule check, audit-log availability | [Use / Monitor only / Do not use] |
+| Chat or collaboration platform | [Trusted / Degraded / Suspect] | Admin/audit access, channel membership, export or retention status | [Use / Switch / Preserve only] |
+| Ticketing or case-management system | [Trusted / Degraded / Suspect] | Queue permissions, automation/webhook review, attacker visibility assessment | [Use / Restrict / Freeze] |
+| Phone bridge or paging path | [Trusted / Degraded / Suspect] | Participant verification, dial-in control, bridge recording decision | [Use / Rotate / Replace] |
+| Endpoint-management or remote-admin channel | [Trusted / Degraded / Suspect] | Tool compromise check, operator approval path, command logging | [Use / Disable / Isolate] |
+| External IR-retainer portal | [Trusted / Degraded / Suspect] | Named approver, portal access list, evidence upload handling | [Use / Escalate / Hold] |
+
+**Finding IDs:**
+
+| ID | Condition | Severity |
+|----|-----------|----------|
+| IR-COMMS-01 | SEV-1/SEV-2 response continues on a channel the adversary can plausibly monitor without documented risk acceptance. | SEV-1 |
+| IR-COMMS-02 | No timestamped trigger or named approver exists for switching to out-of-band communications. | SEV-2 |
+| IR-COMMS-03 | War-room, bridge, ticket, or retainer-portal access lacks participant verification or least-privilege membership evidence. | SEV-2 |
+| IR-COMMS-04 | Containment orders, legal approvals, customer notices, or regulator communications are not preserved in a trusted record. | SEV-2 |
+| IR-COMMS-05 | The team fails to review attacker visibility into mailboxes, chat exports, IdP logs, ticket queues, or endpoint-management tools. | SEV-2 |
+| IR-COMMS-06 | High-impact containment or public/regulatory communication proceeds without named approval evidence. | SEV-2 |
+| IR-COMMS-07 | Return-to-normal criteria are missing before resuming internal communication channels. | SEV-3 |
+
+Document the chosen channel, trigger time, approver, participants, preservation location, and return-to-normal criteria in the final report.
 
 ### Phase 2: Detection and Analysis (NIST) / Identification (SANS)
 
@@ -367,7 +397,7 @@ Produce the incident response report with these exact sections:
 ```markdown
 ## Incident Response Report: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** ir-playbook v1.0.0
+**Skill:** ir-playbook v1.1.0
 **Frameworks:** NIST SP 800-61 Rev 2, SANS Incident Handler's Handbook
 **Incident Commander:** [Name or "Unassigned -- assign immediately"]
 
@@ -406,6 +436,11 @@ and recommended immediate actions. Lead with the most critical fact.]
 - **Eradication Actions:** [List of removal actions taken]
 - **Recovery Actions:** [List of restoration actions taken or planned]
 - **Enhanced Monitoring:** [Description of increased monitoring posture]
+
+### Communication Channel Integrity
+| Channel | Trust Status | Evidence | Decision | Approver |
+|---|---|---|---|---|
+| [Email / Chat / Ticketing / Phone / Paging / IR portal] | [Trusted / Degraded / Suspect] | [Audit log, membership review, forwarding rule check, recording/export path] | [Use / Switch / Restrict / Preserve only] | [Name / Role] |
 
 ### Stakeholder Notifications
 | Stakeholder | Notified | Timestamp | Method |
@@ -456,15 +491,19 @@ Responders under pressure often prioritize containment speed over evidence prese
 
 Communicating about the incident over channels the attacker may be monitoring (corporate email, Slack, Teams) can tip off the adversary, prompting them to accelerate data exfiltration, deploy destructive payloads, or cover their tracks. For SEV-1 and SEV-2 incidents, use out-of-band communication channels (personal phones, dedicated secure messaging, physical meetings) until the attacker's access to communication systems has been assessed and ruled out.
 
-### Pitfall 3: Failing to Establish a Clear Incident Commander
+### Pitfall 3: Treating Out-of-Band as a Label Instead of Evidence
+
+Simply saying "use out-of-band communications" is not enough during a severe incident. The team must prove why the selected channel is trusted, who can access it, whether the adversary can monitor or alter it, where decisions are preserved, and when normal channels can safely resume. Without that evidence, containment orders and stakeholder notifications can be exposed or disputed.
+
+### Pitfall 4: Failing to Establish a Clear Incident Commander
 
 Without a designated incident commander, response efforts become fragmented. Multiple responders may take conflicting actions (one isolating a system while another is collecting evidence from it), communication breaks down, and stakeholder notifications are missed or duplicated. Assign an incident commander at the start of every SEV-1/SEV-2 incident, with clear authority over response actions and communication.
 
-### Pitfall 4: Declaring Recovery Before Confirming Eradication
+### Pitfall 5: Declaring Recovery Before Confirming Eradication
 
 Reconnecting systems to the network before thoroughly removing all persistence mechanisms, backdoors, and compromised credentials results in re-compromise -- often within hours. Attackers routinely deploy multiple persistence mechanisms (scheduled tasks, web shells, new user accounts, modified startup scripts, implanted SSH keys). Validate eradication through IOC scanning, behavioral monitoring, and integrity verification before transitioning to recovery.
 
-### Pitfall 5: Neglecting Regulatory Notification Deadlines
+### Pitfall 6: Neglecting Regulatory Notification Deadlines
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
 
