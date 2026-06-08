@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -294,6 +294,16 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
+### DNSSEC Chain Evidence
+
+Record parent DS, child DNSKEY, signatures, and resolver validation so DS presence alone is not over-credited.
+
+| Zone | Parent DS | Child DNSKEY | RRSIG Validity | Algorithm / Digest | Validator Result | Expiry | Registrar / DNS Owner | Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[zone]` | `[parent_ds]` | `[child_dnskey]` | `[rrsig_validity]` | `[algorithm/digest]` | `[validator_result]` | `[expiry]` | `[registrar/dns_owner]` | `[evidence]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition |
@@ -327,6 +337,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### DNSSEC Chain Evidence
+
+| Zone | Parent DS | Child DNSKEY | RRSIG Validity | Algorithm / Digest | Validator Result | Expiry | Registrar / DNS Owner | Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[zone]` | `[parent_ds]` | `[child_dnskey]` | `[rrsig_validity]` | `[algorithm/digest]` | `[validator_result]` | `[expiry]` | `[registrar/dns_owner]` | `[evidence]` | `Pass / Fail / Unknown` |
 
 ### Findings
 
@@ -385,6 +401,8 @@ abcdef0123456789.dnscat.example.com TXT
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
 ---
+
+- Counting a parent DS record as DNSSEC health without validating the full delegation chain and signature freshness.
 
 ## Prompt Injection Safety Notice
 
