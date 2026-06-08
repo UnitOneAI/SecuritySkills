@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -48,6 +48,12 @@ Key changes in v4.0:
 - **Roles and responsibilities**: Explicitly documented for every requirement (x.1.1 pattern)
 - **Automated log review mechanisms**: Required (10.4.1.1)
 - **Security awareness training expansion**: Phishing training required (5.4.1)
+
+### End-User Messaging PAN Evidence
+
+| Channel | PAN Entry Path | Masking / Redaction | Storage Location | Routing / Queue | DLP Evidence | Retention | Owner | Result | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[channel]` | `[pan_entry_path]` | `[masking/redaction]` | `[storage_location]` | `[routing/queue]` | `[dlp_evidence]` | `[retention]` | `[owner]` | `[result]` | `Pass / Fail / Unknown` |
 
 ### Validation Types
 
@@ -389,6 +395,16 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 
 ---
 
+### End-User Messaging PAN Evidence
+
+Verify whether customer messaging channels can receive, display, store, or route PAN outside the cardholder data environment.
+
+| Channel | PAN Entry Path | Masking / Redaction | Storage Location | Routing / Queue | DLP Evidence | Retention | Owner | Result | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[channel]` | `[pan_entry_path]` | `[masking/redaction]` | `[storage_location]` | `[routing/queue]` | `[dlp_evidence]` | `[retention]` | `[owner]` | `[result]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Classification | Definition | Compliance Impact |
@@ -521,6 +537,8 @@ Maintain an Information Security Policy:                Requirement 12
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
 
 ---
+
+- Assuming payment pages are scoped while chat, ticket, email, SMS, or support channels can still collect or retain PAN.
 
 ## Prompt Injection Safety Notice
 
