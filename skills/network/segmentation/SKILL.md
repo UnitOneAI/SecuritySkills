@@ -7,13 +7,13 @@ description: >
   VLAN configurations, micro-segmentation policies, or DMZ designs. Produces a
   segmentation maturity assessment with zone mapping, trust boundary analysis,
   and remediation guidance.
-tags: [network, segmentation, micro-segmentation]
+tags: [network, segmentation, micro-segmentation, egress-control]
 role: [security-engineer, architect]
 phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # Network Segmentation Review
 
-A structured, repeatable process for evaluating network segmentation architecture against NIST SP 800-207 (Zero Trust Architecture) and CIS Controls v8 Control 12 (Network Infrastructure Management). This skill produces a segmentation maturity assessment with zone mapping, trust boundary analysis, east-west traffic control evaluation, and prioritized remediation guidance.
+A structured, repeatable process for evaluating network segmentation architecture against NIST SP 800-207 (Zero Trust Architecture) and CIS Controls v8 Control 12 (Network Infrastructure Management). This skill produces a segmentation maturity assessment with zone mapping, trust boundary analysis, east-west traffic control evaluation, egress boundary review, and prioritized remediation guidance.
 
 ---
 
@@ -42,7 +42,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-Network segmentation is the foundational control that limits blast radius. NIST SP 800-207 Section 2 defines Zero Trust Architecture as requiring "no implicit trust granted to assets or user accounts based solely on their physical or network location." CIS Controls v8 Control 12 requires enterprises to "establish, implement, and actively manage network devices, in order to prevent attackers from exploiting vulnerable network services and access points." Effective segmentation moves beyond flat VLANs to enforce policy at the workload level, restricting east-west traffic between systems that have no legitimate communication requirement.
+Network segmentation is the foundational control that limits blast radius. NIST SP 800-207 Section 2 defines Zero Trust Architecture as requiring "no implicit trust granted to assets or user accounts based solely on their physical or network location." CIS Controls v8 Control 12 requires enterprises to "establish, implement, and actively manage network devices, in order to prevent attackers from exploiting vulnerable network services and access points." Effective segmentation moves beyond flat VLANs to enforce policy at the workload level, restricting east-west traffic between systems that have no legitimate communication requirement. It must also constrain outbound internet paths so sensitive zones cannot bypass approved proxies, DNS controls, inspection points, or destination allowlists through broad NAT or public-IP routes.
 
 ---
 
@@ -208,7 +208,62 @@ Evaluate the environment's readiness for workload-level segmentation:
 
 ---
 
-### Step 4: DMZ Architecture Review (NIST SP 800-41, Section 4.1; CIS Control 12.2)
+### Step 4: Egress Boundary and Internet Exit Review
+
+Segmentation must cover both lateral movement and outbound paths. A sensitive zone can have strong east-west controls and still leak data or bypass inspection if it can reach arbitrary internet destinations through NAT, public IPs, peering, VPN, transit gateways, or direct DNS.
+
+For each production, management, PCI CDE, OT/IoT, and crown-jewel zone, record:
+
+| Field | Evidence Required |
+|-------|-------------------|
+| **Source zone / workload** | Zone name, subnet, namespace, workload identity, or security group. |
+| **Approved destinations** | CIDRs, FQDNs, SaaS tenants, private endpoints, or service tags that are explicitly allowed. |
+| **Enforcement point** | Firewall, egress gateway, service mesh policy, proxy, NAT policy, DNS firewall, or cloud network rule enforcing the boundary. |
+| **DNS path** | Approved resolver, DNS firewall policy, split-horizon rules, and proof that direct external DNS is blocked where required. |
+| **Internet exit path** | NAT gateway, public IP, proxy, transit gateway, peering path, VPN, or cloud egress service used by the zone. |
+| **Inspection / logging** | Web proxy logs, firewall logs, DNS logs, flow logs, DLP inspection, or SIEM coverage for outbound connections. |
+| **Exception lifecycle** | Owner, business reason, expiry date, compensating control, and last review evidence for broad egress exceptions. |
+
+**What constitutes a violation:**
+
+```hcl
+# BAD: Sensitive app zone can reach any internet destination over HTTPS
+resource "aws_security_group_rule" "app_egress" {
+  type        = "egress"
+  cidr_blocks = ["0.0.0.0/0"]
+  from_port   = 443
+  to_port     = 443
+  protocol    = "tcp"
+}
+
+# GOOD: Egress forced through an approved proxy or destination-scoped endpoint
+resource "aws_security_group_rule" "app_proxy_egress" {
+  type                     = "egress"
+  source_security_group_id = aws_security_group.app.id
+  security_group_id        = aws_security_group.egress_proxy.id
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+}
+```
+
+**Findings to raise:**
+
+| Finding ID | Condition | Default Severity |
+|------------|-----------|------------------|
+| **SEG-EGRESS-01** | Sensitive zone has unrestricted `0.0.0.0/0` or `::/0` outbound access without destination constraints. | High |
+| **SEG-EGRESS-02** | Workloads bypass the required proxy, service mesh egress gateway, DNS firewall, SWG, DLP, or inspection point. | High |
+| **SEG-EGRESS-03** | Port-only allowlist such as outbound 443 is treated as segmentation without destination, tenant, FQDN, or service constraints. | Medium |
+| **SEG-EGRESS-04** | Direct external DNS is allowed from sensitive zones instead of approved resolvers or DNS policy controls. | Medium |
+| **SEG-EGRESS-05** | Broad temporary egress exception lacks owner, expiry, business reason, compensating control, or review evidence. | Medium |
+| **SEG-EGRESS-06** | Alternate egress path through public IPs, peering, VPN, NAT, or transit routing bypasses documented segmentation controls. | High |
+| **SEG-EGRESS-07** | Missing outbound destination inventory or logging prevents replaying what the zone can reach during audit. | Low / Medium |
+
+Credit governed exceptions when they are destination-scoped where possible, time-bound, owner-approved, logged, and supported by compensating controls. Do not flag a fixed, reviewed outbound path to a known SaaS endpoint as a finding simply because it leaves the local network.
+
+---
+
+### Step 5: DMZ Architecture Review (NIST SP 800-41, Section 4.1; CIS Control 12.2)
 
 If a DMZ is present, evaluate its architectural soundness:
 
@@ -219,7 +274,7 @@ If a DMZ is present, evaluate its architectural soundness:
 
 ---
 
-### Step 5: PCI CDE Segmentation Validation (PCI DSS v4.0 Requirement 1.3)
+### Step 6: PCI CDE Segmentation Validation (PCI DSS v4.0 Requirement 1.3)
 
 If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
@@ -233,7 +288,7 @@ If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
 ---
 
-### Step 6: Segmentation Testing Methodology
+### Step 7: Segmentation Testing Methodology
 
 Document or verify the existence of a segmentation testing process:
 
@@ -242,6 +297,7 @@ Document or verify the existence of a segmentation testing process:
 3. **From the DMZ, attempt to reach internal zones** on unauthorized ports. Expected result: blocked.
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
+6. **Test outbound controls from each sensitive zone** by attempting unauthorized internet, DNS, proxy-bypass, and alternate NAT/transit paths. Expected result: blocked or forced through approved inspection points.
 
 ---
 
@@ -250,9 +306,9 @@ Document or verify the existence of a segmentation testing process:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Flat network with no segmentation; missing enforcement points between security zones; CDE not isolated; direct external-to-internal routing. |
-| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic. |
-| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation. |
-| **Low** | Suboptimal zone naming conventions; missing network diagrams; segmentation documentation out of date. |
+| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; unrestricted internet egress from sensitive zones; proxy/DNS/inspection bypass; missing segmentation testing; native VLAN carrying production traffic. |
+| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; port-only egress allowlists without destination controls; direct external DNS from sensitive zones; stale broad egress exceptions; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation. |
+| **Low** | Suboptimal zone naming conventions; missing network diagrams; segmentation documentation out of date; incomplete outbound destination inventory when compensating controls exist. |
 
 ---
 
@@ -283,6 +339,13 @@ Document or verify the existence of a segmentation testing process:
 | DMZ         | App       | Firewall    | Restricted | Pass |
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
+
+### Egress Boundary Matrix
+
+| Source Zone | Approved Destinations | Enforcement Point | DNS Path | Internet Exit | Logging / Inspection | Exception Status | Finding |
+|-------------|----------------------|-------------------|----------|---------------|----------------------|------------------|---------|
+| App         | api.vendor.example   | Egress proxy      | Internal resolver + DNS firewall | NAT via proxy subnet | Proxy + DNS logs | Approved, expires 2026-09-01 | Pass |
+| CDE         | Any internet         | None              | 8.8.8.8 direct | Public NAT gateway | Flow logs only | No owner / no expiry | SEG-EGRESS-01 |
 
 ### Findings
 
@@ -339,11 +402,13 @@ Document or verify the existence of a segmentation testing process:
 
 2. **Ignoring east-west traffic in cloud environments.** Cloud security groups often focus on north-south (internet to VPC) traffic. Within a VPC, instances in the same security group can typically communicate freely. This creates a flat network inside the "secure" perimeter.
 
-3. **Treating hub-and-spoke VPC peering as segmented.** Transit gateways and VPC peering create routable paths between spoke VPCs. Without explicit route table restrictions and security group rules, a compromised workload in one spoke can reach resources in all peered spokes.
+3. **Treating outbound 443 as safe segmentation.** Allowing `0.0.0.0/0:443` from production, CDE, management, or crown-jewel zones is not destination control. Verify approved FQDNs, SaaS tenants, private endpoints, proxy enforcement, DNS policy, and exception expiry instead of accepting port-only egress as segmented.
 
-4. **Overlooking service mesh bypass paths.** Istio and Linkerd enforce policy on mesh-enrolled workloads only. Pods that bypass the sidecar proxy (hostNetwork: true, or init container misconfiguration) are not subject to mesh policy. Verify sidecar injection is enforced.
+4. **Treating hub-and-spoke VPC peering as segmented.** Transit gateways and VPC peering create routable paths between spoke VPCs. Without explicit route table restrictions and security group rules, a compromised workload in one spoke can reach resources in all peered spokes.
 
-5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
+5. **Overlooking service mesh bypass paths.** Istio and Linkerd enforce policy on mesh-enrolled workloads only. Pods that bypass the sidecar proxy (hostNetwork: true, or init container misconfiguration) are not subject to mesh policy. Verify sidecar injection is enforced.
+
+6. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
 ---
 
@@ -372,4 +437,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.1.0** -- Add egress boundary and internet exit evidence gates, SEG-EGRESS finding IDs, outbound testing steps, and an egress boundary output matrix.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
