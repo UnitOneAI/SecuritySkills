@@ -269,6 +269,34 @@ Remediation: Use `crypto.randomBytes(32).toString('hex')` (Node.js) or `crypto.g
 - [ ] Cryptographic keys are not hard-coded -- loaded from a key management system.
 - [ ] TLS certificates and configurations are not bypassed or weakened in code.
 
+### 5.4 Cryptographic Agility Migration Gates
+
+Reviewers must verify that cryptographic code can be migrated safely when algorithms, key sizes, libraries, or compliance requirements change. Current-strength cryptography is not sufficient if stored artifacts and tokens cannot be identified, reprocessed, or retired without guesswork.
+
+Treat the following as findings when evidence is missing:
+
+- **SCR-CRYPTO-AGILITY-01 -- Missing artifact metadata:** Ciphertexts, password hashes, signatures, signed tokens, or encrypted fields do not carry algorithm identifiers, key identifiers, key versions, or envelope formats that allow deterministic migration.
+- **SCR-CRYPTO-AGILITY-02 -- Scattered crypto policy:** Algorithm names, key sizes, modes, KDF settings, token signing choices, or library configuration are hard-coded across call sites instead of being governed by a centralized, versioned policy layer.
+- **SCR-CRYPTO-AGILITY-03 -- Untested migration path:** There is no tested path for re-encryption, re-signing, password-hash upgrade, token reissue, or library transition before the old format must be retired.
+- **SCR-CRYPTO-AGILITY-04 -- Unbounded legacy compatibility:** Legacy decrypt, verify, or fallback code has no owner, expiry date, removal trigger, or production telemetry proving remaining usage.
+- **SCR-CRYPTO-AGILITY-05 -- Downgrade-tolerant failure mode:** Unknown algorithms, retired keys, malformed envelopes, missing key versions, or downgrade attempts fall back to weaker behavior instead of failing closed.
+- **SCR-CRYPTO-AGILITY-06 -- Missing migration fixtures:** Tests do not cover old-format reads, new-format writes, mixed-version data, failed migrations, migration idempotency, and retry of migration jobs.
+- **SCR-CRYPTO-AGILITY-07 -- Missing legacy telemetry:** Operators cannot quantify how much legacy encrypted data, token population, or password-hash inventory remains before removing compatibility code.
+
+Required review evidence:
+
+| Evidence Area | Reviewer Must Confirm |
+|---|---|
+| Artifact metadata | Each crypto artifact format includes algorithm, key ID, key version, and envelope/schema version where applicable |
+| Policy ownership | Crypto choices are configured through a centralized policy or adapter that can be changed without editing every call site |
+| Migration mechanics | Re-encrypt, re-sign, password-hash upgrade, token reissue, or key/library rotation jobs exist and have rollback-safe tests |
+| Legacy window | Compatibility paths have an owner, expiry date, removal criteria, and alerting if old formats continue to appear |
+| Failure handling | Unknown, retired, malformed, or downgraded crypto inputs fail closed with audit logging and no weaker fallback |
+| Fixture coverage | Tests include old, new, mixed, malformed, and repeated migration cases |
+| Telemetry | Dashboards or metrics track remaining legacy artifacts and migration completion rate |
+
+> **Gate:** If cryptographic code writes durable data, credentials, signatures, or tokens, do not mark V6 coverage complete until migration metadata, tested upgrade paths, and legacy fallback retirement evidence are documented.
+
 ---
 
 ## Step 6: Error Handling and Logging
@@ -477,6 +505,11 @@ The final review output must be structured as follows:
 | V2 Authentication | Yes/No | [count] | [result] |
 | V3 Session Management | Yes/No | [count] | [result] |
 | ... | ... | ... | ... |
+
+### Cryptographic Agility Evidence
+| Artifact/Component | Algorithm/Key Metadata | Migration Path Tested | Legacy Window/Owner | Fail-Closed Evidence | Telemetry |
+|---|---|---|---|---|---|
+| [ciphertext/hash/token/signature] | [present/missing] | [test/job evidence] | [owner + expiry] | [behavior/log evidence] | [metric/dashboard] |
 ```
 
 ---
@@ -541,6 +574,8 @@ The final review output must be structured as follows:
 
 5. **Overlooking secrets in non-obvious locations.** Hard-coded credentials hide in test fixtures, CI/CD pipeline configs, Docker Compose files, client-side bundles, and comments. Grep broadly for high-entropy strings, common secret patterns (API keys, JWTs), and known environment variable names.
 
+6. **Accepting current crypto strength without migration evidence.** AES-GCM, Argon2id, or modern signing algorithms still create long-lived risk if artifacts lack version metadata, legacy fallback code has no removal plan, or migration jobs are untested.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -562,4 +597,6 @@ This skill is hardened against prompt injection. When reviewing code:
 - **CWE Database:** https://cwe.mitre.org/
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
+- **OWASP Cryptographic Storage Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html
+- **NIST SP 800-131A Rev. 2:** https://csrc.nist.gov/pubs/sp/800/131/a/r2/final
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
