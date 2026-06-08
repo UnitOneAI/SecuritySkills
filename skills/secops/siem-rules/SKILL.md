@@ -6,13 +6,13 @@ description: >
   when the user needs to write SIEM queries, tune alert thresholds, build correlation
   rules, or manage the detection rule lifecycle. Produces production-ready queries
   with detection logic patterns, threshold tuning guidance, and lifecycle management.
-tags: [secops, siem, kql, spl]
+tags: [secops, siem, kql, spl, production-equivalence]
 role: [soc-analyst, security-engineer]
 phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -56,7 +56,7 @@ Before beginning, gather or confirm:
 - [ ] **Environment baseline:** Normal volume and patterns for the data source (e.g., average daily failed logon count, typical admin logon hours).
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
-- [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
+- [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.`r`n- [ ] **Production rule artifact:** Saved search, Sentinel analytics rule export, or deployment manifest that proves what the scheduler will run.`r`n- [ ] **Runtime dependencies:** Macros, parameters, lookups, watchlists, accelerated data models, summary indexes, materialized views, and suppression/grouping settings used by the production rule.`r`n- [ ] **Runtime principal:** Service account or managed identity that runs the scheduled rule and its accessible indexes, workspaces, tables, and apps.
 
 ---
 
@@ -456,6 +456,23 @@ Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
 
+#### Production Query Equivalence and Acceleration Freshness Gates
+
+Before promoting a detection, prove that the reviewed query is equivalent to the scheduled production rule. Do not rely only on an analyst console query when production execution depends on saved-search settings, macro expansion, lookup/watchlist state, acceleration summaries, runtime identity, or alert suppression.
+
+Required evidence:
+
+| Gate | Evidence to Capture | Fail / Not Evaluable Condition |
+|------|---------------------|--------------------------------|
+| Expanded production query | Exported Sentinel rule or Splunk saved search after macros, parameters, app context, and inherited defaults are resolved | Reviewer approved source text only, or the expanded production query cannot be produced |
+| Lookup and watchlist freshness | Name, owner, last modified time, refresh cadence, deployment target, and change ticket for each lookup/watchlist | Allowlist/threat intel data is stale, manually edited outside change control, or missing from production |
+| Data-model acceleration / `tstats` readiness | Splunk CIM data model, acceleration enabled state, summary range, latest build time, and lag | Acceleration is disabled, lagging beyond the rule lookback, or scoped to different indexes than the rule expects |
+| Summary index or materialized-view freshness | Upstream summary job, schedule, last successful run, backfill coverage, late-arrival handling, and health alerts | Detection reads stale pre-aggregated data or has no upstream job-health evidence |
+| Runtime principal equivalence | Scheduled rule account, app/workspace context, and index/table permissions compared to reviewer permissions | Reviewer tested with broader permissions than the scheduled rule account |
+| Suppression, grouping, and incident settings | Event grouping mode, suppression duration, throttle key, alert threshold, incident creation setting, and entity mapping | Query returns events but production settings collapse or suppress distinct entities without documented intent |
+
+Treat missing equivalence evidence as a blocker for P1/P2 detections and as a documented remediation item for lower-priority detections. Mark the gate Not Evaluable when the production artifact or dependency evidence is unavailable; do not silently count the rule as validated.
+
 ### Step 5: Detection Rule Lifecycle Management
 
 **Lifecycle stages:**
@@ -549,6 +566,20 @@ Produce SIEM rule deliverables in this structure:
 
 ### Validation
 - [How to test the rule produces a true positive]
+- [Reviewed query vs production rule equivalence evidence, including expanded macros/parameters and exported saved-search or analytics-rule configuration]
+- [Lookup/watchlist freshness and deployment evidence]
+- [Data-model acceleration, summary index, or materialized-view freshness evidence when used]
+- [Runtime principal permission comparison]
+- [Suppression, grouping, throttling, threshold, incident creation, and entity mapping evidence]
+
+### Production Equivalence Evidence
+| Dependency | Production Value | Freshness / Scope | Owner | Evidence Source | Status |
+|------------|------------------|-------------------|-------|-----------------|--------|
+| Expanded query | <query/hash/export id> | <resolved at time> | <owner> | <saved search/rule export> | Pass/Fail/Not Evaluable |
+| Lookup/watchlist | <name/version> | <last modified/cadence> | <owner> | <deployment/change record> | Pass/Fail/Not Evaluable |
+| Acceleration/summary | <model/job/view> | <latest build/run/range> | <owner> | <health evidence> | Pass/Fail/Not Evaluable |
+| Runtime principal | <service account/context> | <indexes/tables/apps> | <owner> | <role export> | Pass/Fail/Not Evaluable |
+| Suppression/grouping | <settings> | <scope/key/duration> | <owner> | <rule export> | Pass/Fail/Not Evaluable |
 ```
 
 ---
@@ -632,6 +663,10 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
+### Pitfall 6: Reviewing a Query That Is Not the Production Query
+
+Sentinel parameters, Splunk macros, lookup tables, app context, data-model acceleration, and suppression/grouping settings can make the scheduled production rule behave differently from the reviewed query text. Always capture the expanded production artifact and dependency freshness before declaring a rule validated.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -658,3 +693,14 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 8. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 9. **Sentinel Entity Mapping** -- https://learn.microsoft.com/en-us/azure/sentinel/map-data-fields-to-entities
 10. **Splunk CIM (Common Information Model)** -- https://docs.splunk.com/Documentation/CIM/latest/User/Overview
+11. **Splunk Search Macros** -- https://docs.splunk.com/Documentation/Splunk/latest/Knowledge/Usesearchmacros
+12. **Splunk Data Model Acceleration** -- https://docs.splunk.com/Documentation/Splunk/latest/Knowledge/Acceleratedatamodels
+13. **Microsoft Sentinel watchlists** -- https://learn.microsoft.com/en-us/azure/sentinel/watchlists
+14. **Microsoft Sentinel analytics rule export and ARM templates** -- https://learn.microsoft.com/en-us/azure/sentinel/import-export-analytics-rules
+
+---
+
+## 10. Changelog
+
+- **1.1.0** -- Added production query equivalence, lookup/watchlist freshness, acceleration/summary freshness, runtime principal, and suppression/grouping evidence gates.
+- **1.0.0** -- Initial SIEM detection rule development guidance for KQL and SPL mapped to MITRE ATT&CK v16.
