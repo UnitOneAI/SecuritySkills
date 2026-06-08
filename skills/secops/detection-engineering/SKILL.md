@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -345,6 +345,36 @@ detections/
 5. **Deploy:** Push converted rules to SIEM via API (Sentinel Analytics Rules API, Splunk REST API)
 6. **Monitor:** Track rule performance metrics (fire rate, TP rate, MTTD)
 
+### Step 6b: Sigma Backend Conversion Evidence Gate
+
+Before treating a Sigma rule as deployable, verify that it converts cleanly and preserves the intended logic in each target SIEM backend. A valid Sigma YAML file can still fail operationally if backend mappings, unsupported modifiers, field names, time semantics, or query performance differ from the source rule.
+
+For each target backend, record:
+
+- **Backend target and version:** SIEM platform, pySigma backend, sigma-cli version, conversion config, and target query language.
+- **Conversion command and result:** Exact conversion command, warning/error output, generated query, and whether conversion succeeded without manual edits.
+- **Field mapping evidence:** Mapping from Sigma fields to platform fields, including data-model or index requirements such as Sentinel tables, Splunk sourcetypes, Elastic ECS fields, or Chronicle UDM fields.
+- **Modifier/operator support:** Whether modifiers such as `contains`, `all`, `re`, `cidr`, `base64offset`, wildcards, lists, and case-insensitive matching are preserved by the backend.
+- **Logic parity:** Confirmation that selections, filters, negation, grouping, and correlation windows are equivalent after conversion.
+- **Sample execution evidence:** Known-positive and known-negative sample logs or query results proving the converted query fires and suppresses as expected.
+- **Performance and limits:** Query runtime, scanned data volume, timeout risk, row limits, and backend-specific constraints.
+
+Do not move a detection to `stable`, `operational`, or deployment-ready status when backend conversion warnings, unmapped fields, unsupported modifiers, or untested query results remain unresolved.
+
+```
+Backend Conversion Evidence:
+- Target Backend:        [Sentinel/Splunk/Elastic/Chronicle/QRadar]
+- Converter Version:     [sigma-cli / pySigma backend version]
+- Conversion Command:    [command or pipeline step]
+- Conversion Result:     [Success/Warning/Error]
+- Field Mapping Status:  [Complete/Partial/Missing]
+- Unsupported Operators: [None/list]
+- Logic Parity:          [Preserved/Changed/Unknown]
+- Sample Execution:      [TP pass / TN pass / Not tested]
+- Query Performance:     [runtime/data scanned/limits]
+- Deployment Decision:   [Ready/Needs mapping/Needs rewrite]
+```
+
 ---
 
 ## 4. Findings Classification
@@ -365,7 +395,7 @@ Produce detection engineering deliverables in this structure:
 ```markdown
 ## Detection Engineering Report: [ATT&CK Technique ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** detection-engineering v1.0.0
+**Skill:** detection-engineering v1.0.1
 **Frameworks:** MITRE ATT&CK v16, Sigma, Palantir ADS
 
 ### ATT&CK Technique Summary
@@ -388,6 +418,11 @@ Produce detection engineering deliverables in this structure:
 | Current Coverage | [None / Theoretical / Tested / Operational / Robust] |
 | Target Coverage | [Operational / Robust] |
 | Validation Method | [Atomic Red Team test ID / manual test procedure] |
+
+### Backend Conversion Evidence
+| Target Backend | Converter Version | Conversion Result | Field Mapping | Unsupported Operators | Logic Parity | Sample Execution | Query Performance | Deployment Decision |
+|---|---|---|---|---|---|---|---|---|
+| [Sentinel/Splunk/Elastic/etc.] | [version] | [Success/Warning/Error] | [Complete/Partial/Missing] | [None/list] | [Preserved/Changed/Unknown] | [TP/TN pass or Not tested] | [runtime/limits] | [Ready/Needs work] |
 
 ### Deployment Notes
 - **Target SIEM:** [Platform]
@@ -493,6 +528,10 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
+
+### Pitfall 6: Assuming Sigma Conversion Preserves Semantics
+
+Sigma portability is not automatic. Backend converters may drop unsupported modifiers, map fields incorrectly, change case sensitivity, or produce queries that are too expensive to run. Treat converted queries as unvalidated until field mapping, logic parity, sample execution, and performance evidence are recorded for the target SIEM.
 
 ---
 
