@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -379,6 +379,16 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 
 ---
 
+### Step 7 -- AI Processing Evidence Matrix
+
+Build a processing evidence matrix whenever the review touches prompts, completions, embeddings, fine-tuning data, feedback loops, telemetry, or vendor-hosted AI services. Each row must be backed by a concrete source such as a data inventory, DPIA, contract, DPA, consent record, retention policy, deletion workflow, logging configuration, or tested control.
+
+| Data Type / Subjects | Processing Purpose | Legal Basis / Consent / DPA / LIA Evidence | Provider / Region / Transfer | Retention and Enforcement | Deletion / Withdrawal Propagation | Control Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `[PII, confidential data, prompts, embeddings, training examples]` | `[why the AI system processes it]` | `[policy, consent record, DPA, LIA, contract clause]` | `[vendor, subprocessor, hosting region, SCC/TIA if cross-border]` | `[period, technical enforcement, purge job, log TTL]` | `[systems and vendors that receive delete/withdrawal signal]` | `[test, config, ticket, audit log, screenshot, query]` | `Pass / Fail / Unknown` |
+
+Mark the row `Unknown` when ownership, transfer path, retention enforcement, or deletion propagation cannot be proven from evidence. Do not treat policy language alone as a pass unless it is tied to an implemented control or audit record.
+
 ## Findings Classification
 
 | Severity | Criteria | Response SLA |
@@ -423,6 +433,12 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - **Recommendation:** [Specific remediation with regulatory alignment]
 - **Priority:** [P0 / P1 / P2 / P3]
 
+## AI Processing Evidence Matrix
+
+| Data Type / Subjects | Purpose | Legal Basis Evidence | Provider / Region / Transfer | Retention Enforcement | Deletion Propagation | Controls Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `[data category and subject group]` | `[processing purpose]` | `[record or contract]` | `[vendor / region / transfer mechanism]` | `[technical enforcement]` | `[target systems]` | `[artifact reviewed]` | `Pass / Fail / Unknown` |
+
 ## Privacy Control Summary
 
 | Domain | Control Present | Gaps | Severity |
@@ -460,6 +476,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 ---
 
+- Treating a generic privacy policy as sufficient evidence without mapping it to the actual AI data type, provider region, retention control, and deletion propagation path.
 ## Common Pitfalls
 
 1. **Treating the LLM API as a black box for privacy.** When user data is sent to a third-party LLM API, it crosses a trust boundary. The provider's data handling terms, retention policies, and training data practices directly impact your privacy obligations. Review the provider's DPA, data usage policy, and API configuration options (e.g., OpenAI's zero-data-retention option for eligible endpoints, Azure OpenAI's data processing commitments). Failure to configure these options means user data may be retained by the provider and potentially used for model training.
