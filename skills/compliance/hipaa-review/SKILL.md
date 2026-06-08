@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -71,6 +71,7 @@ The HIPAA Security Rule (45 CFR Part 164, Subpart C) establishes national standa
 - Business Associate Agreements (BAAs) inventory
 - Incident response and breach notification procedures
 - Access control configurations and user provisioning processes
+- Audit log source inventory for all systems that create, receive, maintain, or transmit ePHI
 - Backup and disaster recovery documentation
 - Workforce training records
 - Prior OCR audit findings or corrective action plans
@@ -161,6 +162,8 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 **164.308(a)(1)(ii)(D) — Information System Activity Review (R)**
 - Regularly review records of information system activity (audit logs, access reports, security incident tracking reports)
 - Verify reviews are performed, documented, and acted upon
+- Require evidence that review scope covers all ePHI systems, including EHR access, privileged administrative activity, API/service access, remote access, database queries, export/download events, and Business Associate-managed systems where applicable
+- Verify review artifacts show date, reviewer, sampled systems/users, anomalies found, disposition, and follow-up ticket or sanction path when needed
 
 #### 164.308(a)(2) — Assigned Security Responsibility (Standard, R)
 
@@ -313,6 +316,36 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Verify audit logging is enabled on all ePHI systems
 - Verify logs are reviewed and retained appropriately
 
+##### ePHI Audit Trail Coverage and Integrity Evidence Gate
+
+Do not mark 164.312(b) compliant based only on a statement that "logging is enabled" or a screenshot of a central SIEM dashboard. The assessment must prove that audit mechanisms record activity for every system that creates, receives, maintains, or transmits ePHI, and that those records are reviewable and resistant to unauthorized alteration.
+
+Require the following evidence:
+
+- **Source coverage:** inventory of every in-scope ePHI system mapped to its audit log source, owner, collection status, and retention location.
+- **Event coverage:** proof that logs capture user access, privileged/admin actions, failed access, record create/read/update/delete events where available, exports/downloads, emergency access, authentication events, and audit-log configuration changes.
+- **Identity fidelity:** logs must identify the unique user, service account, application, device/source, timestamp, and affected record/object where the system can produce that data. Shared accounts or unresolvable service identities are a finding.
+- **Integrity protection:** evidence that audit logs are write-restricted, immutable/WORM, hash-chained, centrally forwarded, or otherwise protected from alteration by ordinary system administrators.
+- **Review cadence and sampling:** documented review schedule, reviewer role, sampled systems/users, anomaly criteria, and follow-up records showing findings were investigated and closed.
+- **Retention rationale:** documented retention period for audit records and related review artifacts, aligned to the organization's risk analysis, policies, contractual obligations, and Security Rule documentation requirements.
+- **BA/Subcontractor visibility:** for Business Associate-managed systems, obtain audit-log access, periodic reports, or contract evidence that the BA can provide audit records during investigations.
+
+If an ePHI system cannot produce patient-record-level access logs, mark the control `Partial Compliance` unless the organization documents an equivalent compensating mechanism and residual risk.
+
+```
+Audit Control Evidence Record:
+- ePHI System:              [system/application/name]
+- Log Source:               [native audit log / SIEM source / BA report]
+- Covered Events:           [access/admin/export/auth/config changes]
+- Identity Fields:          [user/service/device/source IP/session/record ID]
+- Integrity Protection:     [immutable storage/hash/central forwarding/WORM/other]
+- Retention Period:         [duration and policy reference]
+- Last Review Date:         [YYYY-MM-DD]
+- Reviewer:                 [role/name]
+- Review Findings:          [none / ticket IDs / sanction path]
+- Gaps:                     [missing events, missing BA evidence, shared accounts]
+```
+
 #### 164.312(c)(1) — Integrity (Standard)
 
 **164.312(c)(2) — Mechanism to Authenticate Electronic Protected Health Information (A)**
@@ -460,6 +493,12 @@ Assess:
 ## Breach Notification Readiness
 [Assessment of breach response procedures, notification capability, HHS reporting readiness]
 
+## Audit Controls Evidence
+
+| ePHI System | Log Source | Event Coverage | Integrity Protection | Retention | Last Review | Status |
+|-------------|------------|----------------|----------------------|-----------|-------------|--------|
+| [system] | [source] | [events] | [control] | [duration] | [date] | [Compliant/Partial/Non-Compliance] |
+
 ## Risk Analysis Gap Summary
 [Specific deficiencies in the organization's risk analysis per 164.308(a)(1)(ii)(A)]
 
@@ -571,6 +610,8 @@ Policies, Procedures, and Documentation — 164.316
 
 5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
 
+6. **Accepting generic SIEM coverage as HIPAA audit controls evidence.** A central logging platform is not enough unless each ePHI system is mapped to a log source, the necessary activity events are present, logs are protected from alteration, and review records show anomalies are investigated. Missing patient-record access events or Business Associate audit visibility should be treated as a compliance gap.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -592,7 +633,7 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 - 45 CFR Part 164, Subpart C — Security Standards for the Protection of Electronic Protected Health Information
 - 45 CFR Part 164, Subpart D — Notification in the Case of Breach of Unsecured Protected Health Information
 - HHS OCR HIPAA Security Rule Guidance Material (hhs.gov/hipaa/for-professionals/security/guidance)
-- HHS OCR HIPAA Audit Protocol (2016 revision)
+- HHS OCR HIPAA Audit Protocol (2016 revision) — https://www.hhs.gov/hipaa/for-professionals/compliance-enforcement/audit/protocol/index.html
 - NIST SP 800-66 Rev. 2 — Implementing the Health Insurance Portability and Accountability Act (HIPAA) Security Rule: A Cybersecurity Resource Guide (February 2024)
 - HHS OCR Breach Portal and Resolution Agreements archive
 - HITECH Act, Section 13401-13411 — Security provisions and enforcement
