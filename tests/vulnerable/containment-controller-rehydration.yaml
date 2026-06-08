@@ -1,0 +1,33 @@
+scenario: compromised_workload_recreated_by_controller
+skill: containment
+expected_result: flag_containment_failure
+incident:
+  id: IR-2026-2043
+  technique:
+    - T1190
+    - T1021
+  containment_action: detach_and_quarantine_instance
+cloud_controller:
+  provider: aws
+  autoscaling_group: prod-api-asg
+  desired_capacity: 6
+  suspended_processes: []
+  launch_template:
+    id: lt-0badc0de
+    version: 17
+    ami_id: ami-compromised-webshell-present
+    user_data_sha256: 4b2c0000sameascompromised
+  replacement_instance:
+    id: i-0newc0de
+    security_groups:
+      - sg-prod-api-public-egress
+    instance_profile: prod-api-write-admin
+validation:
+  c2_blocked: true
+  affected_instance_quarantined: true
+  controller_rehydration_blocked: false
+  replacement_artifact_verified_clean: false
+why_this_should_fail: >
+  Host isolation alone is insufficient because the Auto Scaling Group can
+  immediately recreate the workload from the same compromised AMI and user-data
+  path without inheriting quarantine controls.

@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,7 @@ Before selecting a containment strategy, gather or confirm:
 - [ ] **Network topology** -- VLANs, subnets, firewall zones, cloud VPCs, segmentation boundaries relevant to the affected systems.
 - [ ] **Evidence preservation status** -- Has volatile evidence been captured? (Reference forensics-checklist.) Containment actions may destroy evidence if not collected first.
 - [ ] **Current containment state** -- What actions, if any, have already been taken?
+- [ ] **Controller and replacement path** -- For cloud-native or elastic workloads, identify the durable controller that can recreate affected assets: Kubernetes Deployment/ReplicaSet/Job, AWS Auto Scaling Group, launch template, AMI, user-data script, serverless function version, image digest, admission policy, or multi-region failover route.
 
 ---
 
@@ -109,6 +110,15 @@ Short-term containment aims to stop the immediate threat with minimal preparatio
 | **DNS sinkholing** | Redirect malicious domains to controlled IP via internal DNS | C2 communication via domain names | Ineffective if attacker uses direct IP communication |
 | **Cloud security group lockdown** | Remove all inbound/outbound rules except management access | Cloud instance compromise | May disrupt dependent services |
 | **VPN/remote access revocation** | Disable VPN accounts, revoke remote access tokens | Compromised remote access credentials | Disrupts legitimate remote users on same system |
+
+**Cloud-native controller containment strategies:**
+
+| Strategy | Method | Use When | Validation |
+|----------|--------|----------|------------|
+| **Suspend replacement controller** | Pause Kubernetes rollout, suspend CronJob, lower ASG desired capacity, or disable serverless trigger | The controller can recreate the compromised workload faster than responders can inspect it | No new pods, instances, jobs, or functions start from the suspect image/template |
+| **Quarantine by stable selector** | Apply network policy, security group, or service mesh policy to namespace, labels, ASG, or function alias rather than a single ephemeral IP | Pods or instances have short lifetimes and new identities | Replacement workloads inherit quarantine controls automatically |
+| **Block suspect artifact digest** | Deny the compromised image digest, AMI, launch template version, or function package in admission/deployment controls | The runtime asset was isolated but the deployable artifact may still be compromised | New deployments using the suspect artifact are rejected or routed to quarantine |
+| **Verify clean replacement path** | Review image provenance, launch template, user data, instance profile, secret mounts, and bootstrap scripts before restoring desired capacity | Business service must keep running through surgical containment | Replacement asset uses a known-good artifact and scoped identity |
 
 **Credential revocation strategies:**
 
@@ -215,12 +225,14 @@ After implementing containment, verify effectiveness before proceeding to eradic
 | Attacker persistence neutralized | Scan for known persistence mechanisms | No active persistence artifacts |
 | Business services operational (if surgical containment) | Verify critical service health checks | Services responding normally |
 | Evidence preserved | Verify forensic images and memory dumps are intact and hashed | Hash verification passes |
+| Controller rehydration blocked or clean | Review workload owner, launch template, image digest, admission policy, replacement identity, and failover route | Controllers cannot recreate compromised assets, or replacements prove clean and inherit quarantine controls |
 
 **Containment failure indicators:**
 - New C2 connections from previously unknown infrastructure
 - New compromised accounts appearing after credential reset
 - Attacker activity from systems outside the containment perimeter
 - New persistence mechanisms deployed after containment actions
+- Auto Scaling Groups, Kubernetes controllers, serverless triggers, or failover automation recreate affected workloads from the same compromised artifact or without quarantine controls
 
 If containment fails, escalate to full network isolation and engage external incident response support.
 
@@ -256,7 +268,7 @@ Produce the containment plan with these exact sections:
 ```markdown
 ## Containment Plan: [Incident ID]
 **Date:** [YYYY-MM-DD]
-**Skill:** containment v1.0.0
+**Skill:** containment v1.0.2
 **Frameworks:** NIST SP 800-61 Rev 2, MITRE ATT&CK
 **Incident Commander:** [Name]
 
@@ -275,9 +287,9 @@ threat severity and business criticality, and expected impact on operations.]
 | Containment effectiveness | [Assessment] | [High/Medium/Low] |
 
 ### Short-Term Containment Actions
-| Action | Target | ATT&CK Technique Countered | Status | Owner | ETA |
-|---|---|---|---|---|---|
-| [Action] | [System/Account/Network] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] |
+| Action | Target | Controller / Replacement Path | ATT&CK Technique Countered | Status | Owner | ETA |
+|---|---|---|---|---|---|---|
+| [Action] | [System/Account/Network] | [Deployment/ASG/Function/Image digest or N/A] | [T-code] | [Planned/In Progress/Complete] | [Name] | [Time] |
 
 ### Long-Term Containment Actions
 | Action | Target | Duration | Status | Owner |
@@ -290,9 +302,9 @@ threat severity and business criticality, and expected impact on operations.]
 | [Service] | [Description of disruption] | [Workaround if any] | [Yes/No -- requires escalation] |
 
 ### Containment Validation Checklist
-| Check | Result | Timestamp |
-|---|---|---|
-| [Validation item] | [Pass/Fail/Pending] | [timestamp] |
+| Check | Result | Evidence | Timestamp |
+|---|---|---|---|
+| [Validation item] | [Pass/Fail/Pending] | [Log, query result, ticket, snapshot, or policy ID] | [timestamp] |
 
 ### Rollback Conditions
 [Document specific conditions under which containment will be modified or rolled back]

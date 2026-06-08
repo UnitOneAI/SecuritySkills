@@ -1,0 +1,34 @@
+scenario: clean_replacement_inherits_quarantine_controls
+skill: containment
+expected_result: do_not_flag_as_escape
+incident:
+  id: IR-2026-2043-benign
+  technique:
+    - T1190
+  containment_action: quarantine_compromised_pod_and_pause_rollout
+kubernetes:
+  namespace: payments
+  workload_owner: deployment/payments-api
+  rollout_paused: true
+  old_pod: payments-api-7df9cbb8c5-kf2sd
+  replacement_pod: payments-api-7df9cbb8c5-r9ptm
+  image:
+    old_digest: sha256:badbadbad
+    replacement_digest: sha256:clean-reviewed-build
+  admission_policy:
+    blocked_digests:
+      - sha256:badbadbad
+  network_policy:
+    selector_scope: namespace_and_app_label
+    inherited_by_replacement: true
+    allowed_egress:
+      - artifacts.example.com:443
+validation:
+  c2_blocked: true
+  controller_rehydration_blocked: true
+  replacement_artifact_verified_clean: true
+  replacement_identity_scoped: true
+why_this_should_pass: >
+  The replacement is controller-owned but uses a reviewed clean digest, inherits
+  stable quarantine policy by label/namespace, and the suspect digest is blocked
+  by admission policy.
