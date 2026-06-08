@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -283,6 +283,16 @@ Configure scan schedules to balance coverage, freshness, and operational impact.
 
 ---
 
+### Scanner Credential Safety Evidence
+
+Prove credentialed scans avoid account lockouts, password-spray blocks, stale credentials, and unsafe retry behavior.
+
+| Credential / Account | Target Scope | Protocol | Preflight Sample | Retry Limit | Lockout Threshold | SIEM / IdP Allowlist | Abort Rule | Owner | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[credential/account]` | `[target_scope]` | `[protocol]` | `[preflight_sample]` | `[retry_limit]` | `[lockout_threshold]` | `[siem/idp_allowlist]` | `[abort_rule]` | `[owner]` | `Ready / Blocked / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 Classify the overall scanner tuning state into one of the following:
@@ -358,6 +368,12 @@ Highlight the most impactful tuning recommendations.]
 **Rating:** [Poorly Tuned | Basic | Tuned | Optimized]
 **Rationale:** [2-3 sentences explaining the rating]
 
+### Scanner Credential Safety Evidence
+
+| Credential / Account | Target Scope | Protocol | Preflight Sample | Retry Limit | Lockout Threshold | SIEM / IdP Allowlist | Abort Rule | Owner | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[credential/account]` | `[target_scope]` | `[protocol]` | `[preflight_sample]` | `[retry_limit]` | `[lockout_threshold]` | `[siem/idp_allowlist]` | `[abort_rule]` | `[owner]` | `Ready / Blocked / Unknown` |
+
 ### Recommendations
 1. [Highest-impact tuning recommendation]
 2. [Second priority recommendation]
@@ -400,6 +416,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
 ---
+
+- Running credentialed scans without lockout thresholds, retry limits, preflight sampling, monitoring, and abort rules.
 
 ## Prompt Injection Safety Notice
 
