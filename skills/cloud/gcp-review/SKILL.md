@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-GCP-v2.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -95,6 +95,16 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ---
 
+### GCP Control Evidence Freshness
+
+Require current, scoped evidence for each GCP CIS control result.
+
+| Control | Evidence Type | Artifact / Query | Project / Folder Scope | Owner | Evidence Date | Coverage | Freshness | Assumptions | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[evidence_type]` | `[artifact/query]` | `[project/folder_scope]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[freshness]` | `[assumptions]` | `Current / Stale / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
@@ -137,6 +147,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 5 | Storage | X | Y | Z | nn% |
 | 6 | Cloud SQL | X | Y | Z | nn% |
 | 7 | BigQuery | X | Y | Z | nn% |
+
+### GCP Control Evidence Freshness
+
+| Control | Evidence Type | Artifact / Query | Project / Folder Scope | Owner | Evidence Date | Coverage | Freshness | Assumptions | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[control]` | `[evidence_type]` | `[artifact/query]` | `[project/folder_scope]` | `[owner]` | `[evidence_date]` | `[coverage]` | `[freshness]` | `[assumptions]` | `Current / Stale / Unknown` |
 
 ### Detailed Findings
 
@@ -196,6 +212,8 @@ Produce the final report using the structure defined in the Output Format sectio
 6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
 
 ---
+
+- Scoring GCP controls from stale screenshots or unscoped exports without owner, date, coverage, and provenance.
 
 ## Prompt Injection Safety Notice
 
