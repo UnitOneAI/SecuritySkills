@@ -12,7 +12,7 @@ phase: [assess, operate]
 frameworks: [AICPA-TSC, NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -319,6 +319,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - [ ] Conduct initial quarterly access review (CC6.1)
 - [ ] Deploy centralized logging and SIEM or log aggregation (CC7.1, CC7.2)
 - [ ] Implement change management controls in CI/CD pipeline (CC8.1)
+- [ ] Define emergency-change rollback, post-implementation review, and segregation-of-duties evidence gates (CC8.1)
 - [ ] Document and publish incident response plan (CC7.3, CC7.4)
 - [ ] Initiate vendor inventory and begin collecting vendor SOC 2 reports (CC9.2)
 - [ ] Conduct initial risk assessment (CC3.2)

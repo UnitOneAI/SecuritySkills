@@ -291,6 +291,8 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Are changes tested before deployment to production?
   - Is there segregation of duties between development, testing, and deployment?
   - Are emergency change procedures defined?
+  - Do emergency changes retain a ticket, risk reason, approver, rollback path, and post-implementation review?
+  - Are requester, approver, and production deployer identities separated or formally exception-approved?
 - Evidence to look for:
   - Change management policy
   - CI/CD pipeline configurations showing approval gates, automated testing, and deployment controls
@@ -298,11 +300,52 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Change advisory board (CAB) meeting minutes (for infrastructure changes)
   - Emergency change request records
   - Segregation of duties evidence (separate roles for code authoring and production deployment)
+  - Emergency-change tickets linked to incidents, outages, vulnerability fixes, or customer-impact records
+  - Rollback plans, abort criteria, smoke-test evidence, and post-implementation review sign-off
+  - Deployment audit logs showing who requested, approved, executed, and verified the production change
 - Common gaps:
   - Developers can push directly to production without review
   - No automated testing in CI/CD pipeline
   - Emergency changes bypass all controls with no after-the-fact review
   - No segregation of duties between development and deployment
+  - Emergency changes are tracked only in chat messages, not in the formal change system
+  - Rollback plans exist generically but are not tied to the specific production change
+  - The same individual requests, approves, deploys, and closes emergency changes without compensating review
+
+#### CC8.1 Emergency Change Evidence Gate
+
+Treat emergency changes as expedited, not exempt. A SOC 2-ready emergency-change path should preserve enough evidence for an auditor to verify authorization, risk rationale, implementation control, and after-the-fact review.
+
+Require these fields for every emergency production change:
+
+| Field | Required Evidence | Audit Concern if Missing |
+|-------|-------------------|--------------------------|
+| Change identifier | Ticket ID, PR, deployment run, or CAB record | Change cannot be traced through the evidence chain |
+| Emergency reason | Incident, outage, vulnerability, customer-impact, or risk record | Emergency path may be used to bypass normal controls |
+| Approval path | Pre-approval or documented retroactive approval within policy SLA | Authorization cannot be tested |
+| Segregation of duties | Requester, approver, deployer, and verifier identities | One person can bypass or conceal control failures |
+| Test and validation evidence | CI result, smoke test, production health check, or monitoring screenshot reference | Operating effectiveness cannot be verified |
+| Rollback plan | Change-specific rollback steps, abort threshold, and rollback owner | Failed changes may not be recoverable |
+| Post-implementation review | Closure notes, root cause, follow-up actions, and reviewer sign-off | Emergency changes bypass normal learning and control improvement |
+
+Flag these findings when evidence is incomplete:
+
+```
+SOC2-CC8-EMERG-01: Emergency change lacks a formal ticket or traceable change identifier.
+SOC2-CC8-EMERG-02: Emergency reason is missing or not tied to incident, vulnerability, outage, or customer-impact evidence.
+SOC2-CC8-EMERG-03: Approval is missing, undocumented, or not completed within the policy-defined retroactive approval SLA.
+SOC2-CC8-EMERG-04: Requester, approver, deployer, and verifier are the same person without documented compensating review.
+SOC2-CC8-EMERG-05: Change-specific rollback plan or abort criteria are missing.
+SOC2-CC8-EMERG-06: Post-implementation review is missing, unsigned, or does not record follow-up control actions.
+```
+
+Add this table to the evidence checklist when emergency changes occurred during the audit period:
+
+```markdown
+| Change ID | Emergency Reason | Approval Evidence | SoD Evidence | Test Evidence | Rollback Evidence | Post-Implementation Review | CC8.1 Finding |
+|-----------|------------------|-------------------|--------------|---------------|-------------------|-----------------------------|---------------|
+|           |                  |                   |              |               |                   |                             |               |
+```
 
 ---
 
@@ -551,7 +594,7 @@ After scoring, calculate:
 | CC7.3 | Incident response plan; severity classification matrix; triage procedures |
 | CC7.4 | Tabletop exercise records; IR team roster; communication templates; post-incident review records |
 | CC7.5 | DR plan; BC plan; backup configs; backup restoration test records |
-| CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; segregation of duties evidence |
+| CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; segregation of duties evidence; emergency-change tickets; rollback plans; post-implementation review sign-offs |
 | CC9.1 | Risk treatment plans; business impact analysis; risk acceptance sign-off records |
 | CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs |
 | A1.1 | Capacity monitoring dashboards; auto-scaling configs; capacity planning documentation |
