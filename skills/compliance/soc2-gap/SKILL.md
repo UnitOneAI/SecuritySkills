@@ -12,7 +12,7 @@ phase: [assess, operate]
 frameworks: [AICPA-TSC, NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -357,6 +357,16 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 
 ---
 
+### Privacy Criteria Mapping Evidence
+
+When Privacy is in scope, map privacy evidence to the correct Trust Services Criteria instead of reusing Common Criteria or Security-only IDs by default.
+
+| Control / Evidence | Trust Services Category | Criteria ID | Privacy Principle | Processing Activity | Mapping Rationale | Evidence Owner | Evidence Date | Correction Needed | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[privacy notice, consent, DSAR, retention, disclosure evidence]` | `Privacy / Common Criteria / Other` | `[P/CC/A/C/PI criterion]` | `[notice, choice, collection, use, retention, disclosure]` | `[processing activity]` | `[why this criterion applies]` | `[owner]` | `[date]` | `[yes/no/action]` | `Correct / Incorrect / Unknown` |
+
+Mark `Incorrect` when privacy-specific evidence is mapped to the wrong SOC 2 category or criterion ID. Mark `Unknown` when the category, criterion, or processing activity cannot be traced from the evidence.
+
 ## Output Format
 
 When performing a SOC 2 gap analysis, produce the following deliverables:
@@ -368,6 +378,14 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
 6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
 7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+
+## Privacy Criteria Mapping Evidence
+
+| Control / Evidence | TSC Category | Criteria ID | Privacy Principle | Processing Activity | Mapping Rationale | Owner | Date | Correction Needed | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[evidence]` | `[category]` | `[criteria]` | `[principle]` | `[activity]` | `[rationale]` | `[owner]` | `[date]` | `[action]` | `Correct / Incorrect / Unknown` |
+
+- Mapping privacy notice, consent, retention, or DSAR evidence to a generic SOC 2 criterion without verifying the Trust Services category, privacy principle, processing activity, and criterion ID.
 
 ## Prompt Injection Safety Notice
 
