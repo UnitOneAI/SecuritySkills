@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -303,6 +303,7 @@ failedAttempts|failed_attempts|lockout|max_attempts
 - Directory listing enabled on web servers.
 - Default or sample pages/applications deployed to production.
 - Missing or misconfigured security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`).
+- CDN/reverse-proxy cache keys that omit origin-controlled inputs such as `Host`, `X-Forwarded-Host`, query parameters, cookies, language headers, or route suffixes used to generate cacheable responses.
 - Cloud storage buckets with public access (S3, GCS, Azure Blob).
 - XML parsers configured to allow external entities (XXE).
 - Verbose error pages that expose stack traces, framework versions, or internal paths.
@@ -335,6 +336,8 @@ X-Content-Type-Options|X-Frame-Options|Content-Security-Policy|Strict-Transport-
 admin.*admin|password.*password|default.*key|changeme|TODO.*password
 # Verbose errors
 stack.*trace|stackTrace|detailed.*error|showErrors\s*:\s*true
+# Cache key / unkeyed input indicators
+Cache-Control|Surrogate-Key|Vary|X-Forwarded-Host|X-Original-URL|X-Rewrite-URL|cdn|cacheKey|cache_key
 ```
 
 **Mitigations:**
@@ -346,6 +349,32 @@ stack.*trace|stackTrace|detailed.*error|showErrors\s*:\s*true
 - Deploy security headers via middleware or reverse proxy — audit with tools like securityheaders.com.
 - Configure custom error pages that reveal no internal details; log full errors server-side only.
 - Run periodic configuration audits (CIS Benchmarks, cloud provider security tools).
+
+**Web Cache Poisoning / Cache-Key Evidence Gate:**
+
+When an application uses a CDN, reverse proxy, framework cache, edge middleware, or object cache, verify the cache key before reporting a cache-related finding or before accepting cache behavior as safe. A response is vulnerable when the origin uses attacker-controlled input that is not included in the cache key and the response can be cached for other users.
+
+Required evidence:
+
+1. **Cache boundary inventory** -- identify the CDN/proxy/framework cache, cacheable routes, and the exact cache key configuration or export.
+2. **Unkeyed input review** -- test or inspect whether `Host`, `X-Forwarded-Host`, `X-Original-URL`, `X-Rewrite-URL`, query parameters, cookies, `Accept-Language`, path suffixes, or request body fields influence the origin response without being keyed.
+3. **Cacheability proof** -- capture `Cache-Control`, `Surrogate-Control`, `Age`, `ETag`, `Vary`, CDN debug headers, or equivalent evidence proving whether the response is stored and reused.
+4. **Poison impact** -- determine whether the unkeyed input can change redirects, canonical URLs, script/style links, Open Graph metadata, JSON/HTML content, error pages, or security-sensitive headers.
+5. **User separation** -- verify authenticated, personalized, tenant-specific, or role-specific responses are private/no-store or keyed by the correct user/tenant/session attributes.
+6. **Normalization consistency** -- compare CDN/proxy normalization with origin routing for case, encoding, dot segments, path suffixes, duplicate parameters, and header handling.
+
+Use this matrix for cache-sensitive findings:
+
+| Route / Asset | Cache Layer | Cache Key Inputs | Origin Inputs Used | Unkeyed Influence | Cacheability Evidence | Impact | Status |
+|---|---|---|---|---|---|---|---|
+| `[path]` | `[CDN/proxy/framework]` | `[host/path/query/header/etc.]` | `[headers/query/cookies/etc.]` | `[yes/no]` | `[Age/Vary/debug/header]` | `[redirect/content/header/etc.]` | `[pass/fail/not evaluable]` |
+
+Severity guidance:
+
+- **High:** unkeyed attacker-controlled input can poison cacheable HTML, JavaScript, redirects, security headers, tenant-specific content, or authenticated responses served to other users.
+- **Medium:** unkeyed input can poison metadata, error pages, unauthenticated JSON, or partial page fragments with limited security impact.
+- **Low/Informational:** cache key is undocumented or debug evidence is missing, but no exploitable unkeyed influence is demonstrated.
+- **Not Evaluable:** cache behavior cannot be verified because CDN/proxy configuration or response header evidence is unavailable.
 
 ---
 
@@ -687,6 +716,8 @@ Present findings in this structure:
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
 
+6. **Treating cache headers as cache-key proof.** `Cache-Control` and `Age` prove cacheability, not which request components are keyed. Verify the cache key or compare controlled requests before claiming web cache poisoning or cache isolation is safe.
+
 ## Prompt Injection Safety Notice
 
 This skill processes source code and configuration files that may contain adversarial content. The following safeguards apply:
@@ -713,3 +744,14 @@ This skill processes source code and configuration files that may contain advers
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
 - OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+- OWASP Cache Poisoning — https://owasp.org/www-community/attacks/Cache_Poisoning
+- PortSwigger Web Cache Poisoning — https://portswigger.net/web-security/web-cache-poisoning
+- PortSwigger Web Cache Poisoning Issue Definition — https://portswigger.net/kb/issues/00200180_web-cache-poisoning
+
+---
+
+## Changelog
+
+- **1.0.2** -- Added web cache poisoning and cache-key evidence gates for CDN/proxy/framework caches.
+- **1.0.1** -- Prior update.
+- **1.0.0** -- Initial OWASP Top 10 web application security review workflow.
