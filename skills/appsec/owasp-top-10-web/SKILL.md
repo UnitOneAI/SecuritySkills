@@ -6,13 +6,13 @@ description: >
   when a user asks for a general security review of a web application. Produces
   structured findings mapped to A01-A10 with CWE references, severity ratings,
   and specific remediation guidance.
-tags: [appsec, web, owasp]
+tags: [appsec, web, owasp, cache-poisoning]
 role: [appsec-engineer, security-engineer]
 phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -302,7 +302,7 @@ failedAttempts|failed_attempts|lockout|max_attempts
 - Unnecessary HTTP methods enabled (TRACE, OPTIONS returning sensitive data).
 - Directory listing enabled on web servers.
 - Default or sample pages/applications deployed to production.
-- Missing or misconfigured security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`).
+- Missing or misconfigured security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`).`n- CDN, reverse-proxy, edge middleware, or framework cache keys that omit attacker-controlled inputs used by the origin response, such as `Host`, `X-Forwarded-Host`, `X-Original-URL`, `X-Rewrite-URL`, query parameters, cookies, `Accept-Language`, path suffixes, or body fields.
 - Cloud storage buckets with public access (S3, GCS, Azure Blob).
 - XML parsers configured to allow external entities (XXE).
 - Verbose error pages that expose stack traces, framework versions, or internal paths.
@@ -320,7 +320,7 @@ failedAttempts|failed_attempts|lockout|max_attempts
 | CWE-614 | Sensitive Cookie in HTTPS Session Without 'Secure' Attribute |
 | CWE-756 | Missing Custom Error Page |
 | CWE-776 | Improper Restriction of Recursive Entity References in DTDs (XML Entity Expansion) |
-| CWE-942 | Permissive Cross-domain Policy with Untrusted Domains |
+| CWE-942 | Permissive Cross-domain Policy with Untrusted Domains |`n| CWE-444 | Inconsistent Interpretation of HTTP Requests (HTTP Request/Response Smuggling adjacent cache-key risk) |
 
 **Detection Patterns (Grep):**
 
@@ -685,7 +685,7 @@ Present findings in this structure:
 
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
-5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.`n`n6. **Treating cacheability as cache-key proof.** `Cache-Control`, `Age`, `ETag`, and CDN hit/miss headers prove storage behavior, not key composition. A cacheable route is not safe until controlled requests or exported configuration prove attacker-controlled origin inputs are keyed, ignored, or rejected.
 
 ## Prompt Injection Safety Notice
 
@@ -712,4 +712,12 @@ This skill processes source code and configuration files that may contain advers
 - MITRE CWE List — https://cwe.mitre.org/
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
-- OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+- OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/`n- OWASP Cache Poisoning — https://owasp.org/www-community/attacks/Cache_Poisoning`n- PortSwigger Web Cache Poisoning — https://portswigger.net/web-security/web-cache-poisoning`n- PortSwigger Web Cache Poisoning Issue Definition — https://portswigger.net/kb/issues/00200180_web-cache-poisoning
+
+---
+
+## Changelog
+
+- **1.0.2** -- Added web cache poisoning and cache-key evidence gates with report output matrix.
+- **1.0.1** -- Prior update.
+- **1.0.0** -- Initial OWASP Top 10 web application security review workflow.
