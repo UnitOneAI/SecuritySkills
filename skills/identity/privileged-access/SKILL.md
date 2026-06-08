@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -259,6 +259,21 @@ PAM-BG-10: Break-glass procedure not included in disaster recovery plans
 | **Scoped permissions** | Break-glass accounts limited to recovery actions, not full admin | AC-6 |
 | **Time-bounded** | Break-glass sessions auto-terminate after defined maximum duration | AC-2(2) |
 
+#### Break-Glass Drill Evidence Gate
+
+Do not mark break-glass procedures as tested unless the review can cite recent drill or real-use evidence. For each critical platform, collect:
+
+- **Drill date and scenario:** Date of the most recent test, failure scenario tested, and whether it covered PAM outage, IdP outage, cloud provider outage, or emergency operational recovery.
+- **Authorized participants:** Named roles involved in request, approval, custody release, session execution, monitoring, and post-use review. Confirm split custody or dual control where required.
+- **Access path validated:** Account, vault object, sealed envelope, HSM-backed secret, emergency role, or alternate IdP path used during the drill.
+- **Scope and duration:** Privileges granted, systems reached, maximum session duration, and evidence that access terminated or was revoked after the drill.
+- **Alerting and logging evidence:** Timestamped alert, SIEM event, PAM audit event, session recording, or immutable log proving break-glass use was detected and retained.
+- **Recovery objective:** Whether the drill restored required administrative capability within the documented recovery time objective.
+- **Post-use rotation:** Evidence that passwords, keys, recovery codes, or emergency role credentials were rotated or re-sealed after use.
+- **Post-drill review:** Issues found, owner, remediation due date, and whether prior drill findings were closed.
+
+If no drill or real-use evidence exists within the defined cadence, classify break-glass testing as failed even when a written procedure exists.
+
 ---
 
 ### Step 5: Session Recording and Monitoring
@@ -409,6 +424,11 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 ### Detailed Findings
 [Findings table]
 
+### Break-Glass Drill Evidence
+| Platform | Last Drill Date | Scenario Tested | Participants / Custody | Access Path | Alert / Log Evidence | Session Terminated | Post-Use Rotation | Follow-Up Owner |
+|---|---|---|---|---|---|---|---|---|
+| [AWS/Azure/GCP/AD/etc.] | [YYYY-MM-DD or Not Tested] | [PAM outage / IdP outage / provider outage / recovery] | [roles] | [account/role/vault object] | [event ID/link/summary] | [Yes/No] | [Yes/No/N/A] | [owner/date] |
+
 ### Remediation Roadmap
 - Immediate (0-7 days): [critical findings — credential exposure, uncontrolled root access]
 - Short-term (8-30 days): [high findings — JIT deployment, session recording gaps]
@@ -457,6 +477,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+9. **Accepting procedure documents as drill evidence** — a written emergency access runbook does not prove credentials work, alerts fire, logs are retained, or post-use rotation occurs. Require timestamped drill evidence.
 
 ---
 
