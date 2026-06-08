@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -50,6 +50,16 @@ Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories:
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
 
 ---
+
+## Bulk Export and Signed URL Evidence Gates
+
+For async exports, file jobs, storage objects, and signed download URLs, review the whole export lifecycle rather than only the creation endpoint.
+
+| Export Flow | Job / File Identifier | Tenant / Owner Check | Polling Authorization | Signed URL TTL | Revocation / One-Time Use | Storage ACL | Cleanup / Retention | API Mapping | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[endpoint or workflow]` | `[job id, file id, object key]` | `[tenant/user/resource check]` | `[status/download guard]` | `[duration]` | `[revocation or single-use evidence]` | `[private bucket/object policy]` | `[expiry/delete job]` | `API1 / API5 / API6` | `Pass / Fail / Unknown` |
+
+Mark `Fail` when another tenant can poll a job, receive a URL, or reuse a long-lived URL after access should be revoked.
 
 ## Findings Classification
 
@@ -113,6 +123,12 @@ The final review output must be structured as follows:
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
 
 ### Findings
+
+##### Export and Signed URL Evidence
+
+| Flow | Identifier | Owner Check | Polling Guard | URL TTL | Revocation | Storage ACL | Retention | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[flow]` | `[id/key]` | `[evidence]` | `[guard]` | `[ttl]` | `[control]` | `[acl]` | `[cleanup]` | `Pass / Fail / Unknown` |
 
 #### API-SEC-001: [Title]
 - **OWASP API Risk:** API[N]:2023 -- [Name]
@@ -200,6 +216,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 **Mitigation:** Count aliased operations against rate limits. Limit the number of aliases per request.
 
 ---
+
+- Validating only export creation while skipping job polling, download authorization, signed URL TTL, storage ACL, revocation, and cleanup evidence.
 
 ## Common Pitfalls
 
