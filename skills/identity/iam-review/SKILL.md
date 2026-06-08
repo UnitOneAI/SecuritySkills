@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -84,6 +84,7 @@ Identify and catalog:
 - **Service accounts** — application-to-application, daemon accounts, CI/CD pipeline identities
 - **API keys** — long-lived credentials, developer tokens, integration keys
 - **Machine identities** — workload identities, managed identities, instance profiles, certificates
+- **OAuth applications and consent grants** — enterprise apps, app registrations, service principals, delegated grants, application permissions, admin-consent records
 
 **What to look for:**
 
@@ -93,6 +94,7 @@ IAM-INV-02: Identity types are not classified (human vs. machine vs. service)
 IAM-INV-03: Shadow identities — accounts outside the central IdP
 IAM-INV-04: Shared accounts with no individual attribution
 IAM-INV-05: Break-glass / emergency accounts not documented
+IAM-INV-06: OAuth applications and consent grants not inventoried as identity objects
 ```
 
 **Platform-specific checks:**
@@ -101,6 +103,7 @@ IAM-INV-05: Break-glass / emergency accounts not documented
 |---|---|---|
 | **AWS** | `aws iam list-users`, `aws iam list-roles`, `aws iam get-credential-report` | IAM users, roles, access keys, instance profiles |
 | **Azure / Entra ID** | Entra ID > Users, Enterprise Apps, Managed Identities | User accounts, service principals, managed identities, app registrations |
+| **Azure / Entra ID** | Enterprise Apps > Permissions, App registrations > API permissions, Microsoft Graph `oauth2PermissionGrants` and `appRoleAssignments` | Delegated grants, application permissions, admin-consent status, publisher verification |
 | **GCP** | `gcloud iam service-accounts list`, `gcloud projects get-iam-policy` | Service accounts, IAM bindings, workload identity federation |
 
 **Output:** Complete identity inventory table with columns: Identity Name, Type (human/service/machine/API key), Provider, Owner, Last Activity Date, Classification.
@@ -174,6 +177,9 @@ IAM-PRIV-05: Custom roles with excessive scope beyond job function
 IAM-PRIV-06: Direct policy attachment instead of role/group-based assignment (CIS 6.8)
 IAM-PRIV-07: Cross-account access without external ID or condition keys
 IAM-PRIV-08: Resource-based policies granting public or overly broad access
+IAM-PRIV-09: OAuth/admin consent grants with high-impact scopes are not risk-reviewed
+IAM-PRIV-10: Tenant-wide application permissions granted without app assignment, owner, or expiry review
+IAM-PRIV-11: User consent allowed for unverified publishers or high-risk permissions
 ```
 
 **Platform-specific checks:**
@@ -188,12 +194,47 @@ IAM-PRIV-08: Resource-based policies granting public or overly broad access
 | **GCP** | IAM Recommender, Policy Analyzer | Excess permissions, recommended removals |
 | **GCP** | Organization-level IAM bindings | Primitive roles (Owner, Editor) at org/folder level |
 
+#### OAuth Consent and Application Permission Grant Evidence Gate
+
+OAuth consent grants are identity permissions. Review delegated permissions and application permissions with the same rigor as human and service-account entitlements, especially when a grant is tenant-wide or allows offline access to mailbox, file, directory, or Graph data.
+
+| Evidence Area | Required Evidence | Decision Rule |
+|---|---|---|
+| **Grant inventory** | Export of service principals, delegated grants, application role assignments, consent type, grant date, granted-by principal, resource API, scopes/app roles, and last sign-in/use | Grants missing owner, business purpose, or last-use evidence are findings |
+| **High-impact permissions** | Explicit review of permissions such as `Directory.ReadWrite.All`, `User.ReadWrite.All`, `Mail.ReadWrite`, `Files.ReadWrite.All`, `Sites.FullControl.All`, `offline_access`, or equivalent IdP scopes | High-impact grants require admin approval evidence and documented data-access justification |
+| **Delegated vs application permission scope** | Evidence distinguishing user-scoped delegated access from app-only permissions that can access data without a signed-in user | App-only permissions require stronger approval, monitoring, and assignment restrictions |
+| **Publisher and app trust** | Verified publisher status, publisher domain, first-party vs third-party app classification, and whether the app is multi-tenant | Unverified or unknown publishers with sensitive scopes are High severity unless explicitly risk accepted |
+| **Consent governance policy** | User-consent settings, admin-consent workflow, reviewer group, approval SLA, app consent policy, and blocked permission categories | User consent to high-risk scopes or disabled review workflow is a governance gap |
+| **Assignment and blast radius** | Whether the enterprise app requires user/group assignment, which users/groups can access it, and whether tenant-wide admin consent was granted | Tenant-wide consent without assignment controls expands blast radius and needs remediation |
+| **Grant lifecycle** | Recertification cadence, expiry/renewal evidence, stale-grant removal, secret/certificate expiry, and incident revocation procedure | Grants with no lifecycle owner or review date should be removed or scheduled for review |
+
+```
+OAuth Consent Grant Record:
+- Application Name:        [Enterprise app / app registration]
+- App ID / SP ID:          [GUID, redacted if needed]
+- Publisher:               [Verified publisher / unverified / internal]
+- Permission Type:         [Delegated | Application]
+- Consent Type:            [User | Admin | Tenant-wide admin]
+- Resource API:            [Microsoft Graph | Custom API | Third-party API]
+- Scopes/App Roles:        [List high-impact permissions]
+- Granted By:              [Admin/user role, not secret value]
+- Granted Date:            [YYYY-MM-DD]
+- App Assignment Required: [Yes/No]
+- Assigned Users/Groups:   [Scope summary]
+- Last Sign-in/Use:        [YYYY-MM-DD or unknown]
+- Business Owner:          [Team/person]
+- Review Decision:         [Keep | Reduce scope | Revoke | Not Evaluable]
+- Next Review Date:        [YYYY-MM-DD]
+```
+
 **Severity Classification:**
 
 | Finding | Severity | Rationale |
 |---|---|---|
 | Wildcard admin (`*:*`) on production | **Critical** | Full environment compromise potential |
 | Standing admin without JIT | **High** | Persistent lateral movement target |
+| Tenant-wide app-only permission to sensitive data without owner/review | **High** | App compromise can access broad data without user presence |
+| User consent allowed for unverified publishers with sensitive scopes | **High** | Increases OAuth consent phishing and data-exfiltration risk |
 | Unused permissions > 90 days | **Medium** | Attack surface reduction opportunity |
 | Direct policy attachment | **Low** | Governance improvement, not direct risk |
 
@@ -406,6 +447,7 @@ For each finding, produce a row with:
 ### Findings by Category
 - Authentication (Step 2): [count]
 - Least Privilege (Step 3): [count]
+- OAuth Consent Grants (Step 3): [count]
 - Service Accounts (Step 4): [count]
 - Stale Accounts (Step 5): [count]
 - JIT Access (Step 6): [count]
@@ -413,6 +455,12 @@ For each finding, produce a row with:
 
 ### Detailed Findings
 [Findings table — see above]
+
+### OAuth Consent Grant Review
+
+| Application | Permission Type | Consent Type | High-Impact Permissions | Publisher Trust | Assignment Scope | Last Use | Decision |
+|---|---|---|---|---|---|---|---|
+| [app name] | [Delegated/Application] | [User/Admin/Tenant-wide] | [scopes/app roles] | [verified/unverified/internal] | [users/groups/all users] | [date/unknown] | [Keep/Reduce/Revoke] |
 
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
@@ -428,7 +476,7 @@ For each finding, produce a row with:
 | Priority | Timeframe | Example Findings |
 |---|---|---|
 | **P0 — Immediate** | 0-7 days | Root/global admin without MFA, former employee with active access, wildcard admin policies |
-| **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, no stale account process |
+| **P1 — Urgent** | 8-30 days | No JIT for admin access, service account keys > 1 year old, tenant-wide high-impact OAuth grant without owner/review, no stale account process |
 | **P2 — Important** | 31-90 days | No phishing-resistant MFA, incomplete identity inventory, no access review cadence |
 | **P3 — Planned** | 91-180 days | Zero trust maturity gaps, device trust integration, continuous access evaluation |
 
@@ -489,6 +537,16 @@ This skill processes user-supplied content including IAM policies, access config
 
 ---
 
+## References
+
+- Microsoft Entra admin consent workflow: https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/admin-consent-workflow-overview
+- Microsoft Entra configure user consent: https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-user-consent
+- Microsoft Entra manage consent requests: https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/manage-consent-requests
+- Microsoft identity platform publisher verification: https://learn.microsoft.com/en-us/entra/identity-platform/publisher-verification-overview
+- Microsoft Graph `oAuth2PermissionGrant`: https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-list
+
+---
+
 ## Appendix: NIST SP 800-63B Quick Reference
 
 | Section | Topic | Key Requirement |
@@ -508,4 +566,5 @@ This skill processes user-supplied content including IAM policies, access config
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-08 | Added OAuth consent and application permission grant evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
