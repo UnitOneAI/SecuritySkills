@@ -1,0 +1,28 @@
+scenario: retry-fallback-and-tool-cost-bypass
+agent:
+  token_budget: 20000
+retry:
+  max_retries: 5
+  decrements_budget: false
+fallback_providers:
+  - name: secondary-llm
+    receives_fresh_budget: true
+tools:
+  web_search:
+    cost_metering: false
+  browser_automation:
+    cost_metering: false
+  code_execution:
+    cost_metering: false
+metering_service:
+  fail_mode: open
+expected_findings:
+  - id: AGENT-BUDGET-02
+    severity: high
+    reason: retries and fallback provider calls bypass the original budget ledger
+  - id: AGENT-BUDGET-03
+    severity: high
+    reason: non-LLM tools with compute, API, and automation cost are unmetered
+  - id: AGENT-BUDGET-04
+    severity: high
+    reason: budget enforcement fails open when metering is unavailable

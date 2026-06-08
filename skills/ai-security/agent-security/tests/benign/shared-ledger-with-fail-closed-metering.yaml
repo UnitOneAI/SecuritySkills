@@ -1,0 +1,27 @@
+scenario: shared-ledger-with-fail-closed-metering
+budget_enforcement:
+  ledger_id: tenant-user-session-job-ledger
+  scopes:
+    - tenant
+    - user
+    - session
+    - agent
+    - tool
+    - batch_job
+  metered_resources:
+    model_tokens: true
+    retries: true
+    fallback_providers: true
+    web_search: true
+    browser_automation: true
+    code_execution: true
+    storage: true
+    email: true
+  fail_mode: closed
+  enforcement_point: before_model_or_tool_execution
+operations:
+  alert_threshold_percent: 80
+  owner_notification: platform-oncall
+  kill_switch: circuit_breaker.agent_runtime
+expected_status: pass
+false_positive_guardrail: resource controls should be credited when all model/tool/retry/fallback costs hit one fail-closed ledger before execution

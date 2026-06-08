@@ -1,0 +1,21 @@
+scenario: per-request-limits-no-session-ledger
+agent:
+  max_tokens: 8000
+  timeout_seconds: 120
+  rate_limit: "100 requests/minute"
+budget_enforcement:
+  cumulative_session_ledger: false
+  tenant_quota: missing
+  user_quota: missing
+  tool_quota: missing
+workflow:
+  sequential_requests_allowed: unlimited
+  sub_agents_spawn_budget: fresh_per_sub_agent
+  background_jobs_budget: fresh_per_job
+expected_findings:
+  - id: AGENT-BUDGET-01
+    severity: high
+    reason: per-request limits reset across sequential calls, sub-agents, and jobs instead of sharing a cumulative ledger
+  - id: AGENT-BUDGET-05
+    severity: medium
+    reason: fan-out through sub-agents and background jobs has no concurrency or shared budget cap

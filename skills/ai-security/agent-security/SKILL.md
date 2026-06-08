@@ -208,6 +208,48 @@ Evaluate whether the agent architecture is designed from the ground up around le
 
 ---
 
+### Step 2A -- Resource Budget Enforcement Evidence
+
+Evaluate whether resource controls are enforced across the whole agent workflow, not merely declared as per-request settings.
+
+**What to look for in code and configuration:**
+
+- **Cumulative budget ledger:** Are model tokens, runtime, tool calls, external API spend, storage, browser automation, code execution, email sends, and sub-agent fan-out charged against a shared tenant/user/session/job ledger?
+- **Quota scope:** Are limits enforced per tenant, user, workspace, session, agent, tool, and batch job where applicable?
+- **Retry and fallback accounting:** Do retries, timeout recovery, provider fallback, and recursive tool calls decrement the same budget instead of receiving fresh limits?
+- **Tool-cost metering:** Are non-LLM tools such as web search, browser automation, shell/code execution, storage, email, and paid APIs metered and capped?
+- **Concurrency controls:** Are parallel sessions, sub-agents, background jobs, and queue workers limited so attackers cannot multiply budget through fan-out?
+- **Fail-closed behavior:** When the budget ledger, metering service, or policy decision point is unavailable, does the agent stop or enter a safe degraded mode?
+- **Alerting and kill switch:** Are thresholds, anomaly alerts, owner notifications, and emergency termination controls configured for runaway spend or denial-of-service conditions?
+
+**Detection methods:** Search for budget and metering terms (`budget`, `quota`, `ledger`, `meter`, `cost`, `usage`, `tokens`, `tool_calls`, `retry`, `fallback`, `concurrency`, `semaphore`, `queue`, `circuit_breaker`, `kill_switch`) and verify enforcement occurs before tool/model execution.
+
+**Resource budget evidence checklist:**
+
+| Control | Desired State | Common Violation |
+|---|---|---|
+| Shared ledger | All model, tool, retry, fallback, and sub-agent costs decrement one authoritative budget | Per-request limits reset on every call |
+| Scope | Tenant/user/session/tool/job quotas all enforced where relevant | Only global rate limit exists |
+| Retry/fallback | Retries and alternate providers consume original budget | Timeout creates fresh budget |
+| Tool costs | Non-LLM tools are metered and capped | Only tokens are counted |
+| Concurrency | Parallel sessions and sub-agents have fan-out limits | Each worker receives independent quota |
+| Fail mode | Metering failure blocks high-cost actions | Agent proceeds when ledger is unavailable |
+| Operations | Alerts, owner, kill switch, and residual bypass paths documented | Billing alert fires after spend is already incurred |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| No cumulative budget ledger for model, tool, retry, fallback, and sub-agent costs | High |
+| Retry or fallback provider paths bypass metering or receive a fresh budget | High |
+| External tool costs are unmetered for tools with spend, compute, storage, or side effects | High |
+| Budget enforcement fails open when the ledger or policy service is unavailable | High |
+| No concurrency/fan-out limit for parallel sessions, background jobs, or sub-agents | Medium |
+| No alert threshold, owner notification, or kill switch for runaway agent spend | Medium |
+| Batch jobs reuse interactive user budgets without explicit owner and cap | Medium |
+
+---
+
 ### Step 3 -- Human-in-the-Loop Gate Placement
 
 Evaluate the design, placement, and robustness of human approval gates in the agent workflow.
@@ -568,6 +610,8 @@ Glob: **/security_architecture*
 4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+
+6. **Treating per-request limits as a real budget.** A `max_tokens` value, timeout, or API gateway rate limit does not prove cost containment when retries, fallback providers, parallel sessions, sub-agents, browser automation, code execution, storage, and paid APIs are outside the same ledger. Verify the enforcement point and fail mode before crediting resource controls.
 
 ---
 

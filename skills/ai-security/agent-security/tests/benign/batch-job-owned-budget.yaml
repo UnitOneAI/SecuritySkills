@@ -1,0 +1,19 @@
+scenario: batch-job-owned-budget
+job_type: nightly-agent-analysis
+owner: data-platform
+budget_enforcement:
+  job_budget_id: batch-2026-0609
+  separate_from_interactive_users: true
+  max_runtime_minutes: 45
+  max_tool_calls: 120
+  max_storage_mb: 500
+  max_sub_agents: 3
+  retry_budget_shared: true
+  fallback_budget_shared: true
+  fail_mode: closed
+operations:
+  alert_threshold_percent: 75
+  kill_switch: batch-controller.stop_job
+  residual_bypass_paths_reviewed: true
+expected_status: pass
+false_positive_guardrail: batch jobs can use separate budgets when they have an explicit owner, cap, kill switch, shared retry/fallback accounting, and reviewed bypass paths
