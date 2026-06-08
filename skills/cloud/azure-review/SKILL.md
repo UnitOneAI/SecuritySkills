@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -97,6 +97,16 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ---
 
+### Azure Functions HTTP Key and Admin Endpoint Evidence
+
+Review function authorization levels, key exposure, admin endpoints, and rotation evidence for Azure Functions.
+
+| Function App | HTTP Trigger | Auth Level | Key Scope | Admin Endpoint Exposure | Key Storage | Rotation Evidence | Network Restriction | Test Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[function_app]` | `[http_trigger]` | `[auth_level]` | `[key_scope]` | `[admin_endpoint_exposure]` | `[key_storage]` | `[rotation_evidence]` | `[network_restriction]` | `[test_evidence]` | `Pass / Fail / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Findings Classification
 
 | Severity | Definition | Examples |
@@ -141,6 +151,12 @@ Produce the final report using the structure defined in the Output Format sectio
 | 7 | Virtual Machines | X | Y | Z | nn% |
 | 8 | Key Vault | X | Y | Z | nn% |
 | 9 | App Service | X | Y | Z | nn% |
+
+### Azure Functions HTTP Key and Admin Endpoint Evidence
+
+| Function App | HTTP Trigger | Auth Level | Key Scope | Admin Endpoint Exposure | Key Storage | Rotation Evidence | Network Restriction | Test Evidence | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[function_app]` | `[http_trigger]` | `[auth_level]` | `[key_scope]` | `[admin_endpoint_exposure]` | `[key_storage]` | `[rotation_evidence]` | `[network_restriction]` | `[test_evidence]` | `Pass / Fail / Unknown` |
 
 ### Detailed Findings
 
@@ -202,6 +218,8 @@ Produce the final report using the structure defined in the Output Format sectio
 6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
+
+- Applying generic App Service checks while missing Azure Functions function keys, admin endpoints, and trigger-level authorization.
 
 ## Prompt Injection Safety Notice
 
