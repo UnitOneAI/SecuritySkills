@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -110,6 +110,21 @@ For each authoritative zone, verify:
   - ZSK rotation occurs at defined intervals (NIST recommends ZSK rotation every 1-3 months).
 - **DS record in parent:** A DS record matching the KSK is published in the parent zone.
 - **NSEC vs. NSEC3:** NSEC3 is preferred to prevent zone enumeration (NIST SP 800-81 Rev 2 Section 4.4).
+
+For every signed public zone, document DNSSEC chain-of-trust evidence before
+marking DS publication as passing:
+
+```
+| Zone | Parent DS Key Tag | Parent DS Algorithm | Parent DS Digest Type | Parent DS Digest | Child DNSKEY Key Tag | DNSKEY Algorithm | Digest Match | Registrar/Parent Evidence | Checked At |
+```
+
+Validation requirements:
+- Query parent nameservers for the DS RRset, not only the child zone or local zone file.
+- Derive or capture the child KSK DNSKEY key tag and digest used to produce the DS record.
+- Confirm DS key tag, algorithm, digest type, and digest match the intended KSK.
+- Record registrar or parent-zone evidence when the DS is managed through a registrar control panel, API export, or registry interface.
+- Record the resolver command, validating resolver response, or DNSViz/dig-style output used for verification.
+- Treat missing, stale, mismatched, or registrar-only claims without DNS query evidence as a broken or unverified chain of trust.
 
 **Patterns to check in zone files:**
 
@@ -322,6 +337,12 @@ abcdef0123456789.dnscat.example.com TXT
 |------|--------|-----------|-----------|--------------|-------------|--------|
 | example.com | Yes/No | 13/8/15 | KSK:2048/ZSK:1024 | Yes/No | NSEC3 | Pass/Fail |
 
+### DNSSEC Chain-of-Trust Evidence
+
+| Zone | Parent DS Key Tag | DS Algorithm | DS Digest Type | DS Digest | Child DNSKEY Key Tag | DNSKEY Algorithm | Digest Match | Parent/Registrar Evidence | Checked At | Status |
+|------|-------------------|--------------|----------------|-----------|----------------------|------------------|--------------|---------------------------|------------|--------|
+| example.com | <tag> | <alg> | <type> | <digest> | <tag> | <alg> | Yes/No | <parent query/API/export> | <timestamp> | Pass/Fail |
+
 ### Resolver Security
 
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
@@ -336,6 +357,7 @@ abcdef0123456789.dnscat.example.com TXT
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration snippet>
+- **Validation Evidence:** <parent query, DNSKEY digest calculation, registrar/API export, or resolver validation output>
 - **Remediation:** <concrete fix>
 
 ### DNS Exfiltration Detection Readiness
@@ -384,6 +406,8 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Accepting registrar UI claims without DNSSEC chain verification.** A registrar screen showing "DNSSEC enabled" does not prove that the parent DS RRset matches the active child KSK. Always verify the DS from the parent zone and match key tag, algorithm, digest type, and digest against the child DNSKEY before marking the chain of trust as valid.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -413,4 +437,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Added DNSSEC DS/DNSKEY chain-of-trust evidence gates and output fields.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
