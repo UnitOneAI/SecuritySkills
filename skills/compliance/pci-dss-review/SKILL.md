@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -143,6 +143,19 @@ PCI DSS v4.0 requires scope confirmation at least every 12 months and upon signi
 ### Step 2: Requirement-by-Requirement Assessment
 
 For each requirement, assess: (a) whether controls exist, (b) whether they meet the Defined Approach testing procedures, (c) whether documentation satisfies evidence requirements, (d) gaps.
+
+**Evidence freshness and sample matrix:** before marking a PCI DSS requirement as `Requirement in Place`, record assessor-verifiable evidence metadata. A generic evidence note is insufficient for PCI assessment readiness.
+
+| Sub-Req | Testing Procedure | Evidence Artifact | Evidence Date | Evidence Owner | Sample Scope | Period Covered | Freshness | Result | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| [N.x.x] | [observe/examine/interview/test] | [policy/config/report/ticket/log/sample] | [YYYY-MM-DD] | [team/person/system] | [systems/users/rules/vendors sampled] | [date range] | [Current/Stale/Unknown] | [Pass/Fail/Unknown] | [exceptions] |
+
+For evidence review:
+- Tie each sub-requirement to a PCI DSS testing procedure such as examine, observe, interview, or test.
+- Record the evidence owner and artifact location so a QSA, ISA, or internal assessor can reproduce the review.
+- Record sample scope and period covered for controls that require sampling, periodic review, scans, log review, access reviews, or training.
+- Mark evidence as `Stale` when it predates the assessment period, misses the required frequency, omits the CDE scope, or cannot support the assessed sub-requirement.
+- Mark evidence as `Unknown` instead of `In Place` when date, owner, sample scope, or testing procedure cannot be produced.
 
 #### Requirement 1: Install and Maintain Network Security Controls
 
@@ -438,9 +451,9 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 
 ### Requirement [N]: [Title]
 
-| Sub-Req | Status | Finding | Evidence | Remediation |
-|---------|--------|---------|----------|-------------|
-| [N.x.x] | [In Place/Not in Place] | [finding detail] | [evidence reviewed] | [action needed] |
+| Sub-Req | Status | Testing Procedure | Finding | Evidence Artifact | Evidence Date | Evidence Owner | Sample Scope | Freshness | Remediation |
+|---------|--------|-------------------|---------|-------------------|---------------|----------------|--------------|-----------|-------------|
+| [N.x.x] | [In Place/Not in Place] | [examine/observe/interview/test] | [finding detail] | [evidence reviewed] | [YYYY-MM-DD] | [team/person/system] | [systems/users/rules/vendors sampled] | [Current/Stale/Unknown] | [action needed] |
 
 ## New v4.0 Requirements Status
 [Assessment of all 64 new requirements, particularly those mandatory since March 31, 2025]
@@ -519,6 +532,8 @@ Maintain an Information Security Policy:                Requirement 12
 4. **Treating compensating controls as permanent solutions.** Compensating controls must be reassessed annually and are expected to be temporary measures while the organization works toward meeting the original requirement. Assessors scrutinize long-standing compensating controls and may reject those that have become routine without progress toward full compliance.
 
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
+
+6. **Marking requirements in place with stale or unsampled evidence.** PCI assessment evidence must be current, scoped to the CDE, tied to a testing procedure, and representative of the control population. Policies, screenshots, scan reports, access reviews, or training exports without dates, owners, sample scope, or period covered should be marked stale or unknown, not compliant.
 
 ---
 
