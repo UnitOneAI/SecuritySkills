@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -243,6 +243,20 @@ Document or verify the existence of a segmentation testing process:
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
 
+For each tested or inferred path, record path validation evidence:
+
+```
+| Source Zone | Source Asset | Destination Zone | Destination Asset | Protocol/Port | Expected Result | Actual Result | Test Method | Evidence Timestamp | Confidence |
+```
+
+Validation requirements:
+- Include at least one explicit denied-path test for each high-risk boundary (User-to-Data, DMZ-to-Internal, non-CDE-to-CDE, Production-to-Management).
+- Include at least one allowed-path test for business-critical permitted flows so remediation does not break required connectivity.
+- Record whether the result came from active testing, firewall logs, flow logs, packet capture, or configuration-only inference.
+- Treat configuration-only inference as lower confidence unless supported by current flow or test evidence.
+- Record the test window and source identity used so results can be reproduced and compared after policy changes.
+- If testing is not authorized, mark the path as unverified and list the specific evidence needed before relying on the segmentation conclusion.
+
 ---
 
 ## Findings Classification
@@ -284,6 +298,12 @@ Document or verify the existence of a segmentation testing process:
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
 
+### Path Validation Evidence
+
+| Source Zone | Source Asset | Destination Zone | Destination Asset | Protocol/Port | Expected Result | Actual Result | Test Method | Evidence Timestamp | Confidence |
+|-------------|--------------|------------------|-------------------|---------------|-----------------|---------------|-------------|--------------------|------------|
+| User | <host/subnet> | Data | <host/subnet> | TCP/5432 | Blocked | <blocked/allowed> | <active test/flow log/config inference> | <timestamp> | High/Medium/Low |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -291,6 +311,7 @@ Document or verify the existence of a segmentation testing process:
 - **Control Reference:** NIST SP 800-207 Section X / CIS 12.X
 - **File:** <path to config file>
 - **Description:** <what was found>
+- **Validation Evidence:** <active test, firewall log, flow log, packet capture, or configuration inference>
 - **Remediation:** <concrete fix>
 
 ### Micro-Segmentation Readiness Score
@@ -345,6 +366,8 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Accepting segmentation diagrams without path validation evidence.** A diagram or route table can describe intended boundaries, but it does not prove that unauthorized paths are blocked or required paths still work. Record active tests, firewall logs, flow logs, or packet captures for representative denied and allowed paths before treating segmentation as verified.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -372,4 +395,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.0.1** -- Added path validation evidence gates for segmentation testing conclusions.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
