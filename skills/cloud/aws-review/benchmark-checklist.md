@@ -488,3 +488,217 @@ resource "aws_launch_template" {
   }
 }
 ```
+
+---
+
+## Supplemental RDS and Aurora Database Posture Review
+
+The following checks extend CIS 2.3 RDS coverage with database-specific evidence gates. Report these as `AWS-RDS-*` supplemental findings so CIS benchmark scoring remains tied to the official 62 recommendations.
+
+### AWS-RDS-01 -- Inventory RDS and Aurora resources before scoring exposure
+
+Build a database inventory across Terraform, CloudFormation, CDK, and AWS inventory exports.
+
+**Grep patterns:**
+
+```hcl
+aws_db_instance
+aws_rds_cluster
+aws_rds_cluster_instance
+aws_db_subnet_group
+aws_db_snapshot
+aws_db_cluster_snapshot
+aws_backup_plan
+aws_backup_selection
+```
+
+**Review requirements:**
+
+- Record DB identifier, engine, environment, data classification, subnet group, security groups, KMS key, backup retention, deletion protection, log exports, and owner.
+- Join Aurora cluster settings with cluster instance settings. Do not evaluate `aws_rds_cluster` and `aws_rds_cluster_instance` in isolation.
+- Mark controls "Not Evaluable" when the repository lacks routing, security group, backup, or logging evidence rather than assuming a pass.
+
+### AWS-RDS-02 -- Verify public reachability with subnet, route, and security group evidence
+
+**Critical check:**
+
+```hcl
+# BAD: Public DB with internet-wide ingress
+resource "aws_db_instance" "customer" {
+  publicly_accessible = true
+  vpc_security_group_ids = [aws_security_group.db_public.id]
+}
+
+resource "aws_security_group_rule" "postgres_anywhere" {
+  type              = "ingress"
+  security_group_id = aws_security_group.db_public.id
+  protocol          = "tcp"
+  from_port         = 5432
+  to_port           = 5432
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+```
+
+Also check for IPv6 exposure:
+
+```hcl
+ipv6_cidr_blocks = ["::/0"]
+```
+
+**Review requirements:**
+
+- Treat `publicly_accessible = true` plus broad DB port ingress as High or Critical depending on data sensitivity and authentication controls.
+- Inspect DB subnet group subnets, route tables, internet gateway routes, NAT-only routes, and security group sources before declaring exposure.
+- For `publicly_accessible = false`, still check broad internal CIDRs such as `10.0.0.0/8`, peered VPC CIDRs, VPN ranges, and shared security groups.
+- Require explicit exception evidence for intentionally public partner, migration, demo, or allowlisted administrative access.
+
+### AWS-RDS-03 -- Verify RDS and Aurora encryption, KMS ownership, and replica coverage
+
+**What to look for:**
+
+```hcl
+resource "aws_db_instance" "orders" {
+  storage_encrypted = true
+  kms_key_id        = aws_kms_key.rds.arn
+}
+
+resource "aws_rds_cluster" "orders" {
+  storage_encrypted = true
+  kms_key_id        = aws_kms_key.rds.arn
+}
+```
+
+**Fail patterns:**
+
+```hcl
+storage_encrypted = false
+kms_key_id = null
+```
+
+**Review requirements:**
+
+- Confirm encryption for DB instances, Aurora clusters, read replicas, snapshots, snapshot copies, and cross-Region copies.
+- Note when a workload requires a customer-managed KMS key rather than an AWS-managed key.
+- Check KMS key policy, rotation expectations, alias clarity, and access path for backup and restore operations.
+- Flag unencrypted source databases because AWS cannot restore an unencrypted backup directly into an encrypted DB instance.
+
+### AWS-RDS-04 -- Verify backup retention, final snapshot behavior, and deletion protection
+
+**What to look for:**
+
+```hcl
+resource "aws_rds_cluster" "payments" {
+  backup_retention_period = 14
+  deletion_protection     = true
+  skip_final_snapshot     = false
+}
+```
+
+**Fail patterns:**
+
+```hcl
+backup_retention_period = 0
+backup_retention_period = 1
+deletion_protection = false
+skip_final_snapshot = true
+```
+
+**Review requirements:**
+
+- Compare backup retention with production recovery point objectives and PITR requirements.
+- Check final snapshot settings on destructive changes and deletion workflows.
+- Require deletion protection for production or regulated databases unless a documented breakglass process exists.
+- Look for AWS Backup plans, copy actions, vault lock, cross-account/cross-Region restore strategy, and restore test evidence where required.
+
+### AWS-RDS-05 -- Review snapshot sharing, backup copies, and restore access
+
+**Grep patterns:**
+
+```hcl
+aws_db_snapshot
+aws_db_cluster_snapshot
+aws_db_snapshot_copy
+aws_db_cluster_snapshot_copy
+aws_db_snapshot_attribute
+aws_rds_cluster_snapshot_copy
+```
+
+**Review requirements:**
+
+- Flag snapshots shared with `all`, unknown external accounts, or broad organization accounts without documented approval.
+- Verify encrypted snapshot copies use the intended KMS key in the destination Region/account.
+- Check whether manual snapshots outlive automated backup retention and whether ownership/expiry is documented.
+- Confirm restore roles and KMS permissions are least privilege.
+
+### AWS-RDS-06 -- Verify database audit logs, engine logs, and investigation readiness
+
+**What to look for:**
+
+```hcl
+resource "aws_db_instance" "app" {
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  performance_insights_enabled    = true
+  performance_insights_kms_key_id = aws_kms_key.rds.arn
+}
+
+resource "aws_rds_cluster" "app" {
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+}
+```
+
+**Review requirements:**
+
+- Check engine-specific exports for audit, error, general, slow query, PostgreSQL, MySQL, MariaDB, Oracle, or SQL Server logs as applicable.
+- Verify parameter group settings that enable database audit logging, SSL enforcement, and password/security controls where the engine supports them.
+- Review CloudTrail management events for RDS changes and monitoring for destructive actions such as `DeleteDBInstance`, `DeleteDBCluster`, `ModifyDBInstance`, and snapshot sharing.
+- Include GuardDuty RDS Protection or equivalent database threat monitoring context when available.
+
+### AWS-RDS-07 -- Review Performance Insights, monitoring retention, and KMS settings
+
+**What to look for:**
+
+```hcl
+performance_insights_enabled          = true
+performance_insights_retention_period = 731
+performance_insights_kms_key_id       = aws_kms_key.rds.arn
+monitoring_interval                   = 60
+monitoring_role_arn                   = aws_iam_role.rds_monitoring.arn
+```
+
+**Review requirements:**
+
+- Verify Performance Insights is enabled for production databases where supported and retained long enough for investigation needs.
+- Check that Performance Insights and Enhanced Monitoring use the expected KMS key and IAM role.
+- Record when monitoring is not supported by the selected engine or instance class rather than forcing a false failure.
+
+### AWS-RDS-08 -- Calibrate severity by data sensitivity and compensating controls
+
+**Severity guidance:**
+
+- Critical: public DB endpoint with `0.0.0.0/0` or `::/0` database port ingress, sensitive data, weak authentication evidence, or no audit trail.
+- High: unencrypted production database, weak backup/deletion posture for critical data, or broad internal reachability across many networks.
+- Medium: missing log exports, short retention, missing Performance Insights, or incomplete restore evidence.
+- Low: documentation gaps, tag/owner gaps, or non-production exception cleanup.
+
+**Benign example:**
+
+```hcl
+resource "aws_rds_cluster" "orders" {
+  cluster_identifier      = "orders-prod"
+  engine                  = "aurora-postgresql"
+  storage_encrypted       = true
+  kms_key_id              = aws_kms_key.rds.arn
+  backup_retention_period = 14
+  deletion_protection     = true
+  db_subnet_group_name    = aws_db_subnet_group.private.name
+  vpc_security_group_ids  = [aws_security_group.rds_private.id]
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+}
+
+resource "aws_rds_cluster_instance" "orders" {
+  cluster_identifier  = aws_rds_cluster.orders.id
+  instance_class      = "db.r7g.large"
+  engine              = aws_rds_cluster.orders.engine
+  publicly_accessible = false
+}
+```

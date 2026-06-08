@@ -4,16 +4,17 @@ description: >
   Performs an AWS security posture review against the CIS Amazon Web Services
   Foundations Benchmark v3.0.0. Auto-invoked when reviewing AWS infrastructure,
   IAM policies, S3 configurations, CloudTrail settings, VPC security groups, or
-  RDS encryption. Walks through all five benchmark sections, evaluates each
-  recommendation, and produces a prioritized findings report with remediation
-  guidance mapped to specific CIS control IDs.
+  RDS/Aurora database posture. Walks through all five benchmark sections,
+  evaluates each recommendation, and produces a prioritized findings report with
+  remediation guidance mapped to specific CIS control IDs plus supplemental
+  database evidence gates.
 tags: [cloud, aws, cis-benchmark]
 role: [cloud-security-engineer, security-engineer]
 phase: [assess, operate]
 frameworks: [CIS-AWS-v3.0.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -28,6 +29,8 @@ argument-hint: "[target-file-or-directory]"
 This skill performs a structured security assessment of AWS environments against the **CIS Amazon Web Services Foundations Benchmark v3.0.0**. The benchmark is organized into five sections covering identity management, storage, logging, monitoring, and networking. Each recommendation is evaluated by inspecting infrastructure-as-code definitions (Terraform, CloudFormation, CDK), AWS CLI output, or configuration files available in the repository.
 
 The CIS AWS Foundations Benchmark v3.0.0 contains 62 recommendations across five domains. This skill evaluates each applicable control against the codebase and produces a findings report with CIS recommendation IDs, severity ratings, and actionable remediation steps.
+
+For database workloads, the skill also performs supplemental RDS and Aurora posture checks that bind public reachability, subnet routing, security group ingress, encryption, backup retention, deletion protection, snapshot sharing, and database observability evidence. These gates are reported separately from CIS scoring so they improve coverage without changing the benchmark denominator.
 
 ---
 
@@ -54,6 +57,7 @@ The CIS Amazon Web Services Foundations Benchmark v3.0.0 is a consensus-driven s
 - IAM policy documents (JSON)
 - S3 bucket policies and ACL configurations
 - VPC, security group, and NACL definitions
+- RDS and Aurora DB instance, cluster, subnet group, parameter group, snapshot, backup, and log export definitions
 - CloudTrail and CloudWatch configuration files
 
 ---
@@ -99,7 +103,21 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
-### Step 7: Compile Assessment Report
+### Step 7: Supplemental RDS and Aurora Database Posture Evidence
+
+Evaluate database-specific posture beyond the CIS storage checks. For detailed supplemental checklist items, grep patterns, and Terraform examples, see [benchmark-checklist.md](benchmark-checklist.md).
+
+Reviewers should:
+
+1. Inventory `aws_db_instance`, `aws_rds_cluster`, `aws_rds_cluster_instance`, `aws_db_subnet_group`, `aws_db_snapshot`, `aws_db_cluster_snapshot`, AWS Backup plans, and related security groups.
+2. Join `publicly_accessible` values with subnet group routing, route tables, public subnet membership, and security group sources before declaring a database private or public.
+3. Verify encryption and KMS evidence for DB instances, clusters, read replicas, snapshots, snapshot copies, and Performance Insights when enabled.
+4. Review recovery controls including `backup_retention_period`, PITR expectations, final snapshot behavior, deletion protection, cross-Region restore strategy, and restore test evidence.
+5. Check auditability through engine log exports, audit/error/slow query logging where supported, CloudTrail control-plane monitoring, Performance Insights retention, and GuardDuty RDS Protection context where available.
+
+---
+
+### Step 8: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -158,6 +176,22 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Evidence:** <specific configuration or code snippet>
 - **Remediation:** <specific fix with code example>
 
+### Supplemental RDS and Aurora Findings
+
+| Control | Database | Engine | Exposure | Encryption/KMS | Backup/Deletion Protection | Logging/Audit | Status |
+|---------|----------|--------|----------|----------------|----------------------------|---------------|--------|
+| AWS-RDS-01 | <db id> | <engine> | <public/private/unknown> | <evidence> | <evidence> | <evidence> | Pass/Fail/Not Evaluable |
+
+#### [AWS-RDS-NN] <Database Posture Finding>
+- **Status:** Pass / Fail / Not Evaluable
+- **Severity:** Critical / High / Medium / Low
+- **File:** <path to relevant config>
+- **Line(s):** <line numbers if applicable>
+- **Description:** <what was found>
+- **Evidence:** <specific configuration, routing, SG, KMS, backup, or log evidence>
+- **Impact:** <why this matters for exposure, data protection, recovery, or investigation>
+- **Remediation:** <specific fix with code example or operational verification step>
+
 ### Prioritized Remediation Plan
 
 1. **[Critical]** CIS X.Y -- <action item>
@@ -200,6 +234,8 @@ Produce the final report using the structure defined in the Output Format sectio
 4. **Assuming default security groups are empty.** AWS default security groups allow all inbound traffic from the same security group and all outbound traffic. CIS 5.4 requires explicitly managing them to have zero rules.
 5. **Overlooking IMDSv2 in launch templates.** CIS 5.6 applies to both `aws_instance` and `aws_launch_template` resources. Checking only direct instance definitions misses auto-scaled instances.
 6. **Counting not-evaluable controls as passing.** If a control cannot be verified from the available IaC (e.g., contact details in CIS 1.1), mark it "Not Evaluable" rather than "Pass."
+7. **Checking only `publicly_accessible` for RDS exposure.** A database can still be reachable from broad internal networks, while a public flag needs subnet, route table, and security group evidence before severity is assigned.
+8. **Reviewing only DB instances and missing Aurora cluster-level settings.** Aurora splits encryption, backup retention, deletion protection, log exports, and public accessibility across cluster and cluster instance resources.
 
 ---
 
@@ -225,10 +261,14 @@ Produce the final report using the structure defined in the Output Format sectio
 - AWS CloudTrail Documentation: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/
 - AWS Security Hub: https://docs.aws.amazon.com/securityhub/latest/userguide/
 - AWS VPC Security: https://docs.aws.amazon.com/vpc/latest/userguide/security.html
+- AWS RDS Public and Private Access: https://docs.aws.amazon.com/AmazonRDS/latest/gettingstartedguide/security-public-private.html
+- AWS RDS Encryption: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Overview.Encryption.html
+- AWS Aurora Backup and Restore: https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.Managing.Backups.html
 - Terraform AWS Provider Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added supplemental RDS and Aurora posture review gates for public exposure, encryption/KMS, backups, deletion protection, snapshot sharing, and database audit evidence.
 - **1.0.0** -- Initial release. Full coverage of CIS Amazon Web Services Foundations Benchmark v3.0.0 sections 1 through 5 (62 recommendations).
