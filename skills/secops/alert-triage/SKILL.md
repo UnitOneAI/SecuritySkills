@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,6 +52,7 @@ Before beginning triage, gather or confirm:
 
 - [ ] **Alert details:** Rule name, severity, timestamp, source system (SIEM, EDR, IDS, cloud security).
 - [ ] **Alert data:** The raw event(s) that triggered the alert -- including all available fields (source IP, destination IP, username, hostname, process name, command line, file hash, URL).
+- [ ] **Timeline fidelity:** Event time, ingestion time, timezone, source clock skew, duplicate-event handling, and data-source latency for correlated sources.
 - [ ] **ATT&CK mapping:** If the alert rule maps to a MITRE ATT&CK technique, note the technique ID.
 - [ ] **Asset context:** What is the affected asset? (Server, workstation, cloud instance, network device.) What is its business criticality? (Revenue-generating, customer-facing, development, test.)
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
@@ -103,6 +104,38 @@ Connect the alert data with surrounding context to build a picture of what happe
 | Credential Access (TA0006) | Lateral Movement (TA0008) -- were stolen credentials used to move? |
 | Lateral Movement (TA0008) | Collection (TA0009), Exfiltration (TA0010) -- what was the objective? |
 | Command and Control (TA0011) | All tactics -- C2 implies an active intrusion; look for the full chain |
+
+#### Timeline Fidelity and Correlation Window Evidence
+
+Before concluding that no related activity exists, validate that the correlation window is trustworthy across data sources.
+
+**What to verify:**
+
+- Normalize alert, endpoint, identity, cloud, proxy, DNS, and network timestamps to UTC.
+- Record both event time and ingestion/index time where available.
+- Check source clock skew, especially for endpoints, network appliances, VPN concentrators, and SaaS audit feeds.
+- Expand the correlation window when ingestion delay, batch delivery, or offline endpoint upload can move related events outside +/- 30 minutes.
+- Deduplicate repeated alerts and fan-out events by stable event ID, process GUID, session ID, request ID, or provider correlation ID.
+- Preserve raw event IDs and data-source names so later responders can reproduce the timeline.
+- Record missing or delayed data sources as timeline gaps, not as proof that activity did not occur.
+
+**Timeline evidence table:**
+
+| Source | Event Time Field | Ingestion Time Field | Timezone | Latency / Skew | Dedup Key | Coverage Decision |
+|--------|------------------|----------------------|----------|----------------|-----------|-------------------|
+| SIEM alert | <field> | <field> | UTC/local | <duration> | <id> | reliable/expand window/gap |
+| EDR | <field> | <field> | UTC/local | <duration> | <process guid> | reliable/expand window/gap |
+| Cloud audit | <field> | <field> | UTC/local | <duration> | <request id> | reliable/expand window/gap |
+
+**Finding conditions during triage:**
+
+| Condition | Triage Impact |
+|---|---|
+| Correlated source has ingestion delay greater than the review window | Expand the window before lowering priority |
+| Source timezone or clock skew is unknown for key evidence | Lower confidence and document as a timeline gap |
+| Duplicate alerts are counted as separate attacker actions without dedup key review | Recompute priority after deduplication |
+| Missing EDR/cloud/network source is treated as "no related activity" | Mark correlation as incomplete and consider escalation if asset/user risk is high |
+| Raw event IDs or replayable query references are absent | Document evidence weakness and avoid final FP disposition if other risk factors remain |
 
 ### Phase 3: Classify
 
@@ -234,6 +267,11 @@ Produce the triage decision as a structured report:
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
 
+### Timeline Fidelity
+| Source | Event Time | Ingestion Time | Timezone/Skew | Dedup Key | Coverage Decision |
+|--------|------------|----------------|---------------|-----------|-------------------|
+| [source] | [timestamp] | [timestamp] | [status] | [id] | [reliable / expanded / gap] |
+
 ### Recommended Actions
 - [ ] [Action 1 -- e.g., isolate host, disable account, block IP]
 - [ ] [Action 2 -- e.g., collect forensic artifacts, memory dump]
@@ -319,6 +357,10 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Treating Timeline Gaps as Negative Evidence
+
+No matching event in a +/- 30 minute query does not prove no related activity occurred if endpoint uploads were delayed, cloud logs are batched, appliance clocks are skewed, or timestamps use different timezones. Normalize timestamps, check ingestion time, and document delayed or missing sources before closing as false positive.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -344,3 +386,9 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Add timeline fidelity, timezone normalization, ingestion latency, clock skew, deduplication, and raw-event evidence gates for alert correlation.

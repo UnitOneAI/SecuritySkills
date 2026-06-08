@@ -1,0 +1,47 @@
+scenario: alert_triage_timeline_fidelity_verified
+skill: alert-triage
+expected_result: do_not_flag_timeline_fidelity_gap
+description: >
+  The triage report normalizes event time and ingestion time across SIEM, EDR,
+  identity, and cloud audit sources, expands the window for delayed telemetry,
+  and deduplicates repeated alerts before disposition.
+evidence:
+  alert:
+    id: SIEM-88422
+    rule: suspicious_powershell
+    event_time: 2026-06-08T17:00:00Z
+    ingestion_time: 2026-06-08T17:01:10Z
+    timezone_normalized: true
+  timeline_sources:
+    - source: SIEM
+      event_time_field: TimeGenerated
+      ingestion_time_field: ingestion_time
+      timezone: UTC
+      latency_p95_minutes: 2
+      dedup_key: alert_id
+      coverage_decision: reliable
+    - source: EDR
+      event_time_field: event.timestamp
+      ingestion_time_field: ingest.timestamp
+      timezone: UTC
+      latency_p95_minutes: 18
+      dedup_key: process_guid
+      coverage_decision: expanded_window
+    - source: CloudAudit
+      event_time_field: eventTime
+      ingestion_time_field: receiveTime
+      timezone: UTC
+      latency_p95_minutes: 45
+      dedup_key: request_id
+      coverage_decision: expanded_window
+  correlation:
+    base_window: plus_minus_30_minutes
+    expanded_window: plus_minus_2_hours
+    raw_event_ids_retained: true
+    duplicate_alerts_collapsed: true
+    timeline_gaps: []
+assertions:
+  - all timestamps are normalized to UTC
+  - ingestion latency drives an expanded search window
+  - dedup keys prevent duplicate alerts from inflating priority
+  - raw event IDs are retained for reproducibility

@@ -1,0 +1,37 @@
+scenario: alert_triage_correlation_window_misses_delayed_events
+skill: alert-triage
+expected_result: flag_timeline_fidelity_gap
+description: >
+  An alert is closed as a false positive because no events were found in a
+  +/- 30 minute search, but endpoint and cloud logs arrived late and were never
+  normalized by event time, ingestion time, or timezone.
+evidence:
+  alert:
+    id: SIEM-88421
+    rule: suspicious_powershell
+    event_time: 2026-06-08T10:00:00-0700
+    ingestion_time: 2026-06-08T17:01:30Z
+    timezone_normalized: false
+  correlation_query:
+    window: plus_minus_30_minutes
+    searched_by: ingestion_time
+    raw_event_ids_retained: false
+    disposition: false_positive
+  delayed_sources:
+    - source: EDR
+      event_time: 2026-06-08T17:08:00Z
+      ingestion_time: 2026-06-08T18:22:00Z
+      related_activity: credential_dump_process
+    - source: CloudAudit
+      event_time: 2026-06-08T17:16:00Z
+      ingestion_time: 2026-06-08T19:10:00Z
+      related_activity: suspicious_role_assignment
+  timeline_quality:
+    clock_skew_checked: false
+    dedup_key_used: false
+    missing_source_recorded_as_gap: false
+assertions:
+  - related events existed by event time but were missed by ingestion-time search
+  - timezone normalization was not performed
+  - delayed sources were treated as no activity
+  - raw event identifiers were not retained for replay
