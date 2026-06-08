@@ -1,0 +1,26 @@
+tenant: example.net
+evidence_collected_at: "2026-06-08T11:30:00Z"
+audit_logs:
+  admin: available
+  login: available
+  token: unavailable
+  drive: unavailable
+  gmail: unavailable
+  groups: available
+  retention_days: 7
+alerting:
+  recipients: []
+  siem_export: disabled
+  rules:
+    suspicious_login: enabled
+    oauth_grant: disabled
+    gmail_forwarding_change: disabled
+    mailbox_delegation_change: disabled
+    drive_external_share_change: disabled
+investigation_tool:
+  enabled: false
+expected_findings:
+  - GWS-AUDIT-01
+  - GWS-AUDIT-02
+  - GWS-AUDIT-03
+  - GWS-AUDIT-05

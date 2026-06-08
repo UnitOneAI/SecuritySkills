@@ -1,0 +1,35 @@
+tenant: example.com
+evidence_collected_at: "2026-06-08T09:00:00Z"
+workspace_edition: Enterprise Standard
+admin_controls:
+  super_admin_count: 9
+  super_admin_review_date: null
+  admin_2sv_enforced: false
+  context_aware_access:
+    admin_console: not_configured
+  break_glass_accounts:
+    monitored: false
+oauth_app_access:
+  default_policy: allow_all
+  apps:
+    - name: Unverified Mail Productivity Helper
+      client_id: "983451-example.apps.googleusercontent.com"
+      trust_state: trusted
+      verified_publisher: false
+      users_granted: 184
+      last_used_days_ago: 2
+      scopes:
+        - https://www.googleapis.com/auth/gmail.modify
+        - https://www.googleapis.com/auth/drive
+        - https://www.googleapis.com/auth/admin.directory.user.readonly
+gmail_controls:
+  automatic_external_forwarding: allowed
+  forwarding_review_date: null
+  suspicious_rule_alerts:
+    enabled: false
+expected_findings:
+  - GWS-ID-01
+  - GWS-ID-02
+  - GWS-OAUTH-01
+  - GWS-OAUTH-02
+  - GWS-GMAIL-01

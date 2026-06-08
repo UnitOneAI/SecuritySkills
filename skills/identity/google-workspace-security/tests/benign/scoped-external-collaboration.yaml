@@ -1,0 +1,30 @@
+tenant: example.edu
+evidence_collected_at: "2026-06-08T12:00:00Z"
+workspace_edition: Education Plus
+drive_controls:
+  external_sharing_default: restricted
+  trust_rules:
+    configured: true
+    allowed_domains:
+      - research-partner.edu
+  visitor_sharing:
+    enabled: true
+    scoped_to_ou: Research Collaborators
+    expiry_days: 30
+    approval_ticket_required: true
+  shared_drives:
+    - name: Grant Research Shared Drive
+      sensitivity: internal
+      external_members_reviewed_at: "2026-06-01"
+      owner: research-ops@example.edu
+      external_members:
+        - domain: research-partner.edu
+          expires_at: "2026-07-01"
+groups:
+  default_external_posting: blocked
+  exceptions:
+    - group: grant-project@example.edu
+      external_posting: allowed
+      approval_ticket: SEC-1842
+      reviewed_at: "2026-06-01"
+expected_behavior: Do not raise High or Critical external sharing findings when approval, scope, expiry, owner, and trust-rule evidence are present.

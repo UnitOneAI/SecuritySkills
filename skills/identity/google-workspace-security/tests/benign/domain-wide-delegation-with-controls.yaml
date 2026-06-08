@@ -1,0 +1,21 @@
+tenant: example.com
+evidence_collected_at: "2026-06-08T13:00:00Z"
+oauth_app_access:
+  default_policy: block_untrusted
+  marketplace_installation: admin_approved_only
+  domain_wide_delegation:
+    - client_id: "backup-tool-1234567890.apps.googleusercontent.com"
+      app_name: Enterprise Backup Connector
+      owner: platform-security@example.com
+      approval_ticket: SEC-2099
+      scopes:
+        - https://www.googleapis.com/auth/admin.directory.user.readonly
+        - https://www.googleapis.com/auth/drive.metadata.readonly
+      scope_justification: Inventory and metadata backup validation only
+      last_reviewed_at: "2026-05-20"
+      key_rotation_days: 60
+      alerting_enabled: true
+token_audit:
+  available: true
+  exported_to_siem: true
+expected_behavior: Do not flag domain-wide delegation as High when scope is minimized, owner and approval are documented, rotation is current, and token audit monitoring is enabled.

@@ -1,0 +1,29 @@
+tenant: example.org
+evidence_collected_at: "2026-06-08T10:15:00Z"
+drive_controls:
+  external_sharing_default: anyone
+  anyone_with_link_allowed_for_sensitive_ous: true
+  visitor_sharing: enabled
+  trust_rules:
+    configured: false
+  shared_drives:
+    - name: Finance Board Materials
+      sensitivity: restricted
+      external_members_reviewed_at: null
+      managers:
+        - user: former.manager@external.example
+          external: true
+          last_login_days_ago: 230
+groups:
+  default_external_posting: allowed
+  sensitive_groups:
+    - email: payroll-approvers@example.org
+      external_members_allowed: true
+      owners_reviewed_at: null
+      visibility: public
+expected_findings:
+  - GWS-DRIVE-01
+  - GWS-DRIVE-02
+  - GWS-DRIVE-04
+  - GWS-GROUP-01
+  - GWS-GROUP-02

@@ -1,0 +1,23 @@
+tenant: example.com
+evidence_collected_at: "2026-06-08T12:30:00Z"
+gmail_controls:
+  automatic_external_forwarding: blocked
+  user_forwarding_reviewed_at: "2026-06-02"
+  routing_rules:
+    - name: Support mailbox to ticketing system
+      source: support@example.com
+      destination: ingest@tickets.vendor.example
+      centrally_managed: true
+      approval_ticket: ITSM-5521
+      owner: support-operations@example.com
+      applies_to_personal_mailboxes: false
+      tls_required: true
+      monitored: true
+  suspicious_rule_alerts:
+    enabled: true
+    recipients:
+      - soc@example.com
+audit_logs:
+  gmail: available
+  admin: available
+expected_behavior: Treat approved centralized shared-mailbox routing as benign and distinguish it from hidden user-controlled external forwarding.
