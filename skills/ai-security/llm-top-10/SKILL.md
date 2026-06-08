@@ -12,7 +12,7 @@ phase: [design, build, review]
 frameworks: [OWASP-LLM-Top-10-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,6 +53,16 @@ Before beginning the review, collect the following:
 - [ ] **Rate limiting and quota configuration** — per-user and per-session limits on model invocations.
 - [ ] **Data classification** — what sensitivity level of data flows into or out of the model (PII, PHI, financial, credentials).
 - [ ] **Deployment topology** — self-hosted vs. third-party API, data residency, network boundaries.
+
+**LLM data-flow evidence gate:** before finalizing findings, document the reviewed data flow so each LLM01, LLM02, LLM05, LLM06, and LLM08 finding is tied to a concrete trust-boundary crossing rather than a generic prompt observation.
+
+| Flow Stage | Source | Trust Boundary | Control Reviewed | Downstream Sink | Evidence Location | Result | Notes |
+|---|---|---|---|---|---|---|---|
+| User input | [route/form/API] | [user -> server] | [validation/sanitization/rate limit] | [prompt/template/retriever] | [file:line/config] | [Pass/Fail/Unknown] | [notes] |
+| Retrieval context | [vector store/document source] | [data store -> prompt] | [tenant filter/similarity threshold/sanitization] | [prompt context] | [file:line/config] | [Pass/Fail/Unknown] | [notes] |
+| Model output | [completion/tool call] | [model -> application] | [schema validation/output encoding/policy gate] | [renderer/tool/database/API] | [file:line/config] | [Pass/Fail/Unknown] | [notes] |
+
+If the entry point, trust boundary, control reviewed, or downstream sink cannot be identified, record the result as `Unknown` and avoid marking the associated LLM risk as fully reviewed.
 
 ---
 
@@ -423,6 +433,11 @@ Structure the findings report as follows:
 - **Location:** [file path, function, configuration]
 - **Description:** [What was found]
 - **Evidence:** [Code snippet, configuration excerpt, or architectural observation]
+- **Data Flow Evidence:** [entry point -> prompt/retrieval/model/tool/output sink]
+- **Trust Boundary:** [user/data store/model/tool/application boundary crossed]
+- **Control Reviewed:** [validation, retrieval filter, output handling, tool gate, authorization, rate limit]
+- **Downstream Sink:** [HTML renderer, database write, tool call, API call, log, vector store, user response]
+- **False-Positive Checks:** [context reviewed that could make this safe or out of scope]
 - **Impact:** [What an attacker could achieve]
 - **Remediation:** [Specific, actionable fix with code example if applicable]
 - **Priority:** P1 | P2 | P3 | P4
@@ -475,6 +490,8 @@ These are the five most frequent mistakes agents make when performing LLM securi
 4. **Failing to enumerate tool permissions.** When function-calling or tool-use is configured, every tool must be enumerated with its permissions documented. Agents frequently overlook that a "search" tool also has write access, or that a "database" tool allows arbitrary SQL. This is the core of LLM06.
 
 5. **Scoping the review to the application layer only.** LLM security includes supply chain (LLM03) — model provenance, dependency versions, serialization formats — and infrastructure — vector database authentication, API key management, cost controls (LLM10). These are outside the application code but within scope of this review.
+
+6. **Reporting LLM risks without data-flow evidence.** A prompt, retriever, parser, or tool definition is only part of the issue. Record the entry point, trust boundary crossed, control reviewed, downstream sink, and false-positive checks so the finding is reproducible and the severity matches the actual LLM data path.
 
 ---
 
