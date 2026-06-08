@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -98,6 +98,19 @@ False Positive Record:
 - Verification Method: [Package manager check | Authenticated re-scan | Manual testing | Configuration review]
 - Disposition:         [Confirmed FP -- suppress | Accepted Risk -- document | True Positive -- remediate]
 ```
+
+**False positive suppression lifecycle evidence:** suppressions must be scoped, approved, and time-bound. A confirmed false positive is not a permanent global exception by default.
+
+| Scanner | Plugin/Check ID | CVE ID | Affected Scope | FP Evidence | Suppression Scope | Approved By | Created Date | Expiration/Revalidation Date | Revalidation Trigger | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| [scanner] | [ID] | [CVE or N/A] | [assets/images/apps] | [evidence summary] | [asset/group/plugin/policy] | [owner/approver] | [YYYY-MM-DD] | [YYYY-MM-DD] | [scanner update/asset change/quarterly/patch] | [Active/Expired/Revoked] |
+
+For suppression lifecycle review:
+- Scope suppressions to the narrowest asset, image, policy, plugin, or CVE set supported by the scanner.
+- Record approver, business owner, creation date, and expiration or revalidation date.
+- Revalidate suppressions after scanner plugin updates, asset rebuilds, package updates, network exposure changes, or at least quarterly.
+- Mark suppressions `Expired` when the revalidation date has passed or the original evidence no longer matches the asset state.
+- Treat accepted risk separately from confirmed false positives; accepted risk requires risk owner approval and should not be hidden as scanner noise.
 
 ### Step 2: Scan Policy Configuration
 
@@ -324,9 +337,9 @@ Highlight the most impactful tuning recommendations.]
 
 ### False Positive Analysis
 
-| Plugin/Check ID | CVE ID | FP Pattern | Affected Assets | Evidence | Recommendation |
-|---|---|---|---|---|---|
-| [ID] | [CVE-ID] | [Pattern] | [N assets] | [Brief evidence] | [Suppress / Re-scan authenticated / Investigate] |
+| Plugin/Check ID | CVE ID | FP Pattern | Affected Assets | Evidence | Suppression Scope | Approved By | Expiration/Revalidation Date | Recommendation |
+|---|---|---|---|---|---|---|---|---|
+| [ID] | [CVE-ID] | [Pattern] | [N assets] | [Brief evidence] | [asset/group/plugin/policy] | [owner/approver] | [YYYY-MM-DD] | [Suppress / Re-scan authenticated / Investigate] |
 
 **Estimated False Positive Rate:** [N%]
 **Top FP Contributors:** [List top 3-5 plugins generating the most false positives]
@@ -398,6 +411,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 4. **Failing to re-evaluate severity overrides when context changes.** A severity downgrade justified by network segmentation becomes invalid if the segmentation is later removed or modified. Severity overrides must be reviewed quarterly and immediately upon any change to the deployment context (network changes, system migration, data classification changes).
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
+
+6. **Letting false positive suppressions become permanent.** Suppressions should be narrow, approved, and time-bound. Scanner plugins, package versions, asset exposure, and compensating controls change over time; revalidate suppressions after those changes and at least quarterly.
 
 ---
 
