@@ -497,6 +497,88 @@ resource "google_compute_disk" {
 }
 ```
 
+### Supplemental -- Custom Image and Snapshot IAM Sharing Gates
+
+These checks supplement VM disk and image review because custom images and snapshots can expose disk-derived data even when instances are private and disks are encrypted.
+
+#### Custom image IAM policy
+
+Review image-level IAM policies for public or unapproved sharing:
+
+```bash
+gcloud compute images list --project <image-project>
+
+gcloud compute images get-iam-policy <image-name> \
+  --project <image-project>
+```
+
+Terraform patterns to inspect:
+
+```hcl
+resource "google_compute_image_iam_binding" "public_image" {
+  project = var.image_project
+  image   = google_compute_image.hardened_app.name
+  role    = "roles/compute.imageUser"
+  members = ["allAuthenticatedUsers"] # FAIL for sensitive or production-derived images
+}
+
+resource "google_compute_image_iam_member" "external_group" {
+  image  = google_compute_image.hardened_app.name
+  role   = "roles/compute.imageUser"
+  member = "group:contractors@example.com"
+}
+```
+
+Fail when production-derived or sensitive custom images grant `roles/compute.imageUser` to `allAuthenticatedUsers` or unapproved external principals. Google Cloud custom images cannot grant `allUsers`; do not treat absence of `allUsers` as proof that the image is not public to authenticated users.
+
+#### Snapshot IAM policy
+
+Review snapshot-level IAM policies and sharing approvals:
+
+```bash
+gcloud compute snapshots list --project <snapshot-project>
+
+gcloud compute snapshots get-iam-policy <snapshot-name> \
+  --project <snapshot-project>
+```
+
+Terraform patterns to inspect:
+
+```hcl
+resource "google_compute_snapshot_iam_binding" "snapshot_share" {
+  project  = var.snapshot_project
+  snapshot = google_compute_snapshot.prod_disk.name
+  role     = "roles/compute.storageAdmin"
+  members  = ["group:partner-ops@example.com"]
+}
+```
+
+Fail when snapshot IAM grants broad storage, image, or snapshot use to external principals without owner, approval, expiration/review, and data sensitivity evidence.
+
+#### Project-level discoverability
+
+Users may need project-level Viewer to see shared images in the console. Capture this separately from image-level `compute.imageUser`.
+
+```bash
+gcloud projects get-iam-policy <image-project> \
+  --flatten='bindings[].members' \
+  --filter='bindings.role:roles/viewer AND bindings.members:<principal>'
+```
+
+Record whether project-level Viewer or equivalent read roles are granted to the same external principals that can use images.
+
+#### Cloud Asset Inventory coverage
+
+For organization or folder reviews, use Asset Inventory exports to avoid sampling only one project:
+
+```bash
+gcloud asset search-all-iam-policies \
+  --scope=organizations/<org-id> \
+  --query='policy:roles/compute.imageUser OR policy:allAuthenticatedUsers'
+```
+
+Required report fields: artifact type, project, image/snapshot ID, IAM role, shared principals, project Viewer discoverability, data sensitivity, owner/approval, review date, evidence source, and Not Evaluable reason when inventory is unavailable.
+
 ### CIS 4.8 -- Ensure Compute Instances Are Launched with Shielded VM Enabled
 
 ```hcl
