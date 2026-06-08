@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -366,6 +366,16 @@ IAM-ZT-10: Implicit trust for internal service-to-service communication
 
 ---
 
+### OAuth Consent and App Permission Grant Evidence
+
+Require evidence for delegated consent, application permissions, admin consent, and grant review.
+
+| Application | Publisher / Owner | Permission / Scope | Grant Type | Consent Authority | Tenant / User Scope | Last Used | Risk Review | Revocation Status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[application]` | `[publisher/owner]` | `[permission/scope]` | `[grant_type]` | `[consent_authority]` | `[tenant/user_scope]` | `[last_used]` | `[risk_review]` | `[revocation_status]` | `Approved / Revoke / Unknown` |
+
+Mark `Unknown` when the evidence is missing, stale, or cannot be tied to the scoped system under review. Mark `Fail` when the evidence proves the control is absent, bypassable, or materially incomplete.
+
 ## Output Format
 
 ### Findings Table
@@ -411,6 +421,12 @@ For each finding, produce a row with:
 - JIT Access (Step 6): [count]
 - Zero Trust (Step 7): [count]
 
+### OAuth Consent and App Permission Grant Evidence
+
+| Application | Publisher / Owner | Permission / Scope | Grant Type | Consent Authority | Tenant / User Scope | Last Used | Risk Review | Revocation Status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `[application]` | `[publisher/owner]` | `[permission/scope]` | `[grant_type]` | `[consent_authority]` | `[tenant/user_scope]` | `[last_used]` | `[risk_review]` | `[revocation_status]` | `Approved / Revoke / Unknown` |
+
 ### Detailed Findings
 [Findings table — see above]
 
@@ -448,6 +464,8 @@ For each finding, produce a row with:
 | `compliance/soc2-gap.md` | Mapping IAM findings to SOC 2 Trust Services Criteria (CC6.1-CC6.3) |
 
 ---
+
+- Inventorying service accounts while ignoring OAuth consent grants and application permissions that provide standing API access.
 
 ## Prompt Injection Safety Notice
 
