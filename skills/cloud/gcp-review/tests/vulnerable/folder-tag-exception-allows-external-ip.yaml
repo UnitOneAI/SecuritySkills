@@ -1,0 +1,26 @@
+case: folder-tag-exception-allows-external-ip
+expect: vulnerable
+cis_controls:
+  - "4.9"
+constraint: constraints/compute.vmExternalIpAccess
+organization_policy:
+  source: organizations/1234567890
+  effective_default: deny_all
+folder_exception:
+  folder: folders/5555
+  tag: allow-external-ip=true
+  owner: data-science-platform@example.com
+  expiry: null
+project:
+  id: data-science-sandbox
+  folder: folders/5555
+  tags:
+    allow-external-ip: "true"
+instance:
+  name: notebook-runner-1
+  network_interface:
+    access_config:
+      - nat_ip: 203.0.113.10
+expected_finding:
+  status: Fail
+  reason: the effective project policy allows an exception and the VM has an external IP.

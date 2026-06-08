@@ -1,0 +1,29 @@
+case: governed-sandbox-exception
+expect: benign
+cis_controls:
+  - "4.9"
+constraint: constraints/compute.vmExternalIpAccess
+resource_scope: projects/sandbox-training
+effective_policy:
+  source: folders/7777
+  spec:
+    rules:
+      - condition:
+          title: allow-training-lab
+          expression: resource.matchTag('tagKeys/123', 'allow-external-ip')
+        allowAll: true
+      - denyAll: true
+  dryRunSpec: null
+  exceptions:
+    - scope: projects/sandbox-training
+      tag: allow-external-ip=true
+      owner: security-training@example.com
+      justification: isolated lab environment
+      expiry: "2026-07-31"
+      last_reviewed: "2026-06-01"
+instances:
+  - name: lab-jumpbox
+    external_ip: true
+expected_finding:
+  status: Informational
+  reason: exception is explicit, scoped, owned, expiring, and reviewed; report it separately instead of failing the parent baseline.

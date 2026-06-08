@@ -1,0 +1,22 @@
+case: effective-org-policy-enforced
+expect: benign
+cis_controls:
+  - "1.4"
+constraint: constraints/iam.disableServiceAccountKeyCreation
+resource_scope: projects/analytics-prod
+effective_policy:
+  source: organizations/1234567890
+  spec:
+    rules:
+      - enforce: true
+  dryRunSpec: null
+  exceptions: []
+  collected_at: "2026-06-08T17:45:00Z"
+terraform_snippet:
+  project_policy:
+    constraint: iam.disableServiceAccountKeyCreation
+    boolean_policy:
+      enforced: false
+expected_finding:
+  status: Pass
+  reason: raw project Terraform is non-enforced, but current effective policy is inherited and enforced from the organization.

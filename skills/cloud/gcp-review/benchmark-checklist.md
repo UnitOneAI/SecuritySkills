@@ -322,6 +322,8 @@ resource "google_organization_policy" {
 }
 ```
 
+Before marking this control as passed by org policy, collect effective policy evidence for the reviewed project. A parent-level `constraints/compute.skipDefaultNetworkCreation` policy only proves compliance when the effective project policy shows the active `spec` is enforced and no folder, project, or tag exception resets it.
+
 ### CIS 3.2 -- Ensure Legacy Networks Do Not Exist for Older Projects
 
 Check for legacy networks (non-VPC):
@@ -563,6 +565,8 @@ resource "google_organization_policy" {
   }
 }
 ```
+
+Do not treat `dryRunSpec` as enforcement for public access prevention. The control only passes when the bucket or project effective policy shows active `spec` enforcement, or when the bucket's own `public_access_prevention` setting is enforced. If a folder, project, or tag exception permits public buckets, score the effective bucket/project posture and document the exception owner, justification, expiry, and review date.
 
 ### CIS 5.2 -- Ensure that Cloud Storage Buckets Have Uniform Bucket-Level Access Enabled
 

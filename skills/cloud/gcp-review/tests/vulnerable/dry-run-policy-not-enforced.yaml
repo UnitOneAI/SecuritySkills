@@ -1,0 +1,22 @@
+case: dry-run-policy-not-enforced
+expect: vulnerable
+cis_controls:
+  - "5.1"
+constraint: constraints/storage.publicAccessPrevention
+resource_scope: projects/marketing-prod
+org_policy:
+  spec:
+    rules:
+      - enforce: false
+  dryRunSpec:
+    rules:
+      - enforce: true
+bucket:
+  name: public-marketing-assets
+  public_access_prevention: inherited
+  iam:
+    - role: roles/storage.objectViewer
+      member: allUsers
+expected_finding:
+  status: Fail
+  reason: dryRunSpec is secure but the active spec is not enforced, so public access prevention is not active.

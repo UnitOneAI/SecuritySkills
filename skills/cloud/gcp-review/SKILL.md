@@ -88,6 +88,37 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, gre
 
 ---
 
+### Effective Org Policy Evidence Gate
+
+For CIS controls that can be enforced by Google Cloud organization policy, do not score the control from a raw Terraform resource alone. Organization policies are inherited across organization, folder, project, and tag scopes, and dry-run policies do not enforce protection. Require evidence of the evaluated effective policy before marking the control Pass, Fail, or downgraded.
+
+Apply this gate to constraints that commonly affect CIS review outcomes, including:
+
+- `constraints/compute.skipDefaultNetworkCreation`
+- `constraints/compute.vmExternalIpAccess`
+- `constraints/iam.disableServiceAccountKeyCreation`
+- `constraints/storage.publicAccessPrevention`
+- domain-restricted sharing and similar IAM or storage constraints
+
+Collect or request evidence from `gcloud org-policies get-effective-policy`, Cloud Asset Inventory policy exports, Security Command Center findings with scoped policy metadata, or equivalent reviewed configuration that resolves hierarchy and inheritance. If only project-level Terraform is available and higher-level policy state is unknown, mark the affected control **Not Evaluable** instead of assuming pass or fail.
+
+Record the following fields in the finding evidence:
+
+| Field | Required Evidence |
+|-------|-------------------|
+| Constraint | Full constraint name, such as `constraints/storage.publicAccessPrevention` |
+| Resource scope | Organization, folder, project, bucket, or instance scope reviewed |
+| Effective policy source | The scope that supplies the active policy after inheritance |
+| Enforced spec | Active `spec` result, not only Terraform intent |
+| Dry-run status | Whether `dryRunSpec` exists and whether it differs from active enforcement |
+| Exceptions | Folder, project, or tag exceptions that alter the effective result |
+| Exception governance | Owner, business justification, expiry, and last review for accepted exceptions |
+| Evidence timestamp | Collection time for live exports or CLI output |
+
+When `dryRunSpec` is secure but active `spec` is not enforced, keep the control failed and note that remediation is planned but not active. When a secure organization baseline has a folder, project, or tag exception, score the effective posture for each reviewed resource, not the parent baseline alone.
+
+---
+
 ### Step 9: Compile Assessment Report
 
 
@@ -148,6 +179,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Effective Org Policy Evidence:** <constraint, resource scope, effective source, active spec, dry-run status, exceptions, timestamp; required for org-policy-enforced controls>
 - **Remediation:** <specific fix with code example>
 
 ### Prioritized Remediation Plan
@@ -189,11 +221,13 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Common Pitfalls
 
 1. **Missing org-level policy checks.** Many CIS controls (e.g., 3.1 default network, 5.1 public access) can be enforced via org policies. Check both resource-level configuration and org policy constraints.
-2. **Confusing GCP-managed vs. user-managed service account keys.** CIS 1.4 only flags user-managed keys (created via `google_service_account_key`). Keys automatically managed by GCP services are acceptable.
-3. **VPC flow logs must be per-subnet.** CIS 3.8 requires flow logs on every subnet, not just the VPC. Each `google_compute_subnetwork` must have a `log_config` block.
-4. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
-5. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
-6. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
+2. **Treating dry-run org policy as enforced.** `dryRunSpec` is advisory only. Score the active `spec` or effective policy, and report dry-run evidence as remediation intent.
+3. **Ignoring inherited exceptions.** Folder, project, and tag exceptions can override a secure parent baseline. Evaluate the effective policy at the reviewed resource scope.
+4. **Confusing GCP-managed vs. user-managed service account keys.** CIS 1.4 only flags user-managed keys (created via `google_service_account_key`). Keys automatically managed by GCP services are acceptable.
+5. **VPC flow logs must be per-subnet.** CIS 3.8 requires flow logs on every subnet, not just the VPC. Each `google_compute_subnetwork` must have a `log_config` block.
+6. **Cloud SQL authorized_networks vs. private IP.** CIS 6.5 flags `0.0.0.0/0` in authorized networks, but CIS 6.6 goes further and recommends disabling public IP entirely in favor of private networking.
+7. **BigQuery dataset-level vs. table-level CMEK.** CIS 7.2 checks table-level encryption, while CIS 7.3 checks the dataset default. Both should be evaluated independently.
+8. **Default compute service account identification.** The default SA follows the pattern `PROJECT_NUMBER-compute@developer.gserviceaccount.com`. Grep for this pattern, not just the string "default."
 
 ---
 
