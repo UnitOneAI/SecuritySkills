@@ -445,3 +445,10 @@ This skill processes incident response data including timelines, forensic findin
 7. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
 8. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
 9. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
+### Supplier RCA and External Notification Evidence Gate
+
+Third-party incidents require separate evidence from the internal RCA. For supplier-caused or supplier-amplified incidents, record the supplier name, affected dependency, support case or status-page evidence, contractual SLA or DPA obligations, due date for the final supplier RCA, and whether a customer-specific impact statement was requested or received.
+
+Do not fail a review only because regulator, customer, insurer, or contractual notifications were not sent. Require a documented `not_applicable_reason` that names the decision owner, legal or communications rationale, timestamp, and threshold evaluated. Missing notices are findings only when notification criteria were met or when the non-applicability decision lacks evidence.
+
+For external dependencies, track unresolved supplier evidence as follow-up risk: pending final RCA, missing impact statement, unclear SLA credit eligibility, open data-processing questions, and delayed customer communications. A PIR should distinguish internal corrective actions from supplier-owned actions and include owners and due dates for both.
