@@ -196,7 +196,9 @@ Classify observed behavior before deciding severity:
 - Optional dependencies should include OS/CPU gating evidence so reviewers know whether the script executes on the target deployment platform.
 - Workspaces should be checked at both the root package and package-level manifests so root lifecycle hooks are not missed.
 
-When feasible, run or request validation with lifecycle execution disabled, such as `npm ci --ignore-scripts`, `pnpm install --ignore-scripts`, or `yarn install --ignore-scripts`, and record whether build/test still succeeds. If script-suppression testing is not feasible, state why and identify the remaining risk.## Assessment Output Template
+When feasible, run or request validation with lifecycle execution disabled, such as `npm ci --ignore-scripts`, `pnpm install --ignore-scripts`, or `yarn install --ignore-scripts`, and record whether build/test still succeeds. If script-suppression testing is not feasible, state why and identify the remaining risk.
+
+## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
 
