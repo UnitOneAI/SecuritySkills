@@ -1,0 +1,76 @@
+case: iam-session-cae-refresh-token-controlled
+date: "2026-06-09"
+identity_provider: Microsoft Entra ID
+client:
+  name: finance-web-and-mobile
+  type: public-and-confidential
+  cae_capable: true
+tokens:
+  access_token:
+    lifetime: cae_managed
+    revocation_behavior: critical_events_enforced
+  refresh_token:
+    lifetime: 24h_absolute
+    rotation: enabled
+    sender_constrained: true
+    reuse_detection: enabled
+    client_binding: enabled
+    device_binding: managed_device_required
+logout:
+  app_cookie_deleted: true
+  rp_initiated_logout: implemented
+  idp_session_handling: documented
+  refresh_token_revoked: true
+  other_sessions_revoked: admin_revoke_available
+critical_events:
+  user_disabled:
+    access_token: rejected_by_cae_resource
+    refresh_token: revoked
+  password_reset:
+    refresh_token: revoked
+  refresh_tokens_revoked:
+    enforcement: near_real_time
+  high_user_risk:
+    enforcement: step_up_or_block
+  device_noncompliance:
+    enforcement: block_sensitive_apps
+cae_or_equivalent_coverage:
+  clients:
+    - finance-web
+    - finance-mobile
+  resource_providers:
+    - graph
+    - finance-api
+  fallback_behavior: deny_or_reauth
+remembered_device:
+  duration: 8h
+  reauthentication_overall_timeout: 12h
+  idle_timeout: 30m
+  step_up_for_sensitive_actions: required
+relying_party_cache:
+  key_fields:
+    - subject
+    - client
+    - resource
+    - tenant
+    - policy_version
+    - auth_time
+    - group_version
+  ttl: 5m
+  revocation_invalidation: enabled
+  fail_closed_on_pdp_error: true
+test_evidence:
+  logout: IAM-SESS-TEST-101
+  user_disablement: IAM-SESS-TEST-102
+  password_reset: IAM-SESS-TEST-103
+  refresh_token_revoke: IAM-SESS-TEST-104
+  risk_change: IAM-SESS-TEST-105
+  device_noncompliance: IAM-SESS-TEST-106
+  group_removal: IAM-SESS-TEST-107
+  cache_invalidation: IAM-SESS-TEST-108
+expected_decision: pass
+reason: >
+  Refresh tokens are rotated and sender-constrained, logout and explicit
+  revocation paths are documented, CAE-capable clients and resources enforce
+  critical events, relying-party caches are revocation-aware, and test evidence
+  covers the major session continuity cases.

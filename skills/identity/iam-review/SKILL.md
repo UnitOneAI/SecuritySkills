@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-63B, NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -366,6 +366,47 @@ IAM-ZT-10: Implicit trust for internal service-to-service communication
 
 ---
 
+### Step 8: Session Revocation and Token Continuity
+
+**Objective:** Verify that logout, reauthentication, refresh-token handling, relying-party session caches, and continuous access evaluation terminate or downgrade access when identity risk changes.
+
+**Framework mapping:** NIST SP 800-63B session management and reauthentication, NIST SP 800-207 Tenets 3/6/7, OAuth 2.0 Security BCP refresh token protections, OpenID Connect RP-Initiated Logout
+
+Token lifetime alone is not enough evidence. For each human, administrative, service, and public-client session pattern, collect:
+
+1. **Session inventory:** Access token lifetime, refresh token lifetime, session cookie lifetime, idle timeout, absolute timeout, and remembered-device duration.
+2. **Refresh-token controls:** Rotation, reuse detection, sender constraint, client binding, device binding, absolute lifetime, and revocation API evidence.
+3. **Critical-event revocation:** User disablement, password reset, MFA method change, high user risk, device noncompliance, admin revoke-all-refresh-tokens, and group/role removal behavior.
+4. **Logout propagation:** Application session destruction, relying-party initiated logout, IdP session handling, refresh-token revocation, back-channel/front-channel logout support, and other active-session handling.
+5. **CAE or equivalent support:** Which clients, resource providers, APIs, and workloads enforce critical events near real time, and which fall back to token expiry.
+6. **Relying-party cache invalidation:** Session cache key, token introspection/cache TTL, revocation polling, policy version, group/role claim refresh, and fail-closed behavior.
+7. **Remembered-device and persistent-session boundaries:** Whether trusted device, remember-me, or offline access bypasses AAL reauthentication or step-up requirements for sensitive actions.
+8. **Test evidence:** Results for logout, user disablement, password reset, refresh-token revoke, high-risk user/device change, group removal, and resource-provider cache invalidation.
+
+#### Session Continuity Findings
+
+```
+IAM-SESS-01: Logout only clears local application state; IdP session, refresh token, or other relying-party sessions remain valid without documented scope
+IAM-SESS-02: Refresh tokens are bearer tokens without rotation, sender constraint, reuse detection, or client/device binding
+IAM-SESS-03: Critical events do not revoke, reject, or re-evaluate existing access and refresh tokens for sensitive resources
+IAM-SESS-04: CAE or equivalent coverage is claimed but clients, resource providers, APIs, or fallback behavior are not inventoried
+IAM-SESS-05: Remember-me, trusted-device, or offline-access settings bypass required reauthentication or step-up checks
+IAM-SESS-06: Relying-party token/session cache omits subject, client, resource, tenant, policy version, auth time, group/role version, TTL, or revocation invalidation
+IAM-SESS-07: Session revocation depends only on access-token expiry for privileged, regulated, or high-risk resources
+IAM-SESS-08: No test evidence covers logout, user disablement, password reset, refresh-token revocation, risk change, device noncompliance, group removal, and cache invalidation
+```
+
+#### Evidence States
+
+| State | Criteria |
+|---|---|
+| **Pass** | Logout and critical events terminate or re-evaluate access, refresh tokens are rotated or sender-constrained, caches are revocation-aware, and test evidence exists |
+| **Partial** | Core session controls exist, but some clients, resources, logout paths, remembered-device flows, or cache invalidation paths lack evidence |
+| **Fail** | Refresh tokens or relying-party sessions continue granting sensitive access after logout, disablement, password reset, risk change, or explicit revocation |
+| **Not Evaluable** | Token lifetimes, refresh-token behavior, relying-party cache behavior, or test evidence are unavailable |
+
+---
+
 ## Output Format
 
 ### Findings Table
@@ -410,9 +451,15 @@ For each finding, produce a row with:
 - Stale Accounts (Step 5): [count]
 - JIT Access (Step 6): [count]
 - Zero Trust (Step 7): [count]
+- Session Revocation (Step 8): [count]
 
 ### Detailed Findings
 [Findings table — see above]
+
+### Session Revocation and Token Continuity
+| Principal / Client | Token Type | Lifetime / Timeout | Refresh Token Protection | Logout Propagation | Critical Event Coverage | CAE / Equivalent Coverage | Cache Invalidation | Test Evidence | Decision |
+|---|---|---|---|---|---|---|---|---|---|
+| [user/app/client] | [access/refresh/session cookie] | [absolute + idle] | [rotation/sender-constrained/reuse detection] | [app/IdP/RP/back-channel] | [disable/password/risk/device/group/revoke] | [covered resources + fallback] | [TTL + revocation-aware keys] | [test IDs] | [Pass/Partial/Fail/Not Evaluable] |
 
 ### Remediation Roadmap
 [Prioritized actions: immediate (0-7 days), short-term (30 days), medium-term (90 days)]
@@ -461,6 +508,16 @@ This skill processes user-supplied content including IAM policies, access config
 
 ---
 
+## Common Session Pitfalls
+
+1. **Treating logout as local cookie deletion.** Logout evidence should state whether app sessions, IdP sessions, refresh tokens, and other relying-party sessions remain valid or are revoked.
+2. **Relying on access-token expiry for all revocation.** Sensitive resources need tested behavior for disablement, password reset, explicit refresh-token revoke, high risk, device noncompliance, and role/group removal.
+3. **Using long-lived bearer refresh tokens for public clients.** Public-client refresh tokens should be rotated or sender-constrained, with reuse detection and absolute lifetime.
+4. **Claiming CAE without coverage boundaries.** Record which clients and resource providers are CAE-capable and what happens when a client/resource falls back to ordinary token expiry.
+5. **Caching authorization state without revocation inputs.** Relying-party caches must include enough context and versioning to invalidate stale sessions after identity or policy changes.
+
+---
+
 ## Appendix: CIS Controls v8 Detailed Mapping
 
 ### Control 5 — Account Management
@@ -504,8 +561,18 @@ This skill processes user-supplied content including IAM policies, access config
 
 ---
 
+## Session References
+
+- NIST SP 800-63B session management and reauthentication: https://pages.nist.gov/800-63-4/sp800-63b.html
+- OAuth 2.0 Security Best Current Practice (RFC 9700): https://www.rfc-editor.org/rfc/rfc9700
+- Microsoft Entra Continuous Access Evaluation: https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-continuous-access-evaluation
+- OpenID Connect RP-Initiated Logout 1.0: https://openid.net/specs/openid-connect-rpinitiated-1_0.html
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-09 | Added session revocation, refresh-token continuity, CAE coverage, logout propagation, and revocation test evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |

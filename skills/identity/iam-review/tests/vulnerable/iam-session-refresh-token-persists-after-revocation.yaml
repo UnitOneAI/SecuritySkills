@@ -1,0 +1,71 @@
+case: iam-session-refresh-token-persists-after-revocation
+date: "2026-06-09"
+identity_provider: example-idp
+client:
+  name: public-mobile-app
+  type: public
+  cae_capable: false
+tokens:
+  access_token:
+    lifetime: 1h
+    revocation_behavior: valid_until_expiry
+  refresh_token:
+    lifetime: 90d
+    token_type: bearer
+    rotation: disabled
+    sender_constrained: false
+    reuse_detection: missing
+    client_binding: missing
+    device_binding: missing
+logout:
+  app_cookie_deleted: true
+  rp_initiated_logout: missing
+  idp_session_terminated: false
+  refresh_token_revoked: false
+  other_sessions_revoked: false
+critical_events:
+  user_disabled:
+    access_token: valid_until_expiry
+    refresh_token: still_valid
+  password_reset:
+    refresh_token: still_valid
+  high_user_risk:
+    enforcement: not_integrated
+  device_noncompliance:
+    enforcement: not_integrated
+remembered_device:
+  duration: 30d
+  reauthentication_overall_timeout: missing
+  idle_timeout: missing
+  step_up_for_sensitive_actions: missing
+relying_party_cache:
+  key_fields:
+    - subject
+  ttl: 24h
+  revocation_invalidation: missing
+  policy_version_in_key: false
+  group_version_in_key: false
+test_evidence:
+  logout: missing
+  user_disablement: missing
+  password_reset: missing
+  refresh_token_revoke: missing
+  risk_change: missing
+  device_noncompliance: missing
+  group_removal: missing
+  cache_invalidation: missing
+expected_findings:
+  - IAM-SESS-01
+  - IAM-SESS-02
+  - IAM-SESS-03
+  - IAM-SESS-04
+  - IAM-SESS-05
+  - IAM-SESS-06
+  - IAM-SESS-07
+  - IAM-SESS-08
+expected_decision: fail
+reason: >
+  Logout only clears local state, refresh tokens are long-lived bearer tokens
+  without rotation or sender constraint, critical events do not revoke sessions,
+  remembered-device settings bypass reauthentication evidence, and there are no
+  revocation or cache-invalidation tests.
