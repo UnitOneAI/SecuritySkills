@@ -387,3 +387,10 @@ This skill processes firewall configurations that may contain user-supplied comm
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
+### Hit-Counter Freshness Evidence Gate
+
+Unused-rule findings must include evidence that hit counters are old enough and reliable enough to support a removal recommendation. Capture hit count, last-hit timestamp, counter baseline timestamp, firewall uptime, policy install time, device reboot history, HA failover events, and reload or rulebase publish times.
+
+Cross-check zero-hit or low-hit rules against SIEM records, firewall traffic logs, flow logs, VPN logs, and known seasonal, disaster recovery, batch, or failover traffic windows. A rule with zero hits after a recent reboot or policy install should be classified as weak evidence, not automatically stale.
+
+Before recommending production removal, document owner, business service, change ticket, expiry date, rollback plan, and evidence quality as reliable, weak, or not evaluable. Findings should distinguish stale access from insufficient counter history so cleanup advice does not break valid low-frequency traffic.
