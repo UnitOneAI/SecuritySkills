@@ -376,3 +376,10 @@ This skill processes incident data including attacker-controlled indicators (IP 
 10. **MITRE ATT&CK -- Disk Wipe (T1561)** -- https://attack.mitre.org/techniques/T1561/
 11. **CISA Destructive Malware Guidance** -- https://www.cisa.gov/topics/cyber-threats-and-advisories
 12. **KrebsOnSecurity: Iran-backed wiper attack on Stryker medtech (2026)** -- https://krebsonsystems.com/2026/03/iran-backed-hackers-claim-wiper-attack-on-medtech-firm-stryker/
+### Ephemeral Cloud Rehydration and Controller Rollback Gate
+
+Cloud-native controllers can legitimately replace isolated resources, but responders must prove the replacement did not inherit compromised state or bypass containment. For Kubernetes Deployments, ReplicaSets, Auto Scaling Groups, serverless platforms, and similar controllers, record the controller name, desired-state source, image digest or AMI, launch template or user data hash, service account, security groups, network policy, and egress posture for replacement workloads.
+
+Treat replacement activity as suspicious when the controller rehydrates from a compromised image, mutable launch template, unsafe user data, public-egress security group, or privileged service account. Treat it as benign only when the replacement artifact is clean, pinned, reviewed, and still inside the intended quarantine or restricted network policy.
+
+Containment plans should include controller rollback evidence: pause or scale-down decisions, deployment rollback target, clean image or template identifier, quarantine policy re-application, and validation that auto-healing did not recreate the original exposure.
