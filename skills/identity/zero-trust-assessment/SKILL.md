@@ -488,3 +488,10 @@ that may contain adversarial content.
 | Version | Date | Changes |
 |---|---|---|
 | 1.0.0 | 2025-03-06 | Initial release |
+### Shadow SaaS Discovery Evidence Gate
+
+Application access maturity must be supported by runtime discovery evidence, not only by the presence of ZTNA or identity-aware proxy tooling. Require proxy, DNS, CASB, SWG, IdP, and network telemetry evidence that shows sanctioned SaaS, unsanctioned SaaS, private applications, and bypass paths observed during the assessment period.
+
+Record the discovered application name, source telemetry, users observed, risk rating, governance status, SSO/DLP/logging coverage, and whether the app is sanctioned, blocked, tolerated, or awaiting review. High-risk unsanctioned SaaS that bypasses enterprise identity or DLP should reduce maturity scoring even when a ZTNA product is deployed.
+
+For private applications, compare the application inventory against ZTNA onboarding records and VPN/firewall access paths. Any VPN-only or directly reachable private app should have an owner, migration plan, exception rationale, and target date before the application access domain is scored as advanced.
