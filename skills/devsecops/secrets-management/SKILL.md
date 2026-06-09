@@ -473,3 +473,10 @@ This skill processes configuration files and code that may contain secret values
 
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
+### Push Protection Bypass Governance Gate
+
+Secret scanning push protection should be assessed together with bypass governance. Verify push protection enablement at repository, organization, or enterprise scope, then collect bypass alert and audit-log evidence for actor, repository, secret type, commit, timestamp, bypass reason, and whether the bypass was direct or delegated.
+
+Delegated bypass workflows should name the approving team or role, approval criteria, repositories in scope, and escalation path for production or high-sensitivity secrets. Bypass reasons such as `fix later`, `used in tests`, or `false positive` require evidence: remediation ticket, revocation or rotation record, proof the test value is non-sensitive, or validation that the detection is truly a false positive.
+
+Report repeat bypasses, noisy detections, repositories with high bypass rates, stale `fix later` items, and missing rotation evidence as governance gaps. A closed bypass alert should not be treated as safe unless the secret exposure was remediated or explicitly accepted with owner, expiration, and compensating controls.
