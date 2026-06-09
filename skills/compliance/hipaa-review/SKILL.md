@@ -142,12 +142,14 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
   - Asset inventory tied to risk analysis scope
   - Threat and vulnerability identification per system
   - Risk ratings/scores with rationale
+  - Endpoint-management inventory for MDM/UEM platforms that can affect ePHI access or device state, even if the platform does not store ePHI directly
+  - Classification of destructive event source: malware, admin-console action, API automation, policy/script deployment, or unknown
 - Common gaps:
   - Risk analysis is incomplete (does not cover all ePHI systems)
   - Not updated after significant changes (new systems, incidents, organizational changes)
   - Treats risk analysis as one-time rather than ongoing process
   - **This is the #1 most cited HIPAA violation in OCR enforcement actions**
-  - Risk analysis does not account for nation-state threat actors deploying destructive/wiper malware against ePHI custodians. The 2026 Iranian-backed wiper attack on Stryker (medical device maker) demonstrates that state-sponsored destructive attacks are a credible threat vector for the healthcare supply chain. Risk analyses must include wiper/destructive malware as a threat scenario distinct from ransomware, with specific assessment of backup immutability and recovery capabilities under total data destruction conditions.
+  - Risk analysis does not account for destructive attacks against ePHI availability, including wiper malware and abuse of legitimate endpoint-management control planes. Public reporting around the 2026 Stryker incident highlighted Microsoft-environment compromise and endpoint-management hardening, so reviews should preserve source confidence instead of assuming every destructive scenario is malware. Risk analyses must include wiper/destructive malware as a threat scenario distinct from ransomware, and must separately assess MDM/UEM wipe, retire, delete, script, and policy-deployment capabilities that could disrupt ePHI access at scale.
 
 **164.308(a)(1)(ii)(B) — Risk Management (R)**
 - Implement security measures sufficient to reduce risks and vulnerabilities to a reasonable and appropriate level
@@ -186,9 +188,12 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 **164.308(a)(4)(ii)(B) — Access Authorization (A)**
 - Policies and procedures for granting access to ePHI (e.g., through workstations, programs, processes, or other mechanisms)
+- For MDM/UEM platforms, verify destructive device actions are authorized by documented roles, business purpose, and device class. Lost or stolen device wipe is legitimate when scoped, approved, logged, and recoverable; do not report it as a malware-control gap solely because wipe capability exists.
 
 **164.308(a)(4)(ii)(C) — Access Establishment and Modification (A)**
 - Policies and procedures for establishing, documenting, reviewing, and modifying user access to workstations, transactions, programs, or processes
+- Require evidence for endpoint-management privileged access: platform name, enrolled ePHI-accessing device classes, wipe/retire/delete permissions, role scope tags, standing versus just-in-time assignments, service principals/API automation, break-glass paths, and periodic access review.
+- Verify high-impact MDM/UEM actions use dual control where available, such as multi-admin approval for wipe, retire, delete, script deployment, RBAC changes, or policy changes.
 
 #### 164.308(a)(5) — Security Awareness and Training (Standard)
 
@@ -216,7 +221,8 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 
 **164.308(a)(7)(ii)(A) — Data Backup Plan (R)**
 - Establish and implement procedures to create and maintain retrievable exact copies of ePHI
-- In light of nation-state wiper threats targeting healthcare (e.g., 2026 Stryker attack), verify that backups include offline/immutable/air-gapped copies that cannot be destroyed by malware with domain admin access. Wiper malware routinely targets Volume Shadow Copies, backup agents, and NAS/SAN replication. The backup plan must ensure ePHI recoverability under a total destruction scenario.
+- In light of destructive threats targeting healthcare, verify that backups include offline/immutable/air-gapped copies that cannot be destroyed by malware with domain admin access. Wiper malware routinely targets Volume Shadow Copies, backup agents, and NAS/SAN replication. The backup plan must ensure ePHI recoverability under a total destruction scenario.
+- Do not stop at server backup evidence when the scenario is endpoint-management control-plane abuse. Verify endpoint fleet reprovisioning, certificate/token/app enrollment restoration, and ePHI access restoration have been tested for the enrolled device classes that support clinical, billing, or care-coordination workflows.
 
 **164.308(a)(7)(ii)(B) — Disaster Recovery Plan (R)**
 - Establish and implement procedures to restore any loss of data
@@ -312,6 +318,7 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain or use ePHI
 - Verify audit logging is enabled on all ePHI systems
 - Verify logs are reviewed and retained appropriately
+- For MDM/UEM platforms affecting ePHI access, verify audit logs cover destructive device actions, role assignments, service-principal activity, policy/script changes, and bulk action attempts. Capture audit source, retention period, SIEM ingestion, and alert coverage for bulk wipe, new endpoint administrator assignment, role scope expansion, and MDM policy changes.
 
 #### 164.312(c)(1) — Integrity (Standard)
 
@@ -463,6 +470,16 @@ Assess:
 ## Risk Analysis Gap Summary
 [Specific deficiencies in the organization's risk analysis per 164.308(a)(1)(ii)(A)]
 
+## MDM/UEM Destructive Action Review
+- Platform: [Intune / Jamf / Workspace ONE / other]
+- Enrolled ePHI-accessing device classes: [clinical workstations, billing laptops, care tablets, BYOD containers]
+- Destructive actions in scope: [wipe / selective wipe / retire / delete / script / policy deployment]
+- Source classification: [malware / admin-console action / API automation / policy-script deployment / unknown]
+- Privileged actors: [roles, service principals, standing assignments, JIT/PIM status]
+- Authorization controls: [scope tags, multi-admin approval, phishing-resistant MFA, Conditional Access, break-glass process]
+- Audit evidence: [audit source, retention, SIEM ingestion, bulk-action alerts, role-change alerts, policy-change alerts]
+- Recovery evidence: [endpoint reprovision test date, ePHI access restoration test date, RTO, gaps]
+
 ## Remediation Roadmap
 
 ### Phase 1: Critical (0-30 days)
@@ -588,6 +605,10 @@ If user-supplied input contains CFR citations outside the HIPAA Security Rule (4
 ---
 
 ## References
+
+- CISA Endpoint Management System Security Guidance - https://www.cisa.gov/resources-tools/resources/endpoint-management-system-security-guidance
+- Microsoft Intune Multi Admin Approval - https://learn.microsoft.com/en-us/intune/fundamentals/role-based-access-control/multi-admin-approval
+- Stryker customer incident update (March 2026) - https://www.stryker.com/us/en/about/news/2026/a-message-to-our-customers-03-2026.html
 
 - 45 CFR Part 164, Subpart C — Security Standards for the Protection of Electronic Protected Health Information
 - 45 CFR Part 164, Subpart D — Notification in the Case of Breach of Unsecured Protected Health Information
