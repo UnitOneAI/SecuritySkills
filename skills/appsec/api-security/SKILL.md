@@ -239,3 +239,10 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+### Idempotency and Replay Evidence Gate
+
+For state-changing APIs, require an inventory of REST create/update/delete routes, GraphQL mutations, webhook handlers, queue consumers, and async jobs that can create financial, approval, quota, inventory, identity, or notification side effects. Reviewers should identify which operations need idempotency keys, event IDs, nonces, timestamps, signatures, atomic uniqueness checks, or equivalent replay controls.
+
+High-impact operations should bind replay controls to actor, tenant, operation, and payload hash so a valid key or event cannot be reused for a different request. Duplicate detection must be atomic across replicas, retries, queues, worker restarts, and failover, and retry responses should return the original result or a clear conflict instead of executing a second side effect.
+
+Capture replay-window evidence for webhooks and signed requests: accepted timestamp skew, nonce/event retention period, duplicate reject behavior, and logging or alerting for retry storms. Concurrency-sensitive operations such as charges, transfers, approvals, reservations, and quota updates should include evidence that parallel duplicate requests cannot bypass the intended control.
