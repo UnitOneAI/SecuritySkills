@@ -1,0 +1,63 @@
+case: rbac-policy-combining-fail-closed
+date: "2026-06-09"
+system: finance-analytics
+resource: restricted-finance-report
+action: read
+authorization_model:
+  type: hybrid-rbac-abac
+  default_decision: deny
+  combining_algorithm: deny-overrides
+  pep:
+    pdp_endpoint: https://authz.example.com/evaluate
+    pdp_timeout_ms: 250
+    on_pdp_timeout: deny
+    on_invalid_pdp_response: deny
+  pip:
+    subject_department:
+      source: hris
+      value: Finance
+      last_sync: "2026-06-09T00:00:00Z"
+    subject_clearance:
+      source: directory
+      value: confidential
+      missing_attribute_behavior: deny_or_not_applicable
+  decision_cache:
+    key_fields:
+      - principal
+      - action
+      - resource
+      - tenant
+      - context
+      - policy_version
+      - attribute_version
+    ttl: 5m
+    policy_version_in_key: true
+    attribute_version_in_key: true
+    tenant_in_key: true
+    revocation_invalidation: enabled
+  policies:
+    - id: FIN-ANALYST-READ
+      effect: Permit
+      condition: subject.department == resource.department and action == "read"
+    - id: RESTRICTED-CLEARANCE-GUARDRAIL
+      effect: Deny
+      condition: resource.classification == "restricted" and subject.clearance < resource.classification
+  obligations:
+    - name: write_audit_log
+      required: true
+      failure_behavior: block
+    - name: mask_sensitive_fields
+      required: true
+      failure_behavior: block
+simulation_evidence:
+  permit_and_deny_overlap: AUTHZ-SIM-101
+  pdp_timeout: AUTHZ-SIM-102
+  missing_attribute: AUTHZ-SIM-103
+  stale_cache: AUTHZ-SIM-104
+  obligation_failure: AUTHZ-SIM-105
+expected_decision: pass
+reason: >
+  The design is default-deny, uses deny-overrides for guardrails, fails closed
+  on PDP and PIP errors, scopes cached decisions by request context and versions,
+  blocks on required obligation failure, and has simulation evidence for the
+  major decision-semantics edge cases.

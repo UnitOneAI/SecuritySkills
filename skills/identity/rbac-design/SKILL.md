@@ -12,7 +12,7 @@ phase: [design]
 frameworks: [NIST-RBAC, NIST-SP-800-162]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -301,6 +301,50 @@ RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
 
 ---
 
+### Step 5A: Policy Decision Semantics and Fail-Closed Enforcement
+
+**Objective:** Prove that overlapping RBAC/ABAC policies, missing attributes, PDP failures, cache reuse, and obligation failures resolve to the intended authorization decision before the design is accepted.
+
+**Framework mapping:** NIST SP 800-162 PDP/PEP/PIP/PAP architecture, OASIS XACML 3.0 combining algorithms, Cedar default-deny and forbid-overrides-permit semantics, OPA/Rego explicit defaults
+
+ABAC policy design is incomplete until the decision semantics are observable and testable. For each sensitive resource/action pair, record:
+
+1. **Default decision:** Whether requests with no matching policy resolve to Deny, NotApplicable, or another state. Sensitive resources should fail closed.
+2. **Combining algorithm:** How multiple applicable policies are combined, such as deny-overrides, permit-overrides, first-applicable, only-one-applicable, or custom precedence.
+3. **Deny/forbid precedence:** Whether explicit guardrail Deny/forbid policies override broad role-based Permit policies.
+4. **Indeterminate and error handling:** How PDP errors, policy evaluation errors, schema validation failures, or unsupported operators affect the final decision.
+5. **Unknown attribute handling:** Whether missing, stale, unverifiable, or conflicting PIP attributes produce Deny, NotApplicable, Needs Review, or a permissive match.
+6. **PEP failure mode:** Whether the PEP denies, degrades, or allows access when the PDP is unavailable, slow, or returns an invalid response.
+7. **Authorization cache safety:** Whether cached decisions are keyed by principal, action, resource, context, policy version, attribute version, tenant, and TTL, with revocation-aware invalidation.
+8. **Obligation enforcement:** Whether obligations such as audit logging, masking, step-up MFA, notification, or approval are enforced before access is allowed, and what happens if an obligation fails.
+9. **Simulation evidence:** Whether the policy set has test cases for overlapping Permit/Deny, missing attributes, PDP timeout, stale cache, and obligation failure.
+
+#### Decision Semantics Findings
+
+```
+RBAC-DEC-01: No documented default decision for unmatched requests
+RBAC-DEC-02: Combining algorithm missing, inconsistent, or not tested for overlapping policies
+RBAC-DEC-03: Permit policy overrides explicit Deny/forbid guardrails for sensitive resources
+RBAC-DEC-04: PDP timeout, network failure, invalid response, or policy evaluation error fails open at the PEP
+RBAC-DEC-05: Missing, stale, or conflicting PIP attributes are treated as a permissive match
+RBAC-DEC-06: Authorization cache omits action, resource, tenant, context, policy version, attribute version, TTL, or revocation invalidation
+RBAC-DEC-07: Required obligations can fail while the PEP still allows the operation
+RBAC-DEC-08: No simulation or dry-run evidence covers conflict, error, missing-attribute, cache, and obligation-failure cases
+```
+
+#### Safe Decision Patterns
+
+| Pattern | Expected Evidence |
+|---|---|
+| **Default deny** | No matching Permit results in Deny or NotApplicable, and the PEP treats both as deny for sensitive operations |
+| **Deny-overrides / forbid-overrides-permit** | Any matched guardrail Deny/forbid wins over broad role-based Permit |
+| **Fail closed** | PDP timeout, invalid response, policy error, or unavailable PIP data denies or degrades access rather than allowing sensitive operations |
+| **Scoped cache** | Cache key includes principal, action, resource, tenant, context, policy version, attribute version, TTL, and revocation events |
+| **Obligation gated** | Audit, masking, step-up MFA, approval, or notification obligations complete before the operation proceeds |
+| **Simulation covered** | Automated or documented tests include Permit+Deny overlap, missing attributes, stale cache, PDP outage, and obligation failure |
+
+---
+
 ### Step 6: Role Mining and Rationalization
 
 **Objective:** Derive optimal roles from existing access patterns and reduce role sprawl.
@@ -340,9 +384,9 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 
 | Severity | Definition | Examples |
 |---|---|---|
-| **Critical** | Authorization model allows privilege escalation or bypasses SoD | No permission boundaries; SSoD violations in production financial systems |
-| **High** | Significant design flaw creating excessive access risk | Role explosion (>0.7:1 ratio); no centralized PDP; wildcard boundaries |
-| **Medium** | Design deficiency undermining governance | No role lifecycle process; ABAC policies without testing; missing constraints |
+| **Critical** | Authorization model allows privilege escalation or bypasses SoD | No permission boundaries; SSoD violations in production financial systems; PEP fails open for sensitive operations |
+| **High** | Significant design flaw creating excessive access risk | Role explosion (>0.7:1 ratio); no centralized PDP; wildcard boundaries; Permit overrides guardrail Deny |
+| **Medium** | Design deficiency undermining governance | No role lifecycle process; ABAC policies without testing; missing constraints; missing decision-semantics simulation evidence |
 | **Low** | Design improvement opportunity | Naming inconsistencies; missing documentation; single-user roles < 5% |
 
 ---
@@ -387,10 +431,16 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
 - ABAC Policies (Step 5): [count]
+- Decision Semantics (Step 5A): [count]
 - Role Mining (Step 6): [count]
 
 ### Detailed Findings
 [Findings table]
+
+### Policy Decision Semantics
+| Resource / Action | Default Decision | Combining Algorithm | Deny/Forbid Precedence | Missing Attribute Behavior | PDP/PEP Failure Mode | Cache Scope / TTL | Obligation Failure Behavior | Simulation Evidence | Decision |
+|---|---|---|---|---|---|---|---|---|---|
+| [resource/action] | [Deny/NotApplicable/Allow] | [deny-overrides/permit-overrides/custom] | [Yes/No] | [Deny/NotApplicable/Allow/Needs Review] | [Fail closed/Fail open/Degrade] | [key fields + TTL] | [Block/Degrade/Continue] | [test IDs] | [Pass/Fail/Not Evaluable] |
 
 ### Design Recommendations
 [Architecture diagram or pattern with framework justification]
@@ -424,6 +474,15 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 | **Performance** | PDP evaluation latency must meet application SLA requirements |
 | **Interoperability** | Standards-based attribute formats (XACML, ALFA, OPA/Rego, Cedar) for portability |
 | **Auditability** | All policy evaluations logged with input attributes and decision rationale |
+| **Failure Semantics** | PDP, PEP, PIP, cache, and obligation failure modes must be defined and tested for sensitive access decisions |
+
+---
+
+## Decision Semantics Pitfalls
+
+1. **Leaving policy precedence implicit** -- overlapping Permit and Deny rules must have a tested combining algorithm. For sensitive resources, a broad Permit should not bypass explicit Deny/forbid guardrails.
+2. **Failing open on authorization infrastructure errors** -- PDP timeouts, PIP outages, schema errors, and obligation failures should not silently allow sensitive operations.
+3. **Caching decisions without context and version keys** -- authorization caches that omit resource, action, tenant, policy version, attribute version, TTL, or revocation events can replay stale access.
 
 ---
 
@@ -462,6 +521,8 @@ that may contain adversarial content.
 - Cedar Policy Language (AWS): https://www.cedarpolicy.com
 - Open Policy Agent (OPA) / Rego: https://www.openpolicyagent.org
 - XACML 3.0 (OASIS Standard): https://docs.oasis-open.org/xacml/3.0/xacml-3.0-core-spec-os-en.html
+- Cedar authorization semantics: https://docs.cedarpolicy.com/auth/authorization.html
+- OPA default keyword: https://www.openpolicyagent.org/docs/latest/policy-language/#default-keyword
 
 ---
 
@@ -481,4 +542,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-09 | Added policy combining, fail-closed enforcement, cache, unknown-attribute, and obligation-failure decision gates |
 | 1.0.0 | 2025-03-06 | Initial release |

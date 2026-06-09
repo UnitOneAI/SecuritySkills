@@ -1,0 +1,65 @@
+case: rbac-policy-combining-fail-open
+date: "2026-06-09"
+system: finance-analytics
+resource: restricted-finance-report
+action: read
+authorization_model:
+  type: hybrid-rbac-abac
+  default_decision: allow
+  combining_algorithm: permit-overrides
+  pep:
+    pdp_endpoint: https://authz.example.com/evaluate
+    pdp_timeout_ms: 100
+    on_pdp_timeout: allow_cached_last_decision
+    on_invalid_pdp_response: allow
+  pip:
+    subject_department:
+      source: hris
+      value: missing
+      last_sync: "2026-05-01T00:00:00Z"
+    subject_clearance:
+      source: directory
+      value: missing
+      missing_attribute_behavior: treat_as_match
+  decision_cache:
+    key_fields:
+      - principal
+    ttl: 24h
+    policy_version_in_key: false
+    attribute_version_in_key: false
+    tenant_in_key: false
+    revocation_invalidation: missing
+  policies:
+    - id: FIN-ANALYST-READ
+      effect: Permit
+      condition: subject.role == "finance-analyst"
+    - id: RESTRICTED-CLEARANCE-GUARDRAIL
+      effect: Deny
+      condition: resource.classification == "restricted" and subject.clearance < resource.classification
+  obligations:
+    - name: write_audit_log
+      required: true
+      failure_behavior: continue
+    - name: mask_sensitive_fields
+      required: true
+      failure_behavior: continue
+simulation_evidence:
+  permit_and_deny_overlap: missing
+  pdp_timeout: missing
+  missing_attribute: missing
+  stale_cache: missing
+  obligation_failure: missing
+expected_findings:
+  - RBAC-DEC-01
+  - RBAC-DEC-02
+  - RBAC-DEC-03
+  - RBAC-DEC-04
+  - RBAC-DEC-05
+  - RBAC-DEC-06
+  - RBAC-DEC-07
+  - RBAC-DEC-08
+expected_decision: fail
+reason: >
+  The design lets broad Permit policies override Deny guardrails, fails open
+  when the PDP is unavailable, treats missing attributes as matches, caches by
+  principal only, and continues when required audit and masking obligations fail.
