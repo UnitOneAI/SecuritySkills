@@ -181,7 +181,22 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
-## Assessment Output Template
+
+### Lifecycle Script Evidence Gate
+
+Install-time execution is a separate supply-chain risk from known CVEs. Treat lifecycle hooks as an evidence gate that must be recorded and classified, not as an automatic failure condition.
+
+For npm and compatible ecosystems, enumerate `preinstall`, `install`, `postinstall`, `prepublish`, `prepare`, and package-manager specific install hooks from direct and transitive dependencies. Record the package name, version, source type, direct/transitive path, script name, command, and whether the dependency is registry, Git, file, workspace, or tarball sourced.
+
+Classify observed behavior before deciding severity:
+
+- Benign native-build or binary verification scripts, such as `sharp` or `better-sqlite3`, should be documented with owner, command, and expected file/process activity instead of being failed solely for having `postinstall`.
+- Suspicious scripts include outbound network calls, credential or environment-variable access, shell download-and-execute patterns, filesystem traversal outside the package directory, or opaque binary execution.
+- Git dependencies pinned to branches or mutable refs that run `prepare` should be treated as high risk unless the commit is pinned and reviewed, because the executed code is not protected by a registry lockfile integrity hash.
+- Optional dependencies should include OS/CPU gating evidence so reviewers know whether the script executes on the target deployment platform.
+- Workspaces should be checked at both the root package and package-level manifests so root lifecycle hooks are not missed.
+
+When feasible, run or request validation with lifecycle execution disabled, such as `npm ci --ignore-scripts`, `pnpm install --ignore-scripts`, or `yarn install --ignore-scripts`, and record whether build/test still succeeds. If script-suppression testing is not feasible, state why and identify the remaining risk.## Assessment Output Template
 
 When performing a dependency scan, produce findings in the following structure:
 
@@ -210,6 +225,8 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Typosquatting risk detected
 - [ ] Packages with no license
 - [ ] Packages with install scripts
+- [ ] Lifecycle scripts enumerated for direct and transitive dependencies
+- [ ] Install/test attempted with lifecycle scripts disabled or exception documented
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
 
@@ -226,8 +243,8 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Lifecycle script evidence gate**: Enumerate and classify install-time hooks across direct and transitive dependencies, including registry, Git, file, workspace, and tarball sources. Record behavior and script-suppression validation.`n8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
