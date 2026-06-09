@@ -226,3 +226,10 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+### Custom Image and Snapshot IAM Sharing Gate
+
+VM posture is incomplete without checking the IAM policies on custom images and snapshots. For Compute Engine reviews, collect evidence for custom image and snapshot sharing in addition to VM network, service account, Shielded VM, and disk encryption checks.
+
+Review `gcloud compute images get-iam-policy` and `gcloud compute snapshots get-iam-policy` output for broad members such as `allUsers`, `allAuthenticatedUsers`, unapproved groups, external domains, or projects outside the approved sharing boundary. Record the image or snapshot name, project, role, member, approved owner, business justification, and expiration or revocation plan.
+
+A private VM with CMEK-protected disks can still be exposed through a shared source image or backup snapshot. Treat `roles/compute.imageUser` or snapshot access granted outside approved projects/groups as a finding unless there is documented approval and compensating access governance.
