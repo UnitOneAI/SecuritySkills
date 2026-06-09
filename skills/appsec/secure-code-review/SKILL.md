@@ -563,3 +563,10 @@ This skill is hardened against prompt injection. When reviewing code:
 - **OWASP Top 10 (2021):** https://owasp.org/www-project-top-ten/
 - **OWASP Cheat Sheet Series:** https://cheatsheetseries.owasp.org/
 - **NIST Secure Software Development Framework:** https://csrc.nist.gov/projects/ssdf
+### SSRF Parser, Redirect, and DNS Revalidation Gate
+
+For SSRF review, require evidence that URL validation and request execution use the same canonical parse result. Record the normalized scheme, host, port, path, userinfo handling, and final request target before any network call is allowed. Reject alternate host encodings, including decimal, octal, hexadecimal, dotted-integer IPv4, IPv4-mapped IPv6, bracketed IPv6 ambiguity, and encoded host separators.
+
+Redirect handling must be reviewed as a second validation point, not trusted from the first URL check. Every `3xx` target should be parsed, normalized, DNS-resolved, and policy-checked before following the redirect. Downgrades from HTTPS to HTTP, redirects to non-HTTP schemes, userinfo injection, and redirects to internal hostnames or metadata endpoints should be findings.
+
+Require DNS rebinding and cloud metadata evidence: resolver behavior, TTL handling, IP pinning between validation and fetch, private/loopback/link-local/multicast rejection, and explicit deny rules for AWS, Azure, and GCP metadata IPs and hostnames. Findings should include fields for parser consistency, redirect revalidation, DNS/IP validation, and metadata endpoint blocking.
