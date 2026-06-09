@@ -226,3 +226,10 @@ Produce the final report using the structure defined in the Output Format sectio
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of CIS Google Cloud Platform Foundation Benchmark v2.0.0 sections 1 through 7.
+### Security Command Center Mute Governance Gate
+
+Security Command Center evidence should separate resolved findings from muted active findings. Export active findings before relying on dashboard totals, saved views, or post-mute summaries, and record finding category, severity, resource, state, mute status, mute rule, owner, and remediation or accepted-risk reference.
+
+Review static mute rules for narrow filters, business justification, approval owner, compensating controls, review date, and expiration or recertification cadence. Review dynamic mute rules for scope drift, overly broad category/resource filters, and whether they suppress high-severity or production findings without change-controlled approval.
+
+Bulk mute operations should be treated as exceptions that need traceable change approval and follow-up remediation tracking. Report SCC operational governance separately from CIS pass/fail scoring so a clean default SCC view does not hide active muted production findings.
