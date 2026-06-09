@@ -91,6 +91,45 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 - Pin critical transitive dependencies using overrides/resolutions (`npm overrides`, `pip` constraints files, `go.mod replace`).
 - Evaluate dependency tree depth before adopting new packages: `npm ls --all`, `pipdeptree`, `go mod graph`.
 
+## Install-Time Lifecycle Script Risk
+
+### Why Lifecycle Scripts Matter
+
+Known-vulnerability scanning does not fully cover install-time execution. In Node.js ecosystems, package lifecycle scripts such as `preinstall`, `install`, `postinstall`, `prepare`, `prepack`, and `postpack` can run before application code is reviewed. A dependency can have no known CVE and still execute code that reads environment variables, downloads binaries, rewrites files, or contacts external services during installation.
+
+### Review Requirements
+
+For `package.json`, `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, and `pnpm-lock.yaml`, record lifecycle-script evidence separately from CVE findings:
+
+1. **Enumerate direct and transitive scripts**: Identify packages that define lifecycle hooks, including dependencies nested only in lockfiles.
+2. **Classify dependency source**: Distinguish registry, Git, tarball, file, and workspace dependencies. Git dependencies using `prepare` are higher risk when pinned to a branch or mutable ref.
+3. **Classify behavior without execution**: Review script commands for network access, credential/environment reads, shell execution, binary download, filesystem traversal, native compilation, and obfuscation.
+4. **Separate benign native builds from suspicious behavior**: Packages such as native modules may legitimately download or verify platform binaries. Record the evidence instead of failing solely because a lifecycle hook exists.
+5. **Test script suppression when feasible**: Prefer install or CI validation with script execution disabled, such as `npm ci --ignore-scripts`, `pnpm install --ignore-scripts`, or `yarn install --mode=skip-builds`, then document whether build and tests still work.
+
+### Risk Indicators
+
+| Indicator | Risk | Review Action |
+|---|---|---|
+| Transitive dependency with `postinstall` reading environment variables | High | Flag for manual review and require package provenance validation. |
+| Git dependency pinned to a branch with `prepare` | High | Pin to an immutable commit or replace with a registry package with integrity metadata. |
+| Lifecycle script downloads platform binaries from a vendor URL | Medium | Verify vendor domain, checksum validation, and signature process. |
+| Native module rebuild script with no network or credential access | Low/Medium | Document as expected behavior and confirm it is not running unexpected shell commands. |
+| Install succeeds only when scripts are enabled | Medium | Document operational dependency and require owner approval for the execution path. |
+
+### Example Evidence Record
+
+```
+Package: better-sqlite3
+Dependency path: app > better-sqlite3
+Source: npm registry
+Lifecycle hook: install
+Command summary: prebuild-install fallback to node-gyp rebuild
+Behavior: native binary resolution/build; no credential access observed in metadata review
+Suppression test: npm ci --ignore-scripts completed; application tests requiring native binding failed until rebuild
+Risk decision: expected native-module behavior; document and monitor upstream integrity
+```
+
 ## Vulnerability Triage: EPSS + CVSS + CISA KEV
 
 ### Triage Framework
@@ -209,9 +248,18 @@ When performing a dependency scan, produce findings in the following structure:
 
 - [ ] Typosquatting risk detected
 - [ ] Packages with no license
-- [ ] Packages with install scripts
+- [ ] Packages with lifecycle scripts (`preinstall`, `install`, `postinstall`, `prepare`, `prepack`, `postpack`)
+- [ ] Transitive packages with lifecycle scripts
+- [ ] Mutable Git/tarball/file dependencies with lifecycle scripts
+- [ ] Install/test behavior verified with scripts disabled where feasible
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+
+### Lifecycle Script Findings
+
+| # | Package | Direct/Transitive | Source | Hook | Behavior | Suppression Test | Risk |
+|---|---------|-------------------|--------|------|----------|------------------|------|
+| 1 | ...     | ...               | ...    | ...  | ...      | ...              | ...  |
 
 ### Recommendations
 
@@ -226,8 +274,9 @@ When performing a dependency scan, produce findings in the following structure:
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Lifecycle script review**: Enumerate direct and transitive package lifecycle hooks. Classify source, behavior, and whether install/test can run with scripts disabled.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
