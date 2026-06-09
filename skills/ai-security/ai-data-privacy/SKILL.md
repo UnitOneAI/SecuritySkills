@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -240,7 +240,50 @@ Grep: "backup|snapshot|archive" in **/*.{yaml,yml,json,toml}
 
 ---
 
-### Step 4 -- Model Memorization Risk Assessment
+### Step 4 -- Erasure Propagation Evidence
+
+Assess whether data subject erasure requests and consent withdrawals propagate from the source record into AI-derived stores, provider-retained objects, backups, and model lineage decisions.
+
+**What to look for in code and configuration:**
+
+- Subject-to-artifact lineage that maps a deletion target to source records, RAG chunks, embedding IDs, prompt/completion logs, analytics events, fine-tuning rows, evaluation samples, provider object IDs, backups, and model artifacts.
+- Deletion receipts, tombstones, or reconciliation jobs for every AI-derived store, not only the primary application database.
+- Vector database deletes that use stable document IDs or metadata filters tied to the source record, followed by retrieval tests proving the subject's content is no longer returned.
+- Training exclusion manifests showing that erased or consent-withdrawn records are excluded from future training, fine-tuning, evaluation, and benchmark datasets.
+- Provider-side retention controls or deletion confirmations for third-party LLM APIs, hosted vector stores, annotation tools, and analytics processors.
+- Backup restore replay procedures that re-apply erasure tombstones before restored data re-enters production, analytics, RAG, or training pipelines.
+- Documented retraining, machine unlearning, output suppression, or risk-acceptance decisions for model versions trained on data later subject to erasure.
+
+**Detection methods using allowed tools:**
+
+```
+# Find erasure and lineage handling
+Grep: "erasure|right.to.delete|forget|dsar|delete_request|consent_withdraw" in **/*.{py,ts,js,yaml,yml,json,md}
+Grep: "lineage|artifact|source_document|document_id|chunk_id|embedding_id|tombstone|deletion_receipt" in **/*.{py,ts,js,yaml,yml,json}
+
+# Check AI-derived stores and provider deletion hooks
+Grep: "vector|embedding|rag|prompt_log|completion_log|analytics|fine.tune|eval_dataset" in **/*.{py,ts,js,yaml,yml,json}
+Grep: "provider_object|file_id|openai|anthropic|azure.openai|bedrock|vertex.ai|pinecone|weaviate|qdrant" in **/*.{py,ts,js,yaml,yml,json}
+
+# Check backup replay and model-lineage decisions
+Grep: "backup|restore|snapshot|replay|purge|tombstone" in **/*.{py,sh,yaml,yml,json,md}
+Grep: "retrain|unlearn|suppression|training_exclusion|model_lineage|model_version" in **/*.{py,yaml,yml,json,md}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Erasure request deletes source records but leaves retrievable embeddings, RAG chunks, prompt logs, or provider-retained objects | High |
+| No subject-to-artifact lineage exists for AI-derived stores that may contain personal data | High |
+| No deletion receipt, tombstone, or reconciliation evidence for vector/log/dataset/provider stores | High |
+| Training or evaluation datasets do not record exclusion manifests after consent withdrawal or erasure | High |
+| Backup restores can reintroduce erased AI data without tombstone replay | Medium |
+| Model versions trained on erased data lack a retraining, unlearning, suppression, or risk-acceptance decision | Medium |
+
+---
+
+### Step 5 -- Model Memorization Risk Assessment
 
 Evaluate the risk that models deployed in the system have memorized and can reproduce personal data from their training corpus.
 
@@ -288,7 +331,7 @@ Grep: "dedup|deduplicate|exact_match|near_duplicate|minhash|simhash" in **/*.py
 
 ---
 
-### Step 5 -- EU AI Act Data Governance Requirements
+### Step 6 -- EU AI Act Data Governance Requirements
 
 Assess compliance with the EU AI Act's data governance requirements for AI systems deployed in or affecting EU residents.
 
@@ -338,7 +381,7 @@ Glob: **/technical_documentation*
 
 ---
 
-### Step 6 -- Consent Management for AI Training Data
+### Step 7 -- Consent Management for AI Training Data
 
 Assess whether consent mechanisms for AI training data usage are implemented, enforceable, and aligned with regulatory requirements.
 
@@ -411,7 +454,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Erasure Propagation | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -430,6 +473,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
+| Erasure propagation | [Yes/Partial/No] | [source-to-artifact lineage, receipts, tombstones, provider deletion, backup replay, and model-lineage decision gaps] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Consent management | [Yes/Partial/No] | [description] | [severity] |
@@ -470,7 +514,9 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 
 4. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
 
-5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
+5. **Treating source deletion as AI deletion.** Deleting a row from the source database does not prove erasure across embeddings, RAG chunks, prompt logs, analytics events, provider-retained objects, training snapshots, evaluation datasets, backups, or model artifacts. Require subject-to-artifact lineage and per-store deletion evidence before marking erasure as effective.
+
+6. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
 
 ---
 
