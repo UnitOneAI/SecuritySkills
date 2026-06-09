@@ -393,3 +393,10 @@ This skill processes user-supplied content including compliance documentation, p
 - The gap analysis is based on information available in the codebase and documentation. It cannot assess controls that exist only in human processes without documentation.
 - Scoring is subjective and should be validated by the organization's security leadership and, ideally, a qualified auditor.
 - This analysis uses the 2017 AICPA Trust Services Criteria (with 2022 updates). Verify with your auditor that these criteria are current for your engagement.
+### Emergency Change Rollback and Post-Review Evidence Gate
+
+Emergency changes can be acceptable under SOC 2 CC8.1 when they remain traceable, approved, tested, and reviewed after implementation. Do not score an emergency production change as a gap solely because approval was retroactive; evaluate whether the emergency path has a documented reason, incident or risk link, separated requester/approver/deployer/verifier identities, validation evidence, and timely post-implementation review.
+
+Require rollback evidence for emergency changes: previous known-good version, rollback command or deployment plan, feature flag or mitigation path, abort criteria, monitoring signals, and owner responsible for rollback decisions. Missing rollback plans, missing abort criteria, or single-person request/approve/deploy/verify chains should be treated as CC8.1 evidence gaps.
+
+The final assessment should distinguish valid emergency exceptions from uncontrolled changes by recording retroactive approval due/completed timestamps, post-review reviewer, findings from the review, and corrective actions for any policy deviations.
