@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -252,6 +252,7 @@ on: pull_request_target
 
 - **Indirect PPE:** Workflows that execute scripts, Makefiles, or config files that exist in the repository and can be modified by a pull request.
 - **Public fork access:** Whether the repository allows workflows to run on pull requests from forks with access to secrets.
+- **Privileged `workflow_run` handoffs:** Workflows that download artifacts, caches, coverage reports, build outputs, or scripts produced by lower-trust PR/fork workflows and then execute, publish, sign, or deploy them with elevated permissions, secrets, package tokens, or deployment credentials.
 - Injection of untrusted input into shell commands:
 
 ```yaml
@@ -264,7 +265,38 @@ on: pull_request_target
     PR_TITLE: ${{ github.event.pull_request.title }}
 ```
 
-**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+**Workflow handoff evidence to require:**
+
+| Evidence Field | What to Verify |
+|---|---|
+| Producer workflow | Name, trigger, event type, head repository, head branch/ref, head SHA, actor, and permission set for the workflow that creates the artifact/cache/report. |
+| Consumer workflow | Name, trigger, permission set, available secrets, environment protections, and whether it runs signing, publishing, deployment, or other privileged steps. |
+| Artifact identity | Artifact name, workflow run ID, producer run attempt, digest/signature/provenance, expected file list, and whether executable content is present. |
+| Trust gate | Explicit checks that source repository, branch/ref, actor/team, event type, and commit SHA are trusted before privileged download or execution. |
+| Cache isolation | Cache keys and restore keys are namespaced so PR/fork workflows cannot poison caches later restored by release, deploy, signing, or package-publish workflows. |
+
+```yaml
+# DANGEROUS: privileged workflow consumes PR-produced artifact without trust checks
+on:
+  workflow_run:
+    workflows: ["PR Build"]
+    types: [completed]
+permissions: write-all
+steps:
+  - uses: actions/download-artifact@v4
+    with:
+      run-id: ${{ github.event.workflow_run.id }}
+  - run: ./dist/release.sh
+
+# SAFER: privileged consumption is gated and artifact identity is verified
+if: >
+  github.event.workflow_run.head_repository.full_name == github.repository &&
+  github.event.workflow_run.head_branch == 'main' &&
+  github.event.workflow_run.conclusion == 'success'
+# Also verify artifact digest/provenance or rebuild from trusted source before executing.
+```
+
+**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, `workflow_run` producer/consumer handoffs, cache trust-boundary crossings, and whether PR code can influence privileged pipelines.
 
 ---
 
@@ -392,6 +424,7 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Privileged workflows that consume artifacts from a different workflow run without digest, signature, provenance, or trusted-source rebuild evidence.
 
 **Grep patterns:**
 
@@ -402,6 +435,8 @@ cosign attest
 actions/attest-build-provenance
 sigstore
 in-toto
+sha256sum
+gh run download
 
 # Look for SBOM generation
 syft
@@ -414,7 +449,7 @@ image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, and whether any cross-workflow artifact handoff verifies trusted source and artifact identity before privileged use.
 
 ---
 
@@ -479,6 +514,12 @@ Produce the final report using the following structure:
 | CICD-SEC-1 | Insufficient Flow Control | High/Med/Low | Pass/Fail/Partial | <summary> |
 | CICD-SEC-2 | Inadequate IAM | ... | ... | ... |
 | ... | ... | ... | ... | ... |
+
+### Privileged Workflow Handoffs
+
+| Producer Workflow | Consumer Workflow | Artifact/Cache | Trust Gate | Integrity Evidence | Privileged Action | Status |
+|-------------------|-------------------|----------------|------------|--------------------|-------------------|--------|
+| PR Build | Release Publish | dist artifact | repo/ref/actor/SHA checked | digest + SLSA provenance verified | package publish | Pass/Fail/Partial |
 
 ### Detailed Findings
 
@@ -557,4 +598,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Add privileged `workflow_run` artifact handoff gates for producer/consumer mapping, trusted source checks, artifact integrity evidence, and cache isolation across trust boundaries.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
