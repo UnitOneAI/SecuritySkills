@@ -1,0 +1,27 @@
+{
+  "description": "Benign negative fixture for approved off-hours privileged maintenance.",
+  "platform": "Microsoft Sentinel KQL",
+  "rule_concept": "Privileged Account Usage Outside Business Hours",
+  "expected_alert_count": 0,
+  "events": [
+    {
+      "TimeGenerated": "2026-06-09T03:00:00Z",
+      "UserPrincipalName": "break-glass-admin@example.com",
+      "ResultType": 0,
+      "IPAddress": "198.51.100.20",
+      "AppDisplayName": "Azure Portal",
+      "ChangeTicket": "CHG-7421",
+      "MaintenanceWindow": "approved",
+      "ApprovalExpires": "2026-06-09T04:00:00Z"
+    },
+    {
+      "TimeGenerated": "2026-06-09T03:05:00Z",
+      "UserPrincipalName": "svc-backup@example.com",
+      "ResultType": 0,
+      "IPAddress": "10.10.20.15",
+      "AppDisplayName": "BackupJob",
+      "ExpectedSchedule": "nightly"
+    }
+  ],
+  "negative_case_reason": "Approved maintenance and expected service principal activity should be represented in benign fixtures before production promotion."
+}

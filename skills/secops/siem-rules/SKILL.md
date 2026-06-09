@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -456,7 +456,42 @@ Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
 
-### Step 5: Detection Rule Lifecycle Management
+### Step 5: Fixture-Backed Validation
+
+Before moving a rule from Testing to Active, validate it with replayable fixtures instead of only relying on ad hoc query runs. A rule with no results over a short lookback window is not proven effective until it fires on representative true-positive events and avoids representative benign events.
+
+**Required validation evidence:**
+
+| Fixture Type | Purpose | Minimum Evidence |
+|--------------|---------|------------------|
+| True positive | Proves the rule fires on the target behavior | Sample events, expected alert count, matched entities, and ATT&CK technique |
+| Benign / false positive | Proves the rule avoids approved activity | Approved maintenance, service accounts, scanners, or expected admin activity that should not alert |
+| Boundary | Proves thresholds and windows behave as intended | Events just below, exactly at, and above thresholds or correlation windows |
+| Schema variant | Proves field mappings survive parser differences | Supported field aliases, string/numeric status variants, and connector/parser version |
+| Regression | Proves tuning changes did not break detection | Before/after expected alert counts for changed thresholds, joins, lookups, or suppression windows |
+
+**Fixture guidance:**
+
+1. Store or reference small representative samples for every production rule. Use synthetic or redacted data; never include real credentials, tokens, or sensitive production identifiers.
+2. Record the expected result count and key entities for each fixture. A passing test should be deterministic.
+3. Include at least one negative case for known operational noise such as maintenance windows, break-glass drills, scanner traffic, backup jobs, identity sync, or service principal automation.
+4. For threshold rules, include events below the threshold, exactly at the threshold, and above the threshold.
+5. For correlation rules, include all required source tables or indexes so the join behavior can be tested.
+6. Re-run the fixture set whenever rule logic, thresholds, suppression windows, lookup tables, entity mappings, parser versions, or data connectors change.
+
+**Example validation record:**
+
+| Field | Example |
+|-------|---------|
+| Fixture set | `tests/siem-rules/privileged-off-hours/` |
+| Platform/backend | Microsoft Sentinel KQL |
+| Parser/schema version | Entra ID SigninLogs, connector version/date |
+| True-positive expected alerts | `1` |
+| Negative expected alerts | `0` |
+| Boundary expected alerts | `0 below threshold`, `1 at threshold`, `1 above threshold` |
+| Regression result | No expected alert-count change after query optimization |
+
+### Step 6: Detection Rule Lifecycle Management
 
 **Lifecycle stages:**
 
@@ -522,6 +557,7 @@ Produce SIEM rule deliverables in this structure:
 | Severity | [High / Medium / Low / Informational] |
 | Data Source | [Table/Index name] |
 | Status | [Draft / Testing / Active] |
+| Validation Status | [Not Tested / Fixture Tested / Replay Tested / Production Shadow Tested] |
 
 ### Detection Query
 [Full KQL or SPL query]
@@ -548,7 +584,11 @@ Produce SIEM rule deliverables in this structure:
 - [Specific tuning recommendations]
 
 ### Validation
-- [How to test the rule produces a true positive]
+- **True-positive fixtures:** [sample path or replay job, expected alert count, key matched entities]
+- **Benign/negative fixtures:** [sample path or replay job, expected zero-alert cases]
+- **Boundary tests:** [below/at/above threshold or window expectations]
+- **Schema variants tested:** [field aliases, parser/connector version, supported backend]
+- **Regression result:** [before/after expected alert counts for rule changes]
 ```
 
 ---
@@ -624,9 +664,9 @@ SIEM queries run on a schedule against large datasets. A poorly optimized query 
 
 Embedding specific usernames, IP addresses, or hostnames directly in detection queries makes rules non-portable and fragile. Use variables (KQL `let` statements, SPL macros), watchlists (Sentinel), or lookup tables (Splunk) for environment-specific values. This also simplifies maintenance when the environment changes.
 
-### Pitfall 4: Not Validating Rules Against True Positive Test Cases
+### Pitfall 4: Not Validating Rules Against Replayable True and Negative Test Cases
 
-Deploying a rule without confirming it fires on known-malicious activity is deploying a hypothesis, not a detection. Generate or simulate the target behavior in a test environment and verify the rule produces an alert. For brute force rules, generate the expected number of failed logins; for process creation rules, execute the target command.
+Deploying a rule without confirming it fires on known-malicious activity is deploying a hypothesis, not a detection. Generate or simulate the target behavior in a test environment and verify the rule produces an alert. Also test benign cases that should not alert, such as approved maintenance windows, service principals, scanner activity, and break-glass exercises. Record expected alert counts so future threshold, suppression, lookup, parser, or query-optimization changes can be regression tested.
 
 ### Pitfall 5: Failing to Suppress Duplicate Alerts
 

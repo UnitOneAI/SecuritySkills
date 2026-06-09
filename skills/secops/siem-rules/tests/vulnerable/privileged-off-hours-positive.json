@@ -1,0 +1,23 @@
+{
+  "description": "True-positive fixture for privileged account usage outside business hours.",
+  "platform": "Microsoft Sentinel KQL",
+  "rule_concept": "Privileged Account Usage Outside Business Hours",
+  "expected_alert_count": 1,
+  "events": [
+    {
+      "TimeGenerated": "2026-06-09T02:15:00Z",
+      "UserPrincipalName": "break-glass-admin@example.com",
+      "ResultType": 0,
+      "IPAddress": "203.0.113.10",
+      "AppDisplayName": "Azure Portal",
+      "LocationDetails": {
+        "city": "Example City",
+        "countryOrRegion": "EX"
+      }
+    }
+  ],
+  "expected_entities": {
+    "Account": "break-glass-admin@example.com",
+    "IP": "203.0.113.10"
+  }
+}
