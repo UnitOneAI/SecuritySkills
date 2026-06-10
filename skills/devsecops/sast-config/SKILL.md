@@ -3,16 +3,16 @@ name: sast-config
 description: >
   Reviews and tunes SAST tool configurations against OWASP ASVS 4.0.3 and
   CWE Top 25. Auto-invoked when reviewing Semgrep rules, CodeQL queries, SAST
-  CI integration, or false positive triage workflows. Produces a SAST maturity
-  assessment covering rule authoring, severity tuning, custom rule development,
-  and CI integration patterns.
+  CI integration, SARIF upload workflows, or false positive triage workflows.
+  Produces a SAST maturity assessment covering rule authoring, severity tuning,
+  custom rule development, scanner-failure handling, and CI integration patterns.
 tags: [devsecops, sast, semgrep, codeql]
 role: [security-engineer, appsec-engineer]
 phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # SAST Tool Configuration and Tuning
 
-A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, and CI integration. All findings map to ASVS controls and CWE identifiers.
+A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, scanner-failure handling, SARIF upload integrity, and CI integration. All findings map to ASVS controls and CWE identifiers.
 
 ---
 
@@ -435,13 +435,64 @@ jobs:
 
 ---
 
+#### 6.2 Scanner Failure and SARIF Integrity Gates
+
+A required SAST status check is only meaningful when it proves that the scanner actually ran, completed successfully, and uploaded results from the current commit. Workflows sometimes make SAST look green by allowing scanner failures, uploading stale or empty SARIF, or continuing after dependency/build setup failed.
+
+**Patterns that can create false assurance:**
+
+```yaml
+# BAD: scanner failure is swallowed, but later steps still upload SARIF
+- run: semgrep ci --sarif --output semgrep.sarif || true
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: semgrep.sarif
+
+# BAD: job is green even when the scanner step fails
+- name: Run SAST
+  continue-on-error: true
+  run: npm run sast
+
+# BAD: upload always runs without checking that analysis produced current results
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: results.sarif
+```
+
+**What to verify:**
+
+- Scanner steps do not use `continue-on-error: true`, `|| true`, `; true`, broad `if: always()`, or shell wrappers that hide non-zero exit codes unless a separate gate fails the job on scanner failure.
+- SARIF upload steps depend on successful analysis steps and do not upload stale artifacts from previous jobs, caches, or fallback files.
+- SARIF files are generated from the current commit/SHA and contain at least one valid run with tool metadata, rule metadata, and result counts or explicit zero-result evidence.
+- Dependency install, build/autobuild, language extraction, and CodeQL database creation failures fail the SAST job instead of producing a partial "no findings" report.
+- Baseline or diff-aware scans are paired with scheduled full scans, and PR checks clearly distinguish "no new findings" from "analysis did not complete."
+- Required branch protection points at the analysis job outcome, not only a SARIF upload, notification, or wrapper job that can pass independently.
+
+**Finding classification:** Scanner failures swallowed by `continue-on-error`, `|| true`, or equivalent wrappers are **High**. Uploading SARIF without proving it belongs to the current commit is **High**. Uploading empty or partial SARIF without an explicit successful-analysis marker is **Medium**. Required status checks that track only a wrapper/upload job instead of the scanner result are **High**.
+
+**Failure integrity record:**
+
+```
+SAST Failure Integrity:
+- Scanner command:              [command/action]
+- Failure handling:             [fail-fast / continue-on-error / shell wrapper]
+- SARIF source:                 [generated in job / artifact download / cache / external]
+- Current commit binding:       [SHA/run ID evidence]
+- Empty-result handling:        [valid zero findings / partial scan / unknown]
+- Required check target:        [scanner job / wrapper job / upload job]
+- Status:                       [Pass/Fail/Not Evaluable]
+```
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No SAST tooling deployed; CWE Top 5 weaknesses with zero rule coverage for languages in active use. |
-| **High** | SAST not a required CI check; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
-| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
+| **High** | SAST not a required CI check; scanner failures hidden by `continue-on-error`, `|| true`, or wrapper jobs; SARIF upload not bound to current analysis; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
+| **Medium** | CWE 11-25 coverage gap; empty/partial SARIF without explicit successful-analysis evidence; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
 | **Low** | Rule naming convention inconsistencies; missing metadata on custom rules; suboptimal scan performance; cosmetic configuration issues. |
 
 ---
@@ -474,6 +525,15 @@ jobs:
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+
+### SAST Failure Integrity
+
+| Check | Status | Evidence |
+|-------|--------|----------|
+| Scanner step fails closed | Yes/No | <workflow step and shell flags> |
+| SARIF generated for current commit | Yes/No | <commit SHA, run ID, artifact source> |
+| Empty results distinguish success from skipped analysis | Yes/No | <SARIF run metadata or scanner summary> |
+| Required check tracks scanner outcome | Yes/No | <branch protection or required status check> |
 
 ### Findings
 
@@ -536,6 +596,8 @@ jobs:
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
+6. **Treating SARIF upload as proof that SAST ran.** A workflow can upload stale, empty, or partial SARIF after the scanner failed if it uses `continue-on-error`, `|| true`, broad `if: always()`, or wrapper jobs. Required checks must fail on scanner failure and prove results came from the current commit.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -564,4 +626,5 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.1.0** -- Added scanner-failure and SARIF integrity gates covering hidden scanner failures, stale or empty SARIF uploads, current-commit binding, and required-check outcome evidence.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
