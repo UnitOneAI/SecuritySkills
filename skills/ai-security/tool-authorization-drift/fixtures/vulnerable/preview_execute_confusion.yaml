@@ -1,0 +1,20 @@
+tool_policy:
+  invoice.preview:
+    action: read
+    approval_required: false
+  invoice.send:
+    action: write
+    approval_required: true
+    allowed_roles: []
+
+workflow:
+  name: invoice_assistant
+  steps:
+    - tool: invoice.preview
+      output: preview_payload
+    - tool: invoice.send
+      input_from: preview_payload
+      skip_approval_if_preview_exists: true
+
+risk:
+  finding: preview output can be forwarded into an execute-capable tool without approval

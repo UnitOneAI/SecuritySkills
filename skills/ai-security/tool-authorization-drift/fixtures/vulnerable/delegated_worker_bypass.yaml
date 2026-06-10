@@ -1,0 +1,24 @@
+declared_policy:
+  refunds.preview:
+    action: read
+    approval_required: false
+  refunds.execute:
+    action: write
+    approval_required: true
+
+agent_runtime:
+  allowed_tools:
+    - refunds.preview
+  queue_payload:
+    job_type: refunds.execute
+    tenant_id: tenant-a
+    refund_id: refund-123
+    authorized: true
+    source: model_generated_payload
+
+worker:
+  trust_queue_authorized_flag: true
+  recheck_policy_before_execute: false
+
+risk:
+  finding: delegated worker executes a denied action based on payload-provided authorization

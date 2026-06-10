@@ -1,0 +1,35 @@
+declared_policy:
+  refunds.preview:
+    action: read
+    approval_required: false
+  refunds.execute:
+    action: write
+    approval_required: true
+    required_scope: refunds.execute
+
+agent_runtime:
+  allowed_tools:
+    - refunds.preview
+  queue_payload:
+    job_type: refunds.execute
+    tenant_id: tenant-a
+    refund_id: refund-123
+    approval_id: approval-789
+    source: server_side_workflow
+
+worker:
+  trust_queue_authorized_flag: false
+  recheck_policy_before_execute: true
+  approval_token_bound_to:
+    - actor_id
+    - tenant_id
+    - refund_id
+    - tool
+    - action
+    - policy_version
+  unknown_tool_default: deny
+
+audit:
+  log_requested_tool: refunds.execute
+  log_resolved_handler: refund_execute_handler
+  log_policy_version: v4

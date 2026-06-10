@@ -1,0 +1,30 @@
+tool_policy:
+  invoice.preview:
+    action: read
+    approval_required: false
+    side_effect: none
+  invoice.send:
+    action: write
+    approval_required: true
+    required_scope: invoice.send
+    side_effect: sends_invoice
+
+workflow:
+  name: invoice_assistant
+  steps:
+    - tool: invoice.preview
+      output: non_executable_summary
+    - tool: invoice.send
+      requires:
+        approval_token_bound_to:
+          - actor_id
+          - tenant_id
+          - invoice_id
+          - tool
+          - action
+          - policy_version
+      input_from: server_side_invoice_record
+
+controls:
+  preview_output_is_not_execute_payload: true
+  unknown_tool_default: deny

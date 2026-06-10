@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -319,6 +319,18 @@ skills:
     difficulty: advanced
     time_estimate: "60-120min"
     file: skills/ai-security/agent-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: tool-authorization-drift
+    name: "Tool Authorization Drift Review"
+    tags: [ai-security, agents, authorization, tool-use]
+    role: [security-engineer, appsec-engineer, architect]
+    phase: [design, build, review, operate]
+    activity: [review, assess, test]
+    frameworks: [OWASP-Agentic-AI, OWASP-LLM06-2025, CWE]
+    difficulty: advanced
+    time_estimate: "45-90min"
+    file: skills/ai-security/tool-authorization-drift/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Incident Response ----------------------------------------------------
