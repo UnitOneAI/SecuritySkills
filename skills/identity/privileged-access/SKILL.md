@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -167,6 +167,55 @@ PAM-TOOL-08: PAM connectors not configured for all target system types
 PAM-TOOL-09: PAM audit logs not tamper-protected (no forwarding to immutable store)
 PAM-TOOL-10: PAM tool not integrated with IdP for identity verification
 ```
+
+#### Direct Access Bypass Evidence Gate
+
+Do not accept PAM coverage claims based only on the PAM tool's onboarded-account count. A PAM deployment can look complete while administrators still reach the same systems through direct SSH, RDP, cloud console, database admin ports, Kubernetes API access, local breakpoints, or emergency network paths that never traverse the PAM broker. Validate that native platform logs do not show privileged access outside approved PAM/JIT channels.
+
+**Evidence sources to compare:**
+
+| Platform | PAM Evidence | Native Evidence | Bypass Indicator |
+|---|---|---|---|
+| Linux/Unix | Session broker logs, vaulted account checkout | `auth.log`, `secure`, sudo logs, SSH daemon logs | Privileged SSH/sudo session without matching PAM session ID |
+| Windows/AD | PAM session recording and checkout | Event IDs 4624, 4672, 4688, RDP gateway logs | Admin logon or privileged command with no PAM approval/session |
+| AWS | JIT role activation and broker records | CloudTrail `AssumeRole`, console sign-in, IAM access-key use | Admin role assumed outside approved IdP/PAM path |
+| Azure | PIM/PAM activation | Entra audit logs, Azure Activity Logs | Owner/Global Admin action without activation record |
+| GCP | PAM grant and approval logs | Cloud Audit Logs, IAM policy changes | Owner/Admin permission use without time-bound grant |
+| Kubernetes | PAM proxy or approved kubeconfig checkout | API server audit logs, `kubectl exec`, `pods/exec`, `clusterrolebindings` | Cluster-admin action from unmanaged kubeconfig |
+| Databases | Vaulted DBA credential checkout | DB audit logs, connection logs | DBA login from workstation or service path outside broker |
+
+**Detection methods using allowed tools:**
+
+```
+Grep: "sshd|sudo|4624|4672|AssumeRole|ConsoleLogin|ActivateRole|Owner|Global Administrator|cluster-admin|kubectl exec|pods/exec|DBA" in **/*.{log,json,yaml,yml,md,csv}
+Grep: "pam_session|session_id|checkout|approval|jit|privileged access|break glass|broker" in **/*.{log,json,yaml,yml,md,csv}
+Grep: "AllowUsers|Match User|sshd_config|rdp|bastion|security group|firewall|authorized_keys|kubeconfig" in **/*.{conf,yaml,yml,json,tf,md}
+```
+
+**Bypass reconciliation table:**
+
+| Account / Role | Target System | Native Privileged Event | Matching PAM/JIT Record | Network Path Restricted | Status |
+|---|---|---|---|---|---|
+| `alice-admin` | `prod-db-01` | RDP logon 4672 | PAM session `S-12345` | Direct RDP blocked except broker | Pass |
+| `breakglass-root` | `prod-linux-03` | SSH login from VPN subnet | No PAM session or approval | Direct SSH allowed | Fail |
+
+**What to verify:**
+
+- For a representative review window, every privileged native event has a matching PAM/JIT approval, checkout, session, or emergency-access record.
+- Direct network paths to privileged protocols are blocked except from PAM brokers, hardened bastions, or explicitly approved emergency paths.
+- Local admin accounts, SSH keys, kubeconfigs, database superuser credentials, and cloud access keys cannot bypass PAM onboarding.
+- Emergency exceptions are time-bound, ticketed, monitored, and reconciled after use.
+- SIEM correlation alerts when privileged native events lack a matching PAM/JIT session within the expected time window.
+
+**Finding classification:**
+
+| Condition | Severity |
+|---|---|
+| Privileged native access occurs without matching PAM/JIT evidence on production systems | Critical |
+| Direct SSH/RDP/database/cloud admin paths remain open to administrator workstations outside the PAM broker | High |
+| SIEM does not correlate PAM sessions with native privileged events | Medium |
+| PAM onboarding metrics exclude local admins, kubeconfigs, service identities, or cloud access keys | Medium |
+| Approved emergency bypass exists but lacks expiry, monitoring, and post-use reconciliation | Medium |
 
 ---
 
@@ -389,6 +438,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Credential Vaulting | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Session Management | [Not Present/Basic/Mature/Advanced] | [Target] |
 | JIT Access | [Not Present/Basic/Mature/Advanced] | [Target] |
+| Bypass Reconciliation | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
 
@@ -401,6 +451,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 ### Findings by Category
 - Privileged Account Inventory (Step 1): [count]
 - PAM Tool Assessment (Step 2): [count]
+- Direct Access Bypass (Step 2): [count]
 - JIT Access (Step 3): [count]
 - Break-Glass Procedures (Step 4): [count]
 - Session Recording (Step 5): [count]
@@ -502,4 +553,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-10 | Added direct access bypass evidence gate comparing PAM/JIT records with native platform logs, network path restrictions, and SIEM reconciliation. |
 | 1.0.0 | 2025-03-06 | Initial release |
