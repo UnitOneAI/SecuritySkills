@@ -1,0 +1,19 @@
+id: browser-print-csv-broad-api-response
+category: vulnerable
+description: CSV export serializes raw API fields that are hidden from the visible table.
+input:
+  visible_columns:
+    - customer_name
+    - subscription_status
+  api_response_fields:
+    - customer_name
+    - subscription_status
+    - full_card_pan
+    - internal_risk_score
+  export_serializer: "Object.keys(row).join(',')"
+expected:
+  status: fail
+  reason_codes:
+    - PRINT-EXPORT-02
+    - PRINT-EXPORT-04
+

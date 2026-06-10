@@ -1,0 +1,24 @@
+id: browser-print-temporary-export-retention
+category: benign
+description: Sensitive export requires approval, logs the field set, and expires the generated file.
+input:
+  export_type: xlsx
+  controls:
+    step_up_authentication: true
+    reason_required: true
+    approval_ticket: SEC-1234
+    storage: private_bucket
+    signed_url_ttl_minutes: 15
+    lifecycle_delete_hours: 24
+  audit_event:
+    includes:
+      - actor
+      - tenant
+      - filters
+      - field_set
+      - recipient
+      - timestamp
+expected:
+  status: pass
+  reason_codes: []
+

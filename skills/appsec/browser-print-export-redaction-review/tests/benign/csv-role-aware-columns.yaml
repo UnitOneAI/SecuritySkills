@@ -1,0 +1,20 @@
+id: browser-print-csv-role-aware-columns
+category: benign
+description: CSV export validates requested columns against the user's role and active filters.
+input:
+  requested_columns:
+    - customer_name
+    - subscription_status
+    - internal_notes
+  user_role: account_viewer
+  server_policy:
+    allowed_columns:
+      - customer_name
+      - subscription_status
+    denied_columns:
+      - internal_notes
+    filter_binding: server_enforced
+expected:
+  status: pass
+  reason_codes: []
+

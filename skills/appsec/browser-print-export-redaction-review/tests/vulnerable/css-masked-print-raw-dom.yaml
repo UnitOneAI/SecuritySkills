@@ -1,0 +1,15 @@
+id: browser-print-css-masked-print-raw-dom
+category: vulnerable
+description: CSS masks SSN on screen, but the full value remains in the DOM and is printed.
+input:
+  screen_behavior: "SSN appears as ***-**-1234"
+  implementation:
+    dom_attribute: "data-ssn contains full value"
+    print_css: "@media print { .masked::after { content: attr(data-ssn); } }"
+  export_path: browser_print
+expected:
+  status: fail
+  reason_codes:
+    - PRINT-EXPORT-01
+    - PRINT-EXPORT-03
+

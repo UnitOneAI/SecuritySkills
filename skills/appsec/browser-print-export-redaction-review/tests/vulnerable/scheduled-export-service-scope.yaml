@@ -1,0 +1,21 @@
+id: browser-print-scheduled-export-service-scope
+category: vulnerable
+description: Scheduled report runs under service scope and ignores the requesting user's tenant restrictions.
+input:
+  requested_by:
+    role: support_manager
+    tenant_scope: tenant-a
+  scheduled_job:
+    actor: report-service
+    query_scope: all_tenants
+    recipient: external_partner@example.test
+  audit_event:
+    fields_logged:
+      - actor
+      - export_format
+expected:
+  status: fail
+  reason_codes:
+    - PRINT-EXPORT-05
+    - PRINT-EXPORT-06
+

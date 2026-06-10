@@ -1,0 +1,25 @@
+id: browser-print-server-pdf-field-allowlist
+category: benign
+description: Server-side PDF renderer uses a role-aware field allowlist and shared redaction helper.
+input:
+  user_role: billing_support
+  screen_fields:
+    invoice_id: visible
+    customer_email: masked
+    full_card_pan: hidden
+  pdf_renderer:
+    allowlist:
+      - invoice_id
+      - masked_customer_email
+    redaction_helper: shared_redaction_policy_v3
+  audit_event:
+    includes:
+      - actor
+      - tenant
+      - field_set
+      - filters
+      - timestamp
+expected:
+  status: pass
+  reason_codes: []
+
