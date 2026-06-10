@@ -12,7 +12,7 @@ phase: [respond]
 frameworks: [NIST-SP-800-61r2, MITRE-ATT&CK]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -235,6 +235,27 @@ Define conditions under which containment actions should be rolled back or modif
 | Containment action was applied to wrong scope (false positive) | Remove containment controls from unaffected systems | Incident Commander |
 | Eradication complete and validated | Phase out containment controls in stages with monitoring | Incident Commander + Security Team |
 
+### Step 6b: Temporary Containment Control Ledger
+
+Emergency containment often creates short-lived firewall blocks, DNS overrides, EDR isolation policies, IdP session revocations, WAF rules, CDN cache purges, SaaS sharing restrictions, or allowlist exceptions. Track these controls in a ledger so emergency changes do not become unowned permanent drift.
+
+For each temporary containment control, record:
+
+| Field | Required evidence |
+|---|---|
+| Control ID | Ticket, change record, SOAR action ID, or console audit event |
+| Control type | Firewall, DNS, EDR, IdP, SaaS, WAF/CDN, cloud policy, or other |
+| Scope | Exact accounts, hosts, groups, tenants, zones, paths, or indicators affected |
+| Owner | Named responder or team accountable for validation and removal |
+| Approval | Incident Commander, business owner, legal, or emergency-change authority |
+| Start time | UTC timestamp when the control became effective |
+| Expiry / review time | UTC timestamp or event that requires renewal, downgrade, or removal |
+| Effectiveness evidence | Log, query, health check, or failed attacker action proving the control works |
+| Business-impact evidence | Service health, user impact, exception requests, or accepted outage record |
+| Removal plan | Exact rollback command/change path and expected validation after removal |
+
+**Finding classification:** Missing owner or expiry for a temporary containment control is **Medium**. A temporary allowlist, bypass, or broad deny rule that remains active after the incident without renewed approval is **High**. A containment exception that restores attacker access or disables required monitoring is **Critical**.
+
 ---
 
 ## 4. Findings Classification
@@ -283,6 +304,11 @@ threat severity and business criticality, and expected impact on operations.]
 | Action | Target | Duration | Status | Owner |
 |---|---|---|---|---|
 | [Action] | [Scope] | [Duration] | [Planned/In Progress/Complete] | [Name] |
+
+### Temporary Containment Control Ledger
+| Control ID | Type | Scope | Owner | Approval | Start Time | Expiry / Review Time | Effectiveness Evidence | Removal Plan |
+|---|---|---|---|---|---|---|---|---|
+| [Ticket/Change/SOAR ID] | [Firewall/DNS/EDR/IdP/SaaS/WAF/CDN/Cloud] | [Exact scope] | [Name/team] | [Approver] | [UTC] | [UTC/event] | [Evidence] | [Rollback path] |
 
 ### Business Impact Assessment
 | Service/System | Impact of Containment | Mitigation | Acceptable |
