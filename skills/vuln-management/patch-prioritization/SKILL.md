@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -140,7 +140,33 @@ EPSS Trend Analysis:
 - Trend Impact:        [Escalate tier | Monitor | Maintain | Supports deferral]
 ```
 
-### Step 4: Compensating Controls Assessment
+### Step 4: Exploit Chain and Blast Radius Grouping
+
+Before scheduling patches individually, identify vulnerabilities that increase risk because they can be combined into an exploit chain or affect a shared blast-radius boundary.
+
+**Chain evidence to collect:**
+
+- **Exploit chain role:** initial access, privilege escalation, credential access, lateral movement, persistence, data access, or impact.
+- **Shared asset group:** internet-facing tier, identity plane, CI/CD system, Kubernetes cluster, database fleet, endpoint cohort, or SaaS integration.
+- **Chaining prerequisites:** whether one vulnerability enables access needed to exploit another vulnerability.
+- **Common control boundary:** shared firewall, WAF, IAM role, service account, image base layer, golden AMI, network segment, or patch owner.
+- **Blast radius:** number of assets/users/data stores affected if the chain succeeds.
+- **Patch grouping:** whether remediating one shared component closes multiple findings, or whether one missing patch leaves the chain viable.
+
+**Tier adjustment rule:** Escalate one tier when multiple lower-severity findings form a credible path to critical impact on a support or essential system. Do not de-escalate a high-risk chain because each CVE looks moderate in isolation.
+
+```
+Exploit Chain Group:
+- Chain ID:            [CHAIN-YYYY-NNN]
+- Findings:           [CVE/list]
+- Chain Path:          [initial access -> privilege escalation -> data access]
+- Shared Boundary:     [asset group/control boundary]
+- Blast Radius:        [asset/user/data scope]
+- Tier Adjustment:     [None / Escalate to P1/P2]
+- Patch Grouping:      [single change / coordinated changes / phased]
+```
+
+### Step 5: Compensating Controls Assessment
 
 Evaluate whether compensating controls sufficiently mitigate the risk to justify extended remediation timelines or risk acceptance.
 
@@ -176,7 +202,7 @@ Compensating Control Assessment:
 - Residual Risk:       [Description of remaining risk]
 ```
 
-### Step 5: Patch Window Scheduling
+### Step 6: Patch Window Scheduling
 
 Map prioritized patches to available maintenance windows, respecting change management constraints.
 
@@ -210,7 +236,7 @@ Patch Schedule Entry:
 - Days Remaining:      [N days]
 ```
 
-### Step 6: Risk Acceptance and Exception Management
+### Step 7: Risk Acceptance and Exception Management
 
 For vulnerabilities that cannot be remediated within the SLA, document a formal risk acceptance or exception.
 
@@ -313,6 +339,12 @@ findings requiring immediate action.]
 |---|---|---|---|---|---|---|
 | P0 | [CVE-ID] | [system] | [version] | [date/time] | [date] | [Scheduled/Pending/Complete] |
 
+### Exploit Chain Patch Groups
+
+| Chain ID | CVEs/Findings | Shared Boundary | Blast Radius | Tier Adjustment | Patch Grouping |
+|---|---|---|---|---|---|
+| [CHAIN-ID] | [CVE list] | [asset/control boundary] | [scope] | [tier] | [plan] |
+
 ### Compensating Controls in Effect
 [List all active compensating controls with effectiveness ratings]
 
@@ -374,6 +406,8 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
 
+6. **Prioritizing CVEs independently when the risk is in the chain.** Moderate findings can become urgent when combined across the same identity plane, network tier, base image, or CI/CD path. Group exploitable chains and patch the shared boundary instead of treating each finding as isolated backlog noise.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -400,3 +434,7 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 - ISO 27005:2022 (Risk Treatment): https://www.iso.org/standard/80585.html
 - PCI DSS 4.0 Requirement 6.3.3: https://www.pcisecuritystandards.org/
 - ITIL 4 Change Enablement: https://www.axelos.com/certifications/itil-service-management
+
+## Changelog
+
+- **1.0.1** -- Add exploit-chain and blast-radius grouping for tier adjustments, shared boundaries, patch grouping, and schedule reporting.
