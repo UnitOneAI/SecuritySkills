@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +55,7 @@ Before beginning triage, gather or confirm:
 - [ ] **ATT&CK mapping:** If the alert rule maps to a MITRE ATT&CK technique, note the technique ID.
 - [ ] **Asset context:** What is the affected asset? (Server, workstation, cloud instance, network device.) What is its business criticality? (Revenue-generating, customer-facing, development, test.)
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
+- [ ] **Identity session context:** For sign-in, OAuth, service-principal, or SaaS alerts, collect session ID, token type, MFA result and method strength, device compliance, Conditional Access result, ASN/geo, and follow-on cloud activity.
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
 
@@ -75,8 +76,10 @@ Gather all data associated with the alert. Do not make a disposition decision un
 | **Alert payload** | Full alert details, raw events, matched rule logic | SIEM (Sentinel, Splunk, QRadar) |
 | **Asset inventory** | Hostname, IP, OS, owner, business unit, criticality tier | CMDB, asset management |
 | **User directory** | Username, role, department, manager, account status | Active Directory, Azure AD, HR system |
+| **Identity provider telemetry** | Sign-in correlation IDs, session IDs, token type, refresh-token use, MFA method/result, device ID, compliance state, Conditional Access result, OAuth app grants, service-principal credential changes | Entra ID, Okta, Duo, Google Workspace, IdP audit logs |
 | **EDR telemetry** | Process tree, file activity, network connections from the endpoint | CrowdStrike, Defender for Endpoint, SentinelOne |
 | **Network telemetry** | NetFlow, DNS queries, proxy logs for the source/destination | Firewall, proxy, DNS logs |
+| **SaaS and cloud activity** | Mailbox rules, file downloads, app-consent attempts, role changes, API calls, workload-identity deployment provenance | M365, Google Workspace, AWS/GCP/Azure audit logs, CI/CD logs |
 | **Threat intelligence** | IOC lookups for IPs, domains, hashes, URLs | VirusTotal, OTX, MISP, TI platform |
 | **Previous alerts** | Historical alerts for same user, host, or IOC | SIEM, case management |
 
@@ -93,6 +96,22 @@ Connect the alert data with surrounding context to build a picture of what happe
 3. **Behavioral correlation:** Does this activity match known ATT&CK technique patterns? Does it match the user's or system's normal behavior baseline?
 4. **Threat intel correlation:** Do any indicators match known threat actor infrastructure, malware campaigns, or published IOCs?
 5. **Kill chain correlation:** Where does this activity fall in the attack lifecycle? Is there evidence of preceding (reconnaissance, initial access) or subsequent (persistence, lateral movement, exfiltration) stages?
+6. **Identity-session correlation:** For identity alerts, did the session continue from a trusted device and expected network, or did a new session/token appear from an unmanaged device, unfamiliar ASN, impossible geo, or suspicious user agent?
+7. **Post-authentication correlation:** After the sign-in or token event, did the account create mailbox rules, grant OAuth consent, download unusual files, change roles, add credentials, or call sensitive APIs?
+
+**Identity session evidence gate:**
+
+Use this gate for alerts from identity providers, SaaS audit logs, OAuth consent events, service principals, workload identities, or sign-in anomaly rules. Do not close an alert as benign only because "MFA passed" or "Conditional Access succeeded"; adversary-in-the-middle phishing and token replay can occur after the user completes MFA.
+
+| Evidence | Benign indicators | Suspicious indicators |
+|----------|------------------|-----------------------|
+| MFA and authentication strength | Phishing-resistant MFA or known managed flow; expected prompt timing | Push fatigue, SMS/voice fallback, AiTM suspicion, MFA satisfied by previously issued token |
+| Session and token lineage | Same session/correlation ID from expected device and network | New session ID, refresh token use from new ASN, session cookie replay, token use after password reset |
+| Device trust | Managed, compliant, known device ID | Unmanaged or unknown device, missing device ID for a normally managed user, jailbroken/rooted device signal |
+| Network and geography | Corporate VPN/SASE egress, approved travel, expected VDI/mobile carrier NAT | Hosting ASN, TOR/proxy, impossible travel without corporate egress explanation |
+| OAuth and app consent | Verified publisher, least-privilege scopes, known business app | Unverified publisher, `offline_access`, broad mail/file scopes, new app grant after suspicious sign-in |
+| Workload identity | Expected federated subject, deployment run, and owner | New credential, new federated subject/audience, role assignment change, source IP outside CI/CD provider |
+| Follow-on activity | No sensitive actions, activity matches normal baseline | Mailbox rule creation, mass downloads, inbox forwarding, role changes, API enumeration, data export |
 
 **ATT&CK-based correlation framework:**
 
@@ -133,6 +152,7 @@ Assign a priority level based on the combination of asset criticality, threat se
 |--------|-------------------|-------------------|
 | Asset criticality | Crown jewel, revenue-generating, internet-facing | Development, test, non-production |
 | User privilege level | Domain admin, service account, C-suite | Standard user, contractor |
+| Identity-session risk | Token replay indicators, malicious OAuth grant, unmanaged device accessing sensitive data, workload credential change | Same compliant device, strong MFA, approved travel, known corporate egress, no suspicious follow-on activity |
 | Threat intel match | IOCs match active campaign | No TI matches, known benign scanner |
 | Kill chain stage | Late-stage (exfiltration, impact) | Early-stage (reconnaissance) |
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
@@ -149,6 +169,8 @@ Determine whether the alert requires escalation and to whom.
 | Disposition is TP with P1 or P2 priority | IR team lead + CISO/security management |
 | Confirmed data exfiltration or ransomware | IR team + legal + executive management |
 | Compromised privileged account (domain admin, cloud admin) | IR team + identity team + management |
+| Token replay, malicious OAuth grant, or suspicious refresh-token use on privileged or regulated-data account | IR team + identity team + SaaS/cloud platform owner |
+| Service-principal or workload-identity credential, federated subject, or role assignment changed unexpectedly | IR team + cloud/platform owner + CI/CD owner |
 | Alert involves regulated data (PII, PHI, PCI) | IR team + compliance/privacy officer |
 | Analyst is uncertain about disposition after 20 minutes of investigation | Tier 2 analyst or team lead for guidance |
 | Alert matches a known active threat campaign | Threat intelligence team + IR team |
@@ -194,7 +216,7 @@ Produce the triage decision as a structured report:
 ```markdown
 ## Alert Triage Report
 **Date:** [YYYY-MM-DD HH:MM UTC]
-**Skill:** alert-triage v1.0.0
+**Skill:** alert-triage v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 **Analyst:** [Name or AI-assisted]
 
@@ -213,6 +235,7 @@ Produce the triage decision as a structured report:
 |--------|-------|---------|
 | Host | [hostname / IP] | [Asset criticality: Critical/High/Medium/Low] |
 | User | [username] | [Role, privilege level] |
+| Identity / Session | [session ID, token type, MFA method, device ID] | [Trusted / suspicious / unavailable] |
 | Process | [process name] | [Expected / Unexpected for this host/user] |
 
 ### Triage Decision
@@ -231,6 +254,8 @@ Produce the triage decision as a structured report:
 ### Correlation Results
 - **Temporal:** [Related events within +/- 30 min window]
 - **Lateral:** [Related alerts on other hosts/users]
+- **Identity Session:** [MFA method/result, session/token continuity, device compliance, Conditional Access, ASN/geo, OAuth grants, workload identity changes]
+- **Post-Auth Activity:** [Mailbox rules, file downloads, app consent, role changes, API calls, or none observed]
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
 
@@ -319,6 +344,10 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Treating "MFA Passed" as Proof of Benign Activity
+
+Identity attacks can reuse a valid session cookie, refresh token, or OAuth grant after the user completes MFA. For sign-in and SaaS alerts, validate session lineage, token type, authentication method strength, device trust, Conditional Access result, and follow-on activity before closing the alert as benign. Conversely, impossible travel from a known corporate VPN, SASE, VDI, or approved travel path can be a benign true positive when the same trusted session and device context are present.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -344,3 +373,5 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+10. **MITRE ATT&CK T1550.004 -- Use Alternate Authentication Material: Web Session Cookie** -- https://attack.mitre.org/techniques/T1550/004/
+11. **MITRE ATT&CK T1539 -- Steal Web Session Cookie** -- https://attack.mitre.org/techniques/T1539/
