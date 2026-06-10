@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -25,7 +25,7 @@ argument-hint: "[target-file-or-directory]"
 
 A structured, repeatable process for evaluating secrets management practices against the OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 (Recommendation for Key Management). This skill covers secret detection patterns, rotation automation, vault and cloud secrets manager integration, agent-specific credential handling, .env file exposure, and git history secret leaks. All findings reference framework controls with severity ratings and actionable remediation.
 
-**Important:** This skill analyzes detection patterns and configuration practices. It never extracts, logs, or displays actual secret values. All regex patterns shown are for detection tooling configuration, not for secret extraction.
+**Important:** This skill analyzes detection patterns and configuration practices. It never extracts, logs, or displays actual secret values. Scanner output must be redacted before it is copied into notes, reports, issue comments, or tickets. All regex patterns shown are for detection tooling configuration, not for secret extraction.
 
 ---
 
@@ -114,14 +114,17 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 **API Keys and Tokens:**
 
 ```regex
-# AWS Access Key ID (starts with AKIA)
-(?:AKIA)[0-9A-Z]{16}
+# AWS Access Key ID (long-term AKIA or temporary STS ASIA)
+(?:AKIA|ASIA)[0-9A-Z]{16}
 
 # AWS Secret Access Key (40 chars, base64-like)
 (?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
 
-# GitHub Personal Access Token
-(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
+# AWS STS Session Token (sensitive when paired with ASIA access key)
+(?:aws_session_token|AWS_SESSION_TOKEN)\s*[=:]\s*[A-Za-z0-9/+=]{100,}
+
+# GitHub tokens (classic PAT, OAuth, user/app/server tokens, fine-grained PAT)
+(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,}
 
 # GitLab Personal Access Token
 glpat-[A-Za-z0-9\-_]{20,}
@@ -159,21 +162,31 @@ xox[bpors]-[0-9]{10,13}-[A-Za-z0-9-]{20,}
 eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*
 ```
 
-#### 2.2 False Positive Filtering — Distinguishing Real Secrets from Noise
+#### 2.2 False Positive Filtering -- Distinguishing Real Secrets from Noise
 
 Before flagging a detected string as a hardcoded secret, apply these verification checks:
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
-2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy -- they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
+3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*`/`ASIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*`/`ghs_*`/`ghr_*`/`github_pat_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be triaged.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
    - Missing rotation automation (note in recommendations, not as a finding)
-   - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
-5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
+   - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) -- these belong to other skills
+5. **Account for identifier-only matches.** Access key IDs (`AKIA*` or `ASIA*`) identify credentials but do not authorize requests by themselves. Treat an exposed access key ID as investigation evidence; severity should increase only when the paired secret access key/session token is present, provider validation confirms the key is active, or logs show use.
+6. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
 
-#### 2.3 Detection Tool Configuration Review
+#### 2.3 Scanner Output Sanitization
+
+Before copying scanner output into analysis notes, reports, pull request comments, or issue trackers, sanitize it:
+
+- Remove raw matched values from fields such as `Secret`, `Raw`, `Match`, `Token`, `Value`, `Line`, or full command output.
+- Keep only non-sensitive evidence: rule ID, secret type, file path, start line, detector name, and verification status.
+- If correlation is required, use a non-reversible fingerprint generated locally from the secret value; do not include prefixes, suffixes, or partial secret fragments in shared output.
+- Prefer scanner flags that redact matches by default. If a tool cannot redact, summarize the finding manually instead of pasting its output.
+
+#### 2.4 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
 
@@ -192,7 +205,7 @@ Verify that at least one secret detection tool is configured and integrated:
 - Custom rules cover organization-specific secret formats.
 - Allowlist entries are documented with justification (false positive suppression must not create blind spots).
 
-**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+**Finding classification:** Missing secret detection is context-dependent. For repositories that handle production credentials, deploy infrastructure, contain secret-adjacent files, or include CI/CD secrets, no detection tooling is **High** and may become **Critical** when actual exposed or unrotated secrets are present. For documentation-only or demo repositories with no credentials, deployments, or secret-adjacent files, record missing detection as a maturity recommendation rather than a numbered Critical finding. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
 
 ---
 
@@ -356,9 +369,9 @@ spec:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
-| **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
+| **Critical** | Committed secrets in current codebase or git history that are unrotated or active; .env with production credentials committed; raw secret values copied into reports, logs, comments, or tickets. |
+| **High** | No secret detection tooling in a repository that handles production credentials, deployments, secret-adjacent files, or CI/CD secrets; no centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
+| **Medium** | Detection in CI only (no pre-commit); missing detection in low-risk docs/demo repositories; manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
 | **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
 
 ---
@@ -380,6 +393,14 @@ spec:
 |------|----------|-----------|-------------|--------------|-------------|
 | Gitleaks | Yes/No | Yes/No | Yes/No | Yes/No | Yes/No |
 | detect-secrets | Yes/No | Yes/No | Yes/No | N/A | Yes/No |
+
+### Detection Coverage Context
+
+| Context Question | Evidence | Risk Impact |
+|------------------|----------|-------------|
+| Does the repository handle production credentials, deployments, or secret-adjacent files? | <files/workflows/vault configs> | <High/Critical only when context supports it> |
+| Is the repository documentation-only or demo-only with no credentials? | <files reviewed> | <recommendation, not numbered Critical finding> |
+| Was scanner output sanitized before reporting? | <redaction method> | <required for all reports> |
 
 ### Secrets Inventory (by type, NOT values)
 
@@ -464,6 +485,8 @@ This skill processes configuration files and code that may contain secret values
 - Gitleaks: https://github.com/gitleaks/gitleaks
 - TruffleHog: https://github.com/trufflesecurity/trufflehog
 - detect-secrets: https://github.com/Yelp/detect-secrets
+- AWS IAM Access Keys: https://docs.aws.amazon.com/IAM/latest/UserGuide/securing_access-keys.html
+- GitHub token formats and secret scanning: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github
 - HashiCorp Vault Documentation: https://developer.hashicorp.com/vault/docs
 - External Secrets Operator: https://external-secrets.io/
 
@@ -471,5 +494,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Add AWS temporary credential and modern GitHub token coverage, scanner output sanitization, and context-aware severity for missing secret detection tooling.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
