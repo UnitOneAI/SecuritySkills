@@ -438,6 +438,12 @@ Produce the final report using the following structure.
 
 ---
 
+## Test Evidence Fixtures
+
+Representative benign and vulnerable cases live under `tests/benign/` and `tests/vulnerable/`. Use them to validate that IPv6 findings consider reachability, default-deny parity, privileged `::/0` ingress, unrestricted IPv6 egress, and temporary-rule owner/ticket/expiry evidence.
+
+---
+
 ## Prompt Injection Safety Notice
 
 This skill processes firewall configurations that may contain user-supplied comments, rule descriptions, or object names. When reading configuration files:
