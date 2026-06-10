@@ -6,14 +6,15 @@ description: >
   -- Use DNS Filtering Services). Auto-invoked when reviewing DNS configurations,
   DNSSEC deployment, or investigating DNS-based exfiltration and tunneling
   indicators. Produces a DNS security assessment covering DNSSEC validation,
-  protective DNS, and exfiltration detection patterns.
+  authoritative transfer controls, protective DNS, and exfiltration detection
+  patterns.
 tags: [network, dns, dnssec, exfiltration]
 role: [security-engineer]
 phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +24,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DNS Security Review
 
-A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, authoritative zone transfer and dynamic update controls, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
 
 ---
 
@@ -33,6 +34,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 - DNS infrastructure security review as part of network security assessment.
 - DNSSEC deployment readiness evaluation or post-deployment validation.
+- Authoritative DNS review for zone transfer, NOTIFY, and dynamic update exposure.
 - Investigation of suspected DNS-based data exfiltration or command-and-control.
 - Compliance audits requiring NIST SP 800-81 alignment.
 - Protective DNS service evaluation or deployment planning.
@@ -156,11 +158,73 @@ dnssec
 
 ---
 
-### Step 3: Encrypted DNS Transport Review
+### Step 3: Authoritative Transaction Controls (NIST SP 800-81 Rev 2, Sections 3 and 6)
+
+NIST SP 800-81 Rev 2 Sections 3 and 6 require securing DNS transactions and restricting zone transfers. Review authoritative servers for unauthorized AXFR/IXFR disclosure, unsafe dynamic updates, and inconsistent secondary-server inventory.
+
+#### 3.1 Zone Transfer Authorization
+
+For each authoritative zone, verify:
+
+- **AXFR/IXFR restricted to approved secondaries:** `allow-transfer` or equivalent ACLs must name only approved secondary name servers or transfer groups.
+- **Transfer authentication:** TSIG, GSS-TSIG, or provider-equivalent authentication is required for zone transfers when supported by the platform.
+- **Approved secondary inventory:** Every allowed transfer target appears in an approved secondary inventory, and every inventory entry is represented in configuration.
+- **NOTIFY inventory alignment:** `also-notify`, provider notification targets, and hidden-primary settings match the same approved secondary list.
+- **No public transfer exposure:** Internet-origin AXFR/IXFR attempts from unapproved hosts are denied and logged.
+
+**Patterns to check:**
+
+```
+# BIND transfer controls
+allow-transfer { key "xfr-key"; 192.0.2.53; };
+server 192.0.2.53 { keys { "xfr-key"; }; };
+also-notify { 192.0.2.53; };
+
+# Risk indicators
+allow-transfer { any; };     # BAD
+allow-transfer { none; };    # GOOD when no secondaries are required
+```
+
+#### 3.2 Dynamic Update Authorization
+
+For zones that accept dynamic DNS updates, verify:
+
+- **Scoped update policy:** Use `update-policy`, GSS-TSIG, or provider-scoped IAM policy instead of broad `allow-update`.
+- **Least privilege by name/type:** Update grants are limited to expected record names, zones, and record types.
+- **No unauthenticated updates:** `allow-update { any; };` or broad subnet-based update grants are findings unless a compensating authenticated control is documented.
+- **Change accountability:** Dynamic update logs identify the authenticated principal, source, zone, record name, record type, and result.
+
+**Patterns to check:**
+
+```
+# BIND dynamic update controls
+update-policy {
+    grant dhcp-updater zonesub ANY A AAAA TXT;
+};
+
+# Risk indicators
+allow-update { any; };       # BAD
+allow-update { 10.0.0.0/8; }; # Broad network trust; usually insufficient
+```
+
+#### 3.3 Split-Horizon and Logging Coverage
+
+For split-horizon or internal/external views, verify:
+
+- **Internal zone containment:** Internal-only zones, private records, and hidden-primary hostnames are not exposed through public views or public secondaries.
+- **View-specific transfers:** Transfer ACLs are scoped per view so internal zones cannot transfer to external secondaries.
+- **Transaction monitoring:** Logs or SIEM events cover successful transfers, denied transfer attempts, dynamic updates, failed TSIG/GSS-TSIG authentication, and unexpected NOTIFY sources.
+- **Alerting thresholds:** Repeated failed TSIG validation, AXFR attempts from new sources, or dynamic update spikes generate alerts.
+
+**Finding classification:** Public or unauthenticated AXFR/IXFR is **Critical** when it exposes sensitive zone contents. Broad `allow-transfer { any; }`, missing TSIG for supported transfer paths, dynamic updates allowed from broad networks, or NOTIFY/secondary inventory drift are **High**. Missing transfer/update/failed-TSIG logging is **Medium**.
+
+---
+
+### Step 4: Encrypted DNS Transport Review
 
 Evaluate whether DNS queries are protected in transit.
 
-#### 3.1 DNS over HTTPS (DoH) and DNS over TLS (DoT)
+#### 4.1 DNS over HTTPS (DoH) and DNS over TLS (DoT)
 
 | Transport | Port | Standard | Use Case |
 |-----------|------|----------|----------|
@@ -194,11 +258,11 @@ forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
 
 ---
 
-### Step 4: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
+### Step 5: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
 
 CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (Response Policy Zones, defined by ISC) is the standard mechanism for DNS-based filtering on recursive resolvers.
 
-#### 4.1 RPZ Configuration
+#### 5.1 RPZ Configuration
 
 **Verify RPZ is deployed and configured:**
 
@@ -223,7 +287,7 @@ rpz:
 - Update frequency is at least daily.
 - Logging of RPZ-blocked queries is enabled for incident detection.
 
-#### 4.2 Protective DNS Service Evaluation
+#### 5.2 Protective DNS Service Evaluation
 
 If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gateway, Quad9, CISA Protective DNS), verify:
 
@@ -237,11 +301,11 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 ---
 
-### Step 5: DNS Exfiltration and Tunneling Detection Patterns
+### Step 6: DNS Exfiltration and Tunneling Detection Patterns
 
 DNS tunneling encodes data in DNS query names or TXT record responses to create a covert communication channel. Detection requires pattern analysis, not just domain reputation.
 
-#### 5.1 Exfiltration Indicators
+#### 6.1 Exfiltration Indicators
 
 | Indicator | Normal | Suspicious | Detection Method |
 |-----------|--------|-----------|-----------------|
@@ -252,7 +316,7 @@ DNS tunneling encodes data in DNS query names or TXT record responses to create 
 | **Query volume per domain** | < 100/hr to a single domain | > 1000/hr to single obscure domain | Volumetric per-domain threshold |
 | **Response size** | < 512 bytes | TXT responses > 512 bytes, multiple TXT records | Monitor response payload sizes |
 
-#### 5.2 Tunneling Tool Signatures
+#### 6.2 Tunneling Tool Signatures
 
 Common DNS tunneling tools produce distinctive query patterns:
 
@@ -270,7 +334,7 @@ abcdef0123456789.dnscat.example.com TXT
 0001.<encoded>.d.example.com KEY
 ```
 
-#### 5.3 Detection Configuration
+#### 6.3 Detection Configuration
 
 **Where to implement detection:**
 
@@ -286,7 +350,7 @@ abcdef0123456789.dnscat.example.com TXT
 
 ---
 
-### Step 6: Domain Categorization and Newly Registered Domain (NRD) Blocking
+### Step 7: Domain Categorization and Newly Registered Domain (NRD) Blocking
 
 - **NRD blocking:** Domains registered within the past 30 days are disproportionately associated with phishing and malware. CIS Control 9.2 supports blocking or flagging NRDs.
 - **DGA detection:** Domain Generation Algorithms produce random-appearing domain names. Detection relies on entropy analysis and machine learning classifiers integrated into protective DNS services.
@@ -298,9 +362,9 @@ abcdef0123456789.dnscat.example.com TXT
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
-| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures; public or unauthenticated AXFR/IXFR exposing sensitive zone contents. |
+| **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms; broad zone transfer ACLs; dynamic updates allowed without scoped authentication; NOTIFY or approved-secondary inventory drift. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled; missing transfer, update, or failed-TSIG monitoring. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -327,6 +391,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### Authoritative Transaction Controls
+
+| Zone | Transfer ACL | Transfer Auth | Dynamic Update Policy | NOTIFY Alignment | Split-Horizon Leak Check | Logging |
+|------|--------------|---------------|-----------------------|------------------|--------------------------|---------|
+| example.com | Approved secondaries only / Broad / None | TSIG/GSS-TSIG/Provider IAM/None | Scoped / Broad / Disabled | Match/Drift | Pass/Fail | Enabled/Partial/Disabled |
 
 ### Findings
 
@@ -384,6 +454,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Treating secondary name server lists as documentation only.** Zone transfer ACLs, TSIG keys, NOTIFY targets, cloud DNS secondary settings, and the approved inventory must match. Drift between these lists can create unauthorized transfer paths or leave legitimate secondaries stale.
+
+6. **Using broad `allow-update` rules for convenience.** Dynamic updates modify authoritative data and should be scoped by authenticated identity, record name, and record type. Network-source ACLs alone are usually not enough accountability.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -403,6 +477,10 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - NIST SP 800-81 Rev 2 (PDF): https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-81-2.pdf
 - CIS Controls v8: https://www.cisecurity.org/controls/v8
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
+- RFC 1995 -- Incremental Zone Transfer in DNS: https://datatracker.ietf.org/doc/html/rfc1995
+- RFC 1996 -- A Mechanism for Prompt Notification of Zone Changes: https://datatracker.ietf.org/doc/html/rfc1996
+- RFC 2136 -- Dynamic Updates in the Domain Name System: https://datatracker.ietf.org/doc/html/rfc2136
+- RFC 2845 -- Secret Key Transaction Authentication for DNS (TSIG): https://datatracker.ietf.org/doc/html/rfc2845
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
@@ -413,4 +491,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Add authoritative zone transfer, dynamic update, NOTIFY inventory, split-horizon leak, and DNS transaction logging review gates.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
