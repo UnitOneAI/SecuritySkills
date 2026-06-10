@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -23,7 +23,7 @@ argument-hint: "[target-file-or-directory]"
 
 # DNS Security Review
 
-A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
+A structured, repeatable process for evaluating DNS security posture against NIST SP 800-81 Rev 2 (Secure Domain Name System Deployment Guide) and CIS Controls v8 Control 9.2 (Use DNS Filtering Services). This skill covers DNSSEC deployment, encrypted DNS transport, EDNS Client Subnet privacy, split-horizon leakage, Response Policy Zones, DNS exfiltration detection, and protective DNS services. All findings are mapped to framework controls with severity ratings and actionable remediation.
 
 ---
 
@@ -194,6 +194,75 @@ forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
 
 ---
 
+#### 3.2 Approved Enterprise Resolver vs. Unmanaged Public Resolver Bypass
+
+Do not treat every public upstream DoT/DoH forwarder as an unmanaged bypass. First determine whether the organization has an approved recursive resolver acting as the enforcement point before forwarding upstream.
+
+**Evidence required to classify upstream forwarding as approved enterprise resolver behavior:**
+
+- **Enforced client path:** DHCP, MDM, VPN, firewall, egress ACL, or endpoint policy routes clients to the enterprise resolver and blocks direct resolver bypass from user networks.
+- **Internal-zone controls:** Private zones such as `corp.example`, `cluster.local`, RFC 1918 reverse zones, and cloud-private DNS zones are answered locally or explicitly blocked from external forwarding.
+- **Private address handling:** Resolver configuration prevents RFC 1918, link-local, ULA, and other internal-only responses from leaking or being accepted from public resolvers.
+- **Policy and logging:** Protective DNS categories, RPZ decisions, query logs, and SIEM forwarding remain in the enterprise resolver path before any upstream DoT/DoH forwarding occurs.
+- **Approved upstream list:** Upstream recursive resolvers are documented, pinned where supported with TLS server names or certificates, and reviewed by change control.
+
+**Patterns that support an approved resolver classification:**
+
+```
+# Unbound enterprise resolver
+server:
+  qname-minimisation: yes
+  private-domain: "corp.example"
+  private-domain: "cluster.local"
+  private-address: 10.0.0.0/8
+  private-address: 172.16.0.0/12
+  private-address: 192.168.0.0/16
+
+forward-zone:
+  name: "."
+  forward-tls-upstream: yes
+  forward-addr: 1.1.1.1@853#cloudflare-dns.com
+```
+
+**Finding classification:** Unmanaged endpoints or workloads querying public resolvers directly are **High** when protective DNS is required. Approved enterprise resolvers that enforce internal-zone handling, filtering, and logging before upstream DoT/DoH forwarding are **Informational** unless another control gap is present.
+
+#### 3.3 EDNS Client Subnet and Split-Horizon Leakage Checks
+
+EDNS Client Subnet (ECS, RFC 7871) can disclose client network prefixes to upstream resolvers, authoritative DNS operators, and CDN infrastructure. Split-horizon DNS failures can expose internal hostnames, service discovery zones, and private reverse lookups to public resolvers even when encrypted transport is enabled.
+
+For each recursive resolver and DNS forwarder, verify:
+
+- **ECS status:** ECS is disabled by default, minimized to the least-specific acceptable prefix, or explicitly risk-accepted with a privacy and CDN-routing rationale.
+- **ECS scope evidence:** Configuration shows the IPv4/IPv6 prefix lengths sent upstream and whether ECS applies globally, per-zone, or per-forwarder.
+- **Internal suffix policy:** Internal-only suffixes (`corp`, `internal`, `cluster.local`, service-mesh zones, Active Directory zones, cloud private zones) are resolved locally or refused, not forwarded to public resolvers.
+- **Reverse-zone policy:** RFC 1918, link-local, ULA, and private cloud reverse lookup zones are handled locally or blocked from upstream forwarding.
+- **Leakage validation:** Test queries or logs show that internal names and reverse zones do not leave the enterprise resolver boundary.
+
+**Patterns to check:**
+
+```
+# dnsmasq ECS forwarding -- review prefix length and business justification
+add-subnet=24,56
+
+# Unbound controls for private names and addresses
+private-domain: "corp.example"
+private-domain: "cluster.local"
+private-address: 10.0.0.0/8
+private-address: 172.16.0.0/12
+private-address: 192.168.0.0/16
+
+# CoreDNS split-horizon risk: all zones forwarded upstream without internal guards
+.:53 {
+  forward . tls://1.1.1.1 tls://8.8.8.8 {
+    tls_servername cloudflare-dns.com
+  }
+}
+```
+
+**Finding classification:** ECS enabled without documented prefix minimization or privacy acceptance is **Medium**. Forwarding internal-only names, service-discovery zones, or private reverse lookups to public resolvers is **High**. A split-horizon resolver without leakage validation is **Medium** until evidence proves internal names are contained.
+
+---
+
 ### Step 4: Response Policy Zones (RPZ) and Protective DNS (CIS Control 9.2)
 
 CIS Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. RPZ (Response Policy Zones, defined by ISC) is the standard mechanism for DNS-based filtering on recursive resolvers.
@@ -300,7 +369,7 @@ abcdef0123456789.dnscat.example.com TXT
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
 | **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; ECS enabled without documented minimization or risk acceptance; split-horizon leakage controls not validated; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -324,9 +393,15 @@ abcdef0123456789.dnscat.example.com TXT
 
 ### Resolver Security
 
-| Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
-|----------|-------------------|--------------------|--------------|--------------|
-| ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+| Resolver | DNSSEC Validation | Encrypted Transport | ECS Policy | Internal Zone Handling | RPZ/Filtering | Query Logging |
+|----------|-------------------|--------------------|------------|------------------------|---------------|--------------|
+| ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Disabled/Minimized/Enabled | Local/Blocked/Forwarded | Yes/No | Yes/No |
+
+### Resolver Forwarding and Leakage Evidence
+
+| Resolver | Upstream Resolvers | Approved Enterprise Path | ECS Prefix Sent | Internal Suffix Test | Private Reverse Test | Status |
+|----------|--------------------|--------------------------|-----------------|----------------------|----------------------|--------|
+| resolver-1 | 1.1.1.1@853 | Yes/No | None/24/56 | Contained/Leaked/Not tested | Contained/Leaked/Not tested | Pass/Fail |
 
 ### Findings
 
@@ -384,6 +459,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Mistaking approved encrypted forwarding for public resolver bypass.** An enterprise resolver forwarding to a public DoT upstream after enforcing internal-zone controls, RPZ/filtering, private-address handling, and logging is different from a browser, endpoint, or workload bypassing the enterprise resolver.
+
+6. **Assuming encrypted DNS prevents metadata leakage.** DoT and DoH protect transport confidentiality, but ECS can still disclose client network prefixes and split-horizon mistakes can still leak internal hostnames to public infrastructure.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -405,6 +484,7 @@ This skill processes DNS configuration files that may contain user-supplied zone
 - RFC 4033 -- DNS Security Introduction and Requirements: https://datatracker.ietf.org/doc/html/rfc4033
 - RFC 7858 -- DNS over TLS: https://datatracker.ietf.org/doc/html/rfc7858
 - RFC 8484 -- DNS over HTTPS: https://datatracker.ietf.org/doc/html/rfc8484
+- RFC 7871 -- Client Subnet in DNS Queries: https://datatracker.ietf.org/doc/html/rfc7871
 - RFC 7719 -- DNS Terminology: https://datatracker.ietf.org/doc/html/rfc7719
 - ISC Response Policy Zones (RPZ): https://www.isc.org/rpz/
 - CISA Protective DNS: https://www.cisa.gov/protective-dns
@@ -413,4 +493,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.1.0** -- Added approved enterprise resolver classification, EDNS Client Subnet privacy evidence gates, split-horizon/internal-zone leakage checks, and resolver forwarding leakage output fields.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
