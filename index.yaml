@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -39,6 +39,18 @@ skills:
     difficulty: intermediate
     time_estimate: "15-45min per module"
     file: skills/appsec/secure-code-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: insecure-deserialization-review
+    name: "Insecure Deserialization Review"
+    tags: [appsec, deserialization, rce, input-validation]
+    role: [appsec-engineer, security-engineer]
+    phase: [build, review]
+    activity: [review, test]
+    frameworks: [OWASP-ASVS, OWASP-Top-10-2021, CWE]
+    difficulty: intermediate
+    time_estimate: "25-45min"
+    file: skills/appsec/insecure-deserialization-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: owasp-top-10-web
