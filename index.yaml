@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -283,6 +283,18 @@ skills:
     difficulty: advanced
     time_estimate: "30-60min"
     file: skills/ai-security/prompt-injection/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: rag-data-poisoning
+    name: "RAG Data Poisoning Review"
+    tags: [ai-security, rag, data-poisoning, retrieval]
+    role: [appsec-engineer, security-engineer, ml-engineer]
+    phase: [design, build, review, operate]
+    activity: [review, assess, test]
+    frameworks: [OWASP-LLM04-2025, OWASP-LLM08-2025, MITRE-ATLAS]
+    difficulty: advanced
+    time_estimate: "45-90min"
+    file: skills/ai-security/rag-data-poisoning/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: model-supply-chain
