@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -231,6 +231,55 @@ Key sub-requirements:
 - **6.4.2**: Public-facing web applications — automated technical solution to detect and prevent web-based attacks (WAF in front of public-facing web apps, reviewed at least every 12 months)
 - **6.4.3**: All payment page scripts managed, authorized, integrity assured (new v4.0)
 - **6.5.1-6.5.6**: Change management procedures: impact documented, authorized, functionality tested, rollback procedures, separation of duties
+
+##### E-Commerce Payment Page Script Gate (Req 6.4.3 and 11.6.1)
+
+For SAQ A, SAQ A-EP, hosted payment fields, embedded iframes, redirect flows, checkout SPAs, and tag-manager-based payment pages, do not assume that outsourcing payment processing removes payment-page script obligations. PCI DSS v4.0 requires payment page scripts to be inventoried, authorized, justified, and integrity-protected, and requires mechanisms to detect unauthorized payment-page changes.
+
+**Evidence to collect:**
+
+```
+# Locate payment page and checkout surfaces
+Grep: "checkout|payment|card|pan|iframe|hosted.fields|stripe|adyen|braintree|paypal|cybersource|worldpay" in **/*.{html,js,ts,tsx,jsx,vue,svelte,md}
+
+# Locate third-party script injection and tag managers
+Grep: "<script|script.src|createElement('script')|createElement(\"script\")|gtm|googletagmanager|segment|tealium|adobe.launch|dataLayer" in **/*.{html,js,ts,tsx,jsx,vue,svelte}
+
+# Locate integrity, CSP, and change-detection controls
+Grep: "integrity=|crossorigin=|Content-Security-Policy|script-src|nonce|hash|report-uri|report-to|Subresource Integrity|SRI|tamper|change-detection" in **/*.{html,js,ts,tsx,jsx,vue,svelte,yaml,yml,md}
+```
+
+**Script inventory evidence table:**
+
+| Payment Page | Script Source | Business Justification | Owner | Authorization Evidence | Integrity / Change Detection | Status |
+|---|---|---|---|---|---|---|
+| `/checkout` | `https://js.stripe.com/v3/` | Hosted card fields | Payments Eng | Change ticket CHG-123 | CSP allowlist + vendor monitoring + 11.6.1 alert | Pass |
+| `/checkout` | Tag manager custom HTML | Marketing analytics | Marketing | No payment-page approval | No SRI/CSP hash and no tamper alert | Fail |
+
+**What to verify for Req 6.4.3:**
+
+- Every script loaded on payment pages is inventoried, including tag-manager-injected scripts, A/B testing snippets, fraud tools, analytics pixels, chat widgets, and payment-provider libraries.
+- Each script has documented business or technical justification and an accountable owner.
+- Script additions, removals, and source changes require explicit payment-page authorization, not only general web release approval.
+- Integrity controls are in place where technically feasible, such as Subresource Integrity, CSP nonces/hashes, strict `script-src` allowlists, tag manager governance, or vendor-provided integrity assurance.
+- Dynamic scripts that cannot use SRI have compensating evidence explaining how source control, CSP, vendor controls, and monitoring provide equivalent assurance.
+
+**What to verify for Req 11.6.1:**
+
+- A change- and tamper-detection mechanism monitors payment pages as rendered to users, not only source files in the repository.
+- Detection covers unauthorized script additions, removed integrity attributes, CSP weakening, payment iframe/redirect changes, and tag-manager container changes.
+- Alerts are generated and routed to personnel who can respond promptly.
+- The mechanism runs frequently enough for the payment risk profile and retains evidence of checks, alerts, and response.
+
+**Finding classification:**
+
+| Condition | Compliance Impact |
+|---|---|
+| Payment page uses third-party or tag-manager scripts with no inventory or authorization evidence | Requirement Not in Place for 6.4.3 |
+| Payment page has no rendered-page tamper/change detection mechanism | Requirement Not in Place for 11.6.1 |
+| Script inventory excludes tag-manager-injected scripts or vendor-managed checkout scripts | Requirement Not in Place unless scope justification proves exclusion |
+| Integrity control is absent for a script that supports SRI/CSP hash/nonce controls | Requirement Not in Place or CCW required |
+| Dynamic script lacks SRI but has documented owner, authorization, CSP restriction, vendor assurance, and 11.6.1 monitoring | Requirement in Place if testing evidence supports the control objective |
 
 #### Requirement 7: Restrict Access to System Components and Cardholder Data by Business Need to Know
 
@@ -451,6 +500,12 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 ## Targeted Risk Analyses
 [Documentation of all TRAs performed per 12.3.1 and 12.3.2]
 
+## Payment Page Script Controls
+
+| Payment Page | Script Inventory Complete | Authorization Evidence | Integrity Control | 11.6.1 Tamper Detection | Status |
+|--------------|---------------------------|------------------------|-------------------|-------------------------|--------|
+| [URL/path] | [Yes/No] | [ticket/approval/owner] | [SRI/CSP/vendor control/CCW] | [mechanism + alert route] | [In Place/Not in Place] |
+
 ## Remediation Roadmap
 
 ### Critical (0-30 days)
@@ -520,6 +575,8 @@ Maintain an Information Security Policy:                Requirement 12
 
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
 
+6. **Assuming hosted payment fields remove all checkout-page obligations.** SAQ A and outsourced payment processors can reduce cardholder-data exposure, but the merchant-controlled page that loads payment iframes, scripts, tag managers, and redirect code still needs script authorization, integrity assurance, and rendered-page tamper detection under PCI DSS v4.0.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -545,3 +602,9 @@ If user-supplied input contains PCI DSS requirement IDs outside the valid v4.0 n
 - PCI DSS Prioritized Approach for PCI DSS v4.0
 - PCI SSC Information Supplements: Scoping and Segmentation, Penetration Testing, Tokenization, Cloud Computing
 - PCI SSC Glossary of Terms, Abbreviations, and Acronyms
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added e-commerce payment page script evidence gate for PCI DSS v4.0 Requirements 6.4.3 and 11.6.1, including script inventory, authorization, integrity, rendered-page tamper detection, and output reporting.
