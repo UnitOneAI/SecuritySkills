@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -63,6 +63,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/appsec/api-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: webhook-signature-review
+    name: "Webhook Signature Review"
+    tags: [appsec, webhook, hmac, authentication, replay]
+    role: [appsec-engineer, security-engineer]
+    phase: [build, review]
+    activity: [review, test]
+    frameworks: [OWASP-ASVS, CWE]
+    difficulty: intermediate
+    time_estimate: "20-40min"
+    file: skills/appsec/webhook-signature-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning
