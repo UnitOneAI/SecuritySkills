@@ -3,15 +3,16 @@ name: api-security
 description: >
   Reviews REST and GraphQL APIs against the OWASP API Security Top 10:2023.
   Auto-invoked when reviewing OpenAPI/Swagger specs, API endpoint code, or
-  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, and
-  SSRF. Produces findings mapped to API1-API10 with remediation guidance.
+  GraphQL schemas. Covers BOLA, BFLA, authentication, rate limiting, SSRF,
+  media-type handling, and parser confusion. Produces findings mapped to
+  API1-API10 with remediation guidance.
 tags: [appsec, api, rest, graphql]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -21,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # API Security Review -- OWASP API Security Top 10:2023
 
-A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, and API gateway configurations.
+A structured, repeatable process for reviewing REST and GraphQL APIs against the OWASP API Security Top 10:2023. This skill produces findings mapped to API1 through API10 with associated CWE identifiers, severity ratings, and actionable remediation guidance. It applies to OpenAPI/Swagger specifications, API endpoint source code, GraphQL schemas, content negotiation behavior, media-type validation, and API gateway configurations.
 
 ---
 
@@ -48,6 +49,61 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
 For detailed checklist items with vulnerable code patterns, remediation examples, and review checklists for all ten API risk categories (API1:2023 through API10:2023), see [api-top10-checklist.md](api-top10-checklist.md) in this skill directory.
+
+---
+
+## Step 12: Media-Type and Parser-Confusion Evidence Gates
+
+API authorization, validation, and rate-limit controls can be bypassed when gateways, middleware, and handlers disagree about the request media type or response representation. Review endpoints that accept bodies, uploads, webhooks, or mixed REST/GraphQL traffic for explicit `Content-Type` and `Accept` handling.
+
+### 12.1 Request Content-Type Enforcement
+
+For each body-bearing operation, verify:
+
+- The OpenAPI/Swagger contract declares the accepted request media types for each method and path.
+- Runtime middleware rejects unexpected or missing `Content-Type` values before deserialization for JSON-only, XML-only, form-only, or multipart-only endpoints.
+- JSON endpoints reject `text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data`, vendor media types, or charset variants unless explicitly supported and validated.
+- Parser ordering cannot route the same request body through a weaker parser before schema validation.
+- Error responses for unsupported media types use `415 Unsupported Media Type` or a documented equivalent, not a generic success or partially parsed request.
+
+**Patterns to check:**
+
+```text
+Content-Type: text/plain
+{"role":"admin","amount":-1}
+
+Content-Type: application/x-www-form-urlencoded
+user[role]=admin&amount=-1
+
+Content-Type: multipart/form-data; boundary=...
+metadata={"role":"admin"}
+```
+
+**Finding classification:** Missing `Content-Type` enforcement on state-changing JSON endpoints is **High** when it can bypass validation, authorization, or business-rule middleware. Missing media-type documentation without observed bypass is **Medium**. Accepting multiple media types intentionally is **Informational** only when each parser path has equivalent validation and authorization evidence.
+
+### 12.2 Response Negotiation and Representation Consistency
+
+For each endpoint returning sensitive data, verify:
+
+- `Accept` negotiation cannot expose a more verbose representation than the documented API contract.
+- Error handlers do not return stack traces, HTML debug pages, XML entity-expanded content, or framework defaults for alternate `Accept` values.
+- Caches and CDNs vary on `Accept` and authorization-relevant headers when multiple representations are supported.
+- CSV, XML, HTML, or file export representations preserve the same object-level and property-level authorization filtering as JSON responses.
+- OpenAPI examples and response schemas match what the runtime returns for supported media types.
+
+**Finding classification:** Alternate response formats that bypass property filtering or expose debug content are **High**. Missing `Vary: Accept` or cache-key evidence for multi-representation sensitive responses is **Medium**. Undocumented but harmless response format drift is **Low**.
+
+### 12.3 Parser-Confusion Test Matrix
+
+Add explicit negative tests or review evidence for high-risk endpoints:
+
+| Endpoint | Expected Media Type | Rejected Media Types Tested | Parser Path | Validation Equivalent | Status |
+|---|---|---|---|---|---|
+| `POST /payments` | `application/json` | `text/plain`, form, multipart | JSON parser only | Yes/No | Pass/Fail |
+| `POST /webhooks/provider` | provider-specific JSON | generic JSON, form, multipart | Raw-body verifier | Yes/No | Pass/Fail |
+| `POST /graphql` | `application/json` | form, multipart unless upload spec enabled | GraphQL parser | Yes/No | Pass/Fail |
+
+Map media-type findings primarily to **API8:2023 -- Security Misconfiguration**, **API3:2023 -- Broken Object Property Level Authorization**, or **API10:2023 -- Unsafe Consumption of APIs** depending on the observed impact.
 
 ---
 
@@ -111,6 +167,12 @@ The final review output must be structured as follows:
 
 **Total Findings:** [count]
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
+
+### Media-Type and Parser-Confusion Coverage
+
+| Endpoint | Expected Content-Type | Rejected Media Types Tested | Alternate Response Formats | Authorization/Validation Equivalent | Status |
+|---|---|---|---|---|---|
+| [path] | [media type] | [list] | [JSON/XML/CSV/HTML/N/A] | [Yes/No] | [Pass/Fail/Not tested] |
 
 ### Findings
 
@@ -215,6 +277,8 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Assuming JSON validation covers every body parser path.** If an endpoint accepts or accidentally parses `text/plain`, form, multipart, XML, or vendor media types, those paths must receive equivalent authentication, authorization, schema validation, and business-rule checks. Otherwise a "JSON-only" API can be bypassed through parser confusion.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -239,3 +303,10 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+
+---
+
+## Changelog
+
+- **1.1.0** -- Added media-type enforcement, response negotiation, and parser-confusion evidence gates with output coverage fields.
+- **1.0.0** -- Initial release. OWASP API Security Top 10:2023 review coverage for REST and GraphQL APIs.
