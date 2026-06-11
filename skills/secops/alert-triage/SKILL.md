@@ -13,7 +13,7 @@ phase: [operate, respond]
 frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
 difficulty: beginner
 time_estimate: "10-20min per alert"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,8 @@ Before beginning triage, gather or confirm:
 - [ ] **User context:** Who is the associated user? (Role, department, normal working hours, recent activity patterns.)
 - [ ] **Historical context:** Has this alert fired before? What was the previous disposition? Has this user or host generated related alerts recently?
 - [ ] **Threat intelligence:** Do any indicators in the alert (IPs, domains, hashes) appear in threat intelligence feeds?
+- [ ] **Enrichment freshness:** When were ownership, asset criticality, identity role, and threat-intel enrichment sources last updated?
+- [ ] **Deduplication and suppression context:** What dedup key, suppression window, and closed-case suppression logic affected whether related alerts were shown or collapsed?
 
 If some context is unavailable, proceed with available information and note gaps as assumptions.
 
@@ -86,6 +88,18 @@ Gather all data associated with the alert. Do not make a disposition decision un
 
 Connect the alert data with surrounding context to build a picture of what happened.
 
+#### 2.1 Enrichment, Deduplication, and Sequence Evidence Gates
+
+Before lowering priority or closing a repeated alert, require evidence that enrichment is fresh and deduplication did not collapse materially different attacker behavior.
+
+| Gate | Evidence fields | Pass condition | Finding trigger |
+|------|-----------------|----------------|-----------------|
+| **Enrichment Freshness Gate** | `owner_lookup_cache_hours`, `asset_criticality_last_updated`, `identity_role_last_synced`, `threat_intel_feed_age`, `enrichment_source_status` | Ownership, criticality, identity, and threat-intel sources are current for the environment SLA, and stale or missing enrichment is treated as uncertainty rather than benign context. | `ALERT-ENRICH-01` when stale enrichment drives a lower priority, false-positive, or benign-true-positive disposition. |
+| **Deduplication Drift Gate** | `dedup_key`, `dedup_group`, `suppression_window_minutes`, `closed_case_suppression`, `dedup_sample_events`, `suppressed_alert_count` | Dedup keys group only behavior with the same entity, rule intent, and investigation outcome; suppression windows are short enough not to hide new activity. | `ALERT-DEDUP-01` when broad keys or long windows collapse distinct users, hosts, IOCs, or tactics into one already-closed case. |
+| **Campaign Sequence Gate** | `campaign_changes_ttp`, `new_iocs_since_case_close`, `sequence_position`, `related_alerts_after_close`, `kill_chain_progression` | Repeated alerts are checked for new indicators, changed ATT&CK techniques, later kill-chain stage, or post-closure recurrence before being deduplicated or closed. | `ALERT-CAMPAIGN-01` when campaign or sequence changes are ignored because the alert matches a previous rule key. |
+
+**False-positive guard:** A repeated medium-severity alert can be closed as benign only when enrichment is current, the dedup group is narrow, and the previous case still covers the same entity, indicator, and tactic. If any freshness or sequence evidence is missing, keep the disposition at least P3 until correlation closes the gap.
+
 **Correlation questions:**
 
 1. **Temporal correlation:** What other events occurred on the same host or by the same user within +/- 30 minutes of the alert?
@@ -93,6 +107,8 @@ Connect the alert data with surrounding context to build a picture of what happe
 3. **Behavioral correlation:** Does this activity match known ATT&CK technique patterns? Does it match the user's or system's normal behavior baseline?
 4. **Threat intel correlation:** Do any indicators match known threat actor infrastructure, malware campaigns, or published IOCs?
 5. **Kill chain correlation:** Where does this activity fall in the attack lifecycle? Is there evidence of preceding (reconnaissance, initial access) or subsequent (persistence, lateral movement, exfiltration) stages?
+6. **Deduplication correlation:** Were any alerts suppressed by `same_rule_same_host`, `same_host_same_hash`, or similar keys, and do the suppressed events share the same entity, IOC, and tactic?
+7. **Enrichment freshness correlation:** Were owner, criticality, identity, or threat-intel lookups refreshed recently enough to support the triage decision?
 
 **ATT&CK-based correlation framework:**
 
@@ -137,6 +153,10 @@ Assign a priority level based on the combination of asset criticality, threat se
 | Kill chain stage | Late-stage (exfiltration, impact) | Early-stage (reconnaissance) |
 | Confidence level | Multiple corroborating signals | Single low-fidelity signal |
 | Business context | During M&A, audit, or incident response | Normal operations |
+| Enrichment freshness | Owner, asset, or role data is stale or missing | Current enrichment confirms expected owner and asset context |
+| Dedup drift | Suppression hides new IOCs, hosts, users, or TTPs | Narrow dedup key matches the same entity and outcome |
+
+**Classification rule:** Do not lower priority solely because an alert was deduplicated or linked to a closed incident. If `ALERT-ENRICH-01`, `ALERT-DEDUP-01`, or `ALERT-CAMPAIGN-01` is present, document the uncertainty and keep the alert open or escalated until the stale context or over-collapsed sequence is resolved.
 
 ### Phase 4: Escalate
 
@@ -194,7 +214,7 @@ Produce the triage decision as a structured report:
 ```markdown
 ## Alert Triage Report
 **Date:** [YYYY-MM-DD HH:MM UTC]
-**Skill:** alert-triage v1.0.0
+**Skill:** alert-triage v1.0.1
 **Frameworks:** MITRE ATT&CK v16, NIST SP 800-61 Rev 2
 **Analyst:** [Name or AI-assisted]
 
@@ -233,6 +253,13 @@ Produce the triage decision as a structured report:
 - **Lateral:** [Related alerts on other hosts/users]
 - **Threat Intel:** [IOC match results]
 - **Kill Chain Position:** [Where this falls in the attack lifecycle]
+
+### Enrichment and Deduplication Evidence
+| Gate | Evidence | Status | Finding |
+|------|----------|--------|---------|
+| Enrichment Freshness Gate | owner_lookup_cache_hours=[hours], asset_criticality_last_updated=[timestamp], threat_intel_feed_age=[duration] | Pass/Fail | ALERT-ENRICH-01 / None |
+| Deduplication Drift Gate | dedup_key=[key], suppression_window_minutes=[minutes], closed_case_suppression=[true/false], suppressed_alert_count=[count] | Pass/Fail | ALERT-DEDUP-01 / None |
+| Campaign Sequence Gate | campaign_changes_ttp=[true/false], new_iocs_since_case_close=[count], related_alerts_after_close=[count] | Pass/Fail | ALERT-CAMPAIGN-01 / None |
 
 ### Recommended Actions
 - [ ] [Action 1 -- e.g., isolate host, disable account, block IP]
@@ -319,6 +346,14 @@ Investigating an alert in isolation without checking for activity before and aft
 
 Waiting for complete certainty before escalating a high-priority alert costs response time. NIST SP 800-61 recommends erring on the side of over-notification. If 20 minutes of investigation has not resolved the disposition and the alert involves a critical asset or privileged account, escalate to Tier 2 or the IR team with your current findings and continue investigation in parallel.
 
+### Pitfall 6: Trusting Deduplication Without Checking Drift
+
+A `same_rule_same_host` or `same_host_same_hash` dedup key can hide materially different activity when the attacker changes tactics, indicators, users, or sequence stage. Review sample suppressed events and the suppression window before treating a repeated alert as already handled.
+
+### Pitfall 7: Treating Stale Enrichment as Benign Context
+
+Cached ownership, role, threat-intel, or asset-criticality data can be older than the operational change that matters. If `owner_lookup_cache_hours` or asset criticality timestamps exceed the triage SLA, record the stale source and avoid downgrading priority until fresh context is available.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -344,3 +379,9 @@ This skill processes user-supplied content that may include alert payloads, log 
 7. **Microsoft Sentinel Incident Triage** -- https://learn.microsoft.com/en-us/azure/sentinel/investigate-incidents
 8. **Splunk Enterprise Security Notable Event Triage** -- https://docs.splunk.com/Documentation/ES/latest/User/TriageNotableEvents
 9. **NIST Cybersecurity Framework (CSF) 2.0 -- Detect Function** -- https://www.nist.gov/cyberframework
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Added enrichment freshness, deduplication drift, and campaign sequence evidence gates for repeated alert triage.
