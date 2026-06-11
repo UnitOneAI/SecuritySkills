@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC-6]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -200,7 +200,21 @@ PAM-JIT-07: JIT requests not logged with justification for audit trail (AC-6(9))
 PAM-JIT-08: No notification when JIT access is activated (security team unaware)
 PAM-JIT-09: Ephemeral credential patterns not used where available (static secrets in pipelines)
 PAM-JIT-10: No escalation path when JIT approver is unavailable
+PAM-JIT-11: Eligible-only role is treated as standing privilege without checking activation evidence
+PAM-JIT-12: Eligible-only activation lacks MFA, justification, ticket, or session proof
 ```
+
+**Eligible-only versus standing privilege evidence:**
+
+| Evidence | Eligible-only controlled | Standing privilege risk |
+|---|---|---|
+| Assignment state | Eligible-only, inactive by default | Active, permanent, or direct membership |
+| Activation control | MFA, justification, ticket, and approver captured | No activation event required |
+| Duration | Time-bounded with automatic expiry | Persistent until manually removed |
+| Session proof | Session id, command log, recording, or audit event linked to activation | No session proof or shared account use |
+| Revocation | Automatic revocation and post-session review | Manual cleanup or no revocation record |
+
+Do not classify an admin role as high risk only because the role name is sensitive. First verify whether it is standing privilege or eligible-only access with activation controls, approval, session proof, and automatic expiry. Conversely, eligible-only access is still a finding when activation proof is missing or activation can be self-approved without MFA.
 
 **Platform-specific JIT mechanisms:**
 
@@ -220,6 +234,37 @@ PAM-JIT-10: No escalation path when JIT approver is unavailable
 | **Level 1 — Requested** | Manual JIT | Request via ticket, manual provisioning, manual revocation |
 | **Level 2 — Managed** | Automated JIT | PAM-managed elevation, approval workflows, automatic expiry |
 | **Level 3 — Adaptive** | Risk-based JIT | Context-aware approval, behavioral analytics, ephemeral credentials |
+
+---
+
+### Step 3.1: Delegated Admin and Helpdesk Privilege Paths
+
+**Objective:** Identify operational delegation paths that create privileged effects without appearing as classic admin role assignments.
+
+Delegated admin workflows often include helpdesk, tenant admin, managed service provider, or platform support roles. These users may not hold global administrator names, but they can reset MFA, recover accounts, change authentication methods, approve emergency overrides, or impersonate support actions.
+
+**What to look for:**
+
+```
+PAM-DEL-01: Delegated admin workflow not inventoried as privileged access
+PAM-DEL-02: Helpdesk can perform MFA reset without second approval
+PAM-DEL-03: Helpdesk can reset privileged user passwords or recovery factors without ticket linkage
+PAM-DEL-04: Delegated admin can approve its own elevation or emergency override
+PAM-DEL-05: Managed service provider or vendor admin path bypasses PAM/JIT controls
+PAM-DEL-06: Delegated admin actions lack session proof, immutable audit logs, or reviewer attribution
+PAM-DEL-07: Privileged support role can alter authentication policy, break-glass policy, or conditional access policy
+PAM-DEL-08: No periodic review of delegated admin scope, approval chain, or MFA reset volume
+```
+
+**Delegated admin review checklist:**
+
+- Map each helpdesk and delegated admin workflow to the privileged effect it can cause.
+- Require second approval for MFA reset, password recovery, emergency override, and privilege grant actions affecting admin users.
+- Link every delegated admin action to a ticket, business justification, actor identity, and affected subject.
+- Verify session proof for high-impact delegated actions, including session id, command log, approval id, or provider audit event.
+- Check whether delegated admin roles can change the very controls used to supervise them.
+
+**Finding classification:** Helpdesk MFA reset without second approval is **High**. Delegated admin self-approval for emergency override is **Critical**. Missing reviewer attribution or stale delegated admin review is **Medium**.
 
 ---
 
@@ -244,6 +289,9 @@ PAM-BG-07: No post-incident review process after break-glass use
 PAM-BG-08: Break-glass credentials not rotated after each use
 PAM-BG-09: Break-glass procedure does not cover all critical failure scenarios (PAM down, IdP down, cloud provider outage)
 PAM-BG-10: Break-glass procedure not included in disaster recovery plans
+PAM-BG-11: Break-glass MFA test evidence is missing or older than the required cadence
+PAM-BG-12: Break-glass session proof is missing for recent use or quarterly test
+PAM-BG-13: Emergency override path can be used without independent approval or immediate alerting
 ```
 
 **Break-glass design requirements:**
@@ -258,6 +306,16 @@ PAM-BG-10: Break-glass procedure not included in disaster recovery plans
 | **Quarterly testing** | Validate procedure works, credentials are valid, alerts fire | AC-2(2) |
 | **Scoped permissions** | Break-glass accounts limited to recovery actions, not full admin | AC-6 |
 | **Time-bounded** | Break-glass sessions auto-terminate after defined maximum duration | AC-2(2) |
+
+**Break-glass evidence package:**
+
+- Break-glass MFA test timestamp, test actor, approving reviewer, and result.
+- Credential rotation evidence after each break-glass use and after scheduled tests.
+- Session proof for break-glass use, including session id, command log, recording id, or immutable audit event.
+- Emergency override approval record with independent approver and immediate security notification.
+- Confirmation that break-glass permissions are scoped to recovery actions and time-bounded.
+
+Classify break-glass as controlled only when the account exists, is protected by tested MFA, has recent rotation evidence, has session proof for tests or use, and has independent emergency override approval.
 
 ---
 
@@ -348,8 +406,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Severity | Definition | Examples |
 |---|---|---|
 | **Critical** | Immediate privileged credential exposure or uncontrolled access | Plaintext credentials in code repos; no PAM for production admin; root account with no MFA |
-| **High** | Significant PAM gap enabling privilege abuse | Standing admin without JIT; no session recording; break-glass untested and credentials unknown |
-| **Medium** | PAM governance deficiency with medium-term risk | Partial vault onboarding; JIT duration excessive; recording gaps on some systems |
+| **High** | Significant PAM gap enabling privilege abuse | Standing admin without JIT; no session recording; break-glass untested and credentials unknown; helpdesk MFA reset without second approval |
+| **Medium** | PAM governance deficiency with medium-term risk | Partial vault onboarding; JIT duration excessive; recording gaps on some systems; missing delegated admin review evidence |
 | **Low** | PAM maturity improvement opportunity | Session recordings not indexed; break-glass test cadence > quarterly; vault policy refinement |
 
 ---
@@ -366,6 +424,8 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding |
+| **Privilege State** | Standing privilege / eligible-only / delegated admin / break-glass |
+| **Session Proof** | Session id, recording id, command log, approval id, or audit event proving use and reviewability |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -389,6 +449,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 | Credential Vaulting | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Session Management | [Not Present/Basic/Mature/Advanced] | [Target] |
 | JIT Access | [Not Present/Basic/Mature/Advanced] | [Target] |
+| Delegated Admin Controls | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Break-Glass | [Not Present/Basic/Mature/Advanced] | [Target] |
 | Analytics | [Not Present/Basic/Mature/Advanced] | [Target] |
 
@@ -402,6 +463,7 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 - Privileged Account Inventory (Step 1): [count]
 - PAM Tool Assessment (Step 2): [count]
 - JIT Access (Step 3): [count]
+- Delegated Admin and Helpdesk Privilege Paths (Step 3.1): [count]
 - Break-Glass Procedures (Step 4): [count]
 - Session Recording (Step 5): [count]
 - Credential Vaulting (Step 6): [count]
@@ -457,6 +519,9 @@ PAM-VAULT-12: No secrets scanning in code repositories to detect credential leak
 6. **Session recording without review** — recording sessions without monitoring or alerting provides forensic value but not prevention. Add real-time alerting.
 7. **Ignoring service account privilege** — PAM programs often focus on human admin accounts and neglect service accounts with equally powerful permissions.
 8. **No PAM HA/DR** — if the PAM tool is a single point of failure, its outage creates either a lockout or a break-glass event. Architect for resilience.
+9. **Conflating eligible-only with standing privilege** - eligible-only assignments require activation evidence before severity is assigned. Do not treat inactive eligible roles the same as standing admin, but do require proof of MFA, approval, expiry, and session logging.
+10. **Ignoring delegated admin effects** - helpdesk, vendor, and support roles can reset MFA, recover privileged accounts, or approve emergency override paths. Review the privileged effect, not only the role name.
+11. **Break-glass account exists but proof is stale** - account existence is not control evidence. Require break-glass MFA test evidence, rotation evidence, and session proof.
 
 ---
 
@@ -502,4 +567,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-11 | Added eligible-only vs standing privilege evidence, delegated admin/helpdesk workflow checks, and break-glass MFA/session proof requirements. |
 | 1.0.0 | 2025-03-06 | Initial release |
