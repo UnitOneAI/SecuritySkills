@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-53-AC]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -102,6 +102,8 @@ Identify:
 - **In-scope systems** — production environments, SaaS applications, infrastructure platforms, databases, internal tools
 - **In-scope identity types** — human users, service accounts, shared accounts, external/guest accounts
 - **Entitlement sources** — IdP group memberships, cloud IAM roles, application-level permissions, database grants
+- **Effective access paths** — direct grants, nested groups, inherited roles, deny assignments, permission boundaries, and break-glass paths
+- **Activity context** — last sign-in, last privileged action, last entitlement use, and last break-glass exercise/test evidence
 - **Review cadence compliance** — verify the current review meets the organization-defined frequency
 
 **What to look for:**
@@ -149,6 +151,26 @@ AR-CERT-07: No SLA for certification completion (recommended: 14 business days)
 AR-CERT-08: Delegated reviews without accountability (certifier delegates but is not tracked)
 ```
 
+#### Effective Permission Expansion Gate
+
+Do not treat direct role lists as authoritative. For every privileged or sensitive entitlement, expand the effective access path before assigning severity:
+
+- **Direct assignments:** user, service account, or group has the entitlement directly
+- **Nested and inherited access paths:** parent groups, role hierarchies, management-group/folder/project inheritance, application role nesting, or transitive membership
+- **Effective denies and boundaries:** deny assignments, permission boundaries, conditional access, session policies, resource policies, or SoD compensating controls that reduce what the role name appears to grant
+- **Effective result:** what the identity can actually do after allows, inheritance, denies, and boundaries are combined
+
+Record the access path as evidence. A role name alone is not enough to prove risk, and an empty direct-role list is not enough to prove safety.
+
+**Effective Access Path evidence template:**
+
+| Principal | Direct Roles | Nested/Inherit Path | Effective Denies / Boundaries | Effective Access | Review Decision |
+|---|---|---|---|---|---|
+| analyst01 | Reader, BillingViewer | none | `resourceGroups/write` denied | read-only billing visibility | low risk / approve |
+| ops-user | none | groupA -> groupB -> Owner | none | subscription Owner | high risk / revoke or justify |
+
+Flag as a finding when nested or inherited paths are not expanded, effective denies are ignored, or reviewers cannot explain the effective action set behind an entitlement.
+
 **Rubber-stamp detection criteria:**
 
 | Indicator | Threshold | Action |
@@ -188,6 +210,18 @@ AR-ORPH-08: Test/temporary accounts promoted to production without lifecycle man
 | **GCP** | Admin Activity logs, Policy Analyzer | Last authentication event, unused IAM bindings |
 | **Okta / IdP** | System Log, user lifecycle status | Suspended vs. deprovisioned, last authentication timestamp |
 | **SaaS apps** | SCIM sync status, app-native audit logs | Users not synced from IdP, local accounts outside federation |
+
+#### Last-Use Context Gate
+
+Combine entitlement review with usage evidence before rating privileged access:
+
+- **Last sign-in:** interactive and non-interactive authentication timestamps
+- **Last privileged action:** last admin/API action relevant to the entitlement
+- **Last entitlement use:** whether the specific role or permission was used, not only whether the account signed in
+- **Dormancy threshold:** standard accounts inactive > 45 days; privileged and break-glass accounts reviewed more aggressively
+- **False-positive guardrail:** a privileged role with no actual admin action and strong effective denies may be lower risk than the role name suggests
+
+Flag as a finding when privileged accounts have no recent business-justified use, reviewers lack last-use data, or dormant access remains approved without a time-bounded exception.
 
 ---
 
@@ -253,6 +287,21 @@ AR-SOD-05: Emergency/break-glass access bypasses SoD without post-hoc review
 AR-SOD-06: Role combinations that create SoD conflicts not flagged during provisioning
 AR-SOD-07: SoD conflicts in service accounts (single account spans multiple functions)
 ```
+
+#### Break-Glass Control Testing Gate
+
+Break-glass and emergency accounts require separate evidence because they are intentionally powerful and often exempt from normal controls.
+
+Record:
+
+- **Owner and custodian:** accountable person/team and storage location for recovery material
+- **MFA tested:** date and result of the last MFA or equivalent emergency control test
+- **Approval path:** who can authorize use and how emergency use is logged
+- **Exercise evidence:** last tabletop or live recovery exercise date, outcome, and follow-up items
+- **Activity context:** last sign-in, last privileged action, and whether use matched an approved emergency
+- **Compensating controls:** alerting, dual control, vault access, post-use password/key rotation, and after-action review
+
+Flag as a finding when break-glass accounts are dormant but untested, have no recent MFA tested evidence, bypass SoD without post-hoc review, or lack alerting and rotation after use.
 
 **Severity classification for SoD violations:**
 
@@ -321,6 +370,8 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 | **Framework Ref** | NIST SP 800-53 control ID and/or CIS Controls v8 sub-control |
 | **Affected Scope** | Accounts, roles, systems, or platforms impacted |
 | **Evidence** | Specific data supporting the finding (counts, examples, screenshots) |
+| **Effective Access Path** | Direct, nested, inherited, and denied/bounded paths proving the effective permission result |
+| **Last-Use Context** | Last sign-in, last privileged action, and last entitlement use where available |
 | **Remediation** | Prioritized fix with implementation guidance |
 | **Effort** | Low (< 1 day) / Medium (1-5 days) / High (> 5 days) |
 
@@ -354,6 +405,11 @@ AR-ENF-08: No metrics or reporting on review completion rates and outcomes
 
 ### Detailed Findings
 [Findings table]
+
+### Effective Permission Evidence
+| Principal | Direct Roles | Nested/Inherit Path | Effective Denies / Boundaries | Last-Use Context | Break-Glass Test Evidence | Effective Result |
+|---|---|---|---|---|---|---|
+| [Identity] | [Direct grants] | [Group / inherited path] | [Deny / boundary / control] | [Last sign-in / admin action] | [MFA tested / exercise evidence] | [Actual reachable privilege] |
 
 ### Remediation Roadmap
 - Immediate (0-7 days): [critical findings]
@@ -400,7 +456,10 @@ See the mapping table in the Framework Quick Reference section above for sub-con
 4. **Revocation without enforcement** — Reviews produce revocation decisions but no one executes them. Automate enforcement or track with SLA-bound tickets.
 5. **Role explosion masking risk** — When roles proliferate, reviewers cannot meaningfully assess what permissions a role grants. Pair reviews with role rationalization.
 6. **SoD analysis done manually** — Manual SoD checks do not scale and miss cross-system conflicts. Implement conflict rules in IGA tooling.
-7. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
+7. **Direct role lists treated as complete** — Nested and inherited access paths can grant privilege even when no direct role appears on the user. Expand effective permission paths before approving access.
+8. **Effective denies ignored** — Role names can exaggerate risk when deny assignments, permission boundaries, or compensating controls remove dangerous actions. Record effective denies and boundaries before severity assignment.
+9. **Dormant break-glass accounts assumed safe** — Break-glass accounts can be both dormant and dangerous when MFA, approval, alerting, and recovery exercises are not tested. Require MFA tested and exercise evidence.
+10. **Evidence not retained** — Reviews happen but evidence is not preserved for the audit window. Configure IGA tools to retain decisions and timestamps.
 
 ---
 
@@ -443,4 +502,5 @@ This skill processes identity and entitlement data that may contain adversarial 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-11 | Added effective permission expansion, last-use context, effective denies, and break-glass control testing evidence gates |
 | 1.0.0 | 2025-03-06 | Initial release |
