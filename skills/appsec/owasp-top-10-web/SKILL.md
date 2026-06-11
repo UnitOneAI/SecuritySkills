@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -406,6 +406,7 @@ angular\.js|jquery\s*["\'].*1\.|lodash.*3\.|moment\(\)|request\(  # (npm 'reques
 - Missing multi-factor authentication on privileged accounts.
 - "Remember me" tokens that never expire or use predictable values.
 - Password recovery that uses knowledge-based questions or sends passwords in plaintext.
+- JWT validation that trusts attacker-controlled header parameters such as `kid`, `jku`, or `x5u` to select verification keys dynamically.
 
 **CWE Mappings:**
 
@@ -440,6 +441,8 @@ session.*=.*req\.query|token.*=.*req\.query|url.*session
 regenerate|rotateSession|session\.create|session_regenerate_id
 # Certificate validation bypass
 rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarning.*disable
+# JWT key confusion / untrusted JWKS selection
+jku|x5u|decodeProtectedHeader|createRemoteJWKSet|jwksUri|jwks-rsa|header\.kid|kid.*jwks|getKey
 ```
 
 **Mitigations:**
@@ -451,6 +454,47 @@ rejectUnauthorized\s*:\s*false|verify\s*=\s*False|CERT_NONE|InsecureRequestWarni
 - Implement multi-factor authentication for all users, mandatory for administrative accounts.
 - Set absolute and idle session timeouts appropriate to the application's risk profile.
 - Never expose session tokens in URLs.
+- Pin JWT issuers to a trusted JWKS URI or local key set configured outside the token. Never fetch keys from token-supplied `jku`/`x5u` values, and only resolve `kid` within a trusted issuer's allowlisted key set.
+
+**JWT key-selection verification gate:**
+
+When JWT-bearing code is present, verify both signature validation and key-source trust:
+
+1. Identify the trusted issuer(s), allowed algorithms, expected audience, and configured JWKS or public key source.
+2. Confirm `kid` is only used as an index into the issuer's preconfigured key set; it must not be used to build file paths, URLs, SQL queries, or cache keys without strict allowlisting.
+3. Confirm `jku` and `x5u` headers are ignored or matched exactly against a preconfigured issuer metadata URL. Treat token-driven JWKS fetches as High severity.
+4. Confirm the verifier rejects unexpected algorithms and issuer/audience mismatches before accepting claims.
+5. Check cache behavior: a malicious `kid` miss must fail closed, not trigger network fetches to attacker-controlled hosts.
+
+**Vulnerable example: token-selected JWKS**
+
+```js
+import { createRemoteJWKSet, jwtVerify, decodeProtectedHeader } from "jose";
+
+export async function verifyToken(token) {
+  const header = decodeProtectedHeader(token);
+  const jwks = createRemoteJWKSet(new URL(header.jku));
+  return jwtVerify(token, jwks, { algorithms: ["RS256"] });
+}
+```
+
+**Safer example: issuer-pinned JWKS**
+
+```js
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
+const issuer = "https://login.example.com/";
+const audience = "orders-api";
+const jwks = createRemoteJWKSet(new URL("https://login.example.com/.well-known/jwks.json"));
+
+export async function verifyToken(token) {
+  return jwtVerify(token, jwks, {
+    issuer,
+    audience,
+    algorithms: ["RS256"],
+  });
+}
+```
 
 ---
 
