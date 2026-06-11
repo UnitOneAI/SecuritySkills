@@ -13,7 +13,7 @@ phase: [build, review]
 frameworks: [OWASP-IaC-Security, SLSA-v1.0, CIS-Benchmarks]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -227,9 +227,11 @@ This skill applies checks equivalent to the following high-impact rules:
 2. **Missing tfvars analysis.** Secrets may be hardcoded in `.tfvars` files rather than the main `.tf` files. Always scan both.
 3. **Module abstraction hiding misconfigurations.** A module call may look clean, but the module source may contain insecure defaults. When possible, trace into module source code.
 4. **CloudFormation parameters with NoEcho.** Parameters marked `NoEcho: true` are not necessarily secure -- the default value is still in plaintext in the template.
-5. **Confusing `aws_s3_bucket_acl` with `aws_s3_bucket_public_access_block`.** The public access block overrides ACLs. Check both, but the access block is the stronger control.
-6. **Terraform state file secrets.** Even when variables are marked `sensitive`, they may appear in plaintext in the state file. Verify state encryption and access controls.
-7. **Provider-specific encryption defaults.** Some providers encrypt by default (e.g., AWS S3 since January 2023). Know the defaults before flagging missing explicit encryption configuration.
+5. **Terraform sensitive variables with literal defaults.** A variable marked `sensitive = true` is safe only when the secret value is supplied at runtime or from a secret store. A credential-looking `default` still commits the value to source.
+6. **Placeholder and empty defaults.** Do not flag empty strings, obvious placeholders, examples, or references as confirmed secrets without stronger evidence. Report them as hygiene findings only when they can be confused with deployable defaults.
+7. **Confusing `aws_s3_bucket_acl` with `aws_s3_bucket_public_access_block`.** The public access block overrides ACLs. Check both, but the access block is the stronger control.
+8. **Terraform state file secrets.** Even when variables are marked `sensitive`, they may appear in plaintext in the state file. Verify state encryption and access controls.
+9. **Provider-specific encryption defaults.** Some providers encrypt by default (e.g., AWS S3 since January 2023). Know the defaults before flagging missing explicit encryption configuration.
 
 ---
 
@@ -259,10 +261,13 @@ This skill applies checks equivalent to the following high-impact rules:
 - KICS (Keeping Infrastructure as Code Secure): https://docs.kics.io/
 - cfn-nag Rules: https://github.com/stelligent/cfn_nag
 - Terraform Security Best Practices: https://developer.hashicorp.com/terraform/cloud-docs/recommended-practices
+- Terraform Input Variables: https://developer.hashicorp.com/terraform/language/values/variables
+- AWS CloudFormation Parameters: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/parameters-section-structure.html
 - AWS Security Best Practices in IAM: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Add evidence gates for Terraform sensitive variables with literal defaults and CloudFormation `NoEcho` parameters with plaintext defaults.
 - **1.0.0** -- Initial release. Coverage of eight security domains across Terraform, CloudFormation, Pulumi, and Bicep with Checkov/tfsec/KICS rule equivalents.

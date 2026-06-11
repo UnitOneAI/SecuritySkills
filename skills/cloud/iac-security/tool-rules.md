@@ -59,6 +59,65 @@ redis://:[^@]+@
 
 **Severity:** Critical for any confirmed hardcoded secret.
 
+### IaC Secret Wrapper Evidence Gates
+
+Secret wrappers reduce display or output exposure, but they do not make a plaintext
+value safe to commit. Treat the wrapper as a control only when the value is supplied
+at runtime, pulled from a secret store, or left unset in source.
+
+**Terraform sensitive variables:**
+
+```hcl
+# FAIL: Sensitive flag does not protect a committed default
+variable "db_password" {
+  type      = string
+  sensitive = true
+  default   = "SuperSecret123!"
+}
+
+# PASS: Sensitive variable with no source-controlled value
+variable "db_password" {
+  type      = string
+  sensitive = true
+}
+```
+
+Flag Terraform variables when all of the following are true:
+
+- The variable has `sensitive = true`.
+- The same variable block includes a literal `default`.
+- The default is a credential-looking string, token, key, connection string, or other non-placeholder secret value.
+
+Do not report an empty default, obvious placeholder (`"changeme"`, `"example"`,
+`"REPLACE_ME"`), expression reference, data source, or CI/environment input as a
+confirmed hardcoded secret without additional evidence.
+
+**CloudFormation NoEcho parameters:**
+
+```yaml
+# FAIL: NoEcho masks output display, not a committed template default
+Parameters:
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Default: SuperSecret123!
+
+# PASS: Runtime-supplied secret parameter with no plaintext default
+Parameters:
+  DBPassword:
+    Type: String
+    NoEcho: true
+```
+
+Flag CloudFormation parameters when all of the following are true:
+
+- `NoEcho` is set to `true`.
+- The parameter also has a plaintext `Default`.
+- The default is a credential-looking value rather than an empty or placeholder value.
+
+Recommend removing plaintext defaults and sourcing values from AWS Secrets Manager,
+SSM Parameter Store dynamic references, CI secret stores, or runtime variable input.
+
 **Remediation pattern:**
 
 ```hcl
@@ -76,6 +135,7 @@ resource "aws_db_instance" "example" {
 variable "db_password" {
   type      = string
   sensitive = true
+  # No default: value is provided by CI, the operator, or a secret store.
 }
 ```
 
