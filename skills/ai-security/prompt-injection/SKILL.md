@@ -13,7 +13,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM01-2025, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -32,7 +32,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 > **This skill is strictly for DEFENSIVE security testing.** It helps development
 > and security teams identify prompt injection vulnerabilities in applications they
 > own and are authorized to test. All test categories describe **what to look for
-> and how to defend against it** — not how to exploit third-party systems.
+> and how to defend against it** -- not how to exploit third-party systems.
 > Unauthorized testing against systems you do not own or have explicit permission
 > to test is unethical and likely illegal. Always obtain proper authorization
 > before conducting any security assessment.
@@ -43,9 +43,9 @@ Prompt injection is the most critical vulnerability class in LLM applications (r
 
 The research community distinguishes two fundamental variants:
 
-- **Direct prompt injection** — The attacker's malicious instructions are submitted directly as user input to the application. First systematically studied by Perez & Ribeiro (2022) in "Ignore Previous Prompt: Attack Techniques For Language Models," this class covers cases where user-controlled text is concatenated into the prompt sent to the LLM.
+- **Direct prompt injection** -- The attacker's malicious instructions are submitted directly as user input to the application. First systematically studied by Perez & Ribeiro (2022) in "Ignore Previous Prompt: Attack Techniques For Language Models," this class covers cases where user-controlled text is concatenated into the prompt sent to the LLM.
 
-- **Indirect prompt injection** — The attacker plants malicious instructions in external content that the LLM later retrieves and processes. Greshake et al. (2023) formalized this in "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection," demonstrating that poisoned web pages, documents, and emails can hijack LLM behavior when ingested as context.
+- **Indirect prompt injection** -- The attacker plants malicious instructions in external content that the LLM later retrieves and processes. Greshake et al. (2023) formalized this in "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection," demonstrating that poisoned web pages, documents, and emails can hijack LLM behavior when ingested as context.
 
 Simon Willison's prompt injection taxonomy further refines these categories by documenting real-world attack surfaces and defense limitations, providing practical grounding for security assessments.
 
@@ -55,13 +55,78 @@ Simon Willison's prompt injection taxonomy further refines these categories by d
 
 Identify every point where user-supplied or externally sourced content reaches the language model. Produce a complete interaction map covering:
 
-1. **User input channels** — Chat interfaces, form fields, API parameters, file uploads, voice input transcriptions, and any other path where a user directly provides text that is included in an LLM prompt.
-2. **External content sources** — Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
-3. **System prompt construction** — How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
-4. **Tool and plugin interfaces** — Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
-5. **Multi-turn context** — How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
+1. **User input channels** -- Chat interfaces, form fields, API parameters, file uploads, voice input transcriptions, and any other path where a user directly provides text that is included in an LLM prompt.
+2. **External content sources** -- Web pages fetched by browsing tools, documents loaded into RAG pipelines, email bodies, database records, calendar entries, third-party API responses, and any other data source the LLM reads but the user does not directly control at query time.
+3. **System prompt construction** -- How the system prompt is assembled, whether it is static or dynamically composed, and whether any user-influenced data (e.g., user profile fields, prior conversation history) is interpolated into it.
+4. **Tool and plugin interfaces** -- Any tools the LLM can invoke (code execution, web search, file system access, API calls), including what parameters are LLM-controlled and what side effects each tool can produce.
+5. **Multi-turn context** -- How conversation history is managed, whether prior turns are truncated or summarized, and whether an attacker can influence future context through earlier messages.
+6. **Transformed-content provenance** -- OCR output, speech-to-text transcripts, attachment extraction, screenshot parsing, and other derived text. Track `input_source`, `source_transform`, `ocr_text`, `transcription_text`, `attachment_extraction`, `parent_document_trust`, and `trust_label` separately from the parent file or record.
+7. **Rendered and re-ingested tool output** -- Browser, scraper, search, code, and document tools whose outputs may be HTML, Markdown, JSON, or mixed markup. Track `tool_output_content_type`, `sanitization`, `markup_normalization`, `rendered_output`, and `agent_reingests_rendered_output` before any output becomes model context again.
 
-**Deliverable:** A table or diagram listing each input surface, its data type, trust level, and whether it flows into the system prompt, user prompt, or tool arguments.
+**Deliverable:** A table or diagram listing each input surface, its data type, trust level, provenance fields, rendering state, and whether it flows into the system prompt, user prompt, or tool arguments.
+
+### Step 1.1: Provenance and Normalization Gates
+
+Apply these gates before classifying a prompt-injection path as exploitable or dismissing it as benign. They keep read-only content, transformed content, and tool output from being collapsed into one generic "trusted text" bucket.
+
+#### Multimodal Provenance Gate
+
+Use this gate when text reaches the LLM through OCR, speech transcription, attachment parsing, screenshots, or other extraction layers.
+
+Required evidence fields:
+- `input_source`
+- `source_transform`
+- `ocr_text`
+- `transcription_text`
+- `attachment_extraction`
+- `parent_document_trust`
+- `trust_label`
+
+Passing control:
+- Every transformed text artifact receives its own `trust_label` and is treated as untrusted data unless an independent review step upgrades it.
+- The parent document's legitimacy does not automatically transfer to extracted text.
+- The prompt template labels transformed content as data, not instructions.
+
+Trigger `PROMPT-PROV-01` when OCR, transcription, screenshot, or attachment-derived text inherits trust from the parent document without an explicit provenance boundary.
+
+#### Tool Output Normalization Gate
+
+Use this gate when model context includes output from browsers, scrapers, search tools, code tools, document converters, or third-party APIs.
+
+Required evidence fields:
+- `tool_output_content_type`
+- `sanitization`
+- `markup_normalization`
+- `rendered_output`
+- `agent_reingests_rendered_output`
+- `allowed_renderers`
+
+Passing control:
+- HTML, Markdown, and mixed markup are normalized to an inert representation before display or re-ingestion.
+- Sanitization is matched to the actual content type, not just to a presumed Markdown path.
+- Rendered output is not re-ingested as instructions unless it has been normalized, attributed, and demarcated as untrusted tool data.
+
+Trigger `PROMPT-TOOL-01` when HTML or mixed markup receives only Markdown sanitization, is rendered, and is then re-ingested by the agent as instruction-bearing context.
+
+#### Trusted Read-Only Content Gate
+
+Use this gate before reporting internal documentation or runbooks as automatically exploitable.
+
+Required evidence fields:
+- `input_source`
+- `html_rendering`
+- `tool_execution`
+- `human_review`
+- `read_only_boundary`
+- `active_markup_disabled`
+
+Passing control:
+- Internal content remains read-only.
+- Active HTML or markup rendering is disabled.
+- The content cannot trigger tool execution directly.
+- A human review step is required before high-impact actions.
+
+Trigger `PROMPT-TRUST-01` when internal-looking content can render active markup, invoke tools, bypass human review, or cross a read-only boundary. Do not report a false positive solely because `internal_runbook.md` contains instruction-like text if `html_rendering` is disabled, `tool_execution` is none, and `human_review` is required.
 
 ---
 
@@ -69,10 +134,10 @@ Identify every point where user-supplied or externally sourced content reaches t
 
 For each user input channel identified in Step 1, determine whether an attacker can influence the model's behavior by submitting crafted text. Examine:
 
-- **Prompt concatenation patterns** — Is user input inserted into a prompt template without transformation? Look for string formatting, f-strings, or template literals that embed raw user input alongside system instructions.
-- **Instruction boundary weakness** — Is there any delimiter or structural separation between system instructions and user input? If delimiters are used (e.g., triple quotes, XML tags), are they enforceable or can the user simply close the delimiter?
-- **Multi-turn injection** — Can an attacker embed instructions in earlier conversation turns that alter the model's behavior in subsequent turns?
-- **Parameter injection** — Can user-controlled values (e.g., a "name" field, a search query) that are inserted into prompts carry executable instructions?
+- **Prompt concatenation patterns** -- Is user input inserted into a prompt template without transformation? Look for string formatting, f-strings, or template literals that embed raw user input alongside system instructions.
+- **Instruction boundary weakness** -- Is there any delimiter or structural separation between system instructions and user input? If delimiters are used (e.g., triple quotes, XML tags), are they enforceable or can the user simply close the delimiter?
+- **Multi-turn injection** -- Can an attacker embed instructions in earlier conversation turns that alter the model's behavior in subsequent turns?
+- **Parameter injection** -- Can user-controlled values (e.g., a "name" field, a search query) that are inserted into prompts carry executable instructions?
 
 **What to look for in code:**
 - String concatenation or interpolation with user input going into LLM API calls
@@ -86,12 +151,14 @@ For each user input channel identified in Step 1, determine whether an attacker 
 
 For each external content source identified in Step 1, determine whether an adversary could plant instructions in that source that the LLM would later follow. Examine:
 
-- **RAG pipeline inputs** — Documents, web pages, or knowledge base entries that are retrieved and inserted into the LLM context. Can an attacker contribute content to these sources?
-- **Email and messaging integrations** — If the LLM processes emails or messages, an attacker can send a message containing hidden instructions.
-- **Web browsing and scraping** — If the LLM fetches web content, any page it visits could contain injected instructions (including in HTML comments, hidden text, or metadata).
-- **Database records** — If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
-- **File uploads and document processing** — PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
-- **API responses** — Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **RAG pipeline inputs** -- Documents, web pages, or knowledge base entries that are retrieved and inserted into the LLM context. Can an attacker contribute content to these sources?
+- **Email and messaging integrations** -- If the LLM processes emails or messages, an attacker can send a message containing hidden instructions.
+- **Web browsing and scraping** -- If the LLM fetches web content, any page it visits could contain injected instructions (including in HTML comments, hidden text, or metadata).
+- **Database records** -- If user-generated content stored in a database is later retrieved as LLM context, any user who can write to that database is an injection vector.
+- **File uploads and document processing** -- PDFs, spreadsheets, and other documents can contain text that, when extracted and sent to the LLM, functions as injected instructions.
+- **OCR, transcription, and attachment-derived text** -- Images, scans, audio, screenshots, or binary attachments can become prompt text through extraction. Treat `ocr_text`, `transcription_text`, and `attachment_extraction` as separate untrusted artifacts even when the parent file came from a trusted source.
+- **API responses** -- Third-party APIs whose responses are fed into the LLM context could be compromised or manipulated.
+- **Tool-output re-ingestion** -- Tool responses that are rendered, summarized, normalized, or converted can become new model context. Track `tool_output_content_type`, `markup_normalization`, and `agent_reingests_rendered_output` to identify hidden instructions that survive conversion.
 
 **What to look for in code:**
 - Document loaders, web scrapers, or API clients whose output is inserted into prompts
@@ -180,6 +247,9 @@ Evaluate which of the following mitigations are implemented and how effectively.
 - Are model outputs validated against expected formats and content policies before being returned to the user or acted upon?
 - Is there detection for sensitive data (PII, credentials, system prompt content) in outputs?
 - Are rendered outputs (markdown, HTML) sanitized to prevent exfiltration via image tags or links?
+- Are HTML, Markdown, and mixed-markup tool outputs normalized before rendering and before any `agent_reingests_rendered_output` path?
+- Does sanitization match `tool_output_content_type`, or is HTML being passed through a Markdown-only filter?
+- Are normalized outputs attributed as untrusted data so the LLM cannot treat rendered markup or converted text as developer instructions?
 
 ### 5.5 Canary Tokens in System Prompts
 
@@ -234,6 +304,13 @@ Each finding should be assigned a severity based on potential impact:
 ### Interaction Surface Map
 [Table from Step 1]
 
+### Provenance and Normalization Gates
+| Gate | Evidence fields reviewed | Result | Trigger |
+|------|--------------------------|--------|---------|
+| Multimodal Provenance Gate | `input_source`, `source_transform`, `ocr_text`, `transcription_text`, `attachment_extraction`, `parent_document_trust`, `trust_label` | [Pass / Fail / Not applicable] | `PROMPT-PROV-01` |
+| Tool Output Normalization Gate | `tool_output_content_type`, `sanitization`, `markup_normalization`, `rendered_output`, `agent_reingests_rendered_output`, `allowed_renderers` | [Pass / Fail / Not applicable] | `PROMPT-TOOL-01` |
+| Trusted Read-Only Content Gate | `input_source`, `html_rendering`, `tool_execution`, `human_review`, `read_only_boundary`, `active_markup_disabled` | [Pass / Fail / Not applicable] | `PROMPT-TRUST-01` |
+
 ### Findings
 
 #### Finding [N]: [Title]
@@ -258,8 +335,8 @@ Each finding should be assigned a severity based on potential impact:
 
 | Framework | Identifier | Description |
 |-----------|-----------|-------------|
-| OWASP Top 10 for LLMs (2025) | LLM01 | Prompt Injection — Direct and indirect manipulation of LLM behavior through crafted input |
-| MITRE ATLAS | AML.T0051 | LLM Prompt Injection — Techniques for crafting inputs that cause LLMs to deviate from intended behavior |
+| OWASP Top 10 for LLMs (2025) | LLM01 | Prompt Injection -- Direct and indirect manipulation of LLM behavior through crafted input |
+| MITRE ATLAS | AML.T0051 | LLM Prompt Injection -- Techniques for crafting inputs that cause LLMs to deviate from intended behavior |
 
 ---
 
@@ -275,14 +352,24 @@ Each finding should be assigned a severity based on potential impact:
 
 5. **Failing to treat retrieved content as untrusted.** RAG pipelines often insert retrieved document chunks directly into the prompt with no distinction from system instructions. The LLM cannot inherently distinguish "this is data to reason about" from "this is an instruction to follow." Retrieved content should be explicitly demarcated and, where possible, processed through a model or layer that enforces instruction hierarchy.
 
+6. **Inheriting trust across OCR, transcription, or attachment extraction.** A trusted PDF, image, audio file, or internal attachment can still produce untrusted extracted text. Reviewers should flag inherited `trust_label` values when `ocr_text`, `transcription_text`, or `attachment_extraction` content is inserted into prompts without its own provenance boundary.
+
+7. **Applying Markdown-only sanitization to rendered tool output.** Browser and tool outputs frequently contain HTML or mixed markup even when the application expects Markdown. If rendered output is normalized incorrectly and then re-ingested, hidden instructions can survive conversion and reach the model as fresh context.
+
+---
+
+## Changelog
+
+- **1.0.3** - Added multimodal provenance, tool-output normalization, and trusted read-only content gates for OCR, transcription, attachment extraction, HTML/mixed-markup rendering, and re-ingestion paths.
+
 ---
 
 ## References
 
-- OWASP Top 10 for Large Language Model Applications (2025), LLM01: Prompt Injection — https://genai.owasp.org
-- MITRE ATLAS, AML.T0051: LLM Prompt Injection — https://atlas.mitre.org
+- OWASP Top 10 for Large Language Model Applications (2025), LLM01: Prompt Injection -- https://genai.owasp.org
+- MITRE ATLAS, AML.T0051: LLM Prompt Injection -- https://atlas.mitre.org
 - Perez, F. & Ribeiro, I. (2022). "Ignore Previous Prompt: Attack Techniques For Language Models." arXiv:2211.09527.
 - Greshake, K. et al. (2023). "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection." arXiv:2302.12173.
-- Willison, S. Prompt Injection taxonomy and ongoing research — https://simonwillison.net
+- Willison, S. Prompt Injection taxonomy and ongoing research -- https://simonwillison.net
 - Yin, X. et al. "PISmith: RL-Optimized Adaptive Black-Box Prompt Injection Attacks" (2026) -- arXiv:2603.13026
-- fabraix/playground — Open-source AI agent exploit library for testing injection defenses — https://github.com/fabraix/playground
+- fabraix/playground -- Open-source AI agent exploit library for testing injection defenses -- https://github.com/fabraix/playground
