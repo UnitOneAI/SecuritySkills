@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [CIS-Azure-v2.1.0]
 difficulty: intermediate
 time_estimate: "60-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,7 +52,10 @@ The CIS Microsoft Azure Foundations Benchmark v2.1.0 is a consensus-driven secur
 - Access to Azure infrastructure-as-code files (Terraform `.tf`, Bicep `.bicep`, ARM templates `.json`)
 - Azure CLI output or configuration exports (if reviewing a live environment)
 - Entra ID (Azure AD) configuration files or policy documents
+- Azure management group policy assignments, initiatives, exemptions, and exception expiry records
+- Privileged Identity Management (PIM) exports for eligible roles, activation settings, approval, MFA, and maximum duration
 - NSG and firewall rule definitions
+- Storage account SAS policy, shared-key settings, private endpoint, and network rule evidence
 - Key Vault access policies and RBAC assignments
 
 ---
@@ -88,10 +91,46 @@ For detailed CIS benchmark checklist items with specific Terraform patterns, Bic
 
 ---
 
+### Step 11: Effective Management Group, PIM, and Data-Plane Evidence
+
+Before assigning pass/fail status or severity, preserve cross-scope evidence that can change the effective risk result.
+
+#### Management-Group Policy Inheritance Gate
+
+For each subscription-local finding, record whether an inherited management-group policy assignment, initiative, exemption, or deny assignment changes the effective posture. Do not fail a local setting when an enforced inherited policy prevents the insecure runtime state. Do not pass a local setting when a broad or expired exemption weakens the inherited control.
+
+Capture:
+
+- **Management group scope:** tenant root group, parent management group, landing-zone group, or subscription only
+- **Inherited assignments:** policy/initiative IDs, enforcement mode, excluded scopes, and assignment parameters
+- **Exemptions:** reason, owner, affected scope, controls bypassed, and exemption expiry
+- **Effective decision:** local setting, inherited control, exception status, and final review outcome
+
+#### PIM Effective Privilege Gate
+
+Privileged access review must separate standing role assignment from PIM eligible roles. A user or group with no permanent Owner assignment can still carry high risk when eligible Owner or User Access Administrator activation has weak approval, MFA, justification, or duration controls.
+
+Capture:
+
+- **Standing assignments:** permanent role, scope, principal type, and last-use evidence where available
+- **PIM eligible roles:** role, scope, activation approval, MFA requirement, justification requirement, maximum duration, and notification settings
+- **Risk triggers:** privileged eligibility without approval, duration above policy, missing MFA, broad scope, or stale eligibility
+- **False-positive guardrail:** local RBAC absence is not sufficient evidence of low risk until eligible activation paths are reviewed
+
+#### Storage Data-Plane Sharing Gate
+
+Private endpoints and network deny rules reduce network exposure, but they do not prove data-plane safety. Review SAS token and shared-key exposure separately from private networking.
+
+Capture:
+
+- **SAS token and shared-key exposure:** `allowSharedKeyAccess`, account SAS lifetime policy, stored access policies, and any long-lived SAS examples
+- **Private endpoint posture:** subresources covered, DNS configuration, public network access, and trusted services bypass
+- **Effective data-plane access:** whether SAS, shared keys, or Azure trusted services can bypass the intended private path
+- **Finding trigger:** private endpoints do not prove data-plane safety when shared key access or long-lived SAS tokens remain available
 
 ---
 
-### Step 11: Compile Assessment Report
+### Step 12: Compile Assessment Report
 
 Produce the final report using the structure defined in the Output Format section.
 
@@ -119,6 +158,8 @@ Produce the final report using the structure defined in the Output Format sectio
 - Date: <assessment date>
 - Framework: CIS Microsoft Azure Foundations Benchmark v2.1.0
 - Files reviewed: <list of IaC files>
+- Management group scope reviewed: <tenant root / management group / subscription / not available>
+- Effective policy evidence cutoff: <timestamp or export version>
 
 ### Executive Summary
 - Total CIS recommendations evaluated: <N>
@@ -152,7 +193,17 @@ Produce the final report using the structure defined in the Output Format sectio
 - **Line(s):** <line numbers if applicable>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration or code snippet>
+- **Effective Scope Evidence:** <management-group inheritance, exemption, PIM, or data-plane evidence that changes risk>
 - **Remediation:** <specific fix with code example>
+
+### Effective Policy and Privilege Evidence
+
+| Area | Evidence Reviewed | Effective Result | Gaps |
+|------|-------------------|------------------|------|
+| Management-group policy inheritance | <policy assignments / initiatives / deny assignments> | <enforced / exempted / not available> | <missing export, expired exemption, excluded scope> |
+| Exemptions | <exemption id, owner, expiry> | <valid / expired / overbroad> | <missing owner, no expiry, broad scope> |
+| PIM eligible roles | <role, scope, approval, MFA, duration> | <low / medium / high risk> | <no approval, no MFA, excessive duration> |
+| Storage data-plane sharing | <SAS/shared key/private endpoint evidence> | <restricted / bypass possible / unknown> | <long-lived SAS, shared key enabled, missing policy> |
 
 ### Prioritized Remediation Plan
 
@@ -197,9 +248,12 @@ Produce the final report using the structure defined in the Output Format sectio
 1. **Confusing Entra ID Security Defaults with Conditional Access.** CIS 1.1.1 accepts either, but if Conditional Access is used, Security Defaults must be disabled. Do not flag this as a failure if equivalent CA policies exist.
 2. **Missing Defender for Cloud plan coverage.** Each resource type (Servers, SQL, Storage, etc.) requires its own Defender plan enablement. A single `azurerm_security_center_subscription_pricing` resource only covers one type.
 3. **Overlooking `allow_nested_items_to_be_public` on storage accounts.** CIS 3.7 checks the account-level setting, not individual container access levels. The account setting must be `false` to prevent any container from being public.
-4. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
-5. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
-6. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
+4. **Treating subscription-local settings as authoritative.** A weak local setting can be neutralized by enforced management-group policy inheritance, while a strong local setting can be weakened by a broad or expired exemption.
+5. **Ignoring PIM eligible roles.** Lack of standing Owner access is not enough; eligible Owner, Contributor, or User Access Administrator roles can still create privileged access risk when activation controls are weak.
+6. **Assuming private endpoints prove storage safety.** Private endpoints do not prove data-plane safety when SAS token and shared-key exposure still allow broad access.
+7. **NSG rules using service tags.** A rule with `source_address_prefix = "Internet"` is equivalent to `0.0.0.0/0`. Both must be flagged for CIS 6.1 and 6.2.
+8. **Key Vault purge protection is irreversible.** CIS 8.5 requires `purge_protection_enabled = true`. Note this cannot be disabled once enabled -- flag this for awareness during remediation.
+9. **App Service TLS version on both Linux and Windows.** Check `azurerm_linux_web_app` and `azurerm_windows_web_app` resources separately.
 
 ---
 
@@ -223,6 +277,11 @@ Produce the final report using the structure defined in the Output Format sectio
 - Microsoft Defender for Cloud Documentation: https://learn.microsoft.com/en-us/azure/defender-for-cloud/
 - Microsoft Entra ID Security: https://learn.microsoft.com/en-us/entra/identity/
 - Azure Storage Security: https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide
+- Azure Policy Exemption Structure: https://learn.microsoft.com/en-us/azure/governance/policy/concepts/exemption-structure
+- Azure Policy Scope: https://learn.microsoft.com/en-us/azure/governance/policy/concepts/scope
+- Microsoft Entra Privileged Identity Management: https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/pim-configure
+- Azure Storage SAS Overview: https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview
+- Prevent Shared Key Authorization: https://learn.microsoft.com/en-us/azure/storage/common/shared-key-authorization-prevent
 - Azure Key Vault Best Practices: https://learn.microsoft.com/en-us/azure/key-vault/general/best-practices
 - Azure App Service Security: https://learn.microsoft.com/en-us/azure/app-service/overview-security
 - Terraform AzureRM Provider Documentation: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs
@@ -231,4 +290,5 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Changelog
 
+- **1.0.1** -- Added effective management-group policy inheritance, exemption expiry, PIM eligible role, and storage data-plane sharing evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Microsoft Azure Foundations Benchmark v2.1.0 sections 1 through 9.

@@ -95,6 +95,60 @@ resource "azuread_directory_role_assignment" { ... }
 
 #### CIS 1.3.3 -- Ensure that 'Restrict access to Microsoft Entra admin center' is set to 'Yes'
 
+### Effective Management Group and PIM Evidence
+
+Use this cross-check before closing Identity and subscription-scope findings. The goal is to avoid false positives where management-group policy inheritance prevents an insecure local state, and to avoid false negatives where PIM eligible roles create activatable privilege even without standing assignments.
+
+#### Management-group policy inheritance
+
+Review policy assignments and exemptions at tenant root group, management group, and subscription scope:
+
+```json
+{
+  "scope": "/providers/Microsoft.Management/managementGroups/landing-zone",
+  "policyAssignment": "enforce-defender-standard",
+  "enforcementMode": "Default",
+  "notScopes": [],
+  "exemption": {
+    "name": "temporary-storage-exception",
+    "expiresOn": "2026-07-01T00:00:00Z"
+  }
+}
+```
+
+Evidence to record:
+
+- Whether the subscription inherits a relevant policy assignment or initiative.
+- Whether an exemption applies, who owns it, what controls it bypasses, and the exemption expiry.
+- Whether enforcement is disabled or the subscription is excluded by `notScopes`.
+- The final effective state after local settings and inherited policy are combined.
+
+Flag as a finding when inherited control evidence is absent, enforcement is disabled without justification, the exemption expiry is missing or expired, or a broad exemption hides a subscription-local weakness.
+
+#### PIM eligible roles
+
+Review privileged standing assignments together with eligible role activation controls:
+
+```yaml
+pim_eligible_assignment:
+  principal: platform-admins
+  role: Owner
+  scope: /subscriptions/00000000-0000-0000-0000-000000000000
+  approval_required: false
+  mfa_required: true
+  justification_required: false
+  max_duration_hours: 8
+```
+
+Evidence to record:
+
+- PIM eligible roles for Owner, Contributor, User Access Administrator, Privileged Role Administrator, and Global Administrator.
+- Approval, MFA, justification, ticketing, notification, and maximum activation duration settings.
+- Whether privileged eligibility is time-bound and periodically reviewed.
+- Whether group-based eligibility expands privilege beyond the named users visible in local RBAC exports.
+
+Flag as a finding when PIM eligible roles have no approval, no MFA, no justification, excessive activation duration, broad subscription or management-group scope, or stale eligibility without access-review evidence.
+
 ---
 
 ## Section 2 -- Microsoft Defender for Cloud
@@ -250,6 +304,40 @@ resource "azurerm_private_endpoint" {
   }
 }
 ```
+
+#### Data-Plane Sharing Evidence
+
+Private endpoints reduce network exposure, but private endpoints do not prove data-plane safety. Review SAS token and shared-key exposure separately so network posture is not confused with authorization posture.
+
+Check for shared-key authorization:
+
+```hcl
+resource "azurerm_storage_account" "example" {
+  allow_shared_key_access = false
+}
+```
+
+Check for account SAS and user delegation SAS governance:
+
+```yaml
+storage_data_plane:
+  allow_shared_key_access: false
+  account_sas_lifetime_hours: 24
+  stored_access_policies:
+    - container: reports
+      expiry: 2026-06-30T00:00:00Z
+  private_endpoint_subresources: [blob, queue]
+  public_network_access: Disabled
+```
+
+Evidence to record:
+
+- `allow_shared_key_access` or equivalent export value.
+- Account SAS lifetime policy, stored access policy expiry, and whether long-lived SAS examples exist in code or runbooks.
+- Whether trusted services bypass or public network access can still reach the account.
+- Which private endpoint subresources are covered and whether DNS resolution forces traffic through the private path.
+
+Flag as a finding when shared keys remain enabled without a documented exception, SAS tokens have long lifetimes, stored access policies have no expiry, trusted-services bypass is overbroad, or private endpoint coverage excludes the service being reviewed.
 
 ### CIS 3.11 -- Ensure Soft Delete is Enabled for Azure Containers and Blob Storage
 
