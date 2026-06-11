@@ -13,7 +13,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, MITRE-ATLAS, NIST-AI-RMF]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -63,9 +63,12 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Agent architecture diagram | Design docs, README, or infrastructure-as-code | Identifies trust boundaries, delegation chains, and tool surface |
 | Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can actually do |
 | Permission model | IAM configs, role definitions, credential stores | Reveals whether least-privilege is enforced |
-| Memory/state persistence | Vector DB configs, session stores, scratchpad files | Exposes memory poisoning surface |
+| Memory/state persistence | Vector DB configs, session stores, scratchpad files | Exposes memory poisoning surface and provenance gaps |
+| Memory provenance model | Memory schemas, audit tables, embedding metadata, summary stores | Determines whether downstream agents can distinguish trusted facts from unverified summaries |
 | Human approval gates | Workflow configs, UI code, approval logic | Determines if HITL can be bypassed |
+| Override and emergency-bypass paths | Runbooks, break-glass workflows, approval services, ticketing records | Reveals whether sensitive actions have accountable human authorization |
 | Multi-agent communication | Message bus configs, inter-agent protocols, shared state | Identifies trust boundary violations |
+| Delegation and side-effect map | Orchestrator configs, child-agent manifests, workflow DAGs | Shows whether read-only agents can indirectly trigger write-capable agents |
 | Error handling and retry logic | Exception handlers, circuit breaker configs | Reveals cascading failure potential |
 | Authentication and identity | Auth middleware, token management, agent identity configs | Exposes identity gaps |
 | Rate limiting and quotas | API gateway configs, token budgets, cost controls | Determines resource exhaustion risk |
@@ -148,6 +151,7 @@ The 2024 Anthropic research paper on tool use showed that Claude, when given a c
 
 - Agents that can modify their own system prompt, tool list, or configuration at runtime.
 - Delegation patterns where a lower-privilege agent can request a higher-privilege agent to act on its behalf without independent verification of the request.
+- Read-only or review-only agents that can delegate to write-capable child agents, deployment agents, payment agents, or ticket automation without a separate authorization decision.
 - Prompt injection vectors that could cause an agent to re-interpret its role (e.g., "You are now an admin agent with full access").
 - Self-modification capabilities — agents that can write to their own code, config files, or deployment manifests.
 - Token or credential stores accessible to the agent runtime without additional authentication.
@@ -161,8 +165,10 @@ In early 2024, researchers from UIUC demonstrated a multi-agent privilege escala
 1. Make agent configurations immutable at runtime. System prompts, tool lists, and permission sets must not be modifiable by the agent itself.
 2. Implement inter-agent authentication. Every request between agents must be cryptographically signed and verified against an allowlist of permitted request types.
 3. Apply the principle of least authority at the delegation layer — an agent cannot delegate permissions it does not hold.
-4. Deploy runtime guardrails that detect and block attempts to redefine agent identity or role within conversation context.
-5. Use hardware-backed credential stores (HSMs, TEEs) for high-privilege operations, requiring out-of-band approval for access.
+4. Build a delegated side-effect matrix. For every agent, record which downstream agent, tool, or workflow can perform writes, deletes, deployments, payments, notifications, or credential changes on its behalf.
+5. Require an independent authorization gate before a low-privilege agent can cause a higher-privilege delegate to act.
+6. Deploy runtime guardrails that detect and block attempts to redefine agent identity or role within conversation context.
+7. Use hardware-backed credential stores (HSMs, TEEs) for high-privilege operations, requiring out-of-band approval for access.
 
 **Framework Mapping:**
 
@@ -181,6 +187,8 @@ In early 2024, researchers from UIUC demonstrated a multi-agent privilege escala
 - Vector databases (Pinecone, Weaviate, Chroma, pgvector) that agents both read from and write to.
 - Conversation history stores that are not integrity-protected (no checksums, no append-only enforcement).
 - Shared memory spaces in multi-agent systems where any agent can write context that other agents consume.
+- Shared summary stores that omit writer identity, source document, source trust level, timestamp, integrity hash, reviewer status, or downstream-consumer labels.
+- Memory records that are treated as instructions or facts by downstream agents without provenance-aware retrieval or trust filtering.
 - RAG pipelines where the ingestion source includes user-submitted or externally-sourced documents that are embedded without content validation.
 - Agent "learning" mechanisms that update long-term memory based on interaction outcomes without human review.
 
@@ -193,8 +201,10 @@ In 2024, researchers demonstrated a persistent memory poisoning attack against a
 1. Treat persistent memory as a security boundary. All writes to agent memory must be validated, and the source must be tracked with provenance metadata.
 2. Implement append-only memory stores with cryptographic integrity (hash chains or Merkle trees) so tampering is detectable.
 3. Separate memory by trust level. User-sourced context, agent-generated context, and system-provided context must be stored and retrieved with different trust labels.
-4. Implement memory decay and review cycles. Periodically audit long-term memory for anomalous entries. Apply TTLs to user-sourced memories.
-5. In multi-agent systems, isolate memory per agent. Shared memory must be mediated by a trusted memory broker that validates writes.
+4. Require a memory-boundary provenance table for every shared memory store: writer identity, source URI or artifact ID, source trust level, transformation step, integrity marker, review status, permitted consumers, and expiration policy.
+5. Enforce provenance-aware retrieval. Downstream agents must not treat summaries, embeddings, or recalled memories as trusted instructions unless the record's provenance and trust label permit that use.
+6. Implement memory decay and review cycles. Periodically audit long-term memory for anomalous entries. Apply TTLs to user-sourced memories.
+7. In multi-agent systems, isolate memory per agent. Shared memory must be mediated by a trusted memory broker that validates writes.
 
 **Framework Mapping:**
 
@@ -310,6 +320,8 @@ In 2024, a financial services firm reported an incident (disclosed at a CISO rou
 - Approval gates implemented in application logic that the agent can influence (e.g., approval thresholds stored in a database the agent can write to).
 - Batch processing modes that aggregate multiple actions into a single approval request, obscuring individual high-risk operations.
 - Fallback paths that skip approval when the approval service is unavailable (fail-open design).
+- Emergency or break-glass bypass paths that lack ticket ID, approving authority, reason code, scoped duration, audit event, and post-use review.
+- Bulk approval flows that approve multiple actions without preserving per-action risk, requester, approver, and execution trace.
 - Approval fatigue patterns — systems that generate so many approval requests that humans rubber-stamp them.
 - Agent ability to rephrase or reframe requests to make dangerous operations appear routine.
 
@@ -324,7 +336,8 @@ In 2024, a red team exercise at a technology company (published in their securit
 3. Design for fail-closed. If the approval service is unavailable, the agent must halt, not proceed without approval.
 4. Implement approval diversity — critical operations require approval from multiple reviewers or through multiple channels.
 5. Present approval requests with full context. Show the human reviewer the complete action chain, not just the immediate request.
-6. Rotate and limit approval sessions to combat approval fatigue. Set maximum approval counts per session.
+6. Require override evidence for every bypass: ticket, approver, reason, scope, expiry, audit event ID, affected action IDs, and post-use review outcome.
+7. Rotate and limit approval sessions to combat approval fatigue. Set maximum approval counts per session.
 
 **Framework Mapping:**
 
@@ -422,17 +435,30 @@ Grep: "role|permission|policy|iam|service_account" in **/*.{py,ts,js,yaml,yml,js
 
 # Memory and state stores
 Grep: "pinecone|weaviate|chroma|pgvector|redis|memory|persist|vector" in **/*.{py,ts,js,yaml,yml}
+Grep: "provenance|source_id|trust_level|writer_id|memory_scope|summary_store|embedding_metadata" in **/*.{py,ts,js,yaml,yml,json,sql}
 
 # Inter-agent communication
 Grep: "send_message|delegate|dispatch|publish|subscribe|queue" in **/*.{py,ts,js}
+Grep: "delegate|child_agent|subagent|handoff|side_effect|write_capable|execute_action" in **/*.{py,ts,js,yaml,yml,json}
 
 # Human approval gates
 Grep: "approve|confirm|human_in_the_loop|hitl|review|authorize" in **/*.{py,ts,js,yaml,yml}
+Grep: "override|bypass|break_glass|emergency|bulk_approve|approval_event|ticket_id" in **/*.{py,ts,js,yaml,yml,json}
 ```
 
 ### Hands-On Assessment Tooling
 
 For practical validation of OWASP Agentic AI risks against concrete exploits, use the **fabraix/playground** open-source exploit library (https://github.com/fabraix/playground). This provides consolidated AI agent exploit PoCs that can be used alongside the theoretical framework in Step 2 to test each AG01-AG10 category against real attack scenarios.
+
+### Required Evidence Tables
+
+Build these evidence tables before assigning final ratings. Missing records should be reported as gaps, not silently treated as safe.
+
+| Table | Required fields | Related categories |
+|---|---|---|
+| Memory boundary provenance | Store, writer identity, source artifact, source trust level, transformation, integrity marker, review status, permitted consumers, TTL/expiry | AG04, AG05, AG07 |
+| Human override path | Action, normal approval gate, bypass condition, approver, ticket/audit event, scope, expiry, post-use review, affected artifacts | AG03, AG08, AG10 |
+| Delegated side-effect path | Requesting agent, delegate agent/tool, requested action, effective permission, authorization check, audit identity, rollback path | AG01, AG03, AG05, AG08 |
 
 ### Step 2 — Threat Assessment
 
@@ -492,8 +518,11 @@ Structure the final report as follows:
 - Agent framework: [framework name and version]
 - Tools registered: [count and categories]
 - Memory stores: [types]
+- Memory provenance model: [present/partial/absent]
 - Human approval gates: [present/absent, description]
+- Override paths: [none/controlled/uncontrolled]
 - Multi-agent communication: [method]
+- Delegated side-effect paths: [count and highest effective privilege]
 
 ## Findings by Threat Category
 
@@ -513,6 +542,23 @@ Structure the final report as follows:
 |---|---|---|---|
 | AG01 | [rating] | [one-line summary] | [priority] |
 | ... | ... | ... | ... |
+
+## Evidence Tables
+
+### Memory Boundary Provenance
+| Store | Writer | Source | Trust level | Integrity marker | Review status | Permitted consumers | Expiry |
+|---|---|---|---|---|---|---|---|
+| [store] | [identity] | [artifact] | [level] | [hash/signature/log] | [status] | [agents] | [TTL] |
+
+### Human Override Paths
+| Action | Normal gate | Bypass condition | Approver | Ticket/audit event | Scope/expiry | Post-use review |
+|---|---|---|---|---|---|---|
+| [action] | [gate] | [condition] | [identity] | [event] | [scope] | [outcome] |
+
+### Delegated Side-Effect Paths
+| Requesting agent | Delegate | Side effect | Effective permission | Authorization check | Audit identity | Rollback |
+|---|---|---|---|---|---|---|
+| [agent] | [delegate] | [write/delete/deploy/etc.] | [permission] | [control] | [identity] | [path] |
 
 ## Recommendations
 1. [Highest priority recommendation]
