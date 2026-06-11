@@ -45,6 +45,7 @@ Before beginning the threat model, gather the following. Mark each item as obtai
 - [ ] **System description** — High-level purpose, business context, and intended users.
 - [ ] **Component inventory** — Services, databases, message queues, caches, CDNs, third-party APIs, serverless functions, and any other runtime components.
 - [ ] **Data flow descriptions** — How data moves between components, including protocols (HTTPS, gRPC, AMQP), serialization formats (JSON, Protobuf), and transport security (TLS version, mTLS).
+- [ ] **Asynchronous flow metadata** — For webhooks, queues, streams, and scheduled retries, collect event type, producer identity, consumer identity, message age limits, retry policy, idempotency key scope, replay cache or nonce behavior, and dead-letter queue (DLQ) replay process.
 - [ ] **Trust boundaries** — Where authentication and authorization are enforced; boundaries between internal networks, DMZs, public internet, third-party services, and user devices.
 - [ ] **Authentication and authorization mechanisms** — OAuth 2.0 flows, API keys, JWTs, SAML, RBAC/ABAC policies, service-to-service identity (SPIFFE/mTLS).
 - [ ] **Data classification** — What data is stored or processed (PII, PHI, financial data, credentials, secrets) and its sensitivity level.
@@ -179,8 +180,25 @@ Every data flow in the DFD must be annotated with the following properties:
 | Encryption in transit | TLS 1.3, WireGuard, none |
 | Key management | AWS KMS, HashiCorp Vault, application-managed, N/A |
 | Failure mode | Fail-closed (deny on error) or fail-open (allow on error) |
+| Async replay controls | Event timestamp, nonce or replay cache, replay window TTL, idempotency key scope |
+| Retry and DLQ controls | Retry/backoff policy, poison-message handling, DLQ access control, replay approval |
+| Async execution context | Producer identity, consumer authorization context, operator replay identity, audit event ID |
 
 Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
+
+**Asynchronous Event-Flow Evidence Gate:**
+
+For every webhook, queue, stream, event bus, batch retry, scheduled retry, or DLQ redrive path that can trigger side effects, capture the evidence below. Mark the gate `Not Evaluable` when queue configuration, replay logs, or consumer authorization details are unavailable.
+
+| Evidence Field | Required Evidence | Pass / Fail / Not Evaluable Guidance |
+|----------------|-------------------|--------------------------------------|
+| Event identity | Event type, message ID, producer ID, signature or integrity check, and event timestamp | Pass only when identity and freshness can be tied to one event instance |
+| Replay window | Maximum accepted event age, replay cache or nonce TTL, and cache lookup result | Fail when old signed messages can be accepted for irreversible actions |
+| Idempotency scope | Idempotency key, deduplication store, and scope across batch, retry, and DLQ paths | Fail when retry or DLQ redrive changes the deduplication boundary |
+| Consumer authorization context | Consumer role, downstream permission set, and original producer context used during processing | Fail when replay runs with elevated operator context instead of the original trust context |
+| Retry and backoff behavior | Retry count, visibility timeout, backoff policy, and poison-message threshold | Fail when retry storms can repeat side effects or exhaust downstream dependencies |
+| DLQ replay approval | Re-drive approver, change ticket, scope, expiration, and replay audit log | Fail when anyone with queue access can replay messages without approval or auditability |
+| Ordering and batch assumptions | Ordering guarantees, partial batch failure handling, and replay behavior for previously successful records | Fail when a partial replay can duplicate successful irreversible operations |
 
 ### Step 4: Apply STRIDE per Element
 
@@ -206,6 +224,7 @@ Threat: An attacker modifies data, code, or configuration without authorization.
 |----------|---------------|
 | Can request parameters be modified in transit? | Man-in-the-middle on non-TLS connections |
 | Can database records be altered by unauthorized users? | SQL injection, insecure direct object reference |
+| Can an old signed event or webhook be replayed to repeat an irreversible action? | Queue replay triggers duplicate payout or entitlement grant |
 | Can CI/CD pipeline artifacts be tampered with? | Compromised build server, dependency confusion |
 | Are configuration files protected from unauthorized modification? | Writable config in production containers |
 | Is input validated and sanitized before processing? | XSS, command injection, deserialization attacks |
@@ -219,6 +238,7 @@ Threat: A user or system denies performing an action, and the system cannot prov
 | Are all security-relevant actions logged with immutable timestamps? | Missing audit trail for privilege changes |
 | Can log entries be modified or deleted by the actors they record? | Logs stored in writable user-accessible storage |
 | Are logs centralized and protected from tampering? | Local-only logs on compromised host |
+| Are DLQ replay and manual re-drive operations logged with actor, scope, message IDs, and approval context? | Operator replay cannot be attributed after poisoned message recovery |
 | Do transactions include non-repudiation controls (digital signatures)? | Disputed financial transactions |
 | Is there sufficient log detail to reconstruct the sequence of events? | Logs missing source IP, user ID, or action detail |
 
@@ -254,6 +274,7 @@ Threat: An attacker gains access to resources or actions beyond their authorized
 |----------|---------------|
 | Are authorization checks enforced at every layer (API, service, data)? | Broken access control, IDOR |
 | Can a regular user access admin functionality? | Missing role checks on admin endpoints |
+| Can DLQ replay or batch recovery run with broader privileges than the original producer? | Poisoned message replay bypasses producer validation under operator context |
 | Are privilege boundaries enforced in containerized environments? | Container escape, privileged container |
 | Can an attacker exploit deserialization or injection for code execution? | Remote code execution via insecure deserialization |
 | Are default credentials and unnecessary services removed? | Default admin/admin on management interfaces |
@@ -400,6 +421,16 @@ Produce the threat register as a structured table. Each row represents one ident
 | TM-005 | Denial of Service | Unbounded file upload allows resource exhaustion via large payload submission | File Upload `/api/v1/upload` | T1499.003 — Application Exhaustion Flood | High | Medium | High | Enforce max file size (10MB), implement request timeout, add rate limiting per user | Storage Team | Open |
 | TM-006 | Elevation of Privilege | IDOR vulnerability allows regular users to access other users' records by modifying resource ID | User Profile `/api/v1/users/{id}` | T1068 — Exploitation for Privilege Escalation | High | High | Critical | Implement object-level authorization checks, validate resource ownership at service layer | Backend Team | Open |
 
+For asynchronous findings, add an **Async Evidence** note below the table row with:
+
+- Event source and producer identity
+- Event age limit and replay-window evidence
+- Idempotency key and deduplication scope
+- Consumer authorization context
+- Retry, backoff, and poison-message handling
+- DLQ replay approval, actor, ticket, and audit log reference
+- Pass / Fail / Not Evaluable result for the asynchronous event-flow evidence gate
+
 ## 6. Framework Reference
 
 ### STRIDE (Microsoft, 2003)
@@ -466,6 +497,10 @@ Threat models become stale as architectures evolve. New services, changed data f
 ### Pitfall 5: Producing Threats Without Actionable Mitigations
 
 A threat register full of identified threats but no prioritized, assignable mitigations provides no security value. Every identified threat must have a corresponding mitigation with a clear owner, a severity-based SLA, and a tracking mechanism (e.g., linked Jira ticket or GitHub issue). If a threat is accepted rather than mitigated, document the risk acceptance with an approving authority and review date.
+
+### Pitfall 6: Treating Asynchronous Flows as Implementation Details
+
+Queues, webhooks, event buses, scheduled retries, and DLQs often perform the same sensitive actions as synchronous APIs, but with different trust boundaries. A signed event is not automatically fresh, an idempotency key is not automatically scoped across retries, and a DLQ replay is not automatically authorized just because an operator initiated it. Always model message age, replay windows, deduplication scope, consumer authorization, DLQ approval, and replay auditability before closing async replay or dead-letter abuse cases.
 
 ## 8. Prompt Injection Safety Notice
 
