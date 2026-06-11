@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -144,11 +144,27 @@ Evaluate and configure credential-based (authenticated) scanning for improved ac
 
 **Framework mapping:** CIS Controls v8 (Control 7: Continuous Vulnerability Management)
 
+#### Scanner Modality and Evidence Model
+
+Do not score every scanner with the same host-credential benchmark. First identify the scanner modality, the credential type that is meaningful for that modality, and the evidence that proves the scanner actually had the expected visibility.
+
+| Scanner Modality | Credential / Access Evidence | Good Confidence Evidence | Common False Confidence |
+|---|---|---|---|
+| Host/network credentialed scan | Windows/Linux/network-device login success by platform and asset group | Authentication success rate, local package/config checks executed, failed-auth list remediated | Policy has credentials configured but 40% of hosts failed login |
+| External attacker-view scan | No credentials by design; source IP and scope match external exposure test | Internet-facing assets scanned from outside, unauthenticated exposure recorded | Marked weak only because it is intentionally unauthenticated |
+| Container image scan | Registry or artifact access, image digest, manifest/layer parsing | Digest-bound scan result, package manager databases parsed, final image layers inspected | Base-image finding treated as reachable without final-layer evidence |
+| SCA/dependency scan | Repository/package-manager access, lockfile/SBOM freshness | Lockfile or SBOM parsed, private registries included, scan tied to commit | Source-only scan misses deployed artifact or private dependencies |
+| CSPM/cloud API scan | Read-only cloud API role, organization/project/account scope | API permissions cover target accounts/projects, denied API calls tracked | Read-only role lacks APIs needed for storage/IAM/network checks |
+| DAST/API scan | Test account, token, OpenAPI/HAR/route inventory | Authenticated request evidence and route coverage | Login succeeds but protected routes return 401/403/429 |
+| Agent-based endpoint scan | Agent installed, healthy, and recently checked in | Last check-in within SLA, policy version current, sensor not disabled | Agent data is stale but dashboard still reports coverage |
+
+**Finding classification:** Treat a scanner as `Not Evaluable` for a modality when the access evidence is missing. A configured credential with material authentication failures is **High** for production coverage because it overstates detection accuracy. Intentional unauthenticated external scans are **not** a credentialing gap when the stated objective is attacker-view exposure validation.
+
 #### Comparison Matrix
 
 | Attribute | Unauthenticated (Remote) | Authenticated (Credentialed) |
 |---|---|---|
-| **Detection accuracy** | Low-Medium (60-70% of vulnerabilities) | High (90-95% of vulnerabilities) |
+| **Detection accuracy** | Lower for internal host vulnerability coverage; valid for attacker-view perimeter exposure | Higher only when authentication succeeds on the in-scope assets and required checks execute |
 | **False positive rate** | Higher (relies on banners, remote probes) | Lower (validates installed versions directly) |
 | **Detection scope** | Network-exposed services and configurations only | Installed packages, local configurations, file permissions, registry entries |
 | **Credential management** | None required | Requires credential vault integration (CyberArk, HashiCorp Vault, scanner-native vault) |
@@ -162,7 +178,8 @@ Evaluate and configure credential-based (authenticated) scanning for improved ac
 2. **Rotate credentials:** Scan credentials should follow the same rotation policy as other service accounts
 3. **Vault integration:** Store scan credentials in an enterprise secret management solution, not in the scanner's local credential store
 4. **Per-platform credentials:** Maintain separate credentials for Windows (local admin or domain account), Linux/Unix (root or sudo-enabled account), network devices (read-only SNMP community/SSH), databases (read-only DB account), and VMware/cloud APIs
-5. **Credential verification:** Run a credential verification scan before full scan to confirm authentication success across all targets
+5. **Credential verification:** Run a credential verification scan before full scan to confirm authentication success across all targets. Record success rate by platform, business unit, network segment, and asset criticality.
+6. **Agent freshness:** For agent-based scanners, record last check-in time, policy version, sensor health, and assets missing or stale beyond the scanning SLA.
 
 ```
 Authentication Configuration:
@@ -174,7 +191,8 @@ Authentication Configuration:
 - Database Auth:       [Read-only DB account | N/A]
 - Cloud/API Auth:      [API key with read-only role | N/A]
 - Credential Rotation: [Every N days]
-- Last Verification:   [YYYY-MM-DD, success rate: [N]%]
+- Last Verification:   [YYYY-MM-DD, success rate by platform/asset group: [N]%]
+- Agent Freshness:     [N% checked in within SLA; stale/missing asset list]
 ```
 
 ### Step 4: Severity Override Criteria
@@ -317,6 +335,7 @@ Highlight the most impactful tuning recommendations.]
 | Setting | Current State | Recommended State | Priority |
 |---|---|---|---|
 | Authentication | [Unauthenticated / Partial / Full] | [Full credentialed] | [High/Medium/Low] |
+| Scanner Modality | [host/external/container/SCA/CSPM/DAST/agent] | [Evidence model matched to modality] | [Priority] |
 | Plugin Selection | [All / Custom / Compliance-mixed] | [Separated vuln and compliance policies] | [Priority] |
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
@@ -330,6 +349,12 @@ Highlight the most impactful tuning recommendations.]
 
 **Estimated False Positive Rate:** [N%]
 **Top FP Contributors:** [List top 3-5 plugins generating the most false positives]
+
+### Modality and Credential Confidence
+
+| Scanner | Modality | Intended Objective | Access Evidence | Success / Freshness | Coverage Gaps | Disposition |
+|---|---|---|---|---|---|---|
+| [scanner] | [host/external/container/SCA/CSPM/DAST/agent] | [internal vuln coverage / attacker-view / artifact scan / cloud posture] | [credential/API/agent evidence] | [auth success %, last check-in SLA, API denied calls] | [asset groups not covered] | [Pass / Partial / Not Evaluable / Remediate] |
 
 ### Severity Overrides
 
@@ -399,6 +424,10 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
+6. **Calling a scan credentialed because credentials are configured.** Scanner policies can contain valid-looking credentials while large asset groups fail authentication, cloud API calls are denied, or endpoint agents have not checked in for weeks. Score confidence from observed access evidence, not the presence of a credential field.
+
+7. **Penalizing intentional attacker-view scans.** External perimeter, ASV, and unauthenticated exposure scans are supposed to model what an outside attacker can see. Treat them as a separate modality instead of forcing them into the internal host-credentialed benchmark.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -429,3 +458,10 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - Grype: https://github.com/anchore/grype
 - Nuclei: https://docs.projectdiscovery.io/tools/nuclei/
 - NVD (NIST): https://nvd.nist.gov/
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added scanner modality, credential success-rate, and agent freshness evidence gates to avoid over-crediting configured credentials or under-crediting intentional attacker-view scans.
+- **1.0.0** -- Initial release. Scanner tuning workflow covering false positives, authenticated scanning, severity overrides, cross-scanner correlation, scheduling, and CVSS 4.0 guidance.

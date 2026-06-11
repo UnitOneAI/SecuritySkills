@@ -1,0 +1,21 @@
+expected_skill_decision: pass
+scenario: Scanner program separates attacker-view perimeter scanning from healthy agent-based endpoint coverage.
+scanner_program:
+  external_perimeter:
+    modality: external_attacker_view
+    authentication: none_by_design
+    source: approved_external_scanner
+    targets: internet_facing_assets
+    objective: externally_observable_exposure
+  endpoint_agent:
+    modality: agent_based_endpoint_scan
+    policy_version: 2026-06-01
+    last_check_in_sla_hours: 24
+    healthy_assets_percent: 98
+    stale_or_missing_assets:
+      count: 2
+      disposition: tracked_for_owner_remediation
+confidence_evidence:
+  unauthenticated_external_scan_not_a_gap: true
+  agent_freshness_recorded: true
+  coverage_gap_list_present: true
