@@ -1,0 +1,27 @@
+expected_skill_decision: fail
+scenario: Credentialed active DAST workflow uses mutable action tags, broad token permissions, and floating scanner updates.
+workflow:
+  name: DAST Full Scan
+  on:
+    schedule:
+      - cron: "0 2 * * 1"
+  permissions: write-all
+  jobs:
+    dast-full:
+      runs-on: ubuntu-latest
+      environment: staging
+      steps:
+        - uses: actions/checkout@v4
+        - uses: zaproxy/action-full-scan@v0.10.0
+          with:
+            target: https://staging.example.com
+            cmd_options: "-config automation.plan=/zap/af-plan.yaml"
+        - run: docker run --rm ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py -t https://staging.example.com -z "-addonupdate"
+supply_chain_gaps:
+  action_refs: mutable_version_tags
+  token_permissions: write_all
+  scanner_engine:
+    image: floating_stable_tag
+    addon_updates: automatic_without_owner_approval
+  sarif_upload_justification: missing
+  platform_policy_evidence: unknown

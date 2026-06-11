@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -399,12 +399,39 @@ jobs:
 - [ ] Full (active) scan runs post-merge against staging -- comprehensive, scheduled.
 - [ ] Active scanning NEVER targets production.
 - [ ] Scan results are uploaded in SARIF format for centralized tracking.
-- [ ] ZAP action is pinned to a specific version.
+- [ ] Third-party DAST actions are pinned to a full-length commit SHA, or repository/organization policy enforces immutable action pinning.
+- [ ] Workflow/job `permissions` are explicit and least privilege (`contents: read`; add `security-events: write` only when SARIF upload is required).
 - [ ] `fail_action` is set appropriately (baseline: warn; full: error for high/critical).
 - [ ] Target application is ephemeral or restorable (active scanning may modify data).
 - [ ] Scan duration has a timeout to prevent pipeline stalls.
 
 **Finding classification:** No DAST in CI/CD is **High**. Active scanning targeting production is **Critical**. No passive scanning on PRs is **Medium**. ZAP action unpinned is **Medium**.
+
+#### 5.2 DAST Workflow Supply-Chain and Token Boundary
+
+DAST workflows are security gates that execute scanner code, reach staging or preview systems, and often hold test credentials, API tokens, cookies, or SARIF upload permission. Review the workflow supply-chain boundary before treating a CI scan as hardened evidence.
+
+| Evidence | Safe / Expected | Risky / Needs Review |
+|---|---|---|
+| Third-party action refs | Full-length commit SHA from the official action repository, or enforced SHA-pinning policy | Branch refs, floating tags, or version tags treated as immutable |
+| Local actions | `./path` reviewed in the same repository and branch | Local action path resolves to generated or unreviewed code |
+| Workflow token | Explicit least privilege, typically `contents: read` plus `security-events: write` only for SARIF upload | Missing permissions with unknown platform default, `write-all`, or unrelated write scopes |
+| PR baseline scans | No secrets exposed to untrusted fork PRs; passive-only target is local/ephemeral | PR scan receives staging credentials, deployment tokens, or production network reach |
+| Active staging scans | Environment-scoped secrets, protected staging environment, approved target allowlist | Broad secrets, production target, or no environment protection evidence |
+| Scanner engine provenance | ZAP/Burp/Nuclei action SHA, Docker image digest, and approved add-on/template update policy | Floating Docker tags such as `stable`/`latest`, automatic add-on/template update without approval |
+| Platform policy evidence | Allowed-actions policy, SHA-pinning enforcement, and read-only default token settings documented | Platform defaults unknown but assumed safe from YAML alone |
+
+**What to verify:**
+
+- Third-party actions (`actions/checkout`, `zaproxy/*`, `github/codeql-action/upload-sarif`, report uploaders, browser setup actions) use full-length commit SHAs. Treat version tags as version-pinned but not immutable.
+- If action SHAs are not visible in YAML, collect repository or organization policy evidence showing SHA pinning or selected-actions allowlists are enforced.
+- Workflow and job `permissions` are declared explicitly. SARIF upload justifies `security-events: write`; it does not justify `write-all`.
+- PR-triggered baseline scans do not receive secrets or credentials from protected environments when running on untrusted fork code.
+- Active scans that need credentials use staging-only environment secrets, protected environments, and resettable target data.
+- Docker-based scanner invocations pin images by digest or use an approved image update process. Automatic ZAP add-on updates and Nuclei template updates have owner approval and rollback evidence.
+- Scanner outputs are uploaded with scoped artifact/SARIF permissions, not broad repository write permissions.
+
+**Finding classification:** Branch-pinned third-party DAST actions or floating scanner images in credentialed active scans are **High**. `write-all` or unrelated write scopes in DAST workflows are **High**. Version-tagged third-party DAST actions without SHA-pinning or allowed-actions policy evidence are **Medium**. Missing platform token-default evidence is **Not Evaluable from YAML alone** and should be recorded as a Medium hygiene gap until settings are verified.
 
 ---
 
@@ -482,8 +509,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; branch-pinned DAST actions or floating scanner images in credentialed active scans; overbroad workflow token permissions. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action version-tagged without immutable pinning evidence; missing GraphQL scanning; missing security header rules. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -519,6 +546,12 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
 | Results deduplication | Yes/No | <dedup method> |
+
+### DAST Workflow Supply Chain
+
+| Workflow | Trigger | Scan Type | Action Pinning | Token Permissions | Secrets Exposure | Scanner Engine Provenance | Status |
+|----------|---------|-----------|----------------|-------------------|------------------|---------------------------|--------|
+| [file] | [pull_request/schedule/push] | [baseline/full/API] | [SHA/tag/branch/local/policy] | [contents:read, security-events:write, ...] | [none/staging/prod/unknown] | [action SHA, image digest, update policy] | [Pass/Fail/Not Evaluable] |
 
 ### Findings
 
@@ -584,6 +617,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
+6. **Treating version tags as immutable action pinning.** `zaproxy/action-full-scan@v0.10.0` is easier to maintain than a branch ref, but it is still a mutable tag unless repository or organization policy enforces immutable action references. For credentialed active scans, record full action SHAs, scanner image digests, token permissions, and scanner update policy before calling the workflow supply chain hardened.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -609,9 +644,13 @@ This skill processes DAST configuration files that may contain target URLs, auth
 - OWASP API Security Top 10: https://owasp.org/API-Security/
 - Burp Suite Enterprise Documentation: https://portswigger.net/burp/enterprise
 - SARIF Specification: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
+- GitHub Actions Secure Use Reference: https://docs.github.com/en/actions/reference/security/secure-use
+- GitHub Actions GITHUB_TOKEN Permissions: https://docs.github.com/en/actions/reference/authentication-in-a-workflow#permissions-for-the-github_token
+- OpenSSF Scorecard Checks: https://github.com/ossf/scorecard/blob/main/docs/checks.md
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added DAST workflow supply-chain and token-boundary gates for immutable action pinning, least-privilege `GITHUB_TOKEN` permissions, SARIF upload scope, and scanner engine/update provenance.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.

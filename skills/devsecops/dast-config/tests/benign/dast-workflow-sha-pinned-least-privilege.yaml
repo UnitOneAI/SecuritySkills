@@ -1,0 +1,31 @@
+expected_skill_decision: pass
+scenario: DAST baseline workflow uses immutable action refs and least-privilege token scope.
+workflow:
+  name: DAST Baseline
+  on:
+    pull_request: {}
+  permissions:
+    contents: read
+    security-events: write
+  jobs:
+    zap-baseline:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        - uses: zaproxy/action-baseline@6f07142e5c94dc5d892006a340796a7cb78c6f8d
+          with:
+            target: http://app:8080
+            fail_action: warn
+        - uses: github/codeql-action/upload-sarif@8e681eabc5c6227c49c31b85e7a00e5221b2a936
+          with:
+            sarif_file: report_sarif.json
+supply_chain_evidence:
+  action_refs: full_length_sha
+  sarif_upload_permission: security-events_write_only
+  secrets_available_to_pull_request: false
+  scanner_engine:
+    image: ghcr.io/zaproxy/zaproxy@sha256:1111111111111111111111111111111111111111111111111111111111111111
+    addon_updates: approved_change_window
+  platform_policy:
+    default_token_permissions: read_only
+    selected_actions_allowlist: true
