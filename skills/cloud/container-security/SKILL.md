@@ -5,15 +5,16 @@ description: >
   Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190.
   Auto-invoked when reviewing Dockerfiles, Kubernetes manifests, Helm charts,
   or container orchestration configurations. Evaluates image security, runtime
-  hardening, RBAC, Pod Security Standards, network policies, and secrets
-  management. Produces a prioritized findings report with remediation guidance.
+  hardening, RBAC, Pod Security Standards, network policies, cloud metadata
+  exposure, and secrets management. Produces a prioritized findings report
+  with remediation guidance.
 tags: [cloud, containers, kubernetes, docker]
 role: [cloud-security-engineer, security-engineer]
 phase: [build, deploy, operate]
 frameworks: [CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0, NIST-SP-800-190]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -59,7 +60,8 @@ NIST SP 800-190 identifies five risk categories: image risks, registry risks, or
 - Access to Dockerfiles and container build configurations
 - Kubernetes manifests (YAML), Helm charts, or Kustomize overlays
 - RBAC configuration files (Roles, ClusterRoles, RoleBindings)
-- NetworkPolicy definitions
+- NetworkPolicy definitions, especially default-deny egress policies and
+  workload-specific egress allowlists
 - Pod Security Standard configurations or OPA/Gatekeeper policies
 - Container registry configurations (if available)
 
@@ -109,7 +111,7 @@ Classify findings by type: Dockerfiles, Kubernetes manifests, Helm charts, Kusto
 
 ### Step 2 through Step 6: CIS Benchmark and NIST SP 800-190 Evaluation
 
-Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
+Evaluate all container and Kubernetes configurations against CIS Docker Benchmark v1.6.0, CIS Kubernetes Benchmark v1.9.0, and NIST SP 800-190 countermeasures. This covers Dockerfile security, Pod Security Standards, RBAC, Network Policies, cloud metadata/workload identity exposure, Secrets Management, Control Plane configuration, and Container Runtime Hardening.
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
@@ -126,8 +128,8 @@ Produce the final report using the structure defined in the Output Format sectio
 
 | Severity | Definition | Examples |
 |----------|-----------|----------|
-| **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |
-| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
+| **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, cloud metadata credentials reachable from untrusted workloads, `hostPID`/`hostNetwork` on app pods |
+| **High** | Significant security gap enabling lateral movement or privilege escalation | Running as root, missing network policies, wildcard RBAC, unrestricted egress from cloud-identity workloads to metadata endpoints, `allowPrivilegeEscalation: true`, host path mounts to sensitive directories |
 | **Medium** | Missing hardening that weakens defense-in-depth | No resource limits, mutable image tags, missing seccomp profile, read-write root filesystem, secrets as env vars |
 | **Low** | Best-practice deviation with limited immediate risk | No HEALTHCHECK in Dockerfile, ADD instead of COPY, missing liveness/readiness probes, using default namespace |
 | **Informational** | Observation with no direct security impact | Image size optimization, multi-stage build suggestions, label recommendations |
@@ -159,7 +161,7 @@ Produce the final report using the structure defined in the Output Format sectio
 | Dockerfile Security | CIS Docker 4.x | X | X | X | X | X |
 | Pod Security | CIS K8s 5.2.x | X | X | X | X | X |
 | RBAC | CIS K8s 5.1.x | X | X | X | X | X |
-| Network Policies | CIS K8s 5.3.x | X | X | X | X | X |
+| Network Policies & Metadata Egress | CIS K8s 5.3.x / NIST 800-190 | X | X | X | X | X |
 | Secrets Management | CIS K8s 5.4.x | X | X | X | X | X |
 | Runtime Hardening | NIST 800-190 | X | X | X | X | X |
 | Control Plane | CIS K8s 1.x-4.x | X | X | X | X | X |
@@ -228,7 +230,7 @@ Produce the final report using the structure defined in the Output Format sectio
 |--------------|-----------|---------------------|
 | Image Risks | Vulnerabilities, malware, embedded secrets, unpatched software | Minimal base images, scanning, signing, immutable references |
 | Registry Risks | Unauthorized access, stale images, insufficient authentication | Registry authentication, image lifecycle policies |
-| Orchestrator Risks | Unrestricted access, mixed sensitivity workloads, insufficient logging | RBAC, namespaces, network policies, audit logging |
+| Orchestrator Risks | Unrestricted access, mixed sensitivity workloads, cloud metadata credential exposure, insufficient logging | RBAC, namespaces, network policies, metadata egress controls, audit logging |
 | Container Risks | Runtime privilege escalation, unbounded resources, writable filesystems | Non-root, capabilities, resource limits, read-only FS |
 | Host OS Risks | Shared kernel, large attack surface, unpatched hosts | Minimal host OS, regular patching, immutable infrastructure |
 
@@ -257,6 +259,7 @@ Produce the final report using the structure defined in the Output Format sectio
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Cloud metadata exposure is separate from Kubernetes API token exposure.** Setting `automountServiceAccountToken: false` prevents the pod from receiving a Kubernetes API token, but it does not by itself stop the workload from reaching cloud metadata or workload identity endpoints. Check egress controls for `169.254.169.254`, provider-specific metadata hosts, and workload identity annotations.
 
 ---
 
@@ -285,6 +288,7 @@ Produce the final report using the structure defined in the Output Format sectio
 - Kubernetes Pod Security Admission: https://kubernetes.io/docs/concepts/security/pod-security-admission/
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Kubernetes RBAC: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Kubernetes Service Accounts: https://kubernetes.io/docs/concepts/security/service-accounts/
 - Docker Security Best Practices: https://docs.docker.com/develop/security-best-practices/
 - Dockerfile Best Practices: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 - NSA/CISA Kubernetes Hardening Guide: https://media.defense.gov/2022/Aug/29/2003066362/-1/-1/0/CTR_KUBERNETES_HARDENING_GUIDANCE_1.2_20220829.PDF

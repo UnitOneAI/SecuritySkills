@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reporting
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: report-worker
+  namespace: reporting
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/report-worker-prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-worker
+  namespace: reporting
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: report-worker
+  template:
+    metadata:
+      labels:
+        app: report-worker
+    spec:
+      serviceAccountName: report-worker
+      containers:
+        - name: worker
+          image: registry.example.com/report-worker:1.4.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      # No default-deny egress NetworkPolicy or workload allowlist exists.
+      # Expected finding: the cloud role binding plus unrestricted egress can
+      # expose provider credentials through metadata/workload identity endpoints
+      # if the pod is compromised.

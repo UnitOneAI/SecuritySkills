@@ -431,6 +431,124 @@ spec:
 
 **Critical check:** A default-deny NetworkPolicy should exist in every namespace.
 
+### NIST SP 800-190 -- Cloud Metadata and Workload Identity Egress
+
+Cloud provider metadata services and workload identity endpoints can expose
+short-lived credentials to a compromised pod even when Kubernetes API tokens are
+disabled. Review pod egress and cloud identity bindings together instead of
+treating `automountServiceAccountToken: false` as complete credential isolation.
+
+**High-risk indicators:**
+
+- Workloads using cloud identity bindings without a namespace default-deny egress policy.
+- Service accounts annotated for cloud roles while pods can reach link-local metadata endpoints.
+- Pods with broad outbound egress and no workload-specific allowlist.
+- Host-networked pods or privileged workloads with cloud identity annotations.
+
+**Provider-specific evidence to search for:**
+
+```yaml
+# AWS IRSA / EKS Pod Identity
+metadata:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/app-role
+
+# GKE Workload Identity
+metadata:
+  annotations:
+    iam.gke.io/gcp-service-account: app@project.iam.gserviceaccount.com
+
+# Azure Workload Identity
+metadata:
+  labels:
+    azure.workload.identity/use: "true"
+```
+
+**Grep patterns:**
+
+```
+169.254.169.254
+169.254.170.2
+metadata.google.internal
+metadata.azure.com
+eks.amazonaws.com/role-arn
+iam.gke.io/gcp-service-account
+azure.workload.identity/use
+AWS_WEB_IDENTITY_TOKEN_FILE
+AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
+```
+
+**Vulnerable pattern: cloud role with unrestricted egress**
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: report-worker
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/report-worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-worker
+spec:
+  template:
+    spec:
+      serviceAccountName: report-worker
+      containers:
+        - name: worker
+          image: example/report-worker:1.2.3
+  # No default-deny egress NetworkPolicy exists for this namespace.
+  # A compromised container can attempt metadata/workload identity credential access.
+```
+
+**Safer pattern: default-deny egress with explicit application destinations**
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: report-worker-egress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: report-worker
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 10.20.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+```
+
+**Finding format:** Report whether each cloud-identity workload has namespace
+default-deny egress, workload-specific allowlists, and no unnecessary metadata
+endpoint reachability. Classify unrestricted metadata egress from workloads with
+cloud-role bindings as High, or Critical if the role grants sensitive data,
+deployment, or administrative access.
+
 ### CIS 5.4 -- Secrets Management
 
 #### CIS 5.4.1 -- Prefer using Secrets as files over Secrets as environment variables

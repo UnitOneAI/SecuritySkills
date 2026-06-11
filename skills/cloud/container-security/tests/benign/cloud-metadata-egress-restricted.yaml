@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reporting
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: report-worker
+  namespace: reporting
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/report-worker-prod
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: reporting
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: report-worker-egress
+  namespace: reporting
+spec:
+  podSelector:
+    matchLabels:
+      app: report-worker
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 10.20.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-worker
+  namespace: reporting
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: report-worker
+  template:
+    metadata:
+      labels:
+        app: report-worker
+    spec:
+      serviceAccountName: report-worker
+      containers:
+        - name: worker
+          image: registry.example.com/report-worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      # Expected result: no metadata-egress finding because the namespace has
+      # default-deny egress and the workload policy only allows DNS plus the
+      # private application API CIDR, not link-local metadata endpoints. Service
+      # account token handling is evaluated separately according to the workload
+      # identity mechanism in use.
