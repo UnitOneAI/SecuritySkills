@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -33,6 +33,8 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Initial SAST deployment to establish baseline rule configuration.
 - Periodic SAST tuning reviews to reduce false positive rates.
 - Custom rule development for organization-specific vulnerability patterns.
+- Review of SAST-generated remediation suggestions, Semgrep rule-defined fixes,
+  or code scanning autofix pull requests before they are applied.
 - CI/CD integration review for SAST gate enforcement.
 - Post-incident rule gap analysis (a vulnerability was missed -- why?).
 - ASVS compliance mapping to verify SAST coverage against verification requirements.
@@ -368,6 +370,64 @@ value = request.args.get("id")  # nosemgrep: python.django.security.injection.sq
 
 ---
 
+### Step 5b: Autofix and Suggested-Remediation Safety Review
+
+SAST tools increasingly produce suggested fixes, rule-defined patches, or
+AI-assisted remediation pull requests. Treat these fixes as untrusted code changes
+until they are validated against the original vulnerability, language semantics,
+and regression tests.
+
+#### Autofix Sources to Review
+
+| Source | What to Check | Risk |
+|---|---|---|
+| Semgrep `fix` / `fix-regex` | Replacement scope, metavariable preservation, formatting, and dry-run output | Deterministic fix can remove validation, change behavior, or rewrite too broadly |
+| GitHub Copilot Autofix for code scanning | Diff scope, alert root cause, added dependencies, and test evidence | AI-generated patch can satisfy the alert while introducing a new flaw |
+| IDE quick fix or SAST plugin fix | Local-only assumptions, partial-file context, and framework version compatibility | Patch may not match server-side CI or production runtime |
+| Custom remediation script | Input selection, idempotency, rollback path, and review owner | Bulk fix can alter unrelated code or repeat unsafe changes |
+
+#### Required Evidence Gates
+
+For each suggested or automatic fix, verify:
+
+- [ ] The fix changes only the vulnerable sink, validation boundary, or affected
+      configuration; unrelated rewrites are flagged for manual review.
+- [ ] The fix preserves existing authorization, authentication, validation,
+      encoding, and error-handling behavior.
+- [ ] The fix has a negative test that fails before the patch and passes after it.
+- [ ] The fix has at least one benign regression test proving safe inputs still work.
+- [ ] The fix does not add a new dependency, network call, parser, or sanitizer
+      without dependency and configuration review.
+- [ ] Dry-run output or proposed diff is captured before applying bulk autofix.
+- [ ] A human reviewer owns final approval for security-impacting fixes.
+
+**Finding classification:** Autofix applied without review evidence is **High** for
+Critical/High findings and **Medium** otherwise. Autofix that removes validation,
+weakens authorization, adds unsafe dependencies, or changes unrelated code is
+**High** or **Critical** depending on impact.
+
+**Example Semgrep rule-defined fix that needs review:**
+
+```yaml
+rules:
+  - id: python.requests.add-timeout
+    patterns:
+      - pattern-not: requests.$W(..., timeout=$N, ...)
+      - pattern: requests.get(...)
+    fix-regex:
+      regex: '(.*)\)'
+      replacement: '\1, timeout=30)'
+    message: Add a timeout to requests calls.
+    languages: [python]
+    severity: WARNING
+```
+
+This is useful only after dry-run review confirms it does not rewrite calls that
+already pass `**kwargs`, custom sessions, streaming responses, or wrapper APIs
+where the replacement changes semantics.
+
+---
+
 ### Step 6: CI Integration Review
 
 #### 6.1 CI Pipeline Integration Patterns
@@ -474,6 +534,7 @@ jobs:
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+| Autofix review gate | Yes/No/N/A | <dry-run diff, tests, reviewer approval> |
 
 ### Findings
 
@@ -483,6 +544,7 @@ jobs:
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Remediation:** <concrete fix with example>
+- **Autofix Safety:** <Not applicable / Reviewed / Missing evidence / Unsafe>
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item>
@@ -536,6 +598,11 @@ jobs:
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
+6. **Applying autofix without proving the security property.** A suggested fix can
+close the scanner alert while weakening validation, dropping authorization checks,
+or changing unrelated behavior. Require before/after tests and human review for
+every security-impacting autofix.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -558,10 +625,13 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - Semgrep Registry: https://semgrep.dev/r
 - CodeQL Documentation: https://codeql.github.com/docs/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
+- GitHub Copilot Autofix for code scanning: https://docs.github.com/en/code-security/concepts/code-scanning/copilot-autofix-for-code-scanning
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
+- Semgrep Rule-defined fix: https://docs.semgrep.dev/writing-rules/rule-defined-fix
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Add autofix and suggested-remediation safety gates for SAST-generated patches.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
