@@ -12,7 +12,7 @@ phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -35,6 +35,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 - Custom rule development for organization-specific vulnerability patterns.
 - CI/CD integration review for SAST gate enforcement.
 - Post-incident rule gap analysis (a vulnerability was missed -- why?).
+- Review of Semgrep rule-defined fixes, bulk autofix runs, or AI-assisted code scanning remediation.
 - ASVS compliance mapping to verify SAST coverage against verification requirements.
 
 ---
@@ -366,6 +367,59 @@ value = request.args.get("id")  # nosemgrep: python.django.security.injection.sq
 
 **Finding classification:** No false positive management process is **Medium**. Suppressions without justification is **High**. No SLA for true positive remediation is **Medium**.
 
+#### 5.3 Autofix and Suggested Remediation Safety Review
+
+Treat SAST autofix output as a proposed patch, not as proof that the vulnerability
+is fixed. Alert closure is only one signal. Review the before/after diff, the sink
+semantics, and the test evidence before marking a suggested fix as safe.
+
+**Autofix sources and review focus:**
+
+| Source | Review Focus | Common Failure Mode |
+|--------|--------------|---------------------|
+| Semgrep `fix` / `fix-regex` | Replacement scope, metavariable preservation, dry-run output, and sampled diffs | Regex fix rewrites wrappers, duplicate keyword arguments, or unrelated calls |
+| Code scanning autofix | Alert root cause, affected sink, dependency changes, and generated patch scope | Alert closes while validation, authorization, or parser behaviour weakens |
+| IDE/plugin quick fix | Framework version, local context, and CI/runtime parity | Local patch works in editor but fails in server-side CI or production runtime |
+| Custom bulk remediation script | Input selection, idempotency, rollback path, and reviewer ownership | Bulk rewrite touches generated, vendored, or unrelated application code |
+
+**Autofix safety evidence gates:**
+
+- The patch is scoped to the vulnerable code path and does not touch unrelated authorization, validation, dependency, generated, or vendored files.
+- The fix preserves or strengthens the security boundary at the sink, such as parameter binding, escaping, allow-list validation, or framework-native API use.
+- The reviewer has before/after evidence: the original vulnerable case fails or alerts before the fix and passes after the fix.
+- Benign regression coverage proves that safe inputs, wrappers, framework adapters, and existing keyword arguments still behave correctly.
+- Bulk Semgrep `fix` or `fix-regex` changes include dry-run output and a sampled diff review before write mode is used.
+- AI-assisted or code-scanning autofix proposals include human approval for security-impacting changes and a dependency review for any added helper or package.
+- The fix does not rely only on moving code out of a rule pattern, suppressing the alert, or changing the sink shape without preserving equivalent protection.
+
+**Unsafe alert-closing pattern:**
+
+```python
+def get_user(request, db):
+    user_id = request.args["id"]
+    if not user_id.isdigit():
+        raise ValueError("invalid id")
+
+    # Alert may disappear, but the sink lost parameter binding.
+    return db.execute(f"select * from users where id = {user_id}")
+```
+
+**Reviewed safe pattern:**
+
+```python
+def get_user(request, db):
+    user_id = request.args["id"]
+    if not user_id.isdigit():
+        raise ValueError("invalid id")
+
+    return db.execute(
+        "select * from users where id = ?",
+        (int(user_id),),
+    )
+```
+
+**Finding classification:** Applying autofix without diff review and regression evidence is **Medium**. Autofix that removes validation, parameter binding, authorization checks, or introduces unreviewed dependencies is **High**.
+
 ---
 
 ### Step 6: CI Integration Review
@@ -475,6 +529,18 @@ jobs:
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
 
+### Autofix Safety
+
+| Check | Status | Evidence |
+|-------|--------|----------|
+| Autofix source and proposed diff identified | Yes/No/N/A | <tool output, PR, or dry-run diff> |
+| Alert closure is backed by before/after tests | Yes/No | <test or scanner output> |
+| Security boundary preserved at sink | Yes/No | <diff evidence> |
+| Benign regression cases covered | Yes/No | <test paths> |
+| Bulk autofix dry-run reviewed | Yes/No/N/A | <dry-run output> |
+| New dependencies or unrelated changes reviewed | Yes/No/N/A | <diff/dependency review> |
+| Human approval for security-impacting generated fixes | Yes/No/N/A | <review evidence> |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -536,6 +602,8 @@ jobs:
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
+6. **Treating autofix alert closure as proof of safety.** A generated or rule-defined fix can close the original SAST alert while weakening validation, removing parameter binding, changing wrapper semantics, or adding unreviewed dependencies. Review the diff and tests, not only the alert state.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -555,13 +623,16 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - CWE Top 25 (2024): https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html
 - Semgrep Documentation: https://semgrep.dev/docs/
 - Semgrep Rule Syntax: https://semgrep.dev/docs/writing-rules/rule-syntax/
+- Semgrep Rule-Defined Fixes: https://semgrep.dev/docs/writing-rules/rule-syntax#fix
 - Semgrep Registry: https://semgrep.dev/r
 - CodeQL Documentation: https://codeql.github.com/docs/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
+- GitHub Copilot Autofix for Code Scanning: https://docs.github.com/en/code-security/concepts/code-scanning/copilot-autofix-for-code-scanning
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Add autofix and suggested remediation safety gates, report fields, and evidence requirements for SAST alert-closing patches.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
