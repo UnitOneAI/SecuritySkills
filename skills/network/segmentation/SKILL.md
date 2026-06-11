@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -122,6 +122,37 @@ Every inter-zone communication path must traverse a PEP that enforces access pol
 - A firewall, security group, or network policy exists between every zone pair.
 - No direct routing exists between zones that should be isolated (e.g., user workstation subnet directly routable to database subnet).
 - Transit zones (shared services, hub VPCs) do not provide a bypass path around segmentation controls.
+- Effective reachability is evaluated as a graph, not as isolated direct ACL pairs.
+- Denied direct paths remain meaningful only when there is no permitted transitive path through cache, queue, service-discovery, CI/CD, admin, or shared-service zones.
+- Metadata plane and admin plane endpoints cannot be reached indirectly through helper services, jump hosts, workload agents, or control-plane side channels.
+
+#### 2.2.1 Effective Reachability and Transitive Path Analysis
+
+Build an effective reachability map before assigning pass/fail status to a trust boundary. For every sensitive destination zone or endpoint, trace both direct rules and multi-hop paths.
+
+**Evidence to collect:**
+
+- Direct deny evidence between the source and destination zones.
+- All allowed first-hop services from the source zone.
+- All second-hop or later paths from those services to the sensitive destination.
+- Route table, security group, network policy, service mesh, and DNS/service-discovery evidence that proves the path is actually blocked.
+- Administrative paths, break-glass paths, metadata endpoints, side channels, and shared-service dependencies that can bypass the intended boundary.
+
+**Transitive path example:**
+
+```yaml
+# Direct path is denied, but the effective path is still open.
+web -> db: denied
+web -> cache: allowed
+cache -> db: allowed
+web -> db: indirect
+```
+
+Classify the finding based on effective reachability:
+
+- **Pass:** Direct path is denied and all reachable intermediaries are prevented from reaching the sensitive destination.
+- **High:** A multi-hop path reaches a sensitive destination without an enforcing PEP on every hop.
+- **Critical:** Metadata plane, admin plane, CDE, or production data stores are reachable through a transitive path from an untrusted or lower-trust zone.
 
 **What constitutes a violation:**
 
@@ -206,6 +237,20 @@ Evaluate the environment's readiness for workload-level segmentation:
 | **Enforcement mode** | Policies enforcing (deny unauthorized) | Policies in audit/monitor mode | No policies defined |
 | **Automation** | Policy changes via GitOps/IaC | Some manual policy management | Fully manual |
 
+#### 3.3 Service Mesh Enforcement and Bypass Review
+
+Service mesh presence is not proof of segmentation. Inspect enforcement mode and bypass paths for each mesh-enrolled namespace or workload group.
+
+**Required checks:**
+
+- Verify mesh policy mode is enforcing, not permissive, audit, observe-only, or shadow mode.
+- Confirm mTLS is required for both inbound and outbound mesh traffic and that plaintext fallback is disabled.
+- Identify workloads that can bypass sidecars through `hostNetwork`, disabled injection, init-container failure, privileged pods, ambient-mode exceptions, node-local agents, or direct cluster IP access.
+- Verify egress gateway use is mandatory for restricted destinations and that egress gateway bypass is denied by network policy or CNI policy.
+- Confirm service discovery, DNS, and mesh virtual services do not expose metadata plane or admin plane endpoints to lower-trust workloads.
+
+**Finding classification:** Mesh enabled but permissive is **Medium**. Egress gateway bypass to sensitive zones is **High**. Metadata plane or admin plane reachability through mesh or sidecar bypass is **Critical**.
+
 ---
 
 ### Step 4: DMZ Architecture Review (NIST SP 800-41, Section 4.1; CIS Control 12.2)
@@ -242,6 +287,9 @@ Document or verify the existence of a segmentation testing process:
 3. **From the DMZ, attempt to reach internal zones** on unauthorized ports. Expected result: blocked.
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
+6. **Trace effective multi-hop paths** from each low-trust zone to sensitive destinations. Expected result: every transitive path is blocked or forced through an enforcing PEP.
+7. **Test service mesh bypass paths** such as non-injected pods, host-network workloads, disabled sidecars, and egress gateway bypass. Expected result: bypass traffic is denied by underlying network policy.
+8. **Probe metadata plane and admin plane reachability** from application, CI/CD, shared-service, and user zones. Expected result: metadata and administrative endpoints are unreachable except from explicitly authorized management paths.
 
 ---
 
@@ -250,7 +298,7 @@ Document or verify the existence of a segmentation testing process:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Flat network with no segmentation; missing enforcement points between security zones; CDE not isolated; direct external-to-internal routing. |
-| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic. |
+| **High** | No east-west controls within zones; bypass paths through transit networks; unblocked transitive path to sensitive destinations; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic. |
 | **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation. |
 | **Low** | Suboptimal zone naming conventions; missing network diagrams; segmentation documentation out of date. |
 
@@ -284,6 +332,13 @@ Document or verify the existence of a segmentation testing process:
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
 
+### Effective Reachability Evidence
+
+| Source | Destination | Direct Path | Transitive Path(s) | Mesh/Overlay Mode | Metadata/Admin Plane Reachable | Status |
+|--------|-------------|-------------|--------------------|-------------------|-------------------------------|--------|
+| Web | Data | Denied | Web -> Cache -> Data allowed | Enforcing | No | High finding |
+| App | Metadata | Denied | App -> Agent -> Metadata allowed | Permissive | Yes | Critical finding |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -298,6 +353,9 @@ Document or verify the existence of a segmentation testing process:
 - Communication Mapping: <Ready / Partial / Not Ready>
 - Policy Engine: <Ready / Partial / Not Ready>
 - Enforcement Mode: <Ready / Partial / Not Ready>
+- Service Mesh Bypass Coverage: <Ready / Partial / Not Ready>
+- Transitive Path Coverage: <Ready / Partial / Not Ready>
+- Metadata/Admin Plane Isolation: <Ready / Partial / Not Ready>
 - Automation: <Ready / Partial / Not Ready>
 - **Overall Readiness:** <Ready / Partial / Not Ready>
 
@@ -345,6 +403,12 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Treating a direct deny as complete proof.** A denied source-to-destination rule does not prove segmentation when the source can reach an intermediate service that can then reach the protected system. Trace the effective reachability graph before closing the review.
+
+7. **Counting permissive mesh mode as enforcement.** mTLS, sidecars, and virtual services can exist while authorization policy is permissive or egress can bypass the gateway. Validate enforcement mode and underlying network policy.
+
+8. **Missing metadata plane and admin plane side paths.** Instance metadata, cluster APIs, management consoles, backup services, and CI/CD agents often become indirect control paths. Include them in the zone map and transitive path review.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -372,4 +436,5 @@ This skill processes network configurations that may contain user-supplied comme
 
 ## Changelog
 
+- **1.0.1** -- Added effective transitive path analysis, service mesh enforcement and bypass checks, metadata/admin-plane reachability evidence, and output fields for multi-hop segmentation proof.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.
