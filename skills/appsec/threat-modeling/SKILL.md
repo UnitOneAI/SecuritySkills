@@ -46,12 +46,14 @@ Before beginning the threat model, gather the following. Mark each item as obtai
 - [ ] **Component inventory** — Services, databases, message queues, caches, CDNs, third-party APIs, serverless functions, and any other runtime components.
 - [ ] **Data flow descriptions** — How data moves between components, including protocols (HTTPS, gRPC, AMQP), serialization formats (JSON, Protobuf), and transport security (TLS version, mTLS).
 - [ ] **Trust boundaries** — Where authentication and authorization are enforced; boundaries between internal networks, DMZs, public internet, third-party services, and user devices.
+- [ ] **Asynchronous workflow inventory** - Queues, topics, object-store notifications, batch exports, scheduled jobs, retry workers, and shared artifact stores that can move data without a direct user request.
 - [ ] **Authentication and authorization mechanisms** — OAuth 2.0 flows, API keys, JWTs, SAML, RBAC/ABAC policies, service-to-service identity (SPIFFE/mTLS).
 - [ ] **Data classification** — What data is stored or processed (PII, PHI, financial data, credentials, secrets) and its sensitivity level.
 - [ ] **Threat actor profiles** — External attackers, malicious insiders, compromised supply chain, nation-state actors, automated bots.
 - [ ] **Compliance and regulatory requirements** — Applicable standards (SOC 2, PCI DSS, HIPAA, GDPR, FedRAMP).
 - [ ] **Existing security controls** — WAF, IDS/IPS, SIEM, secret management (Vault, AWS Secrets Manager), encryption at rest and in transit.
 - [ ] **Deployment environment** — Cloud provider (AWS, GCP, Azure), Kubernetes, serverless, on-premises, hybrid.
+- [ ] **Runtime topology and failover behavior** - Instance count, region failover, worker restart behavior, and whether replay/idempotency state survives restarts or multi-instance execution.
 
 ## 3. Process
 
@@ -78,6 +80,9 @@ Enumerate all assets that an adversary would target and all entry points through
 - Webhook receivers
 - CI/CD pipeline triggers
 - DNS and network edge (load balancers, CDN origins)
+- Object storage events, shared artifact buckets, and import/export folders
+- Scheduled jobs, batch processors, ETL tasks, and background workers
+- Queue topics, dead-letter queues, retry handlers, and fan-out subscribers
 
 ### Step 2: Define Threat Actor Profiles
 
@@ -159,12 +164,19 @@ Use this checklist to identify trust boundaries that are often missed:
 - [ ] **Cloud account/subscription boundaries** — Cross-account access, shared services, peered VPCs
 - [ ] **CI/CD pipeline boundaries** — Between source control, build system, artifact registry, and deployment target
 - [ ] **Third-party SDK/library boundaries** — Between your code and vendor SDKs, open-source packages, or embedded interpreters
+- [ ] **Asynchronous trust boundaries** - Queue producers vs. consumers, retry workers, dead-letter handlers, and fan-out subscribers
+- [ ] **Object-store boundaries** - Shared buckets, presigned URLs, import folders, notification triggers, and artifact promotion paths
+- [ ] **Scheduler and batch boundaries** - Cron jobs, ETL exports, delayed jobs, and service accounts used outside request/response flows
+- [ ] **Webhook replay boundaries** - Signature verification, replay-window persistence, idempotency store durability, and retry semantics
+- [ ] **Failover boundaries** - Cross-region failover, cold standby workers, and restart paths that can drop in-memory controls
 
 For each data flow crossing a trust boundary, document:
 1. Source and destination components
 2. Protocol and transport security
 3. Authentication mechanism on the flow
 4. Data classification of the payload
+5. Whether the flow is synchronous, asynchronous, scheduled, retry-based, or event-driven
+6. Where replay, idempotency, and artifact integrity state is stored
 
 **DFD Annotation Requirements:**
 
@@ -182,6 +194,20 @@ Every data flow in the DFD must be annotated with the following properties:
 
 Mark any flow with `Authentication: none` or `Failure mode: fail-open` as requiring immediate threat analysis.
 
+**Asynchronous and Non-HTTP Evidence Requirements:**
+
+Do not treat a system as fully modeled just because its public HTTP endpoints are covered. For every non-HTTP attacker path, capture the evidence below before rating likelihood or accepting a compensating control.
+
+| Flow Type | Required Evidence | Threats to Record |
+|-----------|-------------------|-------------------|
+| Message queue or topic | Producer identity, consumer authorization, message signing or integrity check, retry/dead-letter policy, poison-message handling | Spoofed producer, tampered payload, replayed message, queue exhaustion |
+| Webhook or callback | Signature algorithm, timestamp tolerance, replay-window persistence, idempotency store type, multi-instance behavior | Replay after restart, duplicate side effects, forged callback, stale callback acceptance |
+| Object store or artifact bucket | Writer identity, reader identity, immutable metadata, checksum or signature, promotion path, filename/path validation | Artifact substitution, filename-only validation bypass, shared-bucket data exposure |
+| Scheduled job or batch export | Trigger owner, service-account scope, input source, output destination, approval path, rollback path | Unauthorized export, stale data reuse, privilege escalation through batch identity |
+| Cross-region or failover path | State replication, replay-store durability, key availability, worker warm-up behavior, degraded-mode controls | Control loss during failover, replay window reset, fail-open processing |
+
+If any asynchronous trust boundary lacks owner, durable replay state, integrity verification, or observable audit events, add a threat register row instead of assuming the boundary is internal and safe.
+
 ### Step 4: Apply STRIDE per Element
 
 For every component and data flow identified in the DFD, systematically ask the following questions organized by STRIDE category.
@@ -195,6 +221,7 @@ Threat: An attacker pretends to be another user, service, or system component.
 | Can an external user authenticate without valid credentials? | Credential stuffing, brute force |
 | Can one service impersonate another service? | Missing mTLS, forged service tokens |
 | Can an attacker replay a valid authentication token? | Stolen JWT without expiration |
+| Can an attacker replay a webhook, callback, queue message, or scheduled-job trigger after restart/failover? | Replay-window state stored only in memory |
 | Are API keys rotated and scoped appropriately? | Leaked long-lived API key |
 | Is multi-factor authentication enforced for privileged accounts? | Admin account takeover |
 
@@ -207,6 +234,7 @@ Threat: An attacker modifies data, code, or configuration without authorization.
 | Can request parameters be modified in transit? | Man-in-the-middle on non-TLS connections |
 | Can database records be altered by unauthorized users? | SQL injection, insecure direct object reference |
 | Can CI/CD pipeline artifacts be tampered with? | Compromised build server, dependency confusion |
+| Can object-store artifacts or batch-export files be replaced without checksum, signature, or immutable metadata validation? | Shared bucket artifact substitution |
 | Are configuration files protected from unauthorized modification? | Writable config in production containers |
 | Is input validated and sanitized before processing? | XSS, command injection, deserialization attacks |
 
@@ -221,6 +249,7 @@ Threat: A user or system denies performing an action, and the system cannot prov
 | Are logs centralized and protected from tampering? | Local-only logs on compromised host |
 | Do transactions include non-repudiation controls (digital signatures)? | Disputed financial transactions |
 | Is there sufficient log detail to reconstruct the sequence of events? | Logs missing source IP, user ID, or action detail |
+| Are queue consumers, batch jobs, schedulers, and object-store triggers logged with event ID, actor, artifact hash, and retry count? | Non-HTTP action cannot be reconstructed |
 
 #### I — Information Disclosure (Confidentiality Threats)
 
@@ -241,6 +270,7 @@ Threat: An attacker makes the system unavailable to legitimate users.
 | Question | Example Threat |
 |----------|---------------|
 | Are API endpoints rate-limited? | Volumetric API abuse exhausts compute |
+| Are queue depth, retry count, dead-letter volume, and batch concurrency bounded? | Poison message or replay storm exhausts workers |
 | Is there protection against application-layer DoS (Slowloris, ReDoS)? | Regex-based input causes CPU exhaustion |
 | Are resource quotas enforced (memory, CPU, storage, connections)? | Memory leak triggered by crafted input |
 | Is the system resilient to dependency failures (circuit breakers)? | Cascading failure from downstream outage |
@@ -292,10 +322,11 @@ Combine threat actor profiles (Step 2) with the component-threat matrix (Step 5)
 
 **Instructions:**
 1. For each relevant actor from Step 2, identify their most likely target components.
-2. Map the actor's capabilities to specific STRIDE threats on those components.
-3. Apply a likelihood modifier: +1 if the actor has special access or sophistication that increases likelihood beyond the base rating, +0 otherwise.
-4. Recalculate risk using the modified likelihood in the Step 8 risk matrix.
-5. Flag any component targeted by 3+ actor types as a high-value target requiring defense-in-depth.
+2. Include non-HTTP attacker paths such as queues, object stores, scheduled jobs, webhook callbacks, CI/CD promotions, and batch exports, even when there is no browser or API request path.
+3. Map the actor's capabilities to specific STRIDE threats on those components.
+4. Apply a likelihood modifier: +1 if the actor has special access or sophistication that increases likelihood beyond the base rating, +0 otherwise; also apply +1 when replay/idempotency state is memory-only or not shared across instances.
+5. Recalculate risk using the modified likelihood in the Step 8 risk matrix.
+6. Flag any component targeted by 3+ actor types as a high-value target requiring defense-in-depth.
 
 ### Step 7: Map Threats to MITRE ATT&CK Techniques
 
@@ -459,11 +490,15 @@ Teams frequently focus on securing data in transit (TLS, mTLS) while neglecting 
 
 A trust boundary exists wherever the level of trust changes — between microservices owned by different teams, between a container and its host, between a VPC and a peered network, between your code and a third-party SDK. Failing to identify these boundaries means failing to identify where authentication, authorization, and input validation must be enforced. Every boundary crossing is a potential attack surface.
 
-### Pitfall 4: Treating Threat Modeling as a One-Time Activity
+### Pitfall 4: Modeling Only Request/Response Traffic
+
+Threat models often overfit to web and API endpoints while missing non-HTTP attacker paths. Queues, object stores, scheduled jobs, webhooks, export pipelines, and artifact-promotion flows can all cross trust boundaries and process attacker-influenced data. Treat filename-only validation, memory-only idempotency stores, unsigned artifacts, and replay-window resets during failover as concrete threats that require register entries.
+
+### Pitfall 5: Treating Threat Modeling as a One-Time Activity
 
 Threat models become stale as architectures evolve. New services, changed data flows, updated dependencies, and infrastructure migrations all alter the threat landscape. Threat models should be reviewed and updated at minimum every major release, during architecture changes, and as part of incident post-mortems. Integrate threat model updates into the SDLC as a recurring activity, not a one-time gate.
 
-### Pitfall 5: Producing Threats Without Actionable Mitigations
+### Pitfall 6: Producing Threats Without Actionable Mitigations
 
 A threat register full of identified threats but no prioritized, assignable mitigations provides no security value. Every identified threat must have a corresponding mitigation with a clear owner, a severity-based SLA, and a tracking mechanism (e.g., linked Jira ticket or GitHub issue). If a threat is accepted rather than mitigated, document the risk acceptance with an approving authority and review date.
 
