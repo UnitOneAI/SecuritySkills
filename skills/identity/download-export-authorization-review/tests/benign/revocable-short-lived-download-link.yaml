@@ -1,0 +1,28 @@
+export_flow:
+  name: account-statement-pdf
+  generation:
+    endpoint: POST /api/statements/export
+    authorization_checked:
+      - actor can view statement account
+      - actor tenant matches account tenant
+      - selected fields are allowed for actor role
+    stored_metadata:
+      export_id: exp_456
+      actor_id: user_88
+      tenant_id: tenant-a
+      account_id: acct_42
+      policy_version: authz-2026-06-11
+      expires_at: "2026-06-11T10:15:00Z"
+  delivery:
+    endpoint: POST /api/exports/exp_456/download
+    current_authorization_recheck: true
+    link_ttl_minutes: 5
+    revocation_supported: true
+    cache_control: "private, no-store"
+  negative_tests:
+    - revoked actor cannot retrieve the file
+    - actor from another tenant receives 403
+    - expired link returns 410
+expected_result:
+  status: benign
+  reason: "short-lived transport link is backed by server-side authorization and revocation"
