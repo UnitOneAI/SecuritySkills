@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -55,6 +55,7 @@ Before conducting the PIR, gather or confirm:
 - [ ] **Team participants** -- Names and roles of all personnel involved in the response (IR team, management, legal, communications, external responders).
 - [ ] **Communication logs** -- Records of notifications, escalations, and status updates sent during the incident.
 - [ ] **Evidence and forensic findings** -- Summary of forensic analysis results, root cause indicators, and attacker TTPs identified.
+- [ ] **Evidence gaps and confidence level** -- Known missing logs, unconfirmed hypotheses, and the confidence level for each root-cause claim.
 - [ ] **Existing controls** -- Documentation of security controls that were in place at the time of the incident (detection rules, access controls, network segmentation, patching cadence).
 - [ ] **Previous PIR reports** -- Any prior post-incident reviews for similar incident types, to identify recurring patterns.
 - [ ] **Metrics data** -- Timestamps needed to compute MTTD, MTTR, and MTTC (see Step 4).
@@ -119,6 +120,18 @@ Build a comprehensive timeline of the incident from initial compromise through c
 
 Apply structured RCA techniques to identify underlying causes. Use at least one of the following methods.
 
+#### Root Cause Confidence Gate
+
+Do not present a root cause as definitive unless the available evidence supports that level of certainty. For each root-cause statement, record:
+
+- **Confidence:** Confirmed / Probable / Possible / Unknown
+- **Supporting evidence:** forensic artifact, log source, witness statement, ticket, alert, or configuration record
+- **Evidence gaps:** missing logs, incomplete forensic coverage, unverifiable timeline entries, or unavailable third-party data
+- **Alternative hypotheses:** plausible explanations not yet ruled out, plus the evidence needed to accept or reject them
+- **Decision impact:** whether the confidence level changes remediation priority, monitoring requirements, or the need for follow-up investigation
+
+If confidence is **Probable** or lower, phrase the root-cause statement as provisional and add a follow-up action to close the evidence gaps. Do not let speculative RCA drive irreversible remediation or disciplinary conclusions.
+
 #### Method 1: 5 Whys
 
 Start with the incident impact and ask "why" iteratively until you reach a systemic root cause. Each "why" should move from symptoms toward underlying conditions.
@@ -149,6 +162,7 @@ Root Cause: [Systemic root cause statement]
 - Stop when you reach a cause that is within the organization's control to change
 - If the chain branches (multiple contributing factors at one level), follow each branch
 - Avoid stopping at "human error" -- always ask what system condition enabled the error
+- Annotate each branch with confidence, evidence gaps, and alternative hypotheses before calling it the root cause
 
 #### Method 2: Fishbone (Ishikawa) Diagram
 
@@ -255,6 +269,16 @@ Map the incident to specific control failures -- what should have prevented, det
 
 Convert analysis findings into specific, measurable, assignable, and time-bound remediation actions.
 
+#### False Alarm and Near-Miss Depth Gate
+
+Calibrate PIR depth to incident reality:
+
+- **Confirmed incident:** complete full timeline, RCA, control failure mapping, metrics, and corrective-action verification.
+- **Near miss:** complete timeline, detection/containment assessment, preventive control gaps, and at least one measurable prevention or detection improvement.
+- **False alarm:** document why the alert was benign, what evidence ruled out impact, whether tuning is needed, and why no full RCA is required.
+
+Do not force low-impact false alarms through the same root-cause and organizational-remediation depth as confirmed incidents. Do document the evidence used to classify the event as benign.
+
 **Lessons learned categories:**
 
 | Category | Question | Output |
@@ -264,12 +288,24 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 | **What was missing** | What capabilities, information, or resources were needed but unavailable? | Identify investments or procurements required |
 | **What was learned** | What new knowledge about the threat landscape, attacker TTPs, or organizational posture was gained? | Update threat models, detection rules, and risk assessments |
 
+#### Corrective Action Verification Gate
+
+Every corrective action must include proof criteria, not just an owner and due date. A remediation action is incomplete unless it has:
+
+- **Owner:** accountable person or team
+- **Deadline:** date tied to priority
+- **Verification Test:** concrete test, query, exercise, or review that proves the action works
+- **Success Metric:** measurable signal such as alert precision, patch SLA adherence, recovery time, tabletop pass rate, or recurrence reduction
+- **Evidence Location:** ticket, dashboard, log query, runbook, or artifact where verification results will be stored
+
+If a finding has no verification test or success metric, downgrade the item from "remediated" to "tracked" until effectiveness is proven.
+
 **Remediation action template:**
 
-| ID | Finding | Action | Owner | Priority | Deadline | Tracking |
-|---|---|---|---|---|---|---|
-| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] |
-| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Verification Test | Success Metric | Tracking |
+|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [How the fix will be tested] | [Metric proving effectiveness] | [Ticket ID] |
+| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Verification] | [Metric] | [Ticket ID] |
 
 **Remediation prioritization:**
 
@@ -302,7 +338,7 @@ Produce the post-incident review report with these exact sections:
 ## Post-Incident Review: [Incident ID]
 **Date of Review:** [YYYY-MM-DD]
 **Date of Incident:** [YYYY-MM-DD]
-**Skill:** post-incident-review v1.0.0
+**Skill:** post-incident-review v1.0.1
 **Framework:** NIST SP 800-61 Rev 2
 **PIR Facilitator:** [Name or "AI-assisted -- human facilitator required"]
 
@@ -320,6 +356,8 @@ root cause, and the number/priority of remediation actions identified.]
 | Duration | [Total hours/days from compromise to recovery] |
 | Business Impact | [Description] |
 | Data Impact | [Description or "None confirmed"] |
+| Review Depth | [Full PIR / Near-miss review / False-alarm review] |
+| Depth Rationale | [Evidence supporting the selected depth] |
 
 ### Timeline
 | # | Timestamp (UTC) | Event Type | Description | Source |
@@ -337,10 +375,15 @@ root cause, and the number/priority of remediation actions identified.]
 
 ### Root Cause Analysis
 **Method:** [5 Whys / Fishbone / Both]
+**Root Cause Confidence:** [Confirmed / Probable / Possible / Unknown]
 
 [Include the complete 5 Whys chain and/or fishbone analysis]
 
 **Root Cause Statement:** [1-2 sentence definitive statement of the systemic root cause]
+
+**Supporting Evidence:** [List evidence supporting the root cause]
+**Evidence Gaps:** [List missing logs, unavailable artifacts, or unverified timeline items]
+**Alternative Hypotheses:** [List plausible alternatives and why they were accepted/rejected/deferred]
 
 ### Control Failure Mapping
 | Control Category | Expected Control | Status | Failure Mode | Improvement |
@@ -354,9 +397,9 @@ root cause, and the number/priority of remediation actions identified.]
 - [Gap or failure identified during retrospective]
 
 ### Remediation Plan
-| ID | Finding | Action | Owner | Priority | Deadline | Ticket |
-|---|---|---|---|---|---|---|
-| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Verification Test | Success Metric | Ticket |
+|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [Test/query/exercise proving action works] | [Metric showing effectiveness] | [ID] |
 
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
@@ -410,13 +453,21 @@ When the PIR focuses on who made mistakes rather than what systemic conditions e
 
 ### Pitfall 3: Identifying Remediation Actions Without Tracking Them
 
-Documenting lessons learned and remediation actions in a PIR report that is then filed and forgotten produces zero security improvement. Every remediation action must be entered into the organization's work tracking system (Jira, ServiceNow, Azure DevOps) with an owner, priority, deadline, and scheduled review date. The PIR facilitator should schedule a follow-up review (typically 30 days after the PIR) to verify remediation progress.
+Documenting lessons learned and remediation actions in a PIR report that is then filed and forgotten produces zero security improvement. Every remediation action must be entered into the organization's work tracking system (Jira, ServiceNow, Azure DevOps) with an owner, priority, deadline, verification test, success metric, and scheduled review date. The PIR facilitator should schedule a follow-up review (typically 30 days after the PIR) to verify remediation progress and effectiveness.
 
 ### Pitfall 4: Stopping Root Cause Analysis at the Proximate Cause
 
 "The attacker exploited an unpatched vulnerability" is a proximate cause, not a root cause. The root cause analysis should continue: Why was the system unpatched? Was there a patch management gap? Was the system excluded from scanning? Was the patch tested and rolled back? Was the vulnerability not prioritized? Stopping at the first "why" produces surface-level remediations (patch this specific system) rather than systemic fixes (improve vulnerability prioritization and patch management process).
 
-### Pitfall 5: Waiting Too Long to Conduct the PIR
+### Pitfall 5: Presenting Speculation as Root Cause
+
+Root-cause statements often sound more certain than the evidence supports. A provisional hypothesis should not be documented as confirmed unless the PIR records the supporting evidence, evidence gaps, and alternative hypotheses that were ruled out. Overstated certainty leads to misplaced corrective actions and hides follow-up investigation needs.
+
+### Pitfall 6: Treating Action Assignment as Action Verification
+
+Assigning a corrective action is not proof the fix worked. Require a verification test and success metric for every action item; otherwise the PIR can create a backlog of work that never reduces recurrence risk.
+
+### Pitfall 7: Waiting Too Long to Conduct the PIR
 
 NIST recommends conducting the PIR within several days of incident closure. Waiting weeks or months causes participants to forget critical details, misremember the sequence of events, and lose the emotional context that drives honest reflection. Schedule the PIR meeting before the incident is closed, ideally within 3-5 business days of recovery completion.
 
@@ -445,3 +496,10 @@ This skill processes incident response data including timelines, forensic findin
 7. **SANS Incident Handler's Handbook -- Lessons Learned Phase** -- https://www.sans.org/white-papers/33901/
 8. **ISO/IEC 27035-2:2023** -- Information Security Incident Management -- Part 2: Guidelines to Plan and Prepare for Incident Response -- https://www.iso.org/standard/78974.html
 9. **VERIS (Vocabulary for Event Recording and Incident Sharing)** -- http://veriscommunity.net/
+
+---
+
+## 10. Changelog
+
+- **1.0.1** -- Added root-cause confidence, alternative hypotheses, evidence gaps, false-alarm depth calibration, and corrective-action verification gates.
+- **1.0.0** -- Initial release. Structured post-incident review with blameless retrospective, RCA, metrics, control mapping, and remediation tracking.
