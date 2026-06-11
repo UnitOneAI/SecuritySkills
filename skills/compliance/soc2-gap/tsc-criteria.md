@@ -226,14 +226,20 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Is centralized logging implemented?
   - Are security events correlated and analyzed?
   - Are alert thresholds and escalation procedures defined?
+  - Do high-severity alerts route to an on-call channel with a sev1 pager or equivalent, rather than email-only notification?
+  - Are alert acknowledgements, escalations, and missed-alert exceptions reviewed for the review period?
 - Evidence to look for:
   - SIEM or log aggregation deployment (Splunk, ELK, Datadog, etc.)
   - Log retention policy and evidence of retention compliance
   - Alert rules and escalation procedures
   - Monitoring dashboard screenshots or configurations
+  - Pager rotation, escalation policy, acknowledgement logs, and incident ticket linkage for sampled alerts
+  - Operating effectiveness evidence showing the alert path worked across the review period, including exception follow-up
 - Common gaps:
   - Logs exist but are not centralized or correlated
   - No defined alert thresholds or escalation procedures
+  - Alerts are email-only with no sev1 pager, acknowledgement SLA, or escalation owner
+  - Monitoring is enabled but alert exceptions are not reviewed or remediated
   - Log retention period is insufficient (less than 12 months)
 
 **CC7.3 -- The entity evaluates security events to determine whether they could or have resulted in a failure to meet objectives (incidents) and, if so, takes actions to prevent or address such failures.**
@@ -327,17 +333,27 @@ This file contains the detailed Trust Services Criteria evaluation questions, ev
   - Is there a vendor management program?
   - Are vendors assessed for security risk before onboarding?
   - Are vendor SOC 2 reports or equivalent assurance reports collected and reviewed?
+  - Is each critical vendor mapped to a subservice method: inclusive, carve-out, or not applicable?
+  - Is bridge report recency checked when report coverage does not span the review period?
+  - Are vendor exception, qualification, carve-out, and complementary user entity control items reviewed and assigned?
 - Evidence to look for:
   - Vendor management policy
   - Vendor risk assessment questionnaires (completed)
   - Vendor SOC 2 report review records
   - Vendor inventory with risk classifications
   - Contract provisions for security requirements (data processing agreements, BAAs)
+  - Subservice method matrix showing inclusive or carve-out treatment and the related shared responsibility owner
+  - Bridge letters or other gap-period evidence tied to the organization's review period
+  - Vendor exception review notes, management response, risk acceptance, and remediation tracking
+  - Complementary user entity control mapping and internal owner sign-off
 - Common gaps:
   - No formal vendor management program
   - Vendor SOC 2 reports are not collected or reviewed
   - No vendor risk assessment performed prior to onboarding
   - Contracts lack security and data protection provisions
+  - Vendor reports are collected but exceptions and carve-outs are ignored
+  - Bridge reports are stale or missing for the current audit period
+  - Inclusive subservice coverage is not distinguished from carve-out reliance, causing shared responsibility to be assigned incorrectly
 
 ---
 
@@ -446,6 +462,12 @@ Score each criterion using the following maturity scale:
 | 3 | **Defined** | Controls are implemented and documented. Procedures are standardized. Evidence exists but may not cover the full audit period. |
 | 4 | **Managed** | Controls are fully implemented, documented, monitored, and operating effectively. Evidence covers the full audit period. Ready for SOC 2 Type II examination. |
 
+**Scoring guardrails:**
+
+- Do not score vendor management above 2 when critical vendor SOC reports exist but vendor exception review, carve-out treatment, bridge report recency, or shared responsibility ownership is missing.
+- Do not score anomaly monitoring above 2 when alerting is email-only for high-severity events and no sev1 pager, acknowledgement SLA, or escalation evidence exists.
+- Do not score a control above 3 unless operating effectiveness evidence covers the relevant review period and exceptions are tracked to disposition.
+
 ### Scoring Template
 
 Complete the following matrix for all in-scope criteria:
@@ -547,13 +569,13 @@ After scoring, calculate:
 | CC6.7 | DLP configurations; encryption at rest configs; encryption in transit configs; removable media policy |
 | CC6.8 | EDR deployment and coverage reports; vulnerability scan reports; patch management records |
 | CC7.1 | Configuration monitoring tool evidence; scheduled vulnerability scan reports; CVE assessment records |
-| CC7.2 | SIEM deployment evidence; log retention policy and compliance evidence; alert rules and escalation docs |
+| CC7.2 | SIEM deployment evidence; log retention policy and compliance evidence; alert rules and escalation docs; sev1 pager or equivalent escalation policy; alert acknowledgement logs; exception review evidence |
 | CC7.3 | Incident response plan; severity classification matrix; triage procedures |
 | CC7.4 | Tabletop exercise records; IR team roster; communication templates; post-incident review records |
 | CC7.5 | DR plan; BC plan; backup configs; backup restoration test records |
 | CC8.1 | Change management policy; CI/CD pipeline configs with approval gates; PR review records; CAB minutes; segregation of duties evidence |
 | CC9.1 | Risk treatment plans; business impact analysis; risk acceptance sign-off records |
-| CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs |
+| CC9.2 | Vendor management policy; vendor risk assessments; vendor SOC 2 review records; vendor inventory; DPAs/BAAs; subservice method matrix; bridge report recency evidence; vendor exception review; carve-out and complementary user entity control disposition |
 | A1.1 | Capacity monitoring dashboards; auto-scaling configs; capacity planning documentation |
 | A1.2 | Backup policy with RPO/RTO; backup monitoring records; restoration test results; redundancy configs |
 | A1.3 | DR test plan; DR test execution records; DR test findings and remediation |
