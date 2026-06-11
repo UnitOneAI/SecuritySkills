@@ -13,7 +13,7 @@ phase: [build, review]
 frameworks: [OWASP-IaC-Security, SLSA-v1.0, CIS-Benchmarks]
 difficulty: intermediate
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -98,6 +98,53 @@ For detailed tool-specific rule sets, detection patterns, vulnerable code exampl
 
 ---
 
+### Step 9A: Remote State Secrecy and Access Evidence
+
+Review Terraform state as a data exposure boundary, not just as a backend configuration choice. A centralized remote backend with encryption and locking is not a finding by itself when access is tightly scoped, state sensitivity review is documented, and state readers are limited to the deployment workflow and approved operators.
+
+Collect evidence for remote-state secret exposure and state access scope:
+
+- Backend type and controls: S3, Terraform Cloud, GCS, Azure Storage, Consul, local state, encryption, locking, versioning, retention, and backup access.
+- State readers: IAM principals, workspace members, CI roles, cross-account trusts, data warehouse exports, and any team that can read state without apply authority.
+- Sensitive output handling: Terraform `output` blocks, module outputs, `sensitive = true`, remote state data sources, exported plan JSON, and variables or resource attributes that can place credentials or tokens in state.
+- State artifact handling: whether `.tfstate`, `.tfstate.backup`, plan JSON, CI artifacts, logs, or support bundles are uploaded outside the protected backend.
+- Boundary review: whether secrets in state cross module, workspace, account, or environment boundaries through `terraform_remote_state`, output reuse, or artifact sharing.
+
+Classification guidance:
+
+| Evidence | Classification |
+|----------|----------------|
+| Encrypted and locked remote backend with narrow read access, no sensitive outputs, and documented state sensitivity review | Pass / Informational |
+| Local state, state committed to source control, public state bucket, or broad anonymous state read path | Critical |
+| Sensitive output exposed with `sensitive = false`, credential-bearing remote state consumed by unrelated workspaces, or CI artifact containing state/plan JSON with secrets | High |
+| Remote backend exists but state access scope, backup access, or state artifact handling cannot be proven | Medium |
+| Backend encryption/locking is present but version retention, audit logging, or break-glass readers are undocumented | Low / Medium |
+
+Do not flag a remote backend merely because it is centralized. Flag the exposure path: who can read state, what sensitive values are present, and where state-derived artifacts are copied.
+
+---
+
+### Step 9B: Plan/Apply Integrity and Drift Evidence
+
+Review deployment workflow integrity for plan/apply drift. A manual approval after plan is not sufficient when apply re-plans, uses different inputs, or does not consume the reviewed saved plan artifact.
+
+Collect evidence for plan/apply drift and saved plan artifact handling:
+
+- Plan command, apply command, and whether apply consumes the reviewed plan with `terraform apply <saved-plan-file>`.
+- Saved plan artifact digest, storage location, retention, access controls, and reviewer approval record.
+- Source commit, module refs, provider lock file, variables, workspace, backend config, and environment used by plan and apply.
+- Manual approval after plan: confirm approval is bound to the specific saved plan artifact, not just to a pipeline stage.
+- Drift evidence: refresh behavior, drift detection before apply, changed infrastructure between plan and apply, and whether the workflow blocks on drift.
+
+Classification guidance:
+
+| Evidence | Classification |
+|----------|----------------|
+| Apply consumes the reviewed plan, artifact digest is recorded, inputs are immutable, and approval references that artifact | Pass |
+| Apply re-runs plan after approval without proving identical source, variables, providers, workspace, and backend | High |
+| Manual approval after plan exists, but the workflow does not bind approval to a saved plan artifact | Medium / High |
+| Saved plan artifact exists but digest, retention, or access controls are missing | Medium |
+| Drift checks are absent for long-running approvals or high-risk production applies | Medium |
 
 ---
 
@@ -168,7 +215,22 @@ Produce the final report using the structure defined in the Output Format sectio
 - Provider pinning: <pinned / unpinned>
 - State encryption: <encrypted / unencrypted>
 - State locking: <enabled / disabled>
+- State access scope: <narrow / broad / unknown>
+- State sensitivity review: <documented / partial / missing>
+- State artifact handling: <protected / exposed / unknown>
 - Lock file committed: <yes / no>
+- Saved plan artifact: <used / not used / unknown>
+- Plan/apply drift evidence: <matched / drift risk / unknown>
+
+### Remote State and Plan Evidence
+
+| Control | Evidence Reviewed | Result | Notes |
+|---------|-------------------|--------|-------|
+| Remote-state secret exposure | Outputs, remote state consumers, state readers, artifacts | Pass / Fail / Unknown | <notes> |
+| State access scope | Backend ACLs, IAM principals, workspace members, backup readers | Pass / Fail / Unknown | <notes> |
+| State sensitivity review | Sensitive outputs, credentials in state, module boundary review | Pass / Fail / Unknown | <notes> |
+| Saved plan artifact | Plan path, digest, storage, reviewer approval binding | Pass / Fail / Unknown | <notes> |
+| Plan/apply drift | Apply command, source refs, variables, provider lock, drift checks | Pass / Fail / Unknown | <notes> |
 
 ### Prioritized Remediation Plan
 
@@ -230,6 +292,10 @@ This skill applies checks equivalent to the following high-impact rules:
 5. **Confusing `aws_s3_bucket_acl` with `aws_s3_bucket_public_access_block`.** The public access block overrides ACLs. Check both, but the access block is the stronger control.
 6. **Terraform state file secrets.** Even when variables are marked `sensitive`, they may appear in plaintext in the state file. Verify state encryption and access controls.
 7. **Provider-specific encryption defaults.** Some providers encrypt by default (e.g., AWS S3 since January 2023). Know the defaults before flagging missing explicit encryption configuration.
+8. **Remote backend false positives.** A centralized encrypted backend with locking is not automatically weak. Verify state access scope, sensitive output paths, backup readers, and state artifact handling before classifying the risk.
+9. **Sensitive output leaks.** An output such as `db_password` with `sensitive = false` can expose values through CLI output, remote state consumers, plan JSON, or CI logs even when the underlying resource uses protected variables.
+10. **Plan/apply drift.** A pipeline that plans, waits for manual approval after plan, and then re-runs apply without the saved plan artifact can deploy a different result from the reviewed plan.
+11. **Artifact copy paths.** Plan JSON, support bundles, debug logs, and downloaded state backups can bypass backend protections. Treat these copies as state-derived artifacts and review their access controls.
 
 ---
 
@@ -265,4 +331,5 @@ This skill applies checks equivalent to the following high-impact rules:
 
 ## Changelog
 
+- **1.0.1** -- Added remote-state secret exposure review, state access scope checks, state sensitivity review, state artifact handling, and plan/apply drift evidence for saved plan artifacts.
 - **1.0.0** -- Initial release. Coverage of eight security domains across Terraform, CloudFormation, Pulumi, and Bicep with Checkov/tfsec/KICS rule equivalents.
