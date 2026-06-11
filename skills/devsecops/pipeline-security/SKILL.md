@@ -141,6 +141,33 @@ Read each pipeline configuration file and evaluate against SLSA v1.0 build track
 
 **Determination logic:** The repository achieves the highest level for which ALL checklist items are satisfied. Partial compliance at a given level means the repository remains at the level below.
 
+#### Runner Trust Evidence
+
+Record runner trust properties before crediting an ephemeral or hosted runner
+claim. Evidence should include:
+
+- Runner class and owner: hosted, self-hosted, scale set, ephemeral VM,
+  containerized runner, or shared enterprise runner pool.
+- Workspace reuse policy, including whether source checkouts, dependency
+  caches, build directories, Docker layers, or tool caches persist across jobs,
+  branches, forks, or repositories.
+- Isolation boundary between trusted branches and untrusted pull requests,
+  including whether forked PRs can reach the same runner labels, caches, network
+  routes, or credentials used by release jobs.
+- Image provenance and patching evidence for custom runner images.
+- Network and secret exposure model for runners that can reach cloud metadata,
+  package registries, deployment targets, or internal services.
+
+Treat "ephemeral" as a claim to prove. A fresh VM with no workspace reuse and
+strict OIDC subject constraints can reduce risk, while a reusable self-hosted
+runner label shared across trust boundaries is still High risk even if the job
+deletes the workspace at the end.
+
+**Finding classification:** Missing runner trust properties are **Medium** for
+advisory build jobs and **High** for release or deployment jobs. Workspace
+reuse across trust boundaries is **High** and can become **Critical** when
+untrusted pull requests share runners or caches with jobs that receive secrets.
+
 ---
 
 ### Step 3: OWASP CICD-SEC Risk Evaluation
@@ -329,6 +356,33 @@ runs-on: self-hosted  # Shared runners are a risk
 
 **Finding format:** Report credential types in use (long-lived vs. short-lived), whether OIDC/workload identity is used where available, and any secrets exposed in logs or command arguments.
 
+#### OIDC Trust Policy Evidence
+
+Do not treat OIDC as automatically safe. Require the cloud trust policy and the
+workflow context to prove every OIDC subject constraint:
+
+- Audience claim (`aud`) matches the intended cloud provider or broker, such as
+  `sts.amazonaws.com`, and does not allow broad-pattern audiences.
+- `sub` claim is scoped to the exact repository, branch, tag, environment, or
+  workflow that should assume the role.
+- Branch restriction or environment restriction prevents pull request, fork,
+  feature branch, and reusable workflow contexts from receiving deployment
+  roles.
+- Token permissions are least privilege (`id-token: write` only where needed,
+  and repository token scopes minimized separately).
+- Role sessions are short-lived and logged with repository, workflow, run id,
+  and actor context.
+
+Flag patterns such as `sub: repo:org/app:pull_request`, broad-pattern refs,
+missing branch restriction, or roles shared by build and deploy jobs. The
+dangerous case is not "OIDC enabled"; it is broad trust that lets an untrusted
+workflow mint a privileged token.
+
+**Finding classification:** OIDC roles with no audience claim or no sub claim
+binding are **High**. OIDC subject constraints that include pull request or fork
+contexts for deployment roles are **Critical**. Missing branch restriction for
+production roles is **High**.
+
 ---
 
 #### CICD-SEC-7: Insecure System Configuration
@@ -416,6 +470,35 @@ image: nginx:latest            # BAD
 
 **Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
 
+#### Artifact Promotion Continuity
+
+Inspect artifact promotion continuity from reviewed build output to release.
+The release artifact should be the same artifact that passed tests and review,
+or the rebuild process must prove reproducibility.
+
+Required evidence:
+
+- Build artifact digest recorded before upload and carried into deployment,
+  release, or image-publish steps.
+- Promotion path from CI artifact store, package registry, container registry,
+  or release asset to the deployment job.
+- Attestation that links source ref, workflow file, build run id, builder id,
+  and artifact digest.
+- Reproducibility proof when the release artifact is rebuilt from tag instead
+  of promoted from the reviewed build output.
+- Verification that deploy jobs consume the recorded digest, not a mutable tag,
+  "latest" artifact name, or recompiled output from a different workflow.
+
+Flag rebuild from tag flows when the pipeline lacks reproducibility checks or a
+digest comparison against the reviewed build output. Rebuilding may be valid,
+but without proof it breaks provenance continuity and can release code that was
+not the artifact reviewers approved.
+
+**Finding classification:** Missing provenance continuity for release artifacts
+is **High**. Release jobs that rebuild from tag without reproducibility checks
+are **High**. Mutable artifact names or tags in production deployment are
+**Medium** when verified later and **High** when unverified.
+
 ---
 
 #### CICD-SEC-10: Insufficient Logging and Visibility
@@ -479,6 +562,18 @@ Produce the final report using the following structure:
 | CICD-SEC-1 | Insufficient Flow Control | High/Med/Low | Pass/Fail/Partial | <summary> |
 | CICD-SEC-2 | Inadequate IAM | ... | ... | ... |
 | ... | ... | ... | ... | ... |
+
+### Runner, OIDC, and Artifact Evidence
+
+| Evidence Area | Status | Evidence |
+|---------------|--------|----------|
+| Runner trust properties | Pass/Fail/Partial | <runner class, owner, isolation evidence> |
+| Workspace reuse across trust boundaries | Pass/Fail/Partial | <cache/workspace policy> |
+| OIDC subject constraint | Pass/Fail/Partial | <sub claim, ref/environment binding> |
+| OIDC audience claim | Pass/Fail/Partial | <aud claim and provider binding> |
+| Branch restriction for privileged roles | Pass/Fail/Partial | <branch/environment condition> |
+| Artifact promotion continuity | Pass/Fail/Partial | <build digest, release digest, attestation> |
+| Reviewed build output used for release | Pass/Fail/Partial | <promotion or reproducibility evidence> |
 
 ### Detailed Findings
 
@@ -557,4 +652,6 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Added runner trust evidence, OIDC subject constraints, and
+  artifact promotion continuity checks.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
