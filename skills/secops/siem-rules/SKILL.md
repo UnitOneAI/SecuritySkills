@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -57,6 +57,9 @@ Before beginning, gather or confirm:
 - [ ] **Alert priority and response:** Desired severity level and expected analyst response procedure.
 - [ ] **Performance constraints:** Query time window, maximum execution time, and scheduled frequency.
 - [ ] **Existing rules:** Any current rules covering similar detections that may overlap or conflict.
+- [ ] **Backend field mapping:** Platform-specific field names, CIM/ECS/ASIM mappings, Sigma conversion output, and unmapped fields.
+- [ ] **Parser and normalization quality:** Parser version, normalization status, fallback/error rate, ingest lag, and known field drift.
+- [ ] **Severity context:** Asset criticality, user privilege, exposure, business function, and response priority derivation.
 
 ---
 
@@ -78,7 +81,71 @@ Select the appropriate detection logic pattern based on the threat being detecte
 | **Behavioral baseline** | Deviation from normal, first-seen analysis | High |
 | **Impossible travel** | Geographically implausible authentication | High |
 
-### Step 2: Write the Detection Query
+### Step 2: Backend Mapping, Parser, and Severity Evidence
+
+Separate the detection idea from the SIEM backend assumptions that make it work. A rule can have correct detection semantics but still fail after field conversion, parser drift, ingest lag, or hard-coded severity.
+
+#### Backend Field Mapping Gate
+
+Record how each logical field in the detection maps to each target backend before claiming the rule is portable or production-ready.
+
+| Evidence Field | Required Review Question |
+|---|---|
+| `detection_semantics` | What behavior is the rule trying to detect independent of SIEM syntax? |
+| `backend_field_mapping` | How do logical fields map to Sentinel, Splunk, CIM, ECS, ASIM, or vendor-specific field names? |
+| `conversion_evidence` | Was Sigma/backend conversion performed, reviewed, or manually mapped? |
+| `unmapped_fields` | Which logical fields have no equivalent on the target backend? |
+| `field_type_compatibility` | Are timestamps, arrays, IPs, user identifiers, and process paths represented with compatible types? |
+
+**Finding triggers:**
+
+| ID | Condition | Guidance |
+|---|---|---|
+| `SIEM-BACKEND-01` | Rule logic references fields that are missing or renamed in the target backend. | Treat the rule as Not Deployable until field mapping is proven. |
+| `SIEM-BACKEND-02` | A portable rule is converted without reviewing backend-specific field names. | Require conversion evidence or backend-specific query review. |
+| `SIEM-BACKEND-03` | Field type changes alter joins, comparisons, or aggregations. | Normalize types before threshold or correlation logic is evaluated. |
+
+#### Parser and Normalization Evidence Gate
+
+Parser quality determines whether the fields used by the rule are trustworthy.
+
+| Evidence Field | Required Review Question |
+|---|---|
+| `parser_quality` | Are relevant records normalized, partially parsed, fallback parsed, or raw-only? |
+| `parser_version` | Which parser, source type, data connector, or normalization version produced the fields? |
+| `normalization_drift` | Did field names, values, or extraction rules change during the rule's lookback period? |
+| `ingest_lag_seconds` | How late can events arrive compared with the scheduled query window? |
+| `parser_error_rate` | What percentage or count of records failed parsing or used fallback extraction? |
+
+**Finding triggers:**
+
+| ID | Condition | Guidance |
+|---|---|---|
+| `SIEM-PARSER-01` | `parser_quality` is unknown for fields that drive the detection. | Mark rule confidence as Medium or lower until parser health is measured. |
+| `SIEM-PARSER-02` | `ingest_lag_seconds` exceeds the rule schedule or lookback assumptions. | Widen lookback, use ingestion-time handling, or document delayed-alert behavior. |
+| `SIEM-PARSER-03` | Normalization drift changes a field value used in the match condition. | Add compatibility logic or split the rule by parser version. |
+
+#### Severity and Context Derivation Gate
+
+Review severity separately from match logic. A rule that matches correctly can still over-alert or understate risk if severity ignores environment context.
+
+| Evidence Field | Required Review Question |
+|---|---|
+| `severity_logic` | Is severity hard-coded, mapped from ATT&CK technique, or derived from entity context? |
+| `asset_context` | Does the rule account for asset criticality, internet exposure, production tier, and data sensitivity? |
+| `user_context` | Does the rule account for user privilege, service account status, break-glass status, and normal job function? |
+| `business_context` | Does the rule reflect regulated systems, customer impact, and expected operational windows? |
+| `severity_override_evidence` | Are downgrades, upgrades, and suppressions tied to documented evidence? |
+
+**Finding triggers:**
+
+| ID | Condition | Guidance |
+|---|---|---|
+| `SIEM-SEVERITY-01` | Severity is hard-coded without `asset_context` or `user_context`. | Require context-derived severity or clearly label the rule as baseline priority. |
+| `SIEM-SEVERITY-02` | The same detection has different business impact across asset tiers but one severity. | Add severity mapping by criticality/exposure/privilege. |
+| `SIEM-SEVERITY-03` | Suppression or downgrade decisions lack evidence owner and expiry. | Record exception owner, rationale, and review date. |
+
+### Step 3: Write the Detection Query
 
 #### KQL (Microsoft Sentinel) Syntax Reference
 
@@ -367,7 +434,7 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624
 
 ---
 
-### Step 3: Correlation Rule Design
+### Step 4: Correlation Rule Design
 
 Correlation rules join data across multiple log sources or detect multi-stage attack sequences.
 
@@ -424,7 +491,7 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 | table _time, TargetUserName, distinct_hosts, logon_count, target_hosts, source_ips
 ```
 
-### Step 4: Alert Threshold Tuning
+### Step 5: Alert Threshold Tuning
 
 **Tuning methodology:**
 
@@ -456,7 +523,7 @@ Suppression:         Enabled, 1 hour
 Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Computer
 ```
 
-### Step 5: Detection Rule Lifecycle Management
+### Step 6: Detection Rule Lifecycle Management
 
 **Lifecycle stages:**
 
@@ -488,6 +555,7 @@ Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Comp
 4. Has the TP/FP ratio changed significantly?
 5. Are there new exclusions needed or obsolete exclusions to remove?
 6. Has the threat landscape changed in ways that require rule logic updates?
+7. Are backend field mappings, parser versions, and severity context still valid?
 
 ---
 
@@ -509,7 +577,7 @@ Produce SIEM rule deliverables in this structure:
 ```markdown
 ## SIEM Detection Rule: [Rule Name]
 **Date:** [YYYY-MM-DD]
-**Skill:** siem-rules v1.0.0
+**Skill:** siem-rules v1.0.1
 **Framework:** MITRE ATT&CK v16
 **Platform:** [Microsoft Sentinel (KQL) | Splunk (SPL)]
 
@@ -525,6 +593,14 @@ Produce SIEM rule deliverables in this structure:
 
 ### Detection Query
 [Full KQL or SPL query]
+
+### Backend, Parser, and Severity Evidence
+| Logical Field / Decision | backend_field_mapping | parser_quality | ingest_lag_seconds | asset_context | user_context | Assessment |
+|---|---|---|---|---|---|---|
+| [field or severity decision] | [backend field(s)] | [normalized/partial/raw/unknown] | [seconds/unknown] | [criticality/exposure] | [privilege/function] | [Pass / Gap / Not Deployable] |
+
+### Detection Semantics
+[Describe the behavior being detected independently from platform-specific field names and syntax.]
 
 ### Threshold Configuration
 | Parameter | Value | Rationale |
@@ -549,6 +625,8 @@ Produce SIEM rule deliverables in this structure:
 
 ### Validation
 - [How to test the rule produces a true positive]
+- [How backend field mappings and parser assumptions were validated]
+- [How severity derivation was validated against asset/user context]
 ```
 
 ---
@@ -632,6 +710,18 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
 
+### Pitfall 6: Treating Rule Syntax as Detection Semantics
+
+The same behavior can use `ParentImage`, `parent.process.executable`, `proc.parent`, or a CIM/ASIM alias depending on the backend. Preserve the logical detection semantics separately from backend query syntax and prove the `backend_field_mapping` before deployment.
+
+### Pitfall 7: Ignoring Parser Quality and Ingest Lag
+
+Normalized-looking fields can hide parser fallback, connector version drift, or delayed ingestion. If `parser_quality`, `parser_error_rate`, or `ingest_lag_seconds` are unknown, rule confidence and scheduling assumptions are weaker than the query text suggests.
+
+### Pitfall 8: Hard-Coding Severity Without Environment Context
+
+A match on the same behavior may be informational on a lab host, high on an internet-facing production system, or critical for a privileged identity. Derive severity from `asset_context`, `user_context`, exposure, and business function rather than static technique labels alone.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -658,3 +748,9 @@ This skill processes user-supplied content that may include SIEM query drafts, l
 8. **MITRE ATT&CK Data Sources** -- https://attack.mitre.org/datasources/
 9. **Sentinel Entity Mapping** -- https://learn.microsoft.com/en-us/azure/sentinel/map-data-fields-to-entities
 10. **Splunk CIM (Common Information Model)** -- https://docs.splunk.com/Documentation/CIM/latest/User/Overview
+
+---
+
+## Changelog
+
+- **v1.0.1** -- Added backend field mapping, parser/normalization, ingest-lag, and severity context evidence gates for issue #123.
