@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -52,6 +52,9 @@ Before starting, collect or confirm:
 - [ ] **Compensating controls inventory:** WAF rules, network segmentation, EDR policies, disabled features currently in place
 - [ ] **Compliance mandates:** Applicable regulatory requirements (CISA BOD 22-01, PCI DSS 4.0 Requirement 6.3.3, HIPAA, FedRAMP)
 - [ ] **Historical EPSS data:** EPSS score trends over 7/30/90 days if available (API: https://api.first.org/data/v1/epss)
+- [ ] **Exposure evidence:** Whether each affected asset is internet exposed, internally reachable, segmented, or unreachable from likely attacker paths
+- [ ] **Business function:** Whether the affected asset supports payment, authentication, regulated data, customer-facing, or revenue-critical workflows
+- [ ] **Control expiry and verification:** For each claimed compensating control, confirm `compensating_control_expiry`, owner, and the last `verification_test`
 
 If asset context is missing, assume internet-facing and business-critical, and flag assumptions in the output.
 
@@ -76,11 +79,14 @@ Vulnerability Inventory Entry:
 - Asset:               [hostname / IP / application name]
 - Asset Criticality:   [Critical | High | Medium | Low]
 - Exposure:            [Internet-facing | Internal | Air-gapped]
+- Internet Exposed:    [true | false | unknown]
+- Business Function:   [payment-api | auth | regulated-data | internal-build | other]
 - Scanner Source:      [Scanner name and plugin/QID]
 - CVSS 4.0 Base:       [0.0 - 10.0]
 - EPSS Score:          [0.0 - 1.0] (as of [date])
 - CISA KEV:            [Yes | No]
 - SSVC Decision:       [Immediate | Out-of-Cycle | Scheduled | Defer]
+- Local Urgency:       [P0 | P1 | P2 | P3 | P4 | P5] (environment-specific)
 - Patch Available:     [Yes (version) | No | Workaround Only]
 - Current SLA:         [Tier and deadline]
 - SLA Status:          [Within SLA | At Risk | Breached]
@@ -109,6 +115,18 @@ Assign or validate SLA tiers using the following matrix. SLA tiers are derived f
 2. **SSVC primacy:** The SSVC decision outcome is the primary driver; EPSS and CVSS serve as secondary validation
 3. **Upward adjustment only:** If EPSS or KEV status indicates higher urgency than the SSVC decision alone, escalate the tier; never use EPSS to downgrade an SSVC Immediate decision
 4. **Asset criticality modifier:** For non-critical assets (dev, test, sandbox), the SLA tier may be relaxed by one level with documented justification
+
+#### 2.1 Exposure, Control, and Local Urgency Gates
+
+Apply these gates before relaxing an SLA tier or granting a risk exception. They separate external scoring inputs from environment-specific urgency.
+
+| Gate | Evidence fields | Pass condition | Finding trigger |
+|---|---|---|---|
+| **Exposure and Business Criticality Gate** | `internet_exposed`, `reachable`, `business_function`, `asset_criticality`, `data_classification`, `attacker_path` | SLA priority reflects real reachability and business impact; directly exposed payment, authentication, or regulated-data systems are not downgraded solely because EPSS is low or KEV is false. | `PATCH-EXPOSURE-01` when exposure/business-criticality evidence is missing, or local criticality is ignored during tier assignment. |
+| **Compensating Control Expiry Gate** | `compensating_control_expiry`, `control_owner`, `verification_test`, `last_verified_at`, `coverage`, `bypass_result` | Every claimed control has an owner, an expiration/review date, scope coverage, and a current verification test showing it blocks the CVE-specific attack path. | `PATCH-CONTROL-01` when controls are open-ended, unowned, untested, partially scoped without acknowledgement, or used past expiry. |
+| **Local Urgency Gate** | `local_urgency`, `external_score_basis`, `ssvc_decision`, `epss`, `kev`, `cvss`, `environment_override_reason` | The output documents external severity separately from local urgency, and environment-specific escalation or deferral has traceable rationale. | `PATCH-URGENCY-01` when CVSS, EPSS, or KEV status is used as the only priority basis despite conflicting exposure or business evidence. |
+
+**False-positive guard:** A vulnerability on an unreachable internal build runner with verified segmentation or WAF coverage and a future `compensating_control_expiry` can be scheduled lower than its raw CVSS score. Do not treat that as under-prioritization unless reachability or control verification is missing.
 
 ### Step 3: EPSS Trend Analysis
 
@@ -153,6 +171,8 @@ For each compensating control claimed, validate:
 3. **Control durability:** Is the control persistent (e.g., network ACL) or ephemeral (e.g., manual process)?
 4. **Control verification:** Can the control's effectiveness be independently verified or tested?
 5. **Residual risk:** What risk remains after the compensating control is applied?
+6. **Control expiry:** Does the control have a `compensating_control_expiry` or mandatory review date?
+7. **Control owner:** Is there an accountable owner who must renew, replace, or remove the control before expiry?
 
 #### Compensating Control Evaluation Matrix
 
@@ -171,9 +191,12 @@ Compensating Control Assessment:
 - Control Description: [Specific control details]
 - Effectiveness:       [Full | Partial | Insufficient]
 - Coverage:            [All affected assets | Subset ([N] of [M])]
-- Verification:        [Tested on [date] | Unverified]
+- Verification:        [verification_test tested on [date] | Unverified]
+- Control Owner:       [Name/team]
+- Expiry/Review Date:  [YYYY-MM-DD, compensating_control_expiry]
 - Max SLA Extension:   [Days, per matrix above]
 - Residual Risk:       [Description of remaining risk]
+- Gate Finding:        [PATCH-CONTROL-01 | None]
 ```
 
 ### Step 5: Patch Window Scheduling
@@ -278,7 +301,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Patch Prioritization Report
 **Date:** [YYYY-MM-DD]
-**Skill:** patch-prioritization v1.0.0
+**Skill:** patch-prioritization v1.0.1
 **Frameworks:** SSVC 2.1, EPSS v3, CISA KEV
 **Reviewer:** AI-assisted (human review required for P0/P1 actions and risk acceptances)
 
@@ -307,6 +330,12 @@ findings requiring immediate action.]
 |---|---|---|---|---|
 | [CVE-ID] | [score] | [score] | [Surging/Rising] | [Action] |
 
+### Exposure and Local Urgency Evidence
+
+| CVE ID | Asset | internet_exposed | business_function | External Score Basis | local_urgency | Gate Finding |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [asset] | [true/false/unknown] | [payment-api/auth/internal/etc.] | [CVSS/EPSS/KEV summary] | [P0-P5] | PATCH-EXPOSURE-01 / PATCH-URGENCY-01 / None |
+
 ### Prioritized Patch Schedule
 
 | Priority | CVE ID(s) | Target System | Patch | Scheduled Window | SLA Deadline | Status |
@@ -319,6 +348,12 @@ findings requiring immediate action.]
 | CVE ID | Control Type | Effectiveness | SLA Extension | Expiration |
 |---|---|---|---|---|
 | [CVE-ID] | [type] | [Full/Partial] | [+N days] | [date] |
+
+### Compensating Control Verification
+
+| CVE ID | Control | control_owner | compensating_control_expiry | verification_test | last_verified_at | Coverage | Gate Finding |
+|---|---|---|---|---|---|---|---|
+| [CVE-ID] | [WAF/segmentation/etc.] | [team] | [date] | [test summary] | [date] | [All/Subset] | PATCH-CONTROL-01 / None |
 
 ### Risk Exceptions
 [List all active risk acceptance/exception records]
@@ -374,6 +409,12 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
 
+6. **Downgrading exposed critical services because EPSS is low.** Low EPSS or non-KEV status does not remove urgency for directly exposed payment, authentication, or regulated-data services. Record `local_urgency` separately from external scoring.
+
+7. **Treating compensating controls as permanent.** A WAF rule or segmentation control without `compensating_control_expiry`, owner, and `verification_test` becomes unmanaged risk acceptance. Expired or unverified controls should not extend patch SLAs.
+
+8. **Forgetting reachability changes across environments.** A finding that is unreachable in staging may be internet exposed in production after routing, DNS, or firewall changes. Verify attacker path evidence for the actual affected environment.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -400,3 +441,9 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 - ISO 27005:2022 (Risk Treatment): https://www.iso.org/standard/80585.html
 - PCI DSS 4.0 Requirement 6.3.3: https://www.pcisecuritystandards.org/
 - ITIL 4 Change Enablement: https://www.axelos.com/certifications/itil-service-management
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added exposure/business-criticality, compensating-control expiry, and local urgency gates for patch prioritization decisions.
