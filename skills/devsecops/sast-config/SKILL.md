@@ -364,7 +364,64 @@ value = request.args.get("id")  # nosemgrep: python.django.security.injection.sq
 - False positive rate is tracked as a metric (target: < 20% FP rate).
 - True positive findings have a defined SLA (Critical: 7 days, High: 30 days, Medium: 90 days).
 
-**Finding classification:** No false positive management process is **Medium**. Suppressions without justification is **High**. No SLA for true positive remediation is **Medium**.
+#### 5.3 Exclusion, Suppression, and Rule-Pack Drift Evidence
+
+Review generated-code and vendor exclusions as bounded blind spots, not as
+automatic findings. Require a generated-code exclusion ledger that records:
+
+- Exclusion pattern and matching path examples.
+- First-party boundary owner who confirms the path is generated, vendored, or
+  otherwise outside normal source ownership.
+- Generator or package source, including lockfile, checksum, SBOM, or artifact
+  provenance when available.
+- Compensating coverage such as dependency scanning, generated artifact review,
+  signed package verification, or periodic full-repository scans.
+- Revalidation cadence and last review date, especially after new packages,
+  code generators, or monorepo ownership changes.
+
+Safe exclusions should be narrow and evidence-backed. Flag exclusions when they
+hide first-party source, match broad directories such as `src/**`, lack an
+owner, or have no compensating coverage.
+
+Require a suppression lifecycle for inline comments, baselines, query filters,
+and ignore files:
+
+- Suppression owner responsible for revalidation and removal.
+- Ticket or risk record that explains the specific false positive or accepted
+  risk.
+- Reason quality: the reason must identify why the finding is safe, not generic
+  text such as "cleanup later", "false positive", or "temporary".
+- Expiry date or review date with automation or reviewer evidence that stale
+  suppressions are surfaced.
+- Baseline diff review for new suppressions so broad imports do not hide real
+  findings.
+- Scope binding to the exact rule id, path, line, or query. Avoid global
+  disables when a local suppression or rule refinement would preserve coverage.
+
+Review rule-pack drift regression whenever managed rules, custom rules, scanner
+versions, or parser version change:
+
+- Record previous and new Semgrep, CodeQL, language extractor, parser, and
+  rule-pack versions.
+- Run a regression corpus with known true positives and true negatives for
+  critical custom rules and high-noise managed rules.
+- Compare result counts, severity changes, new suppressions, and removed
+  findings before accepting auto-updates.
+- Require owner sign-off when auto-update is enabled without a passing
+  regression suite.
+- Preserve SARIF or dashboard snapshots so the team can explain why a finding
+  appeared, disappeared, or changed severity after the update.
+
+**Finding classification:** Suppressions with no owner, expiry date, or
+specific reason are **High**. Broad generated or vendor exclusions with no
+first-party boundary owner or compensating coverage are **High** when they can
+hide production source and **Medium** otherwise. Rule-pack or parser updates
+without rule-pack drift regression evidence are **High** when the SAST gate is
+required for release and **Medium** when it is advisory only.
+
+**Additional classification:** No false positive management process is
+**Medium**. Suppressions without justification are **High**. No SLA for true
+positive remediation is **Medium**.
 
 ---
 
@@ -475,6 +532,16 @@ jobs:
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
 
+### Suppression and Drift Evidence
+
+| Evidence Area | Status | Evidence |
+|---------------|--------|----------|
+| Generated-code exclusion ledger | Yes/No | <path, owner, review date> |
+| Compensating coverage for excluded paths | Yes/No | <scanner, SBOM, package review, signed artifact> |
+| Suppression lifecycle owner/reason/expiry | Yes/No | <suppression register or ticket> |
+| Baseline diff review | Yes/No | <PR, SARIF diff, approval> |
+| Rule-pack drift regression | Yes/No | <regression corpus run, version diff> |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -536,6 +603,16 @@ jobs:
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
+6. **Treating generated/vendor exclusions as permanently safe.** Generated or
+vendored paths can drift into first-party ownership, carry vulnerable generated
+code, or hide patched forks. Keep exclusions narrow, owner-backed, and tied to
+compensating coverage.
+
+7. **Accepting rule-pack auto-updates without regression evidence.** Managed
+rules and parser upgrades can remove findings, inflate false positives, or
+change severity. Require rule-pack drift regression and baseline diff review
+before trusting changed results.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -564,4 +641,6 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.0.1** -- Added generated-code exclusion ledger, suppression lifecycle,
+  baseline diff review, and rule-pack drift regression evidence requirements.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
