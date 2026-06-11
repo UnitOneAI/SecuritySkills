@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CVSS-4.0, CWE]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -53,6 +53,9 @@ Before starting, collect or confirm:
 - [ ] **Result volume:** Approximate number of findings per scan cycle and false positive rate if known
 - [ ] **Compliance requirements:** Whether scans must meet specific compliance mandates (PCI ASV, DISA STIG, CIS Benchmark)
 - [ ] **Multi-scanner context:** If using multiple scanners, which ones and how results are currently correlated
+- [ ] **Waiver lifecycle:** Whether suppressed or waived findings have an owner, `waiver_expiry`, linked benign proof, and a review cadence
+- [ ] **Rule precedence:** Whether include/exclude rules, framework overrides, and scanner-specific rule order can change the effective tuning outcome
+- [ ] **Regression context:** Whether scanner, plugin, or `parser_version` changes have been tested against staging and production-equivalent baselines
 
 ---
 
@@ -85,6 +88,18 @@ For each suspected false positive:
 3. **Document:** Record the CVE/plugin ID, affected asset, evidence of false positive, and verification method
 4. **Disposition:** Mark as confirmed false positive, accepted risk, or true positive requiring remediation
 
+#### 1a. Waiver Lifecycle, Rule Precedence, and Regression Gates
+
+Apply these gates before suppressing, waiving, or excluding findings. They distinguish disciplined exception handling from careless suppression that can hide true positives.
+
+| Gate | Evidence fields | Pass condition | Finding trigger |
+|---|---|---|---|
+| **Waiver Lifecycle Gate** | `waiver_owner`, `waiver_expiry`, `linked_benign_fixture`, `waiver_scope`, `waiver_review_date`, `waiver_approval` | Waivers are time-bounded, owned, scoped to specific findings/assets, and backed by reproducible benign evidence or a risk acceptance record. | `SCAN-WAIVER-01` when a waived finding has no owner, no expiry, no linked benign proof, or applies broader than the validated evidence. |
+| **Rule Precedence Gate** | `rule_order`, `include_framework_override`, `exclude_generic_html`, `precedence`, `effective_action`, `precedence_test_case` | Include/exclude precedence is documented and tested so generic exclusions cannot silently override specific detections that should remain enabled. | `SCAN-PRECEDENCE-01` when `precedence: exclude_wins` or equivalent ordering suppresses specific checks without proof of the effective action. |
+| **Post-Upgrade Regression Gate** | `scanner_version`, `parser_version`, `parser_version_changed_at`, `baseline_env`, `prod_drift`, `post_upgrade_regression`, `prod_parity_evidence` | Tuning is revalidated after scanner/parser/plugin changes and against production-equivalent data, not staging-only baselines. | `SCAN-REGRESSION-01` when tuning was validated only before an upgrade, only in staging, or with unknown production drift. |
+
+**False-positive guard:** A finding with `status: waived`, a future `waiver_expiry`, and a `linked_benign_fixture` is not automatically a tuning failure. Treat it as disciplined exception handling if scope, owner, approval, and regression evidence are present.
+
 ```
 False Positive Record:
 - Scanner:             [Scanner name]
@@ -97,6 +112,9 @@ False Positive Record:
 - Evidence:            [Specific evidence proving false positive]
 - Verification Method: [Package manager check | Authenticated re-scan | Manual testing | Configuration review]
 - Disposition:         [Confirmed FP -- suppress | Accepted Risk -- document | True Positive -- remediate]
+- Waiver Status:       [None | Time-bounded waiver | Open-ended waiver]
+- Waiver Evidence:     [waiver_owner, waiver_expiry, linked_benign_fixture, waiver_scope]
+- Tuning Gate Findings: [SCAN-WAIVER-01 | SCAN-PRECEDENCE-01 | SCAN-REGRESSION-01 | None]
 ```
 
 ### Step 2: Scan Policy Configuration
@@ -137,6 +155,19 @@ Configure or optimize scan policies to balance detection coverage, accuracy, and
 | **Plugin exclusions** | Confirmed persistent false positive across all assets for a specific plugin | False positive evidence for at least 3 scan cycles; periodic re-evaluation (quarterly) |
 | **Time-based exclusions** | Systems that cannot be scanned during business hours | Scan scheduling adjustment (see Step 6) |
 | **Credential exclusions** | Systems where credentialed scanning is not permitted by policy | Documented reason; accept reduced detection accuracy |
+
+For every exclusion set, record rule precedence and evaluate whether generic excludes override specific include rules. If `exclude_generic_html` and `include_framework_override` both apply, verify the scanner's effective action rather than assuming the include wins.
+
+```
+Rule Precedence Record:
+- Scanner/Policy:      [Scanner name and policy]
+- Rule Order:          [ordered include/exclude entries]
+- Generic Exclusion:   [exclude_generic_html=true/false or equivalent]
+- Specific Include:    [include_framework_override=true/false or equivalent]
+- Precedence:          [include_wins | exclude_wins | first_match | last_match]
+- Effective Action:    [check enabled | check suppressed]
+- Test Case:           [precedence_test_case or fixture proving the outcome]
+```
 
 ### Step 3: Authenticated vs. Unauthenticated Scanning
 
@@ -303,7 +334,7 @@ Produce a structured report with these exact sections:
 ```markdown
 ## Scanner Tuning Report
 **Date:** [YYYY-MM-DD]
-**Skill:** scanner-tuning v1.0.0
+**Skill:** scanner-tuning v1.0.1
 **Frameworks:** CVSS 4.0, CWE
 **Reviewer:** AI-assisted (human review required for policy changes and severity overrides)
 
@@ -336,6 +367,14 @@ Highlight the most impactful tuning recommendations.]
 | CVE ID | Asset | Original Severity | Adjusted Severity | Justification | Review Date |
 |---|---|---|---|---|---|
 | [CVE-ID] | [asset] | [severity] | [severity] | [CVSS 4.0 metric adjustment] | [date] |
+
+### Waiver, Precedence, and Regression Gates
+
+| Gate | Target | Evidence | Status | Finding |
+|---|---|---|---|---|
+| Waiver Lifecycle Gate | [finding/plugin/asset] | waiver_expiry=[date], waiver_owner=[owner], linked_benign_fixture=[fixture] | Pass/Fail | SCAN-WAIVER-01 / None |
+| Rule Precedence Gate | [policy/rule set] | exclude_generic_html=[true/false], include_framework_override=[true/false], precedence=[mode], effective_action=[action] | Pass/Fail | SCAN-PRECEDENCE-01 / None |
+| Post-Upgrade Regression Gate | [scanner/parser/policy] | parser_version=[version], prod_drift=[known/unknown], post_upgrade_regression=[pass/fail/not_run], prod_parity_evidence=[summary] | Pass/Fail | SCAN-REGRESSION-01 / None |
 
 ### Cross-Scanner Correlation
 [If multiple scanners are in use]
@@ -399,6 +438,12 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
+6. **Treating time-bounded waivers like permanent suppressions.** A waiver with owner, expiry, and linked benign evidence is a controlled exception. A waiver without `waiver_expiry` or `linked_benign_fixture` is unbounded suppression and should trigger `SCAN-WAIVER-01`.
+
+7. **Assuming include rules override generic exclusions.** Scanner policy engines differ. If generic HTML exclusions and framework-specific includes both match, test `precedence` and record the effective action so specific detections are not silently disabled.
+
+8. **Trusting staging-only baselines after parser upgrades.** Parser or plugin updates can change matching behavior. Re-run post-upgrade regression with production-equivalent evidence and document `prod_drift` before relying on prior tuning.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -429,3 +474,9 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - Grype: https://github.com/anchore/grype
 - Nuclei: https://docs.projectdiscovery.io/tools/nuclei/
 - NVD (NIST): https://nvd.nist.gov/
+
+---
+
+## Changelog
+
+- **1.0.1** -- Added waiver lifecycle, rule precedence, and post-upgrade regression evidence gates for scanner tuning decisions.
