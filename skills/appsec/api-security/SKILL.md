@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -37,13 +37,78 @@ Before analyzing any endpoint, establish a complete inventory of the API surface
 4. **Identify authorization models** -- RBAC, ABAC, ownership-based, or no authorization. Document how object-level and function-level access control decisions are made.
 5. **Catalog data objects** -- List the resources/entities exposed by the API and their sensitivity classification (PII, financial, internal, public).
 6. **Note rate limiting and quota configurations** -- Document any existing throttling, quota, or cost-control mechanisms at the gateway or application layer.
-7. **Identify downstream dependencies** -- Third-party APIs, internal microservices, or webhooks that the API consumes.
+7. **Classify endpoint intent** -- Distinguish passive public endpoints, authenticated read endpoints, mutating endpoints, administrative endpoints, webhook receivers, and outbound callback producers.
+8. **Identify downstream dependencies** -- Third-party APIs, internal microservices, webhooks that the API consumes, and customer-supplied callback destinations.
 
 > **Gate:** Do not proceed until the API style, authentication model, authorization model, and endpoint inventory are documented. Incomplete scope leads to missed findings.
 
 ---
 
-## Steps 2-11: OWASP API Security Top 10:2023 Evaluation (API1-API10)
+## Step 2: Endpoint Intent, Webhook, and Callback Trust Gates
+
+These gates prevent over-reporting deliberately public passive endpoints while catching workflow-specific trust failures that generic API Top 10 checks often miss.
+
+### Endpoint Intent Classification Gate
+
+Do not report unauthenticated access as a finding until the endpoint's intent and effect are recorded.
+
+| Evidence Field | Required Review Question |
+|---|---|
+| `endpoint_intent` | Is the endpoint passive observability, authenticated read, mutating, administrative, webhook receiver, or outbound callback producer? |
+| `public_contract` | Is public access deliberate, documented, and limited to non-sensitive data? |
+| `mutation_capability` | Can the endpoint change state, enqueue work, trigger side effects, or expose sensitive data? |
+| `auth_requirement_rationale` | Why is authentication required or intentionally omitted for this endpoint class? |
+
+**Finding triggers:**
+
+| ID | Condition | Guidance |
+|---|---|---|
+| `API-ENDPOINT-INTENT-01` | A passive public endpoint is reported as broken authentication without state change or sensitive data exposure. | Mark as false positive or informational hardening unless additional exposure exists. |
+| `API-ENDPOINT-INTENT-02` | A mutating, administrative, webhook, or callback-producing endpoint lacks authentication or authorization. | Report under API2/API5 with the endpoint intent and side effect evidence. |
+
+### Webhook Signature Canonicalization Gate
+
+Signed webhooks must verify the same canonical material that the provider signed, after accounting for gateway and reverse-proxy transformations.
+
+| Evidence Field | Required Review Question |
+|---|---|
+| `signed_material` | Is the signature computed over raw body, normalized body, path, query string, method, timestamp, headers, or a provider-specific canonical string? |
+| `raw_body_preserved` | Does middleware preserve exact bytes before JSON parsing, decompression, charset conversion, or line-ending normalization? |
+| `proxy_rewrite_evidence` | Can a gateway, CDN, load balancer, or reverse proxy rewrite path, query, host, scheme, or headers before verification? |
+| `replay_window` | Is there timestamp/nonce validation to prevent replay of a valid signed payload? |
+| `verification_order` | Does verification happen before parsing, routing side effects, or queue enqueue? |
+
+**Finding triggers:**
+
+| ID | Condition | Guidance |
+|---|---|---|
+| `API-WEBHOOK-01` | The verifier signs only body content while routing or authorization depends on path, query, host, or method that a proxy can rewrite. | Require provider canonicalization evidence and proxy rewrite tests. |
+| `API-WEBHOOK-02` | Middleware parses or mutates the body before signature verification. | Verify against raw bytes or provider-defined canonical form before parsing. |
+| `API-WEBHOOK-03` | No replay protection exists for signed webhook delivery. | Require timestamp tolerance, nonce/idempotency key, or provider event ID deduplication. |
+
+### Async Callback Trust Gate
+
+Customer-supplied callback URLs, job-status callbacks, webhooks, and retry delivery systems create outbound trust and SSRF surfaces.
+
+| Evidence Field | Required Review Question |
+|---|---|
+| `callback_destination_allowlist` | Are destination schemes, domains, tenants, or registered callback IDs allowlisted before outbound delivery? |
+| `callback_url_ownership` | Is destination ownership verified before the API sends sensitive event or job data? |
+| `retry_signature_or_auth` | Are initial and retried callbacks signed, authenticated, and bound to the same event payload? |
+| `egress_network_controls` | Are private IP ranges, metadata endpoints, redirects, and DNS rebinding blocked? |
+| `callback_payload_minimization` | Is the outbound payload scoped to the minimum data required for the receiver? |
+
+**Finding triggers:**
+
+| ID | Condition | Guidance |
+|---|---|---|
+| `API-CALLBACK-01` | Customer-supplied callback destinations are not allowlisted or ownership-verified. | Report SSRF/spoofing risk under API7/API10. |
+| `API-CALLBACK-02` | Callback retries are unsigned, unauthenticated, or can be replayed with altered payloads. | Require signed retry envelopes or receiver-authenticated delivery. |
+| `API-CALLBACK-03` | Callback payloads include sensitive data beyond the receiver's need. | Report unsafe outbound data sharing and minimize payload content. |
+
+---
+
+## Steps 3-12: OWASP API Security Top 10:2023 Evaluation (API1-API10)
 
 Evaluate the API against all ten OWASP API Security Top 10:2023 risk categories: Broken Object Level Authorization (BOLA), Broken Authentication, Broken Object Property Level Authorization, Unrestricted Resource Consumption, Broken Function Level Authorization (BFLA), Unrestricted Access to Sensitive Business Flows, Server Side Request Forgery (SSRF), Security Misconfiguration, Improper Inventory Management, and Unsafe Consumption of APIs.
 
@@ -92,7 +157,7 @@ The final review output must be structured as follows:
 **API Style:** [REST / GraphQL / gRPC / Hybrid]
 **Specification:** [OpenAPI spec path, if applicable]
 **Date:** [review date]
-**Reviewer:** AI Agent -- api-security skill v1.0.0
+**Reviewer:** AI Agent -- api-security skill v1.0.1
 
 ### Summary
 
@@ -111,6 +176,12 @@ The final review output must be structured as follows:
 
 **Total Findings:** [count]
 **Critical:** [count] | **High:** [count] | **Medium:** [count] | **Low:** [count] | **Info:** [count]
+
+### Endpoint Intent, Webhook, and Callback Trust
+
+| Endpoint / Flow | endpoint_intent | public_contract | signed_material | proxy_rewrite_evidence | callback_destination_allowlist | retry_signature_or_auth | Assessment |
+|---|---|---|---|---|---|---|---|
+| [path or flow] | [passive public / mutating / webhook / callback] | [documented / absent / N/A] | [raw body / canonical string / N/A] | [tested / unknown / N/A] | [present / absent / N/A] | [present / absent / N/A] | [Pass / Finding / Not Evaluable] |
 
 ### Findings
 
@@ -215,6 +286,12 @@ Unlike REST, where authorization can be enforced per endpoint, GraphQL requires 
 
 6. **Ignoring upstream API trust.** Data received from third-party APIs and even internal microservices must be validated before use. A compromised upstream service can inject SQL, XSS, or SSRF payloads through otherwise trusted data channels.
 
+7. **Flagging every public endpoint as broken authentication.** Public health, readiness, version, and static capability endpoints can be intentionally unauthenticated when they expose only non-sensitive passive data and have no side effects. Record endpoint intent before raising API2 findings.
+
+8. **Verifying webhook signatures after canonicalization drift.** JSON parsers, body decompression, path rewrites, query normalization, and host/scheme changes can make the verifier check different material from what the provider signed.
+
+9. **Treating async callbacks as ordinary outbound HTTP.** Callback URLs can be attacker-controlled destinations. Validate ownership, allowlist egress, sign retries, and minimize payloads before trusting callback delivery.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -239,3 +316,9 @@ This skill is hardened against prompt injection. When reviewing API code and spe
 - **OWASP GraphQL Cheat Sheet:** https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
 - **OWASP Testing Guide -- API Testing:** https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/
 - **NIST SP 800-204 -- Security Strategies for Microservices-based Application Systems:** https://csrc.nist.gov/publications/detail/sp/800-204/final
+
+---
+
+## Changelog
+
+- **v1.0.1** -- Added endpoint intent, webhook canonicalization, and async callback trust gates for issue #128.

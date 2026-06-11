@@ -111,6 +111,22 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 
 APIs are particularly susceptible to authentication flaws because they expose machine-consumable endpoints that lack the browser-based protections (cookies, CSRF tokens, CAPTCHA) common in traditional web applications.
 
+### Endpoint Intent Classification Gate
+
+Authentication findings must account for endpoint intent. A deliberately public passive endpoint is different from a mutating, administrative, webhook, or callback-producing endpoint.
+
+| Review Field | Expected Evidence |
+|---|---|
+| `endpoint_intent` | Passive public, authenticated read, mutating, administrative, webhook receiver, or outbound callback producer. |
+| `public_contract` | Documentation that the endpoint is intentionally public and returns only non-sensitive status/capability data. |
+| `mutation_capability` | Evidence that the endpoint cannot change state, enqueue work, trigger callbacks, or expose sensitive data. |
+| `auth_requirement_rationale` | Explicit reason authentication is required or intentionally omitted. |
+
+Finding triggers:
+
+- `API-ENDPOINT-INTENT-01`: A passive public endpoint such as `GET /public/health` is reported as broken authentication even though it exposes only service status and has no side effects.
+- `API-ENDPOINT-INTENT-02`: A mutating, administrative, webhook, or callback-producing endpoint lacks authentication or authorization.
+
 ### What to Look For
 
 - Authentication endpoints without brute-force protection (rate limiting, account lockout, CAPTCHA).
@@ -119,6 +135,7 @@ APIs are particularly susceptible to authentication flaws because they expose ma
 - Missing or weak token rotation -- refresh tokens that never expire or are not rotated on use.
 - Password reset or account recovery flows that leak tokens or allow enumeration.
 - Micro-service-to-service communication without authentication (implicit trust based on network location).
+- Public endpoints whose unauthenticated status is not justified by passive, non-sensitive, read-only behavior.
 
 ### Vulnerable Patterns
 
@@ -166,6 +183,8 @@ paths:
 - [ ] API keys and tokens are transmitted in headers, not query strings.
 - [ ] Refresh tokens are rotated on each use and revocable.
 - [ ] Service-to-service communication is explicitly authenticated.
+- [ ] Endpoint intent is documented before unauthenticated access is reported as a vulnerability.
+- [ ] Public passive endpoints are separated from mutating, administrative, webhook, and callback-producing endpoints.
 
 ---
 
@@ -399,6 +418,34 @@ def register_webhook():
     return jsonify({"status": "registered"})
 ```
 
+```yaml
+# VULNERABLE: Async callback destination is customer-supplied with no allowlist
+callback:
+  type: async_job_status
+  callback_url: customer_supplied
+  callback_destination_allowlist: absent
+  callback_url_ownership: unverified
+  retry_signature_or_auth: none
+```
+
+### Async Callback Trust Gate
+
+Outbound callbacks, job-status webhooks, and retry delivery systems must be reviewed as SSRF and spoofing surfaces.
+
+| Review Field | Expected Evidence |
+|---|---|
+| `callback_destination_allowlist` | Allowed schemes/domains/tenants or registered callback IDs are enforced before delivery. |
+| `callback_url_ownership` | The receiver proves ownership before sensitive job or event data is sent. |
+| `egress_network_controls` | Private IPs, metadata endpoints, redirects, and DNS rebinding are blocked or revalidated. |
+| `retry_signature_or_auth` | Initial and retried deliveries are signed/authenticated and bound to the same event payload. |
+| `callback_payload_minimization` | Callback payloads include only the receiver's required fields. |
+
+Finding triggers:
+
+- `API-CALLBACK-01`: Customer-supplied callback destinations are not allowlisted or ownership-verified.
+- `API-CALLBACK-02`: Callback retries are unsigned, unauthenticated, or replayable with altered payloads.
+- `API-CALLBACK-03`: Callback payloads include unnecessary sensitive data.
+
 ### Remediation Guidance
 
 - Validate and sanitize all user-supplied URLs. Use an allowlist of permitted schemes (`https` only), domains, or IP ranges.
@@ -407,6 +454,8 @@ def register_webhook():
 - Use a dedicated egress proxy for outbound requests that enforces domain allowlists.
 - For cloud environments, use IMDSv2 (requires token-based access to metadata) to mitigate SSRF exploitation against cloud metadata services.
 - Do not return raw responses from fetched URLs to the client; extract only the needed data.
+- Require callback destination registration, ownership verification, and an allowlist before sending outbound job or event callbacks.
+- Sign callback payloads and retries with a timestamped event envelope so receivers can authenticate and deduplicate delivery.
 
 ### Review Checklist
 
@@ -415,6 +464,8 @@ def register_webhook():
 - [ ] HTTP redirects are disabled or the final destination is re-validated.
 - [ ] Cloud metadata endpoint access is restricted (IMDSv2 on AWS, equivalent on GCP/Azure).
 - [ ] Raw responses from fetched URLs are never returned directly to the client.
+- [ ] Customer-supplied callback URLs are allowlisted, ownership-verified, and blocked from private/internal ranges.
+- [ ] Callback retries use the same authentication or signature guarantees as initial delivery.
 
 ---
 
@@ -450,6 +501,34 @@ DocumentBuilder builder = factory.newDocumentBuilder();
 Document doc = builder.parse(request.getInputStream());
 ```
 
+```yaml
+# VULNERABLE: Webhook verifier signs only the parsed body while proxy rewrites path
+webhook:
+  signature_header: X-Sig
+  signed_material: body_only
+  raw_body_preserved: false
+  proxy_rewrite_evidence: unknown
+  verification_order: after_json_parse
+```
+
+### Webhook Signature Canonicalization Gate
+
+Signed webhook review must prove that the verifier checks exactly the material the provider signed, after accounting for parsing and proxy transformations.
+
+| Review Field | Expected Evidence |
+|---|---|
+| `signed_material` | Provider-defined canonical string: raw body, method, path, query, timestamp, selected headers, or body hash. |
+| `raw_body_preserved` | Middleware preserves exact bytes before JSON parsing, decompression, charset conversion, or line-ending normalization. |
+| `proxy_rewrite_evidence` | CDN, gateway, load balancer, and reverse-proxy rewrites are tested or ruled out. |
+| `replay_window` | Timestamp tolerance, nonce, or event-ID deduplication prevents replay. |
+| `verification_order` | Verification occurs before parsing side effects, route mutation, or queue enqueue. |
+
+Finding triggers:
+
+- `API-WEBHOOK-01`: The verifier signs only body content while routing or authorization depends on path, query, host, or method that a proxy can rewrite.
+- `API-WEBHOOK-02`: Middleware parses, normalizes, or mutates the body before signature verification.
+- `API-WEBHOOK-03`: Signed webhook delivery lacks timestamp/nonce/event-id replay protection.
+
 ### Remediation Guidance
 
 - Configure CORS with an explicit allowlist of permitted origins. Never use `*` with `credentials: true`.
@@ -462,6 +541,8 @@ Document doc = builder.parse(request.getInputStream());
 - Disable XML External Entity processing: set `factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`.
 - Enforce TLS 1.2+ with strong cipher suites. Disable TLS 1.0 and 1.1.
 - Automate configuration scanning in CI/CD to detect drift from security baselines.
+- Verify webhooks against the provider-defined canonical string using the raw body and any signed route, query, method, timestamp, and header fields.
+- Test webhook verification through the deployed CDN/API gateway path, not only direct application-unit tests.
 
 ### Review Checklist
 
@@ -472,6 +553,9 @@ Document doc = builder.parse(request.getInputStream());
 - [ ] TLS 1.2+ is enforced with strong cipher suites.
 - [ ] XML parsers disable external entity processing and DTD loading.
 - [ ] Default credentials are changed or removed on all infrastructure components.
+- [ ] Webhook signature verification uses the provider-defined `signed_material` and preserves raw request bytes.
+- [ ] `proxy_rewrite_evidence` shows that route, host, query, scheme, and header transformations cannot bypass verification.
+- [ ] Webhooks have timestamp, nonce, or provider event-ID replay protection.
 
 ---
 
@@ -544,6 +628,15 @@ const data = await enrichmentData.json();
 res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third party
 ```
 
+```yaml
+# VULNERABLE: Callback retry changes authenticity properties
+callback_delivery:
+  destination: registered_customer_endpoint
+  initial_delivery_signature: present
+  retry_signature_or_auth: absent
+  callback_payload_minimization: absent
+```
+
 ### Remediation Guidance
 
 - Treat all data from external and internal APIs as untrusted input. Validate and sanitize before use.
@@ -552,6 +645,8 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - Implement timeouts, retry limits with backoff, and circuit breakers on all outbound API calls.
 - Restrict redirects on outbound calls. If following redirects, re-validate the destination URL.
 - Use parameterized queries when inserting data from any source, including trusted internal APIs.
+- Preserve callback authenticity across retries and dead-letter replays; retries must be signed/authenticated with the same event identity as initial delivery.
+- Minimize outbound callback payloads and require receiver-side schema validation before clients trust callback data.
 
 ### Review Checklist
 
@@ -560,3 +655,5 @@ res.send(`<div class="bio">${data.biography}</div>`);  // Stored XSS via third p
 - [ ] Response schemas from third-party APIs are validated before processing.
 - [ ] Outbound calls have timeouts, retry limits, and circuit breakers.
 - [ ] Redirect following is disabled or restricted on outbound HTTP calls.
+- [ ] Async callback deliveries and retries preserve `retry_signature_or_auth` and event identity.
+- [ ] Callback payloads are minimized and schema-validated by both sender and receiver.
