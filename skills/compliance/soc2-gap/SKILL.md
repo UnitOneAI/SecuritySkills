@@ -12,7 +12,7 @@ phase: [assess, operate]
 frameworks: [AICPA-TSC, NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -43,6 +43,7 @@ Before beginning the gap analysis, ensure the following are available:
 - Logging and monitoring configurations
 - Incident response documentation
 - Vendor and third-party service inventory
+- AI/ML feature inventory, if applicable: model providers, prompt templates, retrieval/vector stores, evaluation datasets, human review gates, and model or prompt change records
 
 ## Constraints
 
@@ -111,6 +112,33 @@ System Description Boundary:
 - Procedures: ___
 - Data: ___
 ```
+
+#### 1.4 AI/ML System Boundary and Commitment Scoping
+
+If the service includes AI, ML, GenAI, LLM, embedding, recommendation, classification, or automated decisioning functionality, determine whether those components are part of the SOC 2 system description and control boundary. Do not exclude an AI component merely because it is delivered through a third-party API or because model behavior is probabilistic.
+
+Include AI/ML components in scope when any of the following are true:
+
+- The feature processes customer data, confidential information, personal information, or regulated data.
+- The feature supports a service commitment, SLA, customer-facing workflow, security control, support workflow, or processing integrity objective.
+- Model outputs are written back to customer records, tickets, decisions, notifications, reports, or other auditable business artifacts.
+- Prompts, completions, embeddings, retrieved documents, eval datasets, or model feedback are logged or retained.
+- A third-party model provider, vector database, labeling vendor, or evaluation vendor is a subservice organization or critical vendor for the service.
+
+Map AI/ML scope to existing Trust Services Criteria; do not invent criteria IDs:
+
+| SOC 2 Area | AI/ML Evidence to Request | Criteria Touchpoints |
+|------------|---------------------------|----------------------|
+| System description and data flows | AI feature inventory, prompt/RAG data-flow diagram, model/provider boundary, customer data classes | CC2.1, CC3.2 |
+| Security and access control | Access to prompts, vector stores, model configs, eval datasets, provider consoles, and logs | CC6.1-CC6.8 |
+| Change management | Prompt changes, model version changes, retrieval-index changes, guardrail changes, eval approval records | CC8.1 |
+| Monitoring and incidents | AI abuse, unsafe output, data leakage, provider outage, guardrail bypass, drift or quality alerts | CC7.1-CC7.5 |
+| Vendor management | Provider SOC report, DPA, retention terms, subprocessor list, CUECs, carve-out vs inclusive method | CC9.2 |
+| Optional privacy | Prompt/completion/embedding retention, privacy notice commitments, DSAR handling, consent and deletion propagation | P1.1-P1.8 |
+| Optional confidentiality | Customer confidential data in prompts, RAG documents, embeddings, eval sets, and provider logs | C1.1-C1.2 |
+| Optional processing integrity | Automated outputs used for decisions, calculations, support actions, workflow routing, or report generation | PI1.1-PI1.5 |
+
+**Finding classification:** An in-production AI/ML feature that processes customer or confidential data but is absent from the system description, vendor inventory, data-flow map, and change/monitoring evidence is a **P1 - High** readiness gap. If model outputs materially affect customer transactions or regulated decisions, missing Processing Integrity or Privacy scoping may be **P0 - Critical** for audit readiness.
 
 ---
 
@@ -354,6 +382,7 @@ Prioritize remediation by audit readiness impact. Items that would result in exa
 - Collect vendor SOC 2 reports annually
 - Conduct annual DR test
 - Perform annual incident response tabletop exercise
+- Review AI/ML model, prompt, retrieval, provider, and evaluation changes under change management when AI features are in the SOC 2 system boundary
 
 ---
 
@@ -368,6 +397,7 @@ When performing a SOC 2 gap analysis, produce the following deliverables:
 5. **Evidence Checklist**: Customized evidence requirements based on in-scope criteria, marking items as Exists / Partial / Missing.
 6. **90-Day Remediation Roadmap**: Prioritized action items with owners, deadlines, and dependencies.
 7. **Overall Readiness Assessment**: Go/no-go recommendation for engaging a SOC 2 auditor.
+8. **AI/ML Scope Note**: If AI/ML features exist, state whether they are in scope, which TSC areas they affect, and what evidence is missing.
 
 ## Prompt Injection Safety Notice
 
@@ -386,6 +416,12 @@ This skill processes user-supplied content including compliance documentation, p
 - **NIST CSF 2.0 Mapping**: CC1-CC2 maps to Govern (GV), CC3 to Identify (ID), CC5-CC6 to Protect (PR), CC7 to Detect (DE) and Respond (RS), CC7.5 to Recover (RC).
 - **ISO 27001:2022**: CC6 maps to Annex A.8 (Technology Controls), CC8 maps to Annex A.8.32 (Change Management), CC9.2 maps to Annex A.5.19-5.22 (Supplier Relationships).
 - **CIS Controls v8**: CC6.1 maps to CIS Control 6 (Access Control Management), CC6.8 maps to CIS Control 10 (Malware Defenses), CC7.1 maps to CIS Control 7 (Continuous Vulnerability Management).
+
+## Common Pitfalls
+
+1. **Excluding AI features as "just a vendor API."** SOC 2 scoping follows the service commitments, system boundary, data flows, and controls relied upon to deliver the service. A model provider may be a subservice organization, but the customer-facing AI feature, prompt assembly, retrieval layer, logging, monitoring, and change controls can still be in scope.
+2. **Treating prompts and retrieval indexes as informal content.** Prompt templates, guardrails, retrieval indexes, embedding stores, eval datasets, and model configuration can change service behavior. Treat them as controlled system components when they affect customer-facing output or commitments.
+3. **Ignoring optional categories triggered by AI behavior.** Privacy, Confidentiality, and Processing Integrity may become relevant when AI features process personal/confidential data or produce outputs used in decisions, reports, workflow routing, or customer records.
 
 ## Limitations
 
