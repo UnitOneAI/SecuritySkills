@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [HIPAA-Security-Rule, 45-CFR-164-Subpart-C]
 difficulty: intermediate
 time_estimate: "60-120min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -69,6 +69,9 @@ The HIPAA Security Rule (45 CFR Part 164, Subpart C) establishes national standa
 - Current risk analysis documentation (or confirmation none exists)
 - Security policies and procedures documentation
 - Business Associate Agreements (BAAs) inventory
+- AI scribe, ambient documentation, transcription, translation, chatbot, and
+  LLM vendor inventory when those services create, receive, maintain, or
+  transmit ePHI
 - Incident response and breach notification procedures
 - Access control configurations and user provisioning processes
 - Backup and disaster recovery documentation
@@ -111,6 +114,8 @@ ePHI Locations:
 - Medical devices and IoT: ___
 - Backup systems and archives: ___
 - Business Associate systems: ___
+- AI scribe / transcription / LLM systems receiving ePHI: ___
+- Prompt, transcript, audio, summary, and model-output storage locations: ___
 ```
 
 #### 1.2 Entity Classification
@@ -243,6 +248,35 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
 - Verify BAAs are in place for all BAs
 - Verify BAAs contain required provisions (security obligations, breach notification, termination)
 
+**AI scribe, transcription, and LLM vendor evidence gate**
+
+AI-assisted documentation, ambient clinical scribe, transcription, translation,
+and chatbot vendors are Business Associates when they create, receive, maintain,
+or transmit ePHI on behalf of a Covered Entity or Business Associate. Do not
+treat an AI vendor as out of scope merely because it provides "software" or
+"model inference" rather than traditional hosting.
+
+Verify:
+
+- The service's data flow identifies audio, transcript text, prompts, model
+  outputs, embeddings, logs, support tickets, and quality-review queues that may
+  contain ePHI.
+- A BAA or other HIPAA-compliant written arrangement is executed before ePHI is
+  sent to the vendor.
+- The BAA covers subcontractors/subprocessors used for model hosting,
+  transcription, storage, analytics, human review, support, or monitoring.
+- Retention, deletion, and return/destruction obligations cover raw audio,
+  prompts, transcripts, derived summaries, embeddings, logs, and backups.
+- Model training, quality improvement, or product analytics using ePHI is either
+  prohibited, de-identified under an approved process, or explicitly governed by
+  the BAA and risk analysis.
+- Access controls, audit logs, encryption in transit/at rest, incident reporting,
+  and termination assistance are documented for the AI workflow.
+
+Classify missing BAA coverage for an AI/transcription vendor receiving ePHI as
+High, or Critical when production ePHI is already flowing to the vendor without
+contractual safeguards or deletion controls.
+
 ---
 
 ### Step 3: Physical Safeguards (45 CFR 164.310)
@@ -346,6 +380,9 @@ Hybrid Entity: [Yes/No] — If yes, document healthcare component designation
   - Ensure any subcontractor that creates/receives/maintains/transmits ePHI agrees to same restrictions and conditions
   - Report security incidents to the CE
   - Authorize termination of contract if BA violates material term
+- For AI scribe/transcription/LLM vendors, confirm the contract scope explicitly
+  covers ePHI in prompts, audio, transcripts, model outputs, embeddings, logs,
+  human-review queues, backups, and subprocessors.
 
 **164.314(a)(2)(ii) — Other Arrangements (R)**
 - When a CE and BA are both governmental entities, alternative arrangements may be used
@@ -456,6 +493,7 @@ Assess:
 - BAA Inventory: [count of BAs, count with BAAs in place]
 - Missing BAAs: [list]
 - BAA Deficiencies: [missing required provisions]
+- AI/Transcription Vendors: [count, ePHI data types handled, BAA status, retention/training/subprocessor coverage]
 
 ## Breach Notification Readiness
 [Assessment of breach response procedures, notification capability, HHS reporting readiness]
@@ -570,6 +608,13 @@ Policies, Procedures, and Documentation — 164.316
 4. **Confusing HIPAA Security Rule with HIPAA Privacy Rule.** The Security Rule (Subpart C) applies only to ePHI and focuses on technical, physical, and administrative safeguards. The Privacy Rule (Subpart E) covers all PHI including paper records and addresses permitted uses and disclosures. A Security Rule review does not satisfy Privacy Rule obligations and vice versa.
 
 5. **Failing to document the "why" behind security decisions.** The Security Rule is designed to be flexible and scalable. But that flexibility requires documentation. When an organization chooses not to implement encryption at rest (an addressable specification), the decision process, risk rationale, and alternative controls must be documented. OCR auditors expect written justification, not verbal explanations.
+
+6. **Treating AI scribes as ordinary productivity tools.** Ambient clinical
+documentation and transcription services can receive raw audio, transcripts,
+prompts, summaries, and logs containing ePHI. If the vendor processes that ePHI
+for the organization, it must be inventoried as a Business Associate and
+reviewed for BAA, subcontractor, retention, deletion, training-use, and audit
+evidence.
 
 ---
 
