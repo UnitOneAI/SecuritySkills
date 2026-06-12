@@ -12,7 +12,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CISA-ZTMM-v2]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -94,6 +94,21 @@ Zero Trust is an architectural approach, not a product. NIST SP 800-207 defines 
 | **ID Management** | Enterprise identity provider and credential management |
 | **SIEM** | Aggregated security telemetry for monitoring and response |
 
+#### Policy Decision Traceability Evidence
+
+Zero trust maturity claims must be supported by decision evidence, not only architecture diagrams.
+For representative user, service, and emergency-access flows, collect a trace from request to
+enforcement:
+
+| Evidence Point | Required Trace Data |
+|---|---|
+| **Policy Engine input** | Subject identity, workload identity, device posture, resource, action, data classification, risk signals |
+| **Policy version** | Policy bundle/rule identifier, version, owner, approval history, deployment timestamp |
+| **Policy Administrator action** | Session/channel creation, token/certificate issuance, route update, or deny action |
+| **Policy Enforcement Point log** | PEP identifier, enforced decision, resource, result, timestamp, correlation/request ID |
+| **Outage mode** | Fail-closed default, approved fail-open exception, break-glass trigger, and audit trail |
+| **Bypass inventory** | Manual firewall exceptions, direct URLs, legacy VPN paths, admin consoles, support tooling |
+
 ### CISA Zero Trust Maturity Model v2.0 — Five Pillars and Maturity Stages
 
 | Pillar | Scope |
@@ -153,7 +168,39 @@ ZT-ID-07: Service/workload identities not governed (no identity for machines)
 ZT-ID-08: No identity threat detection (compromised credential detection)
 ZT-ID-09: Federation trust not validated — implicit trust of partner IdPs
 ZT-ID-10: Session management lacks continuous evaluation (no CAE or equivalent)
+ZT-ID-11: Workloads use shared/default service identities instead of unique audience-bound identities
+ZT-ID-12: Machine-to-machine credentials lack rotation, revocation, or token-audience constraints
+ZT-ID-13: Policy decisions cannot be traced from PDP inputs to PEP enforcement logs
+ZT-ID-14: Break-glass or privileged access paths bypass MFA, device posture, approval, or session recording
 ```
+
+#### Service and Workload Identity Evidence Matrix
+
+Assess service identity separately from human identity. A program is not Advanced or Optimal if
+workloads still share default identities, long-lived static secrets, or broad resource bindings.
+
+| Runtime / Flow | Evidence to Collect | Red Flags |
+|---|---|---|
+| **Kubernetes** | Non-default ServiceAccounts per workload, `automountServiceAccountToken` posture, projected token audience/TTL, RBAC bindings | `serviceAccountName: default`, cluster-wide roles, long-lived mounted tokens |
+| **Cloud workloads** | Instance/task/function roles, workload identity federation, scoped resource policies, keyless access | Shared IAM role across services, static access keys, wildcard resource permissions |
+| **Service mesh / SPIFFE** | SPIFFE IDs or mesh certificates, workload selector policy, cert rotation interval, mTLS enforcement | Identity only by namespace/IP, expired cert rotation evidence, permissive mesh policies |
+| **CI/CD** | OIDC trust policy, repository/environment audience, short-lived deployment tokens, approval gates | Shared deploy key, repo-wide cloud role, tokens usable outside intended audience |
+| **Serverless / jobs** | Function/job identity, event-source permissions, secret access scope, invocation audit logs | Platform default role, unmanaged secrets, missing resource-level deny evidence |
+| **Machine-to-machine APIs** | Client identity, token audience, rotation/revocation process, per-client rate/audit controls | Reused API key, no expiry, no client-specific authorization or audit trail |
+
+#### Privileged and Break-Glass Access Evidence
+
+Evaluate normal privileged access and emergency access as separate paths. Break-glass is acceptable
+only when it is time-bound, strongly controlled, and auditable.
+
+| Control Area | Evidence to Require | Severity Guidance |
+|---|---|---|
+| **Privileged MFA** | Phishing-resistant MFA for admins and emergency accounts | High if production-admin paths lack phishing-resistant MFA |
+| **Admin device posture** | PAW/hardened admin workstation, device compliance, network origin controls | High if unmanaged devices can administer production |
+| **JIT elevation** | Time-bound role activation, approval, reason/ticket, automatic expiry | Medium/High if standing privilege persists without review |
+| **Session recording** | Command/session logs, correlation ID, immutable storage, monitoring alerts | High if emergency sessions are not recorded |
+| **Post-use cleanup** | Credential rotation, account disablement, access review, incident record | Medium/High if break-glass use leaves persistent credentials |
+| **Outage behavior** | Fail-closed defaults and documented emergency exception workflow | Critical if fail-open bypass is unaudited for sensitive resources |
 
 ---
 
@@ -235,6 +282,24 @@ ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
 | **Monitoring and alerting** | Can violations be detected and alerted in real-time? |
 | **Rollback capability** | Can policies be rolled back without outage if misconfigured? |
 
+#### Public Read-Only Resource Calibration
+
+Anonymous read access is not automatically a High finding when the resource is intentionally public,
+read-only, non-personal, and approved for public distribution. Calibrate severity by separating the
+public consumption plane from the privileged publishing or administration plane.
+
+| Resource Pattern | Do Not Flag Solely Because | Required Evidence | Escalate When |
+|---|---|---|---|
+| **Status page** | Anonymous users can read uptime/incidents | Public data classification, no customer secrets, admin MFA, change audit | Admin publishing bypasses MFA or exposes internal-only incident data |
+| **Public docs / marketing** | No viewer identity is required | Origin protected from direct writes, integrity controls, approved publishing workflow | CMS/admin path lacks device posture, approval, or logging |
+| **Static downloads** | Files are downloadable without login | Checksums/signatures, malware scanning, immutable release process, CDN/origin controls | Unsigned mutable binaries, writable bucket, or origin public write access |
+| **Open API metadata** | Discovery or health metadata is public | Schema confirms no sensitive data, rate limits, WAF/CDN logs | Endpoint leaks tenant, auth, debug, or infrastructure details |
+
+For public read-only resources, score identity gaps against publishing/admin access, origin
+protection, integrity, data classification, logging, and abuse controls rather than forcing viewer
+authentication. For sensitive or mutable resources, unauthenticated access remains High or Critical
+depending on data exposure and exploitation path.
+
 ---
 
 ### Step 4: Pillar 4 — Applications & Workloads
@@ -267,6 +332,8 @@ ZT-APP-07: Serverless functions lack least-privilege IAM roles
 ZT-APP-08: No runtime workload protection (CWPP/CNAPP)
 ZT-APP-09: Application-to-application communication not authenticated
 ZT-APP-10: Legacy applications with no path to zero trust integration
+ZT-APP-11: Application PEP cannot prove the policy version and signals used for allow/deny decisions
+ZT-APP-12: Workload runtime uses shared service accounts, broad cloud roles, or static machine credentials
 ```
 
 ---
@@ -348,9 +415,15 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 | Severity | Definition | Examples |
 |---|---|---|
 | **Critical** | Fundamental zero trust gap enabling undetected compromise | Flat network with no segmentation; no MFA; no device compliance |
-| **High** | Major pillar at Traditional maturity with exploitation potential | No microsegmentation; VPN as sole remote access; no DLP |
+| **High** | Major pillar at Traditional maturity with exploitation potential | No microsegmentation; VPN as sole remote access; shared default workload identity; PDP decisions not traceable to PEP logs; break-glass admin path bypasses MFA/device posture/session recording; no DLP |
 | **Medium** | Pillar at Initial maturity or cross-cutting capability gap | Partial ZTNA deployment; SIEM without cross-pillar correlation |
 | **Low** | Pillar at Advanced seeking Optimal or process improvement | Missing automation; governance documentation gaps |
+
+Severity calibration: do not rate intentionally public, read-only, non-personal resources as High
+solely because anonymous viewers are allowed. Rate the public consumption plane by data
+classification, origin protection, integrity, logging, and abuse controls. Rate the publishing,
+administration, mutable content, and sensitive-data planes using the normal identity, device,
+policy, and audit requirements.
 
 ---
 
@@ -385,6 +458,18 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 
 ### CISA ZTMM v2 Maturity Scorecard
 [Pillar-by-pillar table — see above]
+
+### Public Resource Calibration
+[Identify intentionally public read-only resources and the evidence that keeps anonymous read access acceptable]
+
+### Service and Workload Identity Evidence
+[Matrix of Kubernetes, cloud, service mesh, CI/CD, serverless, and machine-to-machine identity evidence]
+
+### Policy Decision Trace Samples
+[Representative allow/deny traces from Policy Engine inputs through Policy Administrator action to PEP logs]
+
+### Privileged and Break-Glass Access
+[Normal privileged path, emergency path, approvals, PAW/device posture, session recording, and post-use rotation]
 
 ### Cross-Cutting Capabilities
 - Visibility & Analytics: [maturity]
@@ -487,4 +572,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.0.1 | 2026-06-12 | Added public read-only resource severity calibration, service/workload identity evidence, PDP/PEP decision traceability, and break-glass privileged access gates |
 | 1.0.0 | 2025-03-06 | Initial release |
