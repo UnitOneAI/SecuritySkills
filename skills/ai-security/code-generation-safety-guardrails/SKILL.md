@@ -28,6 +28,36 @@ This skill reviews workflows where an AI system writes, modifies, or proposes co
 
 It complements `agent-security` and `agentic-top-10`: those skills review the whole agent architecture, while this skill drills into the generated-code path from prompt to diff to test evidence to merge or deployment.
 
+## Safety Model
+
+Use this model to keep the review anchored on evidence handoffs. Every transition should have a durable record, an owner, and a policy decision that the codegen actor cannot rewrite by itself.
+
+```mermaid
+flowchart LR
+  request["Task / issue / user request"]
+  context["Retrieved docs, memory, and policy context"]
+  agent["Codegen actor"]
+  diff["Generated diff or artifact"]
+  gates["Independent security and quality gates"]
+  review["Human / CODEOWNERS approval"]
+  release["Merge, artifact, or deployment"]
+  learn["Outcome learning writeback"]
+
+  request --> context --> agent --> diff --> gates --> review --> release
+  gates --> reject["Rejected or failed outcome"]
+  review --> reject
+  release --> learn
+  reject --> learn
+
+  policy["Branch protection, policy, and approval rules"]
+  policy -. constrains .-> agent
+  policy -. constrains .-> gates
+  policy -. constrains .-> review
+  learn -. cannot self-modify .-> policy
+```
+
+Review objective: prove that generated code cannot move rightward in the flow without provenance, scoped authority, independent checks, approval, and rollback evidence. If outcome learning is enabled, prove that rejected, reverted, or security-fixed code is not promoted as a positive lesson.
+
 ## Prompt Injection Safety Notice
 
 > **This skill is strictly for defensive review of code-generation workflows you own or are authorized to assess.**
@@ -194,6 +224,17 @@ Required controls:
 ### Step 7 - Produce Findings
 
 Use this output format:
+
+### Evidence Flow Summary
+
+| Stage | Required Evidence | Owner | Gate Result | Not Evaluable? |
+|---|---|---|---|---|
+| Request and context | issue/task ID, prompt/policy version, retrieved sources, memory IDs |  |  |  |
+| Generated diff | branch, commit, generated files, artifact attestation |  |  |  |
+| Independent gates | tests, SAST, dependency, secret, license, IaC, provenance checks |  |  |  |
+| Human approval | reviewer, CODEOWNERS path, approval timestamp, visible evidence bundle |  |  |  |
+| Release / rollback | merge or deploy record, feature flag, rollback owner, revert plan |  |  |  |
+| Learning writeback | accepted/rejected label, source diff, dedupe key, owner, rollback path |  |  |  |
 
 | Finding ID | Codegen Path | Risk | Evidence | Severity | Required Fix |
 |---|---|---|---|---|---|
