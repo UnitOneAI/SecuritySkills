@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [NIST-CSF-2.0]
 difficulty: intermediate
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -154,6 +154,27 @@ Assess:
 - Is cybersecurity risk integrated into enterprise risk management (ERM)?
 - Is the risk calculation methodology documented and consistently applied?
 - Are risk communication channels defined from operational to executive level?
+- Are strategic cybersecurity opportunities, also called positive risks, identified and documented?
+- Are positive cyber risks prioritized alongside negative risks using a consistent method?
+- Does each opportunity have an owner, evidence source, expected benefit, cyber capability or dependency, and decision forum?
+- Are opportunities discussed in the same governance channel as risk appetite, ERM, and cyber risk committee decisions?
+- If no material strategic opportunity is in scope, is there an explicit non-applicability rationale for GV.RM-07?
+
+**GV.RM-07 scoring gate:** Do not score GV.RM-07 at target based only on
+generic risk appetite, ERM integration, or a negative-risk register. A Pass or
+target-level score requires positive-risk evidence or a scoped non-applicability
+rationale. Positive risks must have a cybersecurity dependency, not just generic
+business upside.
+
+**GV.RM-07 evidence examples:**
+
+| Evidence | Required detail |
+|----------|-----------------|
+| Opportunity register | Opportunity, cyber capability/dependency, owner, expected benefit, related negative risks, status |
+| Governance record | Board, executive, or cyber risk committee minutes showing opportunity discussion or decision |
+| Prioritization method | Consistent scoring or decision method used alongside negative cyber risks |
+| Investment linkage | Funded initiative, deferred decision, accepted opportunity, or documented rationale |
+| Non-applicability | Scope boundary, date, decision owner, and why no material positive cyber risks apply |
 
 #### 2.2 Roles, Responsibilities, and Authorities (GV.RR)
 
@@ -480,6 +501,12 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 - Functions with largest gaps: [list]
 - Quick wins (low effort, high impact): [list]
 
+## Strategic Opportunities / Positive Cyber Risks
+
+| Opportunity | Cyber Capability / Dependency | Evidence Source | Owner | Expected Benefit | Risk Dependencies | Decision / Status |
+|-------------|-------------------------------|-----------------|-------|------------------|-------------------|-------------------|
+| [example] | [control/program dependency] | [minutes/register/profile] | [role] | [benefit] | [related negative risks] | [accepted/deferred/funded/N/A rationale] |
+
 ## Remediation Roadmap
 
 ### Phase 1: Foundation (0-30 days)
@@ -576,6 +603,12 @@ Tier 4 — Adaptive
 
 4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
 
+5. **Assessing risk strategy as negative-risk-only governance.** GV.RM-07 is not
+satisfied by a risk register that only tracks threats, vulnerabilities, and
+treatments. Record strategic cybersecurity opportunities, expected benefits,
+owners, and governance decisions, or document why GV.RM-07 is not applicable to
+the assessment scope.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -594,11 +627,11 @@ If user-supplied input contains NIST CSF subcategory IDs that do not exist in th
 
 ## References
 
-- NIST Cybersecurity Framework 2.0 (February 26, 2024) — NIST CSWP 29
-- NIST CSF 2.0 Quick Start Guides (Small Business, Enterprise Risk Management, C-SCRM)
-- NIST CSF 2.0 Reference Tool (csf.tools or NIST website)
-- NIST SP 800-53 Rev. 5 — Security and Privacy Controls for Information Systems and Organizations
-- NIST SP 800-181 Rev. 1 — Workforce Framework for Cybersecurity (NICE Framework)
-- NIST SP 800-37 Rev. 2 — Risk Management Framework for Information Systems and Organizations
-- ISO/IEC 27001:2022 — Cross-mapping to CSF 2.0 subcategories
-- CIS Controls v8 — Cross-mapping to CSF 2.0 subcategories
+- NIST Cybersecurity Framework 2.0 (February 26, 2024) -- NIST CSWP 29: https://www.nist.gov/cyberframework
+- NIST CSF 2.0 Quick Start Guides: https://www.nist.gov/cyberframework/getting-started
+- NIST CSF 2.0 Reference Tool: https://csrc.nist.gov/projects/cybersecurity-framework/filters#/csf/filters
+- NIST SP 800-53 Rev. 5 -- Security and Privacy Controls for Information Systems and Organizations: https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
+- NIST SP 800-181 Rev. 1 -- Workforce Framework for Cybersecurity (NICE Framework): https://csrc.nist.gov/publications/detail/sp/800-181/rev-1/final
+- NIST SP 800-37 Rev. 2 -- Risk Management Framework for Information Systems and Organizations: https://csrc.nist.gov/publications/detail/sp/800-37/rev-2/final
+- ISO/IEC 27001:2022 -- Cross-mapping to CSF 2.0 subcategories
+- CIS Controls v8 -- Cross-mapping to CSF 2.0 subcategories
