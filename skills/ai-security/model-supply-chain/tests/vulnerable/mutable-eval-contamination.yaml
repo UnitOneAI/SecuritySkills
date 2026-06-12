@@ -1,0 +1,20 @@
+name: mutable-eval-contamination
+expected_decision: fail
+description: Release-gating evaluation suite is mutable, broadly writable, and failed cases are appended to fine-tuning data.
+model_evaluation:
+  dataset: s3://ml-platform/shared/security-evals/latest.jsonl
+  intended_use: release_gate
+  revision: latest
+  checksum: null
+  owner: null
+  write_access:
+    - model-authors
+    - reviewers
+    - ci-service-account
+  training_feedback_path: append_failed_eval_cases_to_sft_queue
+  training_exclusion_evidence: null
+  metric_reporting: model card reports safety score without benchmark revision or exclusion note
+risks:
+  - mutable evaluation artifact can be changed before release gates
+  - broad write access allows benchmark prompt or answer tampering
+  - failed evaluation cases contaminate future training metrics

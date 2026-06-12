@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -77,6 +77,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Hash/checksum verification code | Download scripts, model loading code | Confirms integrity verification exists |
 | Model card or documentation | Model registry page, repo docs | Reveals training data, intended use, known limitations |
 | Training data sources | Data pipeline code, dataset configs, documentation | Identifies poisoning surface and licensing risk |
+| Evaluation artifacts and benchmark suites | Eval configs, CI release gates, model cards, MLflow/W&B runs | Distinguishes read-only evaluation data from training inputs and exposes benchmark tampering |
 | Fine-tuning pipeline | Training scripts, configs, orchestration code | Exposes data injection and pipeline tampering risks |
 | Inference dependencies | requirements.txt, pyproject.toml, Dockerfile, package.json | Identifies vulnerable libraries in serving path |
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
@@ -142,6 +143,9 @@ Assess the provenance, integrity, and governance of data used to train or fine-t
 - Training data sourced from public internet scrapes (Common Crawl, LAION, scraped web data) without content filtering, deduplication, or quality validation.
 - Fine-tuning datasets that include user-generated content, customer data, or data from external partners without provenance tracking.
 - Absence of data versioning -- training datasets that are overwritten in place without snapshot history.
+- Evaluation datasets that share storage, identifiers, or ingestion code with training data without an explicit isolation boundary.
+- Benchmark or safety evaluation suites referenced through mutable branches, `latest` object keys, public URLs, or broadly writable shared storage.
+- Feedback loops that append failed evaluation examples, red-team prompts, or benchmark hard cases into SFT/RLHF/DPO queues without excluding those cases from future reported metrics.
 - No data quality pipeline: missing steps for deduplication, PII removal, content filtering, or anomaly detection.
 - Training data stored in locations accessible to broad groups of users without write-access controls.
 - Dataset configuration files that reference external URLs without integrity checks.
@@ -152,6 +156,7 @@ Assess the provenance, integrity, and governance of data used to train or fine-t
 # Find training data pipeline code
 Grep: "dataset|train_data|training_data|data_loader|DataLoader|load_dataset" in **/*.{py,yaml,yml,json}
 Grep: "fine.tune|finetune|sft|rlhf|dpo|ppo|lora|qlora|peft" in **/*.{py,yaml,yml,json,toml}
+Grep: "eval_dataset|evaluation|benchmark|red.team|safety_eval|validation|holdout|test_data" in **/*.{py,yaml,yml,json,toml,md}
 
 # Check for data validation
 Grep: "dedup|deduplicate|filter|clean|sanitize|validate|quality" in **/*data*.{py,yaml,yml}
@@ -169,12 +174,63 @@ Grep: "s3://|gs://|az://|https://" in **/*data*.{py,yaml,yml,json,toml}
 | No data versioning or snapshot mechanism for training datasets | High |
 | Fine-tuning data sourced from external partners without integrity verification | High |
 | Public dataset used without content audit or filtering pipeline | Medium |
+| Evaluation suite used in release gates from mutable or broadly writable source | High |
+| Evaluation failures recycled into training/fine-tuning without contamination controls | High |
+| Public benchmark used only for offline evaluation, pinned to an immutable revision, with no path into training | Informational or no finding |
 | No data lineage documentation (what data, from where, when, what processing) | Medium |
 | Training data storage lacks write-access controls | Medium |
 
 ---
 
-### Step 3 -- Fine-Tuning Pipeline Security
+### Step 3 -- Evaluation Artifact Provenance and Contamination
+
+Assess whether benchmark suites, validation sets, red-team prompts, safety evaluations, and model-card metrics are governed as supply chain artifacts rather than treated as harmless test data.
+
+**False-positive guardrail:** A public dataset is not automatically a training-data poisoning finding. If the dataset is used only for offline evaluation, pinned to an immutable revision or checksum, read-only in CI, and excluded from training/fine-tuning feedback loops, record it as controlled evaluation evidence instead of flagging it as unsafe public training data.
+
+**What to look for in code and configuration:**
+
+- Evaluation datasets loaded with `load_dataset()`, HTTP URLs, S3/GCS object keys, or registry names without immutable revision, checksum, or artifact version evidence.
+- Release gates that consume benchmark files from mutable branches, `latest.jsonl`, shared buckets, or workspaces where model authors and reviewers both have write access.
+- Model cards that report safety/security benchmark scores without identifying the exact benchmark revision, owner, write permissions, and whether any cases were used for training.
+- Pipelines that move failed evaluation cases, red-team examples, human review queues, or "hard examples" directly into SFT, RLHF, DPO, adapter, or prompt-tuning data.
+- Benchmark answer keys, labels, or adversarial prompts stored in locations accessible to training jobs, model authors, or automated data curation jobs.
+
+**Detection methods using allowed tools:**
+
+```
+# Find evaluation and benchmark artifact references
+Grep: "eval_dataset|validation_dataset|benchmark|safety_eval|red_team|holdout|golden_set|test_suite" in **/*.{py,yaml,yml,json,toml,md}
+Grep: "latest.jsonl|latest.csv|main|master|HEAD|revision=|checksum|sha256|artifact_version" in **/*.{py,yaml,yml,json,toml,md}
+
+# Find contamination or feedback-loop paths
+Grep: "failed_eval|hard_example|append_to_train|finetune_queue|rlhf_queue|dpo_dataset|sft_dataset" in **/*.{py,yaml,yml,json,toml}
+Grep: "wandb|mlflow|artifact|dataset_version|lineage|model_card" in **/*.{py,yaml,yml,json,toml,md}
+```
+
+**Evidence to capture:**
+
+| Evidence Field | Acceptable Evidence | Risk If Missing |
+|---|---|---|
+| Evaluation source and intended use | Registry, bucket, repo, or artifact ID plus "offline eval", "release gate", or "training feedback" classification | Public benchmark use may be misclassified as training ingestion or vice versa |
+| Immutable revision or checksum | Commit hash, dataset revision, object version, checksum, signed artifact, or MLflow/W&B artifact version | Mutable benchmark can be altered before a release gate |
+| Owner and write permissions | Named owner/team plus reviewer of write access to benchmark files and labels | Broad write access enables benchmark removal, answer tampering, or score inflation |
+| Train/eval isolation | Separate storage, allowlist, pipeline boundary, or documented exclusion from tuning queues | Evaluation cases can contaminate training and invalidate metrics |
+| Feedback-loop policy | Rule for failed eval examples, red-team prompts, and hard examples entering training; metric exclusion if reused | Reported benchmark scores may be overfit or misleading |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Mutable or broadly writable evaluation suite gates model release | High |
+| Evaluation cases or answer keys can flow into SFT/RLHF/DPO/adapters without exclusion from reported metrics | High |
+| Safety/security benchmark revision, checksum, or artifact version is not recorded for release claims | Medium |
+| Evaluation artifact owner or write permissions are unknown | Medium |
+| Public benchmark is pinned, read-only, and used only for offline evaluation | Informational or no finding |
+
+---
+
+### Step 4 -- Fine-Tuning Pipeline Security
 
 Assess the integrity and access controls of the fine-tuning pipeline from data ingestion through weight production.
 
@@ -229,7 +285,7 @@ Glob: **/Jenkinsfile
 
 ---
 
-### Step 4 -- Inference Dependency Review
+### Step 5 -- Inference Dependency Review
 
 Assess the security of libraries, frameworks, and runtime dependencies used in the model serving path.
 
@@ -278,7 +334,7 @@ Grep: "langchain|llamaindex|llama.index|vllm|ray|transformers|onnxruntime" in **
 
 ---
 
-### Step 5 -- Model Card Evaluation
+### Step 6 -- Model Card Evaluation
 
 Assess the completeness and accuracy of model documentation as a supply chain trust signal.
 
@@ -293,6 +349,7 @@ A model card (Mitchell et al., 2019) is the primary documentation artifact for u
 | Training data | Dataset names, sources, collection methodology, filtering | Cannot assess poisoning risk or bias |
 | Training procedure | Hyperparameters, compute, training duration, framework version | Cannot reproduce or audit training |
 | Evaluation results | Benchmarks, metrics, evaluation datasets | Cannot assess capability claims |
+| Evaluation provenance | Benchmark revision, checksum/artifact version, owner, train/eval isolation | Metrics may be mutable, tampered, or contaminated |
 | Ethical considerations | Known biases, failure modes, sensitive use cases | Unmitigated bias in production |
 | Limitations | Known weaknesses, adversarial robustness, domain restrictions | Deployment in unsupported contexts |
 | Carbon footprint | Training compute and energy estimates | Compliance with reporting requirements |
@@ -319,7 +376,7 @@ Grep: "model.card|intended.use|training.data|evaluation|limitations|ethical" in 
 
 ---
 
-### Step 6 -- Backdoor Detection Patterns
+### Step 7 -- Backdoor Detection Patterns
 
 Assess whether architectural and procedural controls exist to detect model backdoors -- targeted modifications that cause specific misbehavior on trigger inputs while maintaining normal performance on standard benchmarks.
 
@@ -345,6 +402,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Condition | Severity |
 |---|---|
 | No behavioral testing beyond standard benchmarks for externally sourced models | High |
+| Standard benchmarks are mutable, broadly writable, or potentially contaminated by training data | High |
 | No validation stage between model acquisition and production deployment | High |
 | No production monitoring for anomalous model behavior | Medium |
 | No differential testing against known-good reference | Medium |
@@ -402,10 +460,17 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
+| Evaluation artifact provenance | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
 | Model documentation | [description] | [recommendation] | [severity] |
 | Backdoor detection | [description] | [recommendation] | [severity] |
+
+## Evaluation Artifact Provenance
+
+| Evaluation Artifact | Intended Use | Immutable Revision/Checksum | Owner / Write Access | Train/Eval Isolation | Feedback Loop Policy | Decision |
+|---|---|---|---|---|---|---|
+| [benchmark or dataset] | [offline eval/release gate/training feedback] | [evidence] | [owner and access] | [evidence] | [excluded/reused with metric exclusion/unknown] | [Pass/Partial/Fail/Not Evaluable] |
 
 ## Recommendations
 [Prioritized list of remediation actions]
@@ -421,6 +486,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | SLSA v1.0 | Build L0-L3 | Supply-chain Levels for Software Artifacts -- framework for assessing build/training pipeline integrity |
 | MITRE ATLAS | AML.T0010 | ML Supply Chain Compromise -- adversary introduces compromised ML artifacts |
 | MITRE ATLAS | AML.T0020 | Poison Training Data -- adversary manipulates training data to alter model behavior |
+| MITRE ATLAS | AML.T0042 | Verify Attack -- adversary evaluates whether a model responds to crafted or poisoned inputs as intended |
 | MITRE ATLAS | AML.T0043 | Craft Adversarial Data -- adversary creates inputs designed to cause misclassification or misbehavior |
 | NIST AI RMF 1.0 | MAP 2.3 | Scientific integrity and data quality in AI system lifecycle |
 | NIST AI RMF 1.0 | GOVERN 1.5 | Ongoing monitoring and periodic review of the risk management process and its outcomes (applied here to third-party AI component risks) |
@@ -440,6 +506,19 @@ Assess whether architectural and procedural controls exist to detect model backd
 4. **Assuming Hugging Face models are vetted.** Hugging Face Hub is a hosting platform, not a curation service. Any user can upload any model. While Hugging Face has introduced malware scanning and model signing capabilities, the majority of hosted models have no cryptographic provenance. Treat Hugging Face models as untrusted artifacts requiring verification, the same way you treat npm packages.
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
+
+6. **Treating every public benchmark as poisoned training data.** Public benchmark usage can be safe when it is read-only, pinned to an immutable revision, and used only for offline evaluation. The supply chain finding is not "public dataset exists"; it is missing provenance, mutable release-gate inputs, broad write access, or a path from evaluation cases into training data without metric exclusion.
+
+7. **Letting evaluation failures become training data without metric hygiene.** Teams often add "hard examples" from failed evaluations to fine-tuning queues. That can be useful, but those examples must be versioned, excluded from future headline metrics, or moved into a new benchmark split; otherwise reported safety/security scores can be inflated by train/eval contamination.
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.1 | 2026-06-12 | Added evaluation artifact provenance, mutable benchmark, and train/eval contamination gates with output evidence fields. |
+| 1.0.0 | Initial | Initial model supply chain review skill. |
 
 ---
 

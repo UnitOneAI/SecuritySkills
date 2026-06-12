@@ -1,0 +1,14 @@
+name: pinned-offline-evaluation-dataset
+expected_decision: pass
+description: Public benchmark is used only for offline evaluation with immutable provenance and no training feedback path.
+model_evaluation:
+  dataset: ai2_arc/ARC-Challenge
+  intended_use: offline_eval_only
+  revision: 8f6d0b8b4fd7c2e0c7e9f1d6e5b2f5a3c9a1e2d4
+  checksum: sha256:111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000
+  owner: ml-evaluation
+  write_access:
+    - ml-evaluation-maintainers
+  training_feedback_path: none
+  training_exclusion_evidence: evaluation artifacts are mounted read-only and not referenced by SFT, RLHF, DPO, or adapter data jobs
+  metric_reporting: benchmark revision and checksum are recorded in the model card
