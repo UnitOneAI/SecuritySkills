@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -86,6 +86,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Error handling and rollback code | Exception handlers, compensation logic, undo mechanisms | Reveals recovery capability |
 | Rate limiting and budget controls | API gateway configs, token budgets, cost limits | Determines resource exhaustion risk |
 | State persistence architecture | Database schemas, vector stores, session stores | Shows what state agents can read and write |
+| Durable memory and learning pipeline | Memory write APIs, vector-store ingestion, skill/workflow registries, review queues | Determines whether self-learning can alter future agent behavior safely |
 
 ---
 
@@ -101,7 +102,7 @@ When assessing agent architectures, evaluate risks across three interdependent l
 | **Software Execution** | Risks in the runtime environment where agent actions are executed | Sequential tool attack chains, sandbox escapes, dependency exploits, cascading failure in long-horizon workflows |
 | **Information System** | Risks to the broader IT environment the agent operates within | Lateral movement, data exfiltration, credential theft, persistent access |
 
-Use this layered lens throughout Steps 1-7 to ensure findings are not clustered in a single layer while risks in other layers go unassessed.
+Use this layered lens throughout Steps 1-8 to ensure findings are not clustered in a single layer while risks in other layers go unassessed.
 
 ### Additional Threat Categories
 
@@ -397,7 +398,64 @@ Grep: "draft|staging|preview|dry_run|dry.run|simulate|sandbox_mode" in **/*.{py,
 
 ---
 
-### Step 7 -- Multi-Agent Trust Boundaries
+### Step 7 -- Durable Memory and Self-Learning Governance
+
+Evaluate whether durable agent memory, learned procedures, and generated skills or workflows can be written, recalled, updated, and rolled back safely.
+
+**What to look for in code and configuration:**
+
+- **Memory type separation:** Does the architecture distinguish fact memory, episodic memory, procedural memory, generated skills, and generated workflows? Or can all learned content become trusted context through the same path?
+- **Write governance:** Are memory writes staged for review, scored for confidence, scoped to a user/team/project/tool token, and labeled with source trace, actor identity, outcome, and approval state before being trusted?
+- **Recall scope enforcement:** Are recall queries filtered by tenant, user, project, workspace, tool scope, and revoked status? Or can unrelated memories be returned into any agent session?
+- **Provenance and lineage:** Can reviewers trace each recalled memory back to source transcript, tool output, document, human approver, previous version, and update reason?
+- **Conflict and deduplication handling:** When a new memory duplicates or conflicts with existing procedural guidance, is it staged for reviewer resolution rather than silently overwriting trusted guidance?
+- **Memory rollback:** Can operators revoke, tombstone, or restore durable memories and invalidate downstream embeddings, summaries, caches, generated skills, and workflows that included the old content?
+- **Outcome-aware learning:** Are memories learned from failed, partially successful, or adversarial sessions labeled so they do not become unconditional future procedures?
+
+**Detection methods using allowed tools:**
+
+```
+# Find memory write and learning paths
+Grep: "memorize|remember|learn|save_context|add_memory|upsert_memory|memory.upsert|vector_store.add" in **/*.{py,ts,js}
+Grep: "fact_memory|episodic|procedural|lesson|learned_rule|skill_registry|workflow_registry" in **/*.{py,ts,js,yaml,yml,json}
+
+# Check for memory governance fields
+Grep: "source_trace|trace_id|provenance|confidence|approved|pending_review|reviewer|expires_at|revoked|tombstone" in **/*.{py,ts,js,yaml,yml,json}
+Grep: "tenant_id|workspace_id|project_id|user_id|scope|memory_space|token_scope" in **/*memory*.{py,ts,js,yaml,yml,json}
+
+# Check for recall and cache invalidation controls
+Grep: "recall|retrieve_context|similarity_search|vector_search|memory.search" in **/*.{py,ts,js}
+Grep: "dedupe|duplicate|conflict|invalidate|clear_cache|embedding|summary_cache" in **/*.{py,ts,js,yaml,yml,json}
+```
+
+**Memory governance checklist:**
+
+| Control | Secure State | Insecure State |
+|---|---|---|
+| Type separation | Fact, episodic, procedural, skill, and workflow memories have distinct policies | Any learned text can become trusted instruction context |
+| Write approval | High-impact memories are staged, reviewed, and approved before trusted recall | Agent writes directly to trusted memory after each session |
+| Scope enforcement | Recall requires tenant/user/project/tool-scope filters and revoked=false | Global vector search returns memories across users or teams |
+| Provenance | Each memory records source trace, actor, outcome, confidence, and version lineage | Memory content has no source or update reason |
+| Conflict handling | Conflicting procedures are queued for review | New memory silently overwrites prior guidance |
+| Rollback | Revoke/tombstone restores prior behavior and invalidates derived caches | Deleted memory remains in embeddings, summaries, or generated workflows |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| AG-MEM-01: Agent can write directly to trusted procedural memory, skills, or workflows without review | Critical |
+| AG-MEM-02: Recall can return memories across tenant, user, project, or token scopes | Critical |
+| AG-MEM-03: Memory updates that affect approvals, deployments, payments, or permissions lack provenance and version history | High |
+| AG-MEM-04: No revocation or rollback path for durable memories used as future operating guidance | High |
+| AG-MEM-05: Conflicting procedural memories overwrite each other without reviewer resolution | High |
+| AG-MEM-06: Failure-derived lessons are not labeled and can become unconditional procedures | Medium |
+| AG-MEM-07: Memory deduplication is undocumented or cannot explain why a memory was merged or discarded | Medium |
+
+**NIST AI RMF mapping:** GOVERN 1.4 (risk management processes integrated), MAP 3.5 (impact assessment for AI system capabilities), MANAGE 2.4 (mechanisms for tracking AI risks), MANAGE 4.1 (incident response and recovery).
+
+---
+
+### Step 8 -- Multi-Agent Trust Boundaries
 
 Evaluate the trust model between agents in multi-agent architectures, including authentication, authorization, and data isolation between agents.
 
@@ -498,7 +556,7 @@ Glob: **/security_architecture*
 ## Findings
 
 ### Finding [N]: [Title]
-- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
+- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Durable Memory | Multi-Agent Trust]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP Agentic AI Category:** [AG01-AG10 or N/A]
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -519,7 +577,14 @@ Glob: **/security_architecture*
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
 | Audit Trail Completeness | [rating] | [one-line summary] | [priority] |
 | Rollback Capability | [rating] | [one-line summary] | [priority] |
+| Durable Memory and Self-Learning Governance | [rating] | [one-line summary] | [priority] |
 | Multi-Agent Trust Boundaries | [rating] | [one-line summary] | [priority] |
+
+## Durable Memory Evidence Register
+
+| Memory Type | Scope | Write Path | Approval State | Provenance | Recall Policy | Rollback Evidence |
+|---|---|---|---|---|---|---|
+| [fact / episodic / procedural / skill / workflow] | [tenant/user/project/tool] | [API or pipeline] | [pending/approved/revoked] | [source trace/version] | [filters and trust policy] | [tombstone/cache invalidation/test] |
 
 ## Recommendations
 [Prioritized list of architectural improvements]
@@ -542,6 +607,7 @@ Glob: **/security_architecture*
 | OWASP Agentic AI Threats | AG05 | Trust Boundary Violations -- implicit trust between agents exploited for lateral movement |
 | OWASP Agentic AI Threats | AG06 | Data Exfiltration via Tool Calls -- legitimate tool access used to transmit data to attacker |
 | OWASP Agentic AI Threats | AG08 | Human-in-the-Loop Bypass -- approval gates circumvented through workflow exploitation |
+| OWASP Agentic AI Threats | AG09 | Resource and Service Exhaustion -- self-learning loops can amplify bad guidance or cost without governance |
 | NIST AI RMF 1.0 | GOVERN 1.2 | Roles, responsibilities, and authorities for AI risk management |
 | NIST AI RMF 1.0 | GOVERN 1.4 | Risk management processes established and integrated |
 | NIST AI RMF 1.0 | MAP 3.5 | Impact assessment for AI system capabilities and limitations |
@@ -568,6 +634,8 @@ Glob: **/security_architecture*
 4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+
+6. **Treating memory as harmless context instead of a control plane.** Durable memory, learned procedures, and generated workflows can change what future agents believe is allowed. If agents can write directly to trusted memory without provenance, scope filters, approval state, conflict handling, and rollback, a one-time manipulation can become persistent operating guidance across future sessions.
 
 ---
 
