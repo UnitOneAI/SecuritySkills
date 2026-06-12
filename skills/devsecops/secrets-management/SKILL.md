@@ -13,7 +13,7 @@ phase: [build, operate]
 frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -120,8 +120,17 @@ Evaluate whether secret detection tooling is deployed and properly configured. T
 # AWS Secret Access Key (40 chars, base64-like)
 (?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}
 
-# GitHub Personal Access Token
+# GitHub Personal Access Token, including fine-grained tokens
 (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}
+github_pat_[A-Za-z0-9_]{22,}_[A-Za-z0-9_]{59,}
+
+# Modern provider API tokens
+sk[_-](?:proj|live|test)[_-][A-Za-z0-9_-]{20,}
+(?:rk|tk)_(?:live|test)_[A-Za-z0-9_-]{20,}
+pypi-[A-Za-z0-9_-]{20,}
+npm_[A-Za-z0-9_-]{20,}
+hf_[A-Za-z0-9]{20,}
+AIza[0-9A-Za-z_-]{20,}
 
 # GitLab Personal Access Token
 glpat-[A-Za-z0-9\-_]{20,}
@@ -165,13 +174,31 @@ Before flagging a detected string as a hardcoded secret, apply these verificatio
 
 1. **Verify the value is a real secret, not a placeholder or example.** Strings like `your-api-key-here`, `CHANGEME`, `TODO`, `xxx`, `example`, `test`, `dummy`, `fake`, `<INSERT_KEY>`, or `replace-me` are placeholder values, not leaked secrets. Do NOT flag these.
 2. **Check entropy.** Real secrets (API keys, tokens, passwords) have high entropy — they appear random. Low-entropy strings like `password`, `admin`, `root`, `mysecret`, or dictionary words in config comments are not actual secrets. Only flag password assignments where the value appears to be a real credential (high-entropy, non-dictionary string of 8+ characters).
-3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `ghp_*`/`gho_*`/`ghu_*` for GitHub, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
+3. **Recognize known secret prefixes.** When a string matches a known secret format (e.g., `AKIA*` for AWS, `sk-*` for Stripe/OpenAI, `github_pat_*`/`ghp_*`/`gho_*`/`ghu_*` for GitHub, `npm_*`, `pypi-*`, `hf_*`, `AIza*`, `xox[bpors]-*` for Slack, `glpat-*` for GitLab, `eyJ*` for JWTs), it is likely a real secret and should be flagged.
 4. **Distinguish secrets findings from architectural observations.** This skill should focus on **finding actual secrets in code and configuration**. The following are NOT secrets findings and should be excluded from the findings count:
    - Absence of secret detection tooling (note in the Detection Tooling Status table, not as a finding)
    - Absence of a centralized secrets manager (note in recommendations, not as a finding)
    - Missing rotation automation (note in recommendations, not as a finding)
    - Infrastructure misconfigurations unrelated to secrets (e.g., public S3 buckets, debug mode, public database endpoints) — these belong to other skills
 5. **Scope to the skill's domain.** Only report findings where a secret (credential, key, token, certificate) is actually present in the file. General security misconfigurations, missing best practices, and architectural gaps should be noted in the Prioritized Remediation Plan section, not as numbered findings.
+
+#### 2.2.1 Finding Scope Decision
+
+Separate confirmed secret exposure from maturity observations before assigning severity:
+
+| Evidence | Report As | Severity Guidance |
+|----------|-----------|-------------------|
+| Persistent credential, private key, token, certificate, or connection string is present in source, config, CI logs, or git history | **Confirmed Secret Finding** | Critical/High depending on production exposure, rotation status, and blast radius |
+| Secret manager, rotation automation, pre-commit scan, or history scan is absent, but no persistent secret is present in the reviewed scope | **Secrets Management Maturity Note** | Do not include in numbered finding count; include in tooling status and remediation plan |
+| Secret manager, rotation automation, or detection tooling is absent while persistent secrets are present or likely present in the reviewed system | **Confirmed Secret Finding** | High/Critical depending on exposure and age |
+| GitHub Actions OIDC, cloud workload identity, Vault dynamic credentials, or other JIT mechanism is used with narrow trust policy and no stored application secret | **Maturity Note / Positive Control** | Do not downgrade solely for lacking a traditional secrets manager or rotation Lambda |
+| JIT/OIDC mechanism has broad audience, repository, branch, environment, or subject binding | **Control Finding** | Medium/High even if no stored secret is present |
+
+#### 2.2.2 Publishable and Reference Values
+
+- Publishable tokens such as Stripe `pk_*` keys, public analytics IDs, and package names are not secrets by prefix alone.
+- Kubernetes `envFrom.secretRef`, External Secrets Operator manifests, and Vault Agent annotations reference secret objects; do not treat the reference name as a leaked value unless a literal secret value is present.
+- JWT-like `eyJ*` strings can be bearer tokens, documentation fixtures, or public signed samples. Do not decode or print payloads; classify only from context, age, and whether the value is synthetic.
 
 #### 2.3 Detection Tool Configuration Review
 
@@ -192,7 +219,35 @@ Verify that at least one secret detection tool is configured and integrated:
 - Custom rules cover organization-specific secret formats.
 - Allowlist entries are documented with justification (false positive suppression must not create blind spots).
 
-**Finding classification:** No secret detection tooling deployed is **Critical**. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+**Finding classification:** If persistent secrets are present or the system stores/manages secrets in scope, no secret detection tooling is **High** and may be **Critical** when production secrets are unscanned in source or history. If no persistent secrets are present and the repo uses narrow JIT/OIDC credentials only, record missing detection tooling as a **Maturity Note**, not a numbered finding. Detection in CI only (no pre-commit) is **Medium**. Excessive allowlist entries without justification is **Medium**.
+
+#### 2.4 CI/CD Log and Environment File Leakage
+
+Even when secrets are stored in a platform secret manager, pipeline code can leak them through logs
+or environment files. Review shell commands and workflow steps for:
+
+```regex
+# Shell tracing before secret-backed commands
+set\s+-x
+
+# Echo/printf of likely secret-backed variables
+(?:echo|printf).*[$][A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL)[A-Z0-9_]*
+
+# GitHub Actions env/output files receiving secret-backed values
+>>\s*["']?\$GITHUB_(?:ENV|OUTPUT|STEP_SUMMARY)["']?
+
+# Authorization headers built from secret-backed env vars
+Authorization:\s*(?:Bearer|Basic)\s*[$][A-Z0-9_]+
+```
+
+**What to verify:**
+
+- Secret-backed variables are masked with `::add-mask::` before any debug output.
+- Workflow logs do not echo secret-backed values, derived tokens, or authorization headers.
+- `$GITHUB_ENV` and `$GITHUB_OUTPUT` receive non-secret derived metadata only, not raw secrets or bearer tokens.
+- Debug steps using `set -x` are disabled for production or wrapped so secret values cannot be expanded into logs.
+
+**Finding classification:** Secret values or bearer tokens exposed in CI logs, `$GITHUB_ENV`, or `$GITHUB_OUTPUT` are **High** and may be **Critical** if production credentials are unrotated or still valid. Unsafe debug patterns without evidence of exposed values are **Medium**.
 
 ---
 
@@ -273,7 +328,7 @@ resource "vault_audit" "syslog" {
 }
 ```
 
-**Finding classification:** No centralized secrets manager (secrets in config files or environment variables only) is **High**. Secrets manager deployed but audit logging disabled is **High**.
+**Finding classification:** No centralized secrets manager is **High** when persistent secrets are stored in config files, environment variables, or unmanaged platform secret stores. If the reviewed repo has no persistent application secrets and uses narrowly scoped OIDC/JIT credentials only, record the absence as a **Maturity Note**. Secrets manager deployed but audit logging disabled is **High** when it stores production or privileged secrets.
 
 ---
 
@@ -296,7 +351,7 @@ NIST SP 800-57 Part 1 Rev 5 Table 1 defines recommended cryptoperiods by key typ
 - Rotation events are logged and monitored.
 - Failed rotations trigger alerts.
 
-**Finding classification:** No rotation for secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**.
+**Finding classification:** No rotation for persistent secrets older than 180 days is **High**. Manual rotation process only is **Medium**. Rotation configured but not monitored is **Medium**. For JIT credentials, validate issuance constraints, session duration, expiry, and audit evidence instead of requiring traditional rotation.
 
 ---
 
@@ -315,6 +370,7 @@ For agentic systems (AI agents, automation bots, CI/CD agents), evaluate credent
 - Agents should request credentials at execution time, not store them at rest.
 - Vault AppRole or Kubernetes service account token injection is preferred over static API keys.
 - Credentials should be revoked or expire automatically after task completion.
+- OIDC and workload identity federation are positive controls only when trust policies are narrowly scoped.
 
 **Patterns to check:**
 
@@ -348,7 +404,22 @@ spec:
     kind: SecretStore
 ```
 
-**Finding classification:** Agents using long-lived static credentials is **High**. No JIT credential mechanism for automated systems is **Medium**. Token TTL exceeding 10x task duration is **Medium**.
+#### 5.3 OIDC and Workload Identity Trust Policy Review
+
+For GitHub Actions OIDC, Kubernetes workload identity, cloud workload federation, and similar
+JIT mechanisms, require evidence that the trust policy binds the credential to the intended caller
+and task:
+
+| Trust Dimension | Evidence to Verify | Red Flags |
+|-----------------|--------------------|-----------|
+| **Audience** | `aud` or provider-specific audience matches the cloud/provider endpoint | Wildcard or missing audience condition |
+| **Subject** | `sub` binds to a specific repository, service account, namespace, or workload | `repo:org/*:*`, namespace-wide wildcard, or any branch/environment allowed |
+| **Branch / tag / environment** | Deployment role limited to protected branch, tag, or environment such as `environment:prod` | Production role assumable from pull requests, forks, or unprotected branches |
+| **Workflow / job binding** | Optional workflow, job, or reusable workflow constraint for high-privilege roles | Any workflow in repo can mint the credential |
+| **Session duration** | STS/Vault token TTL matches deployment task duration | TTL exceeds 10x task duration or allows broad reuse |
+| **Revocation and audit** | Assume-role logs, token issuance logs, failed attempts, and incident revocation procedure | No correlation from CI run to issued credential or cloud action |
+
+**Finding classification:** Agents using long-lived static credentials is **High**. No JIT credential mechanism for automated systems with persistent automation secrets is **Medium**. Token TTL exceeding 10x task duration is **Medium**. Over-broad OIDC/JIT trust policy for production or privileged deployment is **High** even when no stored secret exists.
 
 ---
 
@@ -356,10 +427,10 @@ spec:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |
-| **High** | No centralized secrets manager; no rotation automation; long-lived static credentials for agents; secrets in CI logs; no git history scanning; audit logging disabled on vault. |
+| **Critical** | Committed production secrets in current codebase or git history that remain unrotated; .env with active production credentials committed; CI logs expose still-valid production credentials. |
+| **High** | Persistent secrets lack centralized management or rotation; long-lived static credentials for agents; secrets in CI logs; no git history scanning when persistent secrets exist; audit logging disabled on a vault that stores production secrets; over-broad production OIDC/JIT trust policy. |
 | **Medium** | Detection in CI only (no pre-commit); manual rotation process; excessive detection allowlists; token TTL mismatch; rotation not monitored; plaintext secrets in environment variables (vs. vault injection). |
-| **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files. |
+| **Low** | Missing secret type documentation; secret naming convention inconsistencies; development-only secrets in non-.gitignored example files; missing maturity capability in a repo with no persistent secrets and narrowly scoped JIT credentials. |
 
 ---
 
@@ -389,7 +460,7 @@ spec:
 | API key (Stripe) | AWS SM | 90 days | Yes | 2024-01-15 |
 | TLS cert | cert-manager | 60 days | Yes | Auto |
 
-### Findings
+### Confirmed Secret Findings
 
 #### [F-001] <Finding Title>
 - **Severity:** Critical / High / Medium / Low
@@ -397,6 +468,26 @@ spec:
 - **File:** <path to config file>
 - **Description:** <what was found -- NEVER include actual secret values>
 - **Remediation:** <concrete fix>
+
+### Secrets Management Maturity Notes
+
+| Capability | Status | Evidence | Recommendation |
+|------------|--------|----------|----------------|
+| Centralized manager | Present/Absent/Not applicable | <evidence> | <action, if needed> |
+| Rotation automation | Present/Absent/Not applicable | <evidence> | <action, if needed> |
+| Detection tooling | Present/Absent/Partial | <evidence> | <action, if needed> |
+
+### CI/CD Leakage Review
+
+| Pipeline | Risk Pattern | Secret Exposure Confirmed? | Evidence |
+|----------|--------------|----------------------------|----------|
+| <workflow> | set -x / echo / GITHUB_ENV / Authorization header | Yes/No | <file/line only, no values> |
+
+### OIDC / JIT Credential Review
+
+| Provider | Audience Bound | Subject Bound | Branch/Environment Bound | TTL | Audit Evidence | Finding? |
+|----------|----------------|---------------|---------------------------|-----|----------------|----------|
+| GitHub Actions OIDC -> AWS STS | Yes/No | Yes/No | Yes/No | <duration> | Yes/No | Yes/No |
 
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
@@ -471,5 +562,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
+- **1.0.2** -- Reconcile confirmed secret findings vs maturity notes, add modern provider token patterns, CI/CD leakage checks, and OIDC/JIT trust policy validation.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
