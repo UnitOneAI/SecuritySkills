@@ -57,6 +57,7 @@ Invoke this skill when any of the following conditions are true:
 - A model card or provenance documentation is being evaluated for completeness.
 - Third-party model adapters (LoRA, QLoRA, PEFT adapters) are being integrated.
 - Training data is sourced from public datasets, scraped corpora, or user-contributed data.
+- Evaluation suites, benchmark prompts, or safety/security test fixtures gate model release decisions.
 
 Do NOT invoke this skill for:
 
@@ -77,6 +78,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Hash/checksum verification code | Download scripts, model loading code | Confirms integrity verification exists |
 | Model card or documentation | Model registry page, repo docs | Reveals training data, intended use, known limitations |
 | Training data sources | Data pipeline code, dataset configs, documentation | Identifies poisoning surface and licensing risk |
+| Evaluation artifact provenance | Eval configs, benchmark scripts, CI release gates, experiment tracking | Identifies mutable benchmark and train/eval contamination risk |
 | Fine-tuning pipeline | Training scripts, configs, orchestration code | Exposes data injection and pipeline tampering risks |
 | Inference dependencies | requirements.txt, pyproject.toml, Dockerfile, package.json | Identifies vulnerable libraries in serving path |
 | Model signing or attestation | CI/CD configs, SLSA provenance files, Sigstore artifacts | Confirms cryptographic supply chain verification |
@@ -171,6 +173,42 @@ Grep: "s3://|gs://|az://|https://" in **/*data*.{py,yaml,yml,json,toml}
 | Public dataset used without content audit or filtering pipeline | Medium |
 | No data lineage documentation (what data, from where, when, what processing) | Medium |
 | Training data storage lacks write-access controls | Medium |
+
+---
+
+### Step 2A -- Evaluation Artifact Provenance
+
+Assess whether benchmark datasets, safety eval prompts, and release-gating evaluation suites are immutable, access-controlled, and isolated from training or fine-tuning feedback loops.
+
+**What to look for in code and configuration:**
+
+- Evaluation datasets loaded from mutable branches, `latest` objects, or shared storage without `eval_dataset_revision`, checksum, or signature evidence.
+- Internal eval suites with broad `eval_suite_write_access` where reviewers, contributors, or CI jobs can modify release-gating prompts without approval.
+- Training, fine-tuning, RLHF, DPO, adapter, or hard-example queues that ingest failed eval cases without a documented `eval_feedback_loop_policy`.
+- Reported model card metrics that include prompts later used in training or fine-tuning, with no `train_eval_contamination_check`.
+
+**Detection methods using allowed tools:**
+
+```
+# Find evaluation and benchmark artifact loading
+Grep: "eval_dataset|evaluation|benchmark|test_suite|safety_eval|redteam|jailbreak_suite" in **/*.{py,yaml,yml,json,md}
+Grep: "load_dataset|datasets.load|s3://|gs://|latest|revision|checksum|sha256" in **/*.{py,yaml,yml,json,md}
+
+# Check train/eval separation and feedback loops
+Grep: "failed_eval|hard_example|finetune_queue|rlhf|dpo|adapter|preference" in **/*.{py,yaml,yml,json,md}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Release-gating eval suite is mutable or broadly writable with no approval trail | High |
+| Eval artifacts are downloaded from unpinned `latest` or branch references in CI release gates | High |
+| Eval failures feed training/fine-tuning without excluding those cases from reported metrics | High |
+| Model card reports benchmark results without train/eval contamination evidence | Medium |
+| Public read-only benchmark is pinned to an immutable revision for offline eval only | Informational |
+
+**Required evidence fields:** `eval_dataset_revision`, checksum/signature, `eval_suite_write_access`, `train_eval_contamination_check`, `eval_feedback_loop_policy`, and metric exclusion notes for any eval-to-training flow.
 
 ---
 
@@ -385,7 +423,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Provenance | Training Data | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
+- **Category:** [Provenance | Training Data | Evaluation Artifacts | Fine-Tuning Pipeline | Inference Dependency | Model Card | Backdoor Detection]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM03:2025 -- Supply Chain Vulnerabilities
 - **MITRE ATLAS Technique:** [technique ID and name]
@@ -393,6 +431,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 - **Location:** [file path and line numbers, or architectural component]
 - **Description:** [What the vulnerability is and why it matters]
 - **Evidence:** [Code pattern, configuration, or architectural observation]
+- **Evaluation Evidence:** [If applicable: `eval_dataset_revision`, checksum/signature, `eval_suite_write_access`, `train_eval_contamination_check`, `eval_feedback_loop_policy`]
 - **Recommendation:** [Specific defensive measure]
 - **Priority:** [P0 / P1 / P2 / P3]
 
@@ -402,6 +441,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
+| Evaluation artifact provenance | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
 | Model documentation | [description] | [recommendation] | [severity] |
