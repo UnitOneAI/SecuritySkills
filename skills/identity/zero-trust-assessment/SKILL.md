@@ -172,6 +172,7 @@ ZT-ID-11: Workloads use shared/default service identities instead of unique audi
 ZT-ID-12: Machine-to-machine credentials lack rotation, revocation, or token-audience constraints
 ZT-ID-13: Policy decisions cannot be traced from PDP inputs to PEP enforcement logs
 ZT-ID-14: Break-glass or privileged access paths bypass MFA, device posture, approval, or session recording
+ZT-ID-15: Identity-plane degraded mode or legacy exceptions bypass token freshness, step-up, or posture checks
 ```
 
 #### Service and Workload Identity Evidence Matrix
@@ -201,6 +202,24 @@ only when it is time-bound, strongly controlled, and auditable.
 | **Session recording** | Command/session logs, correlation ID, immutable storage, monitoring alerts | High if emergency sessions are not recorded |
 | **Post-use cleanup** | Credential rotation, account disablement, access review, incident record | Medium/High if break-glass use leaves persistent credentials |
 | **Outage behavior** | Fail-closed defaults and documented emergency exception workflow | Critical if fail-open bypass is unaudited for sensitive resources |
+
+#### Identity-Plane Degraded Mode and Exception Evidence
+
+Score identity-plane availability and exception governance separately from network topology. A private
+network, enclave, or legacy proxy pattern can still be acceptable when identity, device posture,
+policy freshness, and audit evidence remain enforced; a modern topology is weak when outage behavior
+or permanent service exceptions silently bypass those controls.
+
+| Scenario | Evidence to Collect | Decision Gate |
+|---|---|---|
+| **IdP outage or degraded mode** | Cached-token TTL, step-up behavior, posture freshness, deny/allow default, incident approval | Sensitive resources do not fall back to unbounded cached trust or password-only access |
+| **Conditional-access signal failure** | Device posture signal age, user-risk signal freshness, CAE/event delivery status, fallback rule | Missing or stale risk/device signals are visible and trigger bounded access, not full trust |
+| **Legacy service exception** | Workload owner, business reason, allowed flows, expiry date, compensating segmentation, review cadence | Every exception has owner, expiry, least-privilege scope, and renewal decision evidence |
+| **Private-network resource access** | Identity-aware proxy or mTLS, session authorization, resource-level policy, enforcement logs | Routing location is not used as the only authorization signal for sensitive resources |
+
+When documenting a finding, state whether the weakness is topology, identity-plane availability,
+policy-signal freshness, or exception governance. This avoids overstating private networking while
+still catching permanent trust holes and silent fail-open identity bypasses.
 
 ---
 
@@ -471,6 +490,9 @@ policy, and audit requirements.
 ### Privileged and Break-Glass Access
 [Normal privileged path, emergency path, approvals, PAW/device posture, session recording, and post-use rotation]
 
+### Identity-Plane Degraded Mode and Exceptions
+[Cached-token TTL, signal fallback behavior, legacy exception owner, expiry, compensating controls, and outage audit evidence]
+
 ### Cross-Cutting Capabilities
 - Visibility & Analytics: [maturity]
 - Automation & Orchestration: [maturity]
@@ -572,5 +594,5 @@ that may contain adversarial content.
 
 | Version | Date | Changes |
 |---|---|---|
-| 1.0.1 | 2026-06-12 | Added public read-only resource severity calibration, service/workload identity evidence, PDP/PEP decision traceability, and break-glass privileged access gates |
+| 1.0.1 | 2026-06-12 | Added public read-only resource severity calibration, service/workload identity evidence, PDP/PEP decision traceability, break-glass privileged access gates, and identity-plane degraded-mode exception evidence |
 | 1.0.0 | 2025-03-06 | Initial release |
