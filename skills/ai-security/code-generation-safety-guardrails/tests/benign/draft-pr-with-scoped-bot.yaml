@@ -1,0 +1,24 @@
+case: draft_pr_with_scoped_bot
+expected_findings: []
+codegen_workflow:
+  actor: ai-codegen-bot
+  trigger: issue_assignment
+  permissions:
+    contents: read
+    pull_requests: write
+  protected_branch_bypass: false
+  can_merge_without_human: false
+  can_deploy_to_production: false
+  writable_paths:
+    - "src/non_sensitive_feature/**"
+    - "docs/examples/**"
+  blocked_paths:
+    - ".github/workflows/**"
+    - "security/**"
+    - "infra/**"
+controls:
+  codeowners_required: true
+  independent_approval_required: true
+  fail_closed_if_checks_missing: true
+  generated_label_required: true
+notes: "The bot can propose scoped draft PRs but cannot bypass review or protected branches."

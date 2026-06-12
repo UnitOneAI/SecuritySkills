@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -321,6 +321,18 @@ skills:
     file: skills/ai-security/agent-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
+  - id: code-generation-safety-guardrails
+    name: "AI Code Generation Safety Guardrails"
+    tags: [ai-security, code-generation, supply-chain, agentic-ai]
+    role: [appsec-engineer, security-engineer, architect]
+    phase: [build, review, deploy]
+    activity: [review, assess, remediate]
+    frameworks: [OWASP-Agentic-AI, OWASP-LLM-Top-10-2025, NIST-AI-RMF-1.0, NIST-SSDF, SLSA-v1.0]
+    difficulty: advanced
+    time_estimate: "45-90min"
+    file: skills/ai-security/code-generation-safety-guardrails/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
   # -- Incident Response ----------------------------------------------------
   - id: ir-playbook
     name: "Incident Response Playbook"
@@ -389,7 +401,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md

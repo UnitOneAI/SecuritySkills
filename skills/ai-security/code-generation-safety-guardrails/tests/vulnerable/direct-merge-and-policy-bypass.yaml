@@ -1,0 +1,26 @@
+case: direct_merge_and_policy_bypass
+expected_findings:
+  - CODEGEN-01
+  - CODEGEN-03
+severity: critical
+codegen_workflow:
+  actor: ai-codegen-bot
+  trigger: issue_comment
+  permissions:
+    contents: write
+    actions: write
+    deployments: write
+  protected_branch_bypass: true
+  can_merge_without_human: true
+  can_deploy_to_production: true
+  writable_paths:
+    - "**/*"
+  can_modify:
+    - ".github/workflows/release.yml"
+    - "security/codegen-policy.yaml"
+    - "scripts/deploy.sh"
+controls:
+  codeowners_required: false
+  independent_approval_required: false
+  fail_closed_if_checks_missing: false
+notes: "Generated code can alter its own guardrails and deploy path."

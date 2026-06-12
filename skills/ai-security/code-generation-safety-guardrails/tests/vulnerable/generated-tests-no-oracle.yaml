@@ -1,0 +1,24 @@
+case: generated_tests_no_oracle
+expected_findings:
+  - CODEGEN-04
+severity: medium
+change:
+  touched_paths:
+    - "src/auth/session.ts"
+    - "tests/session.spec.ts"
+  security_boundary: authentication
+tests:
+  generated_by_same_agent: true
+  external_spec_oracle: false
+  snapshot_updated: true
+  semantic_assertions:
+    - "returns 200 for generated happy path"
+  missing_assertions:
+    - "expired session rejected"
+    - "cross-tenant session rejected"
+    - "session cookie flags enforced"
+security_checks:
+  sast: passed
+  secret_scan: passed
+  dependency_review: not_applicable
+notes: "Green tests are not enough when the agent generated both implementation and weak tests."

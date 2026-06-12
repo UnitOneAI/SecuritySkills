@@ -1,0 +1,23 @@
+case: provenance_and_attestation_present
+expected_findings: []
+generated_change:
+  pull_request: 2210
+  commit: a1b2c3d4
+  actor: ai-codegen-bot
+  signed_commit: true
+  prompt_id: codegen-template-v4
+  task_id: APPSEC-441
+  retrieved_sources:
+    - id: adr-007
+      trust_label: approved_internal_doc
+    - id: issue-441
+      trust_label: user_request
+  source_trust_labels_present: true
+  reviewer_saw_full_context: true
+  build_provenance_attestation: present
+checks:
+  secret_scan: required_passed
+  sast: required_passed
+  dependency_review: required_passed
+  maintainer_owned_tests: passed
+notes: "Prompt, source, diff, checks, and build provenance are durable and reviewer-visible."

@@ -1,0 +1,23 @@
+case: missing_provenance_and_unsafe_learning
+expected_findings:
+  - CODEGEN-02
+  - CODEGEN-05
+severity: high
+generated_change:
+  pull_request: 1842
+  commit: generated-by-shared-token
+  prompt_id: null
+  task_id: null
+  retrieved_sources: not_recorded
+  source_trust_labels: missing
+  reviewer_saw_full_context: false
+learning_writeback:
+  enabled: true
+  destination:
+    - prompt_library
+    - long_term_agent_memory
+  review_required: false
+  dedupe_key: null
+  rejected_outcomes_excluded: false
+  rollback_path: missing
+notes: "The workflow can learn from generated output without tying it to prompt, source, review, and outcome evidence."

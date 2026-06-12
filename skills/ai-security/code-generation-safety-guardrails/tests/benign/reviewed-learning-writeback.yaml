@@ -1,0 +1,17 @@
+case: reviewed_learning_writeback
+expected_findings: []
+learning_writeback:
+  enabled: true
+  source_pr: 2210
+  source_commit: a1b2c3d4
+  outcome: accepted_after_security_review
+  review_required: true
+  reviewer: security-owner
+  dedupe_key: "APPSEC-441:a1b2c3d4:authz-boundary"
+  rejected_outcomes_excluded: true
+  reverted_outcomes_create_negative_lesson: true
+  append_only_audit_log: true
+  rollback_path:
+    type: prompt_registry_revert
+    owner: security-owner
+notes: "Learning is gated, deduplicated, outcome-aware, auditable, and reversible."
