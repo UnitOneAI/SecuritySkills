@@ -1,0 +1,24 @@
+case: agent_brokered_tool_token
+expected_findings: []
+broker:
+  type: internal_agent_tool_credential_broker
+  caller_identity: agent_session_identity
+  accepted_audiences:
+    - customer-support-readonly-tool
+  requested_role_from_caller: false
+  policy_owned_role_mapping:
+    support-summary-agent: support_readonly_15m
+  lease:
+    ttl_seconds: 900
+    renewal_allowed: false
+agent_runtime:
+  stores_tool_results_in_long_term_memory: false
+  logs_full_tool_parameters: false
+  exposes_credential_to_model_context: false
+  redaction_before_memory_write: true
+audit:
+  logs_agent_id: true
+  logs_task_id: true
+  logs_issued_role: true
+  logs_expiry: true
+  logs_policy_version: true

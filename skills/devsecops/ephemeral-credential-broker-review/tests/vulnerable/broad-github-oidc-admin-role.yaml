@@ -1,0 +1,23 @@
+case: broad_github_oidc_admin_role
+expected_findings:
+  - ECB-01
+  - ECB-02
+  - ECB-03
+  - ECB-05
+severity: critical
+broker:
+  type: github_oidc_to_aws_sts
+  trusted_issuer: https://token.actions.githubusercontent.com
+  accepted_subjects:
+    - "repo:example-org/*:*"
+  accepted_audiences:
+    - "*"
+  requested_role_from_caller: true
+  allowed_roles:
+    - arn:aws:iam::111122223333:role/ProductionAdmin
+  max_session_duration_seconds: 43200
+  pull_request_forks_allowed: true
+audit:
+  logs_original_subject: false
+  logs_audience: false
+notes: "Any workflow in the org, including broad PR identities, can request production admin with a 12-hour session."

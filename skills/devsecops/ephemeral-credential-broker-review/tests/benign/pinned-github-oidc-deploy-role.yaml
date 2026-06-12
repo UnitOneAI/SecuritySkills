@@ -1,0 +1,23 @@
+case: pinned_github_oidc_deploy_role
+expected_findings: []
+broker:
+  type: github_oidc_to_aws_sts
+  trusted_issuer: https://token.actions.githubusercontent.com
+  accepted_subjects:
+    - "repo:example-org/payments-service:environment:production"
+  accepted_audiences:
+    - sts.amazonaws.com
+  requested_role_from_caller: false
+  policy_owned_role_mapping:
+    "repo:example-org/payments-service:environment:production": "arn:aws:iam::111122223333:role/PaymentsDeploy"
+  max_session_duration_seconds: 1800
+  pull_request_forks_allowed: false
+  required_environment_approval: true
+audit:
+  logs_original_subject: true
+  logs_audience: true
+  logs_issued_role: true
+  logs_expiry: true
+revocation:
+  future_issuance_block: automated_denylist
+  active_session_revocation: expiry_only_30m

@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -389,7 +389,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md
@@ -540,6 +540,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/devsecops/secrets-management/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: ephemeral-credential-broker-review
+    name: "Ephemeral Credential Broker Review"
+    tags: [devsecops, secrets, identity, credential-broker, zero-trust]
+    role: [security-engineer, devsecops, cloud-security-engineer]
+    phase: [design, build, operate]
+    activity: [review, audit, assess]
+    frameworks: [NIST-SP-800-207, NIST-SP-800-53-AC-6, OWASP-Secrets-Management, CWE-284]
+    difficulty: advanced
+    time_estimate: "45-90min"
+    file: skills/devsecops/ephemeral-credential-broker-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: sast-config

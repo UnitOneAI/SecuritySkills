@@ -1,0 +1,26 @@
+case: scoped_vault_database_lease
+expected_findings: []
+broker:
+  type: vault_database_dynamic_credentials
+  auth_method: kubernetes
+  accepted_callers:
+    - namespace: analytics
+      service_account: reporting-api
+      pod_label_selector: app=reporting-api
+  role_mapping:
+    requested_role_from_caller: false
+    policy_owned_role: readonly_reporting
+  lease:
+    ttl_seconds: 900
+    max_ttl_seconds: 1800
+    renewable: true
+    renewal_rechecks_policy: true
+revocation:
+  lease_revoke_tested: true
+  derived_user_drop_verified: true
+audit:
+  logs_service_account: true
+  logs_namespace: true
+  logs_role: true
+  logs_lease_id: true
+  logs_expiry: true
