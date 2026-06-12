@@ -154,6 +154,13 @@ Assess:
 - Is cybersecurity risk integrated into enterprise risk management (ERM)?
 - Is the risk calculation methodology documented and consistently applied?
 - Are risk communication channels defined from operational to executive level?
+- Are strategic cybersecurity opportunities (positive risks) identified and documented?
+- Are positive cyber risks prioritized alongside negative risks using a consistent method?
+- Are opportunity owners, expected benefits, dependencies, decision forums, and evidence sources recorded?
+- Are strategic opportunities included in board, executive, or cyber risk committee discussions?
+- If no material strategic opportunities are in scope, is there an explicit non-applicability rationale?
+
+GV.RM-07 evidence must show a cybersecurity dependency, such as security assurance accelerating sales, reduced cyber-insurance friction, faster secure releases, resilience investments that improve operating advantage, or trust signals that improve supplier or customer relationships. Do not count generic business upside unless it is tied to a cybersecurity capability, risk decision, owner, evidence source, expected benefit, and governance forum.
 
 #### 2.2 Roles, Responsibilities, and Authorities (GV.RR)
 
@@ -344,6 +351,8 @@ Score each subcategory on a 0-4 scale aligned with CSF Tiers:
 | 3 | Tier 3 — Repeatable | Formally established, regularly updated, consistently applied, policy-driven |
 | 4 | Tier 4 — Adaptive | Continuous improvement based on lessons learned and predictive indicators; real-time adjustments |
 
+GV.RM-07 scoring gate: Risk Management Strategy cannot be scored at target for GV.RM-07, and the GV.RM category should not be treated as fully aligned, unless positive-risk evidence exists or a scoped non-applicability rationale is documented. A negative-risk register, risk appetite statement, ERM integration, or risk calculation method alone is insufficient evidence for GV.RM-07.
+
 Determine the overall organizational Tier based on aggregated assessment across all functions.
 
 ---
@@ -362,6 +371,7 @@ Document the current state for each function/category/subcategory:
 
 Define the target state based on:
 - Business objectives and risk appetite (from GV.RM)
+- Strategic opportunities and positive cyber risks (from GV.RM-07)
 - Regulatory and contractual requirements (from GV.OC-03)
 - Industry benchmarks and community profiles
 - Resource constraints and implementation feasibility
@@ -433,6 +443,14 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 - Key stakeholders and expectations: [summary]
 - Critical services and dependencies: [summary]
 
+## Strategic Opportunities / Positive Cyber Risks
+
+| Opportunity | Cyber Capability / Dependency | Evidence Source | Owner | Expected Benefit | Risk Dependencies | Decision Forum | Decision / Status |
+|-------------|-------------------------------|-----------------|-------|------------------|-------------------|----------------|-------------------|
+| [example] | [control/program dependency] | [minutes/register/profile] | [role] | [benefit] | [related negative risks] | [board/executive/cyber risk committee] | [accepted/deferred/funded/not applicable] |
+
+If no material strategic opportunities are in scope, document the scoped non-applicability rationale here and explain why GV.RM-07 should not be scored as a gap.
+
 ## Tier Assessment
 - **Current Tier**: [Tier N — Name]
   - Justification: [evidence-based rationale]
@@ -457,6 +475,7 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 | Subcategory | Description | Current | Target | Gap | Priority | Informative Refs |
 |-------------|-------------|---------|--------|-----|----------|-----------------|
 | GV.OC-01 | Organizational mission informs CSRM | [0-4] | [0-4] | [delta] | [H/M/L] | [refs] |
+| GV.RM-07 | Strategic opportunities / positive risks included in cyber risk discussions | [0-4] | [0-4] | [delta] | [H/M/L] | [refs] |
 | ... | ... | ... | ... | ... | ... | ... |
 
 ### IDENTIFY (ID)
@@ -493,6 +512,10 @@ Use the NIST CSF 2.0 Reference Tool for comprehensive mappings.
 
 ### Phase 4: Optimization (181-365 days)
 [Minor gaps — continuous improvement, automation, predictive capabilities]
+
+### Strategic Opportunity Actions
+
+For each GV.RM-07 gap, include an owned, funded, and time-bound action that converts a positive cyber risk into a governance decision. Each action should name the opportunity, owner, expected benefit, required cyber capability, related negative risks, decision forum, and next review date.
 
 ## Informative References Mapping
 [Cross-reference to specific implementation standards per subcategory]
@@ -574,7 +597,9 @@ Tier 4 — Adaptive
 
 3. **Assessing subcategories in isolation without considering dependencies.** CSF functions are interdependent. Detection capabilities (DE) are meaningless without response capabilities (RS). Protection (PR) without asset identification (ID.AM) leaves gaps. The assessment must consider the maturity chain across functions, not just individual subcategory scores.
 
-4. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
+4. **Assessing risk strategy as negative-risk-only governance.** CSF 2.0 GV.RM-07 requires strategic opportunities, or positive risks, to be characterized and included in cybersecurity risk discussions. A mature risk appetite statement, ERM process, or negative-risk register does not satisfy GV.RM-07 unless cyber-related upside is identified, owned, evidenced, and reviewed in a governance forum.
+
+5. **Failing to develop actionable organizational profiles.** The current and target profiles are the primary outputs of a CSF assessment. Many organizations conduct the assessment but do not formalize profiles into living documents that drive investment decisions, resource allocation, and progress tracking. Without profiles, the assessment becomes a one-time exercise rather than a continuous improvement tool.
 
 ---
 
