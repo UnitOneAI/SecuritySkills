@@ -83,6 +83,8 @@ Use Glob and Grep to locate DNS server configurations, resolver settings, and re
 
 # Application-level DNS settings
 **/dnsconfig*
+**/*doh*
+**/*dns-over-https*
 **/unbound*
 **/dnsdist*
 **/dnscrypt-proxy*
@@ -107,6 +109,7 @@ Categorize discovered configurations:
 - **Local encrypted DNS proxies:** dnsdist, dnscrypt-proxy, cloudflared, stunnel, local Unbound forwarding.
 - **Client settings:** resolv.conf, DHCP-distributed resolver addresses, VPN DNS settings.
 - **Browser / endpoint enforcement:** Chrome, Edge, Firefox enterprise policies; OS private DNS; MDM profiles.
+- **Application-level DNS clients:** library or service configurations that call DoH/DoT endpoints directly instead of using the OS resolver.
 
 ---
 
@@ -190,6 +193,7 @@ application/browser -> OS resolver/local stub -> local proxy/resolver -> enterpr
 - **Local proxy hop:** If BIND, systemd-resolved, or CoreDNS forwards to `127.0.0.1`, `::1`, or an RFC1918 address, inspect the local proxy before calling the path plaintext. Common proxy components include dnsdist, dnscrypt-proxy, cloudflared, stunnel, and local Unbound.
 - **External egress hop:** Determine whether the final hop to the upstream recursive resolver uses plaintext DNS, DoT, DoH, DNSCrypt, or a managed protective DNS tunnel.
 - **Policy enforcement:** Confirm that endpoint, browser, VPN, and MDM policies prevent unmanaged DoH/DoT paths from bypassing the enterprise resolver.
+- **Application bypass:** Search services and workload configuration for direct DoH clients that use public endpoints over HTTPS even when `/etc/resolv.conf` or DHCP settings point to the enterprise resolver.
 - **Observed evidence:** Prefer packet captures, resolver query logs, protective DNS logs, or SIEM events over assumptions from static config alone.
 
 **Finding classification:** A local BIND forwarder to a local encrypted DNS proxy with verified encrypted egress is **Not a finding** for plaintext external forwarding. A local forwarder chain whose egress cannot be verified is an **Evidence Gap** and usually **Low** or **Medium** depending on network exposure. Any unmanaged browser, mobile private DNS, VPN, or application-level DoH path that bypasses protective DNS is **High**.
@@ -246,6 +250,15 @@ network.trr.uri
 DNSSettings
 DNSProtocol
 ServerURL
+
+# Application/library-level DoH indicators
+https://dns.google/dns-query
+https://cloudflare-dns.com/dns-query
+https://mozilla.cloudflare-dns.com/dns-query
+application/dns-message
+doh_url
+dns_over_https
+DoHClient
 ```
 
 **Finding classification:** DNS queries forwarded in plaintext to external resolvers over untrusted networks is **Medium**. No DoH bypass controls when DNS filtering is deployed is **High**.

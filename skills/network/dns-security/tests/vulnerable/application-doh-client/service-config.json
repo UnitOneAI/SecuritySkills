@@ -1,0 +1,9 @@
+{
+  "service": "edge-cache-worker",
+  "dns": {
+    "mode": "doh",
+    "doh_url": "https://cloudflare-dns.com/dns-query",
+    "content_type": "application/dns-message"
+  }
+}
+
