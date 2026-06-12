@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -90,7 +90,7 @@ Categorize discovered configurations:
 - **Authoritative servers:** BIND, PowerDNS, Route53 hosted zones, Cloud DNS zones.
 - **Recursive resolvers:** Unbound, BIND (recursion enabled), CoreDNS, systemd-resolved.
 - **Protective DNS / filtering:** RPZ, Pi-hole, Cisco Umbrella, Cloudflare Gateway, Quad9.
-- **Client settings:** resolv.conf, DHCP-distributed resolver addresses.
+- **Client settings:** resolv.conf, DHCP-distributed resolver addresses, managed browser DoH policies, MDM/private DNS profiles, endpoint DNS agent configuration.
 
 ---
 
@@ -171,6 +171,9 @@ Evaluate whether DNS queries are protected in transit.
 
 - **Enterprise resolvers:** DoT or DoH is configured for forwarding to upstream resolvers.
 - **Client enforcement:** Clients are configured to use the enterprise resolver via DoT/DoH, not public DoH endpoints that bypass corporate DNS policy.
+- **Resolver-chain evidence:** Identify each hop from client to local stub, local proxy, recursive resolver, upstream resolver, and egress policy. A local BIND forwarder to `127.0.0.1` can be acceptable when a local stunnel, dnsdist, Unbound, or equivalent proxy performs encrypted external forwarding.
+- **Managed endpoint policy:** Inspect Chrome/Edge `DnsOverHttpsMode` and `DnsOverHttpsTemplates`, Firefox enterprise policies, Windows/macOS/iOS/Android DNS profiles, and MDM baselines that can override the enterprise resolver.
+- **Effective DoH over HTTPS control:** Port 53/853 restrictions are insufficient when public DoH uses TCP/443. Verify targeted controls for known public DoH endpoints, HTTP CONNECT/SNI policy where available, endpoint DNS client detection, and protective DNS/SIEM logs that prove enterprise resolver use.
 - **DoH bypass risk:** Browsers (Firefox, Chrome) may use built-in DoH providers, bypassing corporate DNS filtering. Verify that:
   - Canary domain `use-application-dns.net` resolves to NXDOMAIN (signals browsers to disable built-in DoH).
   - Network policy blocks known public DoH endpoints if corporate DNS filtering is required.
@@ -188,9 +191,29 @@ tls://8.8.8.8
 
 # BIND forwarder (no native DoT -- requires stunnel or proxy)
 forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
+
+# BIND local proxy forwarding (acceptable only with proxy evidence)
+forwarders { 127.0.0.1 port 5353; };  # Verify local DoT/DoH proxy and egress logs
+
+# Chrome/Edge managed DoH policy examples to inspect
+DnsOverHttpsMode
+DnsOverHttpsTemplates
+
+# Firefox enterprise policy examples to inspect
+DNSOverHTTPS
+network.trr.mode
 ```
 
-**Finding classification:** DNS queries forwarded in plaintext to external resolvers over untrusted networks is **Medium**. No DoH bypass controls when DNS filtering is deployed is **High**.
+**Resolver-chain evidence gate:** Classify encrypted transport only after documenting the full resolver path.
+
+| Evidence | Pass | Fail / Finding |
+|----------|------|----------------|
+| Local proxy | BIND/CoreDNS forwards only to loopback or local subnet proxy and that proxy forwards upstream via DoT/DoH | BIND/CoreDNS forwards directly to external resolver over plaintext |
+| Endpoint policy | Browser/OS/MDM policy forces enterprise resolver or disables unmanaged public DoH | Browser policy forces public DoH or allows users/apps to bypass protective DNS |
+| HTTPS egress | Known public DoH endpoints are controlled through targeted network, proxy, or endpoint policy | Only port 53/853 is blocked while TCP/443 DoH is unrestricted |
+| Telemetry | Protective DNS/SIEM/EDR logs show endpoint queries using approved resolver path | No telemetry proves whether endpoints bypass DNS filtering |
+
+**Finding classification:** DNS queries forwarded in plaintext to external resolvers over untrusted networks is **Medium**. No DoH bypass controls when DNS filtering is deployed is **High**. Managed browser, OS, or mobile policy that forces public DoH around protective DNS is **High**. A local plaintext hop to a same-host DoT/DoH proxy is not a finding when the proxy, upstream encryption, and egress telemetry are evidenced.
 
 ---
 
@@ -300,7 +323,7 @@ abcdef0123456789.dnscat.example.com TXT
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
 | **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; resolver-chain evidence missing for claimed encrypted forwarding. |
 | **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
 
 ---
@@ -327,6 +350,12 @@ abcdef0123456789.dnscat.example.com TXT
 | Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+
+### Effective Resolver Path and DoH Policy
+
+| Client / Segment | Browser/OS/MDM DNS Policy | Local Stub / Proxy | Recursive Resolver | Public DoH over 443 Controls | Telemetry Evidence | Decision |
+|------------------|----------------------------|--------------------|--------------------|-------------------------------|-------------------|----------|
+| workstation      | Managed / Unmanaged / Unknown | none / local proxy | approved resolver | blocked / monitored / unrestricted | SIEM/EDR/protective DNS logs | Pass/Partial/Fail/Not Evaluable |
 
 ### Findings
 
@@ -384,6 +413,10 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Flagging local BIND forwarding as plaintext without checking the next hop.** BIND has no native DoT, but it can forward to a same-host or local-network proxy that performs encrypted upstream resolution. Require proxy process/configuration and egress telemetry before calling it external plaintext DNS.
+
+6. **Assuming port 53/853 blocking prevents DoH bypass.** Public DoH normally rides over HTTPS on TCP/443. Browser policy, MDM policy, endpoint controls, proxy/SNI policy, and telemetry are needed to prove endpoints cannot bypass protective DNS through generic HTTPS.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -413,4 +446,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Added resolver-chain validation, managed browser/OS/MDM DoH policy gates, effective public DoH-over-443 controls, output fields, and calibration fixtures.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.

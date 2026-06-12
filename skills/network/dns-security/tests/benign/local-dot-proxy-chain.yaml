@@ -1,0 +1,24 @@
+name: local-dot-proxy-chain
+expected_decision: pass
+description: BIND forwards to a local proxy, and the proxy performs encrypted upstream DNS with telemetry.
+resolver_chain:
+  client_policy:
+    chrome_dns_over_https_mode: off
+    firefox_dns_over_https: disabled_by_policy
+    mdm_private_dns: enterprise_resolver_only
+  local_forwarder:
+    service: bind
+    forwarders:
+      - 127.0.0.1:5353
+  local_proxy:
+    service: unbound
+    forward_tls_upstream: true
+    upstreams:
+      - 9.9.9.9@853
+  egress_policy:
+    dns_port_53_external: blocked
+    dns_over_tls_853_to_approved_resolvers: allowed
+    public_doh_over_443: blocked_or_monitored
+  telemetry:
+    protective_dns_logs: present
+    endpoint_dns_bypass_alerts: enabled

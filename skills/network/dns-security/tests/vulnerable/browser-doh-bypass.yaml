@@ -1,0 +1,22 @@
+name: browser-doh-bypass
+expected_decision: fail
+description: Managed browser policy forces public DoH over HTTPS, bypassing the required corporate resolver.
+resolver_chain:
+  client_policy:
+    chrome_dns_over_https_mode: secure
+    chrome_dns_over_https_templates: https://dns.google/dns-query
+    firefox_dns_over_https: unmanaged
+    mdm_private_dns: not_configured
+  enterprise_resolver:
+    required_resolver: 10.10.0.53
+    protective_dns_enabled: true
+  egress_policy:
+    dns_port_53_external: blocked
+    dns_over_tls_853_external: blocked
+    public_doh_over_443: unrestricted
+  telemetry:
+    protective_dns_logs: missing_for_browser_queries
+    endpoint_dns_bypass_alerts: disabled
+risks:
+  - browser DoH over TCP 443 bypasses protective DNS and SIEM resolver logs
+  - port 53 and 853 controls do not cover HTTPS DoH endpoints
