@@ -51,6 +51,7 @@ Invoke this skill when any of the following conditions are true:
 
 - An LLM application processes personal data (PII, PHI, financial records) in prompts or context.
 - User prompts or completions are logged, stored, or used for analytics.
+- Prompt-derived analytics are published as aggregate dashboards, metrics, customer exports, or differentially private telemetry.
 - A model is fine-tuned on datasets that contain or may contain personal data.
 - The system operates under data protection regulations (GDPR, CCPA/CPRA, HIPAA, EU AI Act, state-level US privacy laws).
 - Data retention or deletion policies need to be assessed for AI-specific components (vector stores, conversation logs, training datasets, embeddings).
@@ -77,6 +78,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Privacy policy | Public-facing policy documents | Defines commitments to users about data handling |
 | Data retention policies | Internal governance docs, code configs | Determines how long AI-processed data persists |
 | Logging configuration | Application code, infrastructure configs | Reveals what prompt/completion data is captured |
+| Differential privacy and aggregate analytics controls | Analytics code, privacy accounting docs, dashboard/export configs | Distinguishes raw prompt retention from budgeted aggregate telemetry |
 | Training/fine-tuning data documentation | Data pipeline docs, dataset cards | Identifies personal data in training corpus |
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
 | Data classification scheme | Governance documentation | Defines sensitivity levels applied to AI data flows |
@@ -177,6 +179,43 @@ Grep: "metadata_filter|access_control|permission|authorization|tenant" in **/*.{
 | User prompts containing PII are sent to the model without redaction | High |
 | System prompts contain hardcoded PII (even test data) | Medium |
 | No assessment of model memorization risk for fine-tuned models trained on PII-containing data | Medium |
+
+---
+
+### Step 2A -- Differential Privacy and Aggregate Analytics
+
+Assess whether prompt-derived analytics, metrics, and exports are genuinely aggregate and privacy-bounded rather than raw prompt retention under a safer name.
+
+**What to look for in code and configuration:**
+
+- Differential privacy releases with no `privacy_unit_definition`, `epsilon_delta_budget`, or composition accounting across repeated releases.
+- Small-cohort analytics dashboards or customer exports with weak `small_cohort_threshold` values for sensitive prompt-derived attributes.
+- Repeated filters, exports, or dashboard queries that allow differencing attacks against prompt-derived cohorts.
+- Aggregate metrics joined back to stable user, account, device, household, patient, or tenant identifiers without documented privacy boundaries.
+
+**Detection methods using allowed tools:**
+
+```
+# Find aggregate analytics and differential privacy code
+Grep: "differential.privacy|epsilon|delta|laplace|gaussian|opendp|privacy.budget" in **/*.{py,ts,js,yaml,yml,json,md}
+Grep: "cohort|k_anonymity|k-anonymity|group.by|dashboard|analytics|export" in **/*.{py,ts,js,sql,yaml,yml,md}
+
+# Check for repeated-query and differencing controls
+Grep: "rate.limit|query.limit|release.cadence|privacy_unit|privacy.unit|threshold|suppression" in **/*.{py,ts,js,sql,yaml,yml,md}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Raw prompt-derived analytics exposed as aggregate metrics with no privacy boundary | High |
+| DP releases have no privacy-unit definition or cumulative epsilon/delta accounting | High |
+| Sensitive prompt-derived cohorts are exportable below an approved small-cohort threshold | High |
+| Dashboards allow repeated filter queries that enable differencing attacks | Medium |
+| Aggregate metrics can be joined back to stable user/device/account identifiers without review | Medium |
+| Safe DP telemetry is flagged as raw prompt retention despite documented budget and contribution bounds | Informational |
+
+**Required evidence fields:** `privacy_unit_definition`, `epsilon_delta_budget`, `release_cadence`, `small_cohort_threshold`, `differencing_query_controls`, and dashboard/export access controls.
 
 ---
 
@@ -411,7 +450,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | Aggregate Analytics | Data Retention | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -419,6 +458,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 - **Location:** [file path, configuration, or architectural component]
 - **Description:** [What the privacy risk is and why it matters]
 - **Evidence:** [Code pattern, configuration, or architectural observation]
+- **Aggregate Analytics Evidence:** [If applicable: `privacy_unit_definition`, `epsilon_delta_budget`, `release_cadence`, `small_cohort_threshold`, `differencing_query_controls`, dashboard/export access controls]
 - **Impact:** [What personal data is at risk and for how many data subjects]
 - **Recommendation:** [Specific remediation with regulatory alignment]
 - **Priority:** [P0 / P1 / P2 / P3]
@@ -429,6 +469,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 |---|---|---|---|
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
+| Aggregate analytics privacy | [Yes/Partial/No/N/A] | [description] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
