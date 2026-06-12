@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -42,7 +42,7 @@ If a target is provided via arguments, focus the review on: $ARGUMENTS
 
 ## Context
 
-DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2 Section 2 identifies three primary DNS threat categories: DNS cache poisoning, DNS-based denial of service, and unauthorized zone data modification. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation.
+DNS is a foundational protocol that is often under-secured. NIST SP 800-81 Rev 2 Section 2 identifies three primary DNS threat categories: DNS cache poisoning, DNS-based denial of service, and unauthorized zone data modification. DNSSEC addresses data integrity but not confidentiality. CIS Controls v8 Control 9.2 requires the use of DNS filtering services to block access to known malicious domains. Beyond these baseline controls, DNS is increasingly exploited as a covert data exfiltration channel because port 53 is almost universally permitted through firewalls. Detecting DNS tunneling and exfiltration requires analysis of query patterns, payload sizes, and entropy -- not just domain reputation. Modern DNS reviews must also evaluate the effective resolver path: browser-level DoH, mobile private DNS, VPN clients, and local DNS proxy chains can silently bypass the intended enterprise resolver or create false positives if the upstream egress hop is not inspected.
 
 ---
 
@@ -84,13 +84,29 @@ Use Glob and Grep to locate DNS server configurations, resolver settings, and re
 # Application-level DNS settings
 **/dnsconfig*
 **/unbound*
+**/dnsdist*
+**/dnscrypt-proxy*
+**/cloudflared*
+**/stunnel*
+
+# Browser, endpoint, and MDM DNS policy
+**/policies.json
+**/managed_preferences.json
+**/*.mobileconfig
+**/*Chrome*.plist
+**/*Edge*.plist
+**/*Firefox*.plist
+**/firefox/policies.json
+**/mdm*
 ```
 
 Categorize discovered configurations:
 - **Authoritative servers:** BIND, PowerDNS, Route53 hosted zones, Cloud DNS zones.
 - **Recursive resolvers:** Unbound, BIND (recursion enabled), CoreDNS, systemd-resolved.
 - **Protective DNS / filtering:** RPZ, Pi-hole, Cisco Umbrella, Cloudflare Gateway, Quad9.
-- **Client settings:** resolv.conf, DHCP-distributed resolver addresses.
+- **Local encrypted DNS proxies:** dnsdist, dnscrypt-proxy, cloudflared, stunnel, local Unbound forwarding.
+- **Client settings:** resolv.conf, DHCP-distributed resolver addresses, VPN DNS settings.
+- **Browser / endpoint enforcement:** Chrome, Edge, Firefox enterprise policies; OS private DNS; MDM profiles.
 
 ---
 
@@ -160,6 +176,24 @@ dnssec
 
 Evaluate whether DNS queries are protected in transit.
 
+#### 3.0 Effective Resolver Path and Chain-of-Custody Gate
+
+Before assigning severity, map the actual DNS resolution chain rather than inspecting a single config file in isolation:
+
+```
+application/browser -> OS resolver/local stub -> local proxy/resolver -> enterprise/protective resolver -> upstream recursive resolver
+```
+
+**What to verify:**
+
+- **Client source:** Identify whether DNS starts from the OS resolver, a browser DoH client, a VPN client, an endpoint security agent, or an application-specific resolver library.
+- **Local proxy hop:** If BIND, systemd-resolved, or CoreDNS forwards to `127.0.0.1`, `::1`, or an RFC1918 address, inspect the local proxy before calling the path plaintext. Common proxy components include dnsdist, dnscrypt-proxy, cloudflared, stunnel, and local Unbound.
+- **External egress hop:** Determine whether the final hop to the upstream recursive resolver uses plaintext DNS, DoT, DoH, DNSCrypt, or a managed protective DNS tunnel.
+- **Policy enforcement:** Confirm that endpoint, browser, VPN, and MDM policies prevent unmanaged DoH/DoT paths from bypassing the enterprise resolver.
+- **Observed evidence:** Prefer packet captures, resolver query logs, protective DNS logs, or SIEM events over assumptions from static config alone.
+
+**Finding classification:** A local BIND forwarder to a local encrypted DNS proxy with verified encrypted egress is **Not a finding** for plaintext external forwarding. A local forwarder chain whose egress cannot be verified is an **Evidence Gap** and usually **Low** or **Medium** depending on network exposure. Any unmanaged browser, mobile private DNS, VPN, or application-level DoH path that bypasses protective DNS is **High**.
+
 #### 3.1 DNS over HTTPS (DoH) and DNS over TLS (DoT)
 
 | Transport | Port | Standard | Use Case |
@@ -174,6 +208,8 @@ Evaluate whether DNS queries are protected in transit.
 - **DoH bypass risk:** Browsers (Firefox, Chrome) may use built-in DoH providers, bypassing corporate DNS filtering. Verify that:
   - Canary domain `use-application-dns.net` resolves to NXDOMAIN (signals browsers to disable built-in DoH).
   - Network policy blocks known public DoH endpoints if corporate DNS filtering is required.
+- **Managed browser policy:** Chrome and Edge should enforce `DnsOverHttpsMode` and `DnsOverHttpsTemplates`; Firefox should enforce `DNSOverHTTPS` enterprise policy or managed `network.trr.*` preferences.
+- **Mobile and OS policy:** Android Private DNS, iOS/macOS DNS Settings payloads, Windows DNS client policies, and VPN split-DNS rules must route managed devices through approved resolvers.
 
 **Patterns to check:**
 
@@ -186,8 +222,30 @@ forward-addr: 1.1.1.1@853
 tls://1.1.1.1
 tls://8.8.8.8
 
-# BIND forwarder (no native DoT -- requires stunnel or proxy)
-forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
+# BIND forwarder to external resolver (no native DoT -- requires stunnel or proxy)
+forwarders { 1.1.1.1; };  # Plaintext external egress -- flag as finding
+
+# BIND forwarder to local encrypted DNS proxy (inspect proxy egress before flagging)
+forwarders { 127.0.0.1 port 853; };  # Evidence gate -- verify local proxy config
+
+# dnsdist / dnscrypt-proxy / cloudflared local proxy indicators
+newServer({address="1.1.1.1:853", tls="openssl"})
+server_names = ["cloudflare", "quad9-dnscrypt-ip4-filter-pri"]
+proxy-dns: true
+
+# Chrome / Edge managed DoH policy
+"DnsOverHttpsMode": "secure"
+"DnsOverHttpsTemplates": "https://dns.example.com/dns-query{?dns}"
+
+# Firefox managed DoH policy
+"DNSOverHTTPS": { "Enabled": true, "ProviderURL": "https://dns.example.com/dns-query", "Locked": true }
+network.trr.mode
+network.trr.uri
+
+# Apple MDM DNS Settings payload
+DNSSettings
+DNSProtocol
+ServerURL
 ```
 
 **Finding classification:** DNS queries forwarded in plaintext to external resolvers over untrusted networks is **Medium**. No DoH bypass controls when DNS filtering is deployed is **High**.
@@ -229,9 +287,11 @@ If a cloud-based protective DNS service is used (Cisco Umbrella, Cloudflare Gate
 
 - All clients and recursive resolvers forward to the protective DNS service.
 - No DNS resolution paths bypass the protective DNS (direct queries to 8.8.8.8, 1.1.1.1 from endpoints).
+- Browser DoH, mobile private DNS, VPN split-DNS, and endpoint resolver agents are covered by managed policy, not only firewall rules.
 - Domain categorization covers: malware C2, phishing, newly registered domains (NRDs < 30 days), DGA-generated domains.
 - Block pages or NXDOMAIN responses are returned for blocked categories.
 - Logs are forwarded to SIEM.
+- Protective DNS telemetry contains endpoint/source attribution sufficient to investigate bypass and exfiltration alerts.
 
 **Finding classification:** No DNS filtering/RPZ deployed is **High**. RPZ feeds not automatically updated is **Medium**. DNS resolution paths that bypass protective DNS is **High**.
 
@@ -300,8 +360,8 @@ abcdef0123456789.dnscat.example.com TXT
 |----------|-----------|
 | **Critical** | Broken DNSSEC chain of trust (missing DS record in parent); authoritative zones serving invalid signatures. |
 | **High** | DNSSEC validation disabled on resolvers; no DNS filtering/RPZ; unsigned public authoritative zones; DNS bypass paths around protective DNS; no DNS query logging; weak signing algorithms. |
-| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; DoH bypass not controlled. |
-| **Low** | Missing documentation of DNS architecture; resolver software not at latest version; cosmetic configuration issues. |
+| **Medium** | Plaintext DNS forwarding over untrusted networks; stale RPZ feeds; undocumented NTAs; no NRD blocking; no exfiltration detection; unverified encrypted DNS proxy egress on exposed networks. |
+| **Low** | Missing documentation of DNS architecture; resolver software not at latest version; local proxy chain not documented but protective DNS controls are otherwise evidenced; cosmetic configuration issues. |
 
 ---
 
@@ -324,9 +384,9 @@ abcdef0123456789.dnscat.example.com TXT
 
 ### Resolver Security
 
-| Resolver | DNSSEC Validation | Encrypted Transport | RPZ/Filtering | Query Logging |
-|----------|-------------------|--------------------|--------------|--------------|
-| ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
+| Resolver | DNSSEC Validation | Effective Resolver Path | Encrypted Egress | RPZ/Filtering | Query Logging |
+|----------|-------------------|-------------------------|------------------|---------------|--------------|
+| ns1      | Enabled/Disabled  | OS -> local proxy -> protective DNS | DoT/DoH/Plaintext/Unknown | Yes/No | Yes/No |
 
 ### Findings
 
@@ -336,6 +396,7 @@ abcdef0123456789.dnscat.example.com TXT
 - **File:** <path to config file>
 - **Description:** <what was found>
 - **Evidence:** <specific configuration snippet>
+- **Effective DNS Path:** <client/browser -> local resolver/proxy -> upstream/protective DNS>
 - **Remediation:** <concrete fix>
 
 ### DNS Exfiltration Detection Readiness
@@ -380,9 +441,11 @@ abcdef0123456789.dnscat.example.com TXT
 
 2. **Blocking DoH at the network level without deploying enterprise DoT/DoH.** If you block public DoH endpoints to enforce corporate DNS policy, you must provide a corporate encrypted DNS alternative. Otherwise, you degrade client DNS security without improving organizational visibility.
 
-3. **Relying solely on domain reputation lists for exfiltration detection.** Attackers use attacker-controlled domains that are not yet categorized. Behavioral detection (entropy, volume, query type anomalies) catches novel exfiltration domains that reputation feeds miss.
+3. **Flagging every BIND forwarder as plaintext without checking the next hop.** BIND does not natively originate DoT, but many deployments forward to a local proxy that performs encrypted upstream transport. Inspect the local proxy egress before writing a finding; otherwise the review creates avoidable false positives.
 
-4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
+4. **Relying solely on domain reputation lists for exfiltration detection.** Attackers use attacker-controlled domains that are not yet categorized. Behavioral detection (entropy, volume, query type anomalies) catches novel exfiltration domains that reputation feeds miss.
+
+5. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
 ---
 
@@ -413,4 +476,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Adds effective resolver path review, local encrypted DNS proxy evidence gates, browser/MDM DoH policy checks, and false-positive guidance for BIND-to-local-proxy chains.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
