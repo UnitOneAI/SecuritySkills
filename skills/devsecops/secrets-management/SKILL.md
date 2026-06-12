@@ -200,6 +200,19 @@ Separate confirmed secret exposure from maturity observations before assigning s
 - Kubernetes `envFrom.secretRef`, External Secrets Operator manifests, and Vault Agent annotations reference secret objects; do not treat the reference name as a leaked value unless a literal secret value is present.
 - JWT-like `eyJ*` strings can be bearer tokens, documentation fixtures, or public signed samples. Do not decode or print payloads; classify only from context, age, and whether the value is synthetic.
 
+#### 2.2.3 Reference Value Triage Evidence
+
+For every publishable or reference-like candidate, record the evidence that caused it to be excluded
+or escalated. Do not rely on prefix matching alone when the value category is intentionally public or
+only names a runtime secret source.
+
+| Candidate Pattern | Benign Evidence | Escalate When |
+|-------------------|-----------------|---------------|
+| Stripe `pk_*`, public analytics IDs, package names | Documented as client-side publishable, public identifier, or package coordinate; no privileged API scope | Used server-side as an auth secret, paired with a private secret, grants mutation/admin scope, or appears in an authorization header |
+| Kubernetes `envFrom.secretRef`, `secretKeyRef`, External Secrets Operator, Vault Agent annotations | Manifest references a secret object or external provider path only; value is resolved at runtime | Literal secret appears in `stringData`, decoded `data`, inline Helm values, ConfigMap, or committed example with active-looking value |
+| JWT-like `eyJ*` strings | Synthetic fixture, expired public sample, unit-test token, or documentation example with no active issuer/audience evidence | Active bearer token, refresh token, session cookie, production issuer/audience, or sensitive claims are present; never print decoded payloads |
+| Connection identifiers and resource names | Database name, queue name, package namespace, IAM role name, or endpoint identifier without credential material | Embedded username/password, signed URL, bearer token, client secret, or private key material is present |
+
 #### 2.3 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
@@ -489,6 +502,14 @@ and task:
 |----------|----------------|---------------|---------------------------|-----|----------------|----------|
 | GitHub Actions OIDC -> AWS STS | Yes/No | Yes/No | Yes/No | <duration> | Yes/No | Yes/No |
 
+### Publishable / Reference Value Triage
+
+| Candidate | Classification | Evidence | Finding? |
+|-----------|----------------|----------|----------|
+| Stripe `pk_*` key / analytics ID / package name | Publishable / Public identifier / Escalated | <client-side docs, public scope, or misuse evidence> | Yes/No |
+| Kubernetes secret reference / ExternalSecret / Vault annotation | Runtime reference / Escalated literal secret | <reference-only evidence or literal value location> | Yes/No |
+| JWT-like `eyJ*` string | Synthetic sample / Expired sample / Active credential | <context, age, issuer/audience signal; do not print payload> | Yes/No |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -562,6 +583,6 @@ This skill processes configuration files and code that may contain secret values
 
 ## Changelog
 
-- **1.0.2** -- Reconcile confirmed secret findings vs maturity notes, add modern provider token patterns, CI/CD leakage checks, and OIDC/JIT trust policy validation.
+- **1.0.2** -- Reconcile confirmed secret findings vs maturity notes, add modern provider token patterns, publishable/reference value triage evidence, CI/CD leakage checks, and OIDC/JIT trust policy validation.
 - **1.0.1** -- Add false positive filtering guidance: distinguish real secrets from placeholders/examples, verify entropy, scope findings to actual secrets (not architectural gaps).
 - **1.0.0** -- Initial release. Full coverage of OWASP Secrets Management Cheat Sheet and NIST SP 800-57 Part 1 Rev 5 for secrets management review.
