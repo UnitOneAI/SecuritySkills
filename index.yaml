@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -136,6 +136,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: token-exchange-on-behalf-of-security
+    name: "Token Exchange and On-Behalf-Of Security Review"
+    tags: [identity, oauth, token-exchange, delegation]
+    role: [security-engineer, appsec-engineer, cloud-security-engineer]
+    phase: [design, build, review, operate]
+    activity: [review, assess]
+    frameworks: [RFC-8693, OAuth-Security-BCP, NIST-SP-800-53-AC]
+    difficulty: intermediate
+    time_estimate: "60-120min"
+    file: skills/identity/token-exchange-on-behalf-of-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------
