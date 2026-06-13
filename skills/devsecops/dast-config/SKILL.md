@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [OWASP-Top-10-2021, OWASP-Testing-Guide-v4.2]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -218,7 +218,18 @@ jobs:
 | A09:2021 Logging Failures | Not DAST-testable | N/A |
 | A10:2021 SSRF | SSRF (40046) | WSTG-INPV-19 |
 
-**Finding classification:** Active scanning disabled entirely is **High**. OWASP Top 10 A03 (Injection) scan rules disabled is **Critical**. Missing passive scan rules for security headers is **Medium**.
+**Environment-aware active scan classification:**
+
+| Condition | Severity |
+|---|---|
+| Active scanning targets production or live customer data | Critical |
+| Staging or ephemeral active DAST is feasible for a dynamic application but absent | High |
+| Active scan rules for OWASP Top 10 A03 injection are disabled in the safe active-scan environment | Critical |
+| Production passive baseline is intentionally used for a public/static site with no login, API, or safe active target | Informational / accepted risk note |
+| Active scan is blocked because no resettable test data or staging environment exists | Medium governance or environment-readiness gap |
+| Missing passive scan rules for security headers | Medium |
+
+Do not report "active scanning disabled" as High without recording target environment, application surface, and whether a safe staging or ephemeral target exists.
 
 ---
 
@@ -247,6 +258,8 @@ jobs:
 - API authentication is configured (Bearer tokens, API keys injected via ZAP headers).
 - Content-Type is set correctly for API requests (`application/json` for REST).
 - Rate limiting considerations: API scans should respect rate limits to avoid triggering WAF blocks.
+- Token lifetime and refresh strategy are documented for API/header authentication.
+- API coverage evidence includes authenticated request count, unique endpoints reached, status distribution, and 401/403 ratio.
 
 #### 3.2 GraphQL Scanning
 
@@ -267,8 +280,22 @@ jobs:
 - Introspection is available on the target (required for automatic query generation).
 - Query depth limits are set to prevent resource exhaustion during scanning.
 - Mutations are handled carefully (exclude destructive mutations from active scanning).
+- Schema snapshot is current and tied to the deployed GraphQL version.
+- Mutation allowlist/denylist is documented, including non-destructive test data strategy.
+- Cost, depth, alias, and argument limits are enforced for generated queries.
 
-**Finding classification:** No API scanning for applications with API endpoints is **High**. OpenAPI spec out of date is **Medium**. No GraphQL scanning for GraphQL endpoints is **Medium**.
+#### 3.3 Real-Time and Event-Stream Surface Discovery
+
+Baseline/full scans can miss real-time channels that are not ordinary crawlable HTTP forms.
+
+Check for:
+
+- WebSocket upgrade endpoints (`/ws`, `Upgrade: websocket`, Socket.IO, GraphQL subscriptions).
+- Server-Sent Events (`text/event-stream`, `/events`, streaming account activity).
+- Topic/channel subscription authorization and tenant isolation.
+- Message schema documentation or specialized tests outside the DAST tool when ZAP/Burp cannot exercise the protocol.
+
+**Finding classification:** No API scanning for applications with API endpoints is **High**. OpenAPI spec out of date is **Medium**. No GraphQL scanning for GraphQL endpoints is **Medium** only when GraphQL exists. Missing WebSocket/SSE discovery is **Medium**, or **High** when real-time channels carry authenticated or tenant-scoped data.
 
 ---
 
@@ -326,8 +353,22 @@ env:
 - [ ] Test user has sufficient permissions to access the application's full attack surface.
 - [ ] Test user does NOT have admin privileges (test with realistic user role).
 - [ ] Session management is configured (ZAP re-authenticates when logged-out indicator is detected).
+- [ ] Token TTL, refresh/re-auth behavior, and logged-out detection are tested for API/header auth.
+- [ ] Report records authenticated request count, unique authenticated endpoints, 2xx/3xx/4xx distribution, and 401/403 ratio.
 
-**Finding classification:** No authenticated scanning is **Critical** (misses most of the attack surface). Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**.
+#### 4.2 Role, Tenant, and Authorization Coverage
+
+A single admin-like scanner account can hide broken access control because every request is permitted. Model the roles and tenants needed to exercise normal authorization boundaries.
+
+| Role / Tenant | Purpose | Expected Reachable Paths | Forbidden Paths | Scan User | Coverage Evidence |
+|---|---|---|---|---|---|
+| Anonymous | Public routes | Marketing, login, docs | Account/admin/API private paths | none | spider/API coverage |
+| Normal user | Customer self-service | Own account/resources | Other users, admin | `DAST_USER` | authenticated endpoint coverage |
+| Read-only user | Read paths only | Reports/list views | Mutations, deletes | `DAST_READONLY_USER` | 403/deny evidence |
+| Admin/privileged | Admin console where safe | Admin views | Destructive paths excluded | `DAST_ADMIN_USER` | scoped scan evidence |
+| Tenant A / Tenant B | IDOR/BOLA checks | Own tenant resources | Cross-tenant resources | paired users | cross-tenant deny evidence |
+
+**Finding classification:** No authenticated scanning is **Critical** for authenticated applications, but not for genuinely public/static sites with no login or API surface. Authentication configured but verification regex is absent or too broad is **High**. Hardcoded credentials in scan configuration is **High**. Authenticated scans that mostly receive 401/403 responses without coverage evidence are **High** false-assurance findings. Missing multi-role/tenant authorization coverage is **Medium**, or **High** for applications with tenant isolation or role-based access control.
 
 ---
 
@@ -482,8 +523,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; staging/ephemeral active DAST feasible but absent for a dynamic application; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; auth scan mostly reaches 401/403 without coverage evidence. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning where GraphQL exists; missing WebSocket/SSE discovery; missing role/tenant coverage for lower-risk apps; missing security header rules. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -519,6 +560,32 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
 | Results deduplication | Yes/No | <dedup method> |
+
+### Environment-Aware Active Scan Decision
+
+| Target | Environment | App Surface | Safe Active Target Exists? | Active Scan Policy | Severity / Decision | Evidence |
+|--------|-------------|-------------|----------------------------|-------------------|---------------------|----------|
+| <url> | production/staging/preview | static/auth/API/GraphQL | Yes/No | passive-only/full/API | <finding or accepted risk> | <workflow/config> |
+
+### Auth-State and Coverage Evidence
+
+| Context | Auth Method | Token TTL / Refresh | Logged-Out Detection | Authenticated Requests | Unique Endpoints | 401/403 Ratio | Status |
+|---------|-------------|---------------------|----------------------|------------------------|------------------|---------------|--------|
+| <context> | <browser/header/script> | <ttl/refresh> | <regex/API check> | <count> | <count> | <ratio> | <pass/fail> |
+
+### Role and Tenant Coverage
+
+| Role / Tenant | Expected Paths | Forbidden Paths | Scan User | Coverage Evidence | Status |
+|---------------|----------------|-----------------|-----------|-------------------|--------|
+| <role> | <paths> | <paths> | <user/env var> | <report/log> | <covered/gap> |
+
+### API / GraphQL / Real-Time Surface Coverage
+
+| Surface | Exists? | Scan Method | Freshness / Schema Evidence | Mutation / Destructive Guard | Coverage Status |
+|---------|---------|-------------|-----------------------------|------------------------------|-----------------|
+| REST/OpenAPI | Yes/No | <openapi job> | <spec/version> | <excluded destructive routes> | <covered/gap> |
+| GraphQL | Yes/No | <graphql job> | <schema snapshot/introspection> | <mutation allowlist/denylist> | <covered/gap> |
+| WebSocket/SSE | Yes/No | <specialized tests/manual> | <endpoint inventory> | <topic/tenant authorization> | <covered/gap> |
 
 ### Findings
 
@@ -584,6 +651,10 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
 
+6. **Treating a clean authenticated scan as meaningful without coverage metrics.** If the scanner loses auth mid-run or only reaches login/401/403 responses, the report can look clean while missing the authenticated application. Require endpoint counts, status distribution, and logged-out detection evidence.
+
+7. **Applying active-scan severity without environment context.** Passive-only production monitoring can be correct for public/static sites, while missing staging active DAST is a real gap for dynamic apps. Record the target environment and safe-test-data availability before assigning severity.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -614,4 +685,5 @@ This skill processes DAST configuration files that may contain target URLs, auth
 
 ## Changelog
 
+- **1.0.1** -- Added environment-aware active scan severity, API auth-state coverage metrics, role/tenant authorization coverage, GraphQL mutation/schema checks, WebSocket/SSE discovery, and expanded output tables.
 - **1.0.0** -- Initial release. Full coverage of DAST configuration review against OWASP Top 10:2021 and OWASP Testing Guide v4.2, with ZAP-specific patterns.
