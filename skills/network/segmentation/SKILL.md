@@ -145,7 +145,7 @@ route {
 
 #### 2.3 Private Access / ZTNA Connector Review
 
-Private access brokers and ZTNA connectors can be valid PEPs when direct user-to-app routing is blocked and identity/device policy is enforced before traffic reaches the target. Do not flag the absence of user VLAN routes as a failure when the intended path is brokered private access with tight connector scope and approval evidence.
+Private access brokers and ZTNA connectors can be valid policy enforcement points (PEPs) when direct user-to-app routing is blocked and identity/device policy is enforced before traffic reaches the target. Do not flag the absence of user VLAN routes as a failure when the intended path is brokered private access with tight connector scope and approval evidence.
 
 **Benign brokered access pattern:**
 
@@ -165,7 +165,7 @@ network:
 
 Review the connector subnet as a segmentation-critical asset:
 
-```
+```text
 SEG-ZTNA-01: Connector egress is broad to RFC1918 or entire internal CIDR ranges instead of allowlisted per app/port
 SEG-ZTNA-02: Published app targets include sensitive hosts without app-owner and network-owner approval
 SEG-ZTNA-03: Direct VPN/user route to the protected app remains active and less restrictive than broker policy
