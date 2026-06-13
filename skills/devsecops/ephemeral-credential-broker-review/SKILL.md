@@ -26,6 +26,33 @@ This skill reviews credential brokers that exchange one identity proof for anoth
 
 Short-lived credentials reduce secret storage risk, but they do not automatically enforce least privilege. A broker that accepts weak caller identity, broad audience claims, long leases, stale policy, or broken revocation can mint valid credentials for lateral movement. The failure mode is subtle because downstream systems see normal authentication with non-expired credentials.
 
+## Broker Evidence Model
+
+Use this model to keep the review focused on the full issuance lifecycle, not just the word "temporary." Each edge should have policy evidence, audit evidence, and a failure mode.
+
+```mermaid
+flowchart LR
+  caller["Caller identity\nuser, workload, CI job, or agent"]
+  proof["Identity proof\nOIDC, mTLS, SA token, device/session"]
+  broker["Credential broker"]
+  policy["Policy-owned role mapping\nsubject, audience, env, resource"]
+  lease["Issued credential\nrole, principal, TTL, lease ID"]
+  target["Downstream enforcement\ncloud IAM, DB, SSH, K8s RBAC"]
+  audit["Audit trail\ncaller, decision, role, expiry"]
+  revoke["Revocation / denylist\nfuture issuance and residual session risk"]
+
+  caller --> proof --> broker
+  policy --> broker
+  broker --> lease --> target
+  broker --> audit
+  lease --> audit
+  revoke -. blocks .-> broker
+  revoke -. limits .-> lease
+  target --> audit
+```
+
+Review objective: prove that the broker only mints credentials for strongly identified callers, policy-owned roles, broker-specific audiences, bounded leases, observable downstream use, and documented revocation behavior. If any link is missing, mark it `Not Evaluable` instead of assuming ephemeral credentials are safe.
+
 ## Prompt Injection Safety Notice
 
 > This skill is for defensive review of credential broker configurations and code you own or are authorized to assess.
@@ -202,6 +229,17 @@ Agentic and CI systems need extra checks:
 ### Step 8 - Produce Findings
 
 Use this format:
+
+### Issuance Lifecycle Evidence
+
+| Stage | Required Evidence | Decision Owner | Residual Risk | Not Evaluable? |
+|---|---|---|---|---|
+| Caller proof | issuer, subject, audience, immutable caller ID, source repo/workflow/pod/user/agent |  |  |  |
+| Role mapping | policy-owned caller-to-role mapping, denied caller-chosen role, environment/resource conditions |  |  |  |
+| Lease issuance | issued role/principal, TTL, max TTL, renewal count, lease/session ID, expiry |  |  |  |
+| Downstream scope | cloud IAM/db/SSH/Kubernetes permissions proving the minted credential is narrow |  |  |  |
+| Audit correlation | broker request ID linked to downstream auth/use event and policy version |  |  |  |
+| Revocation | future issuance block, active session behavior, residual expiry window, kill switch owner |  |  |  |
 
 | Finding ID | Broker | Evidence | Severity | Required Fix |
 |---|---|---|---|---|
