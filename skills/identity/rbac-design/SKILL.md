@@ -40,6 +40,7 @@ Invoke this skill when:
 - Implementing ABAC policies using subject, resource, action, and environment attributes
 - Assessing authorization architecture for a cloud-native or multi-tenant system
 - Reviewing IaC (Terraform, CloudFormation, Pulumi) role definitions for design quality
+- Reviewing delegated administration scopes, admin units, dynamic groups, or support roles
 
 **Do NOT use this skill for:** operational access review campaigns (see `identity/access-review.md`), PAM tool configuration (see `identity/privileged-access.md`), or authentication design (see `identity/iam-review.md`).
 
@@ -246,7 +247,69 @@ RBAC-BOUND-06: OAuth scopes overly broad — default tokens get maximum permissi
 
 ---
 
-### Step 5: ABAC Policy Design
+### Step 5: Delegated Administration Scope Review
+
+**Objective:** Validate that delegated administrators can only act on the users, resources, and attributes that their business function requires.
+
+Delegated administration is not automatically excessive. A helpdesk or regional support role can be appropriate when its permissions are bounded by administrative units, resource scope, excluded populations, ticket context, and time-limited activation. Distinguish tightly scoped delegation from self-expanding or drifting authority.
+
+#### Benign Delegation Pattern
+
+```
+role: helpdesk-password-reset
+permissions:
+  - reset_password
+scope:
+  administrative_units:
+    - region-emea-standard-users
+constraints:
+  cannot_reset_privileged_users: true
+  cannot_reset_peer_helpdesk: true
+  activation_requires_ticket: true
+  expires_after: 4h
+```
+
+Treat this as lower risk when the evaluated scope excludes privileged users, peer administrators, break-glass accounts, service accounts, executives, and contractors, and when reset actions are logged with ticket evidence.
+
+#### Required Evidence
+
+Collect both the configured rule and the evaluated membership:
+
+- **Configured scope rule** - admin unit, scope tag, management group, folder, dynamic group query, or ABAC expression
+- **Current evaluated membership** - users/resources currently included in the delegated scope
+- **Excluded populations** - privileged roles, peer admins, executives, service accounts, break-glass users, contractors
+- **Rule owner and approver** - who can edit the scope rule and who approved the delegated boundary
+- **Attribute authority** - source of truth and freshness for `region`, `department`, `manager`, ownership, or group attributes
+- **Activation evidence** - ticket, JIT approval, expiry, and session logging for support/admin actions
+
+#### Scope Drift and Self-Expansion Checks
+
+```
+RBAC-DELEG-01: Delegated admin scope lacks an explicit resource or population boundary
+RBAC-DELEG-02: Dynamic group rule can expand broadly (e.g., `department != null`, wildcard org units)
+RBAC-DELEG-03: Evaluated membership includes privileged users, peer admins, break-glass accounts, or service accounts
+RBAC-DELEG-04: Delegated admin can modify attributes, group membership, ownership, or scope tags that expand its own authority
+RBAC-DELEG-05: Scope rule owner is the same population that benefits from the delegated role
+RBAC-DELEG-06: Scope changes have no approval, diff review, or size-delta monitoring
+RBAC-DELEG-07: HR/IdP attributes used for scope are stale, unauthoritative, or not integrity-protected
+RBAC-DELEG-08: Emergency/support override bypasses delegated scope without post-hoc review evidence
+RBAC-DELEG-09: Admin units, management groups, folders, or scope tags inherit from broader parents unexpectedly
+RBAC-DELEG-10: No ticket/JIT activation evidence for delegated support actions
+```
+
+#### Dynamic Group Review Examples
+
+| Scope Rule Pattern | Risk | Review Action |
+|---|---|---|
+| `user.country in ["DE", "FR", "NL"]` | Bounded regional scope | Verify evaluated membership and excluded privileged populations |
+| `user.department != null` | Pulls nearly every populated identity into scope | Flag as broad scope drift unless justified and bounded elsewhere |
+| `user.region == "EMEA"` plus admin can edit `region` | Self-expanding authority | Separate attribute administration from delegated access administration |
+| Group includes nested groups | Hidden expansion | Expand nested membership and compare to intended population |
+| HR-fed scope with delayed sync | Stale boundary | Require freshness SLA and exception handling for transfers/terminations |
+
+---
+
+### Step 6: ABAC Policy Design
 
 **Objective:** Design attribute-based policies for fine-grained authorization beyond what roles can express.
 
@@ -301,7 +364,7 @@ RBAC-ABAC-08: Obligations (logging, notification) not enforced by PEP
 
 ---
 
-### Step 6: Role Mining and Rationalization
+### Step 7: Role Mining and Rationalization
 
 **Objective:** Derive optimal roles from existing access patterns and reduce role sprawl.
 
@@ -386,8 +449,9 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 - Role Hierarchy (Step 2): [count]
 - Constraints (Step 3): [count]
 - Permission Boundaries (Step 4): [count]
-- ABAC Policies (Step 5): [count]
-- Role Mining (Step 6): [count]
+- Delegated Administration (Step 5): [count]
+- ABAC Policies (Step 6): [count]
+- Role Mining (Step 7): [count]
 
 ### Detailed Findings
 [Findings table]
@@ -436,6 +500,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
+8. **Ignoring delegated scope drift** - admin units, dynamic groups, and scope tags are security boundaries; reviewers need both the rule and the evaluated membership.
 
 ---
 
