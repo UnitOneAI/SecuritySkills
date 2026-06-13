@@ -419,6 +419,18 @@ skills:
     file: skills/compliance/hipaa-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
+  - id: analytics-export-anonymization-review
+    name: "Analytics Export Anonymization Review"
+    tags: [compliance, privacy, analytics, data-protection, anonymization]
+    role: [privacy-engineer, security-engineer, appsec-engineer, vciso]
+    phase: [design, build, review, operate]
+    activity: [review, assess, audit]
+    frameworks: [OWASP-ASVS-5.0.0, NIST-SP-800-53-Rev5]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/compliance/analytics-export-anonymization-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
   - id: nist-csf-assessment
     name: "NIST CSF 2.0 Assessment"
     tags: [compliance, nist-csf, risk, assessment]
