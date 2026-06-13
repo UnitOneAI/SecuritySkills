@@ -255,7 +255,7 @@ Delegated administration is not automatically excessive. A helpdesk or regional 
 
 #### Benign Delegation Pattern
 
-```
+```yaml
 role: helpdesk-password-reset
 permissions:
   - reset_password
@@ -284,7 +284,7 @@ Collect both the configured rule and the evaluated membership:
 
 #### Scope Drift and Self-Expansion Checks
 
-```
+```text
 RBAC-DELEG-01: Delegated admin scope lacks an explicit resource or population boundary
 RBAC-DELEG-02: Dynamic group rule can expand broadly (e.g., `department != null`, wildcard org units)
 RBAC-DELEG-03: Evaluated membership includes privileged users, peer admins, break-glass accounts, or service accounts
@@ -500,7 +500,7 @@ RBAC-MINE-06: Mining does not account for SoD constraints (mined roles may creat
 5. **Ignoring permission boundaries** — roles define what you get; boundaries define maximum what you can get. Without boundaries, misconfigured roles grant unlimited access.
 6. **Role mining without business validation** — clustering users by access patterns may replicate existing privilege creep rather than correct it.
 7. **Choosing RBAC vs. ABAC as binary** — most environments need both. RBAC for structural, ABAC for contextual. Hybrid is the norm.
-8. **Ignoring delegated scope drift** - admin units, dynamic groups, and scope tags are security boundaries; reviewers need both the rule and the evaluated membership.
+8. **Ignoring delegated scope drift** — admin units, dynamic groups, and scope tags are security boundaries; reviewers need both the rule and the evaluated membership.
 
 ---
 
