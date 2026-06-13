@@ -5,7 +5,7 @@ description: >
   storage keys, tenant/user context, file size, content type, checksums,
   post-upload processing, and replay windows. Produces findings for cross-tenant
   overwrite, unsafe content ingestion, policy-bypass uploads, stale upload URLs,
-  and background processing trust gaps mapped to OWASP API1/API3/API6/API8,
+  and background processing trust gaps mapped to OWASP API1/API3/API4/API6/API8,
   OWASP ASVS, and CWE identifiers.
 tags: [appsec, uploads, object-storage, api, validation]
 role: [appsec-engineer, security-engineer]
@@ -16,7 +16,7 @@ time_estimate: "30-60min"
 version: "1.0.0"
 author: Ziliang-H
 license: MIT
-allowed-tools: Read, Grep, Glob
+allowed-tools: [Read, Grep, Glob]
 injection-hardened: true
 argument-hint: "[upload-api-or-storage-source-directory]"
 ---
