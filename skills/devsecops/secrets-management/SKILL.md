@@ -213,6 +213,26 @@ only names a runtime secret source.
 | JWT-like `eyJ*` strings | Synthetic fixture, expired public sample, unit-test token, or documentation example with no active issuer/audience evidence | Active bearer token, refresh token, session cookie, production issuer/audience, or sensitive claims are present; never print decoded payloads |
 | Connection identifiers and resource names | Database name, queue name, package namespace, IAM role name, or endpoint identifier without credential material | Embedded username/password, signed URL, bearer token, client secret, or private key material is present |
 
+#### 2.2.4 Secret Triage Decision Flow
+
+Use this flow before assigning a numbered finding. It prevents over-reporting
+reference names as secrets while still catching dangerous JIT/OIDC trust policies.
+
+```mermaid
+flowchart TD
+    A["Candidate string, reference, or credential pattern"] --> B{"Literal credential material present?"}
+    B -- "Yes" --> C{"Synthetic, expired, placeholder, or public sample?"}
+    C -- "Yes" --> D["Exclude from findings; record triage evidence"]
+    C -- "No" --> E["Confirmed Secret Finding"]
+    B -- "No" --> F{"Runtime reference or publishable identifier only?"}
+    F -- "Yes" --> G["Maturity Note / Positive Control"]
+    F -- "No" --> H{"JIT/OIDC or workload identity policy?"}
+    H -- "Yes" --> I{"Audience, subject, branch/environment, TTL, and audit evidence bounded?"}
+    I -- "Yes" --> G
+    I -- "No" --> J["Control Finding for over-broad trust"]
+    H -- "No" --> K["Document context; do not count as a secret finding"]
+```
+
 #### 2.3 Detection Tool Configuration Review
 
 Verify that at least one secret detection tool is configured and integrated:
