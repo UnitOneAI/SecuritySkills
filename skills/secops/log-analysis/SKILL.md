@@ -121,6 +121,47 @@ Understand what each log source provides and which ATT&CK data sources it maps t
 | GCP Cloud Audit Logs | GCP | Admin activity, data access, system events | Cloud Service (DS0025) |
 | Microsoft 365 Unified Audit Log | SaaS | Exchange, SharePoint, Teams, Azure AD activity | Application Log (DS0015) |
 
+#### SaaS Audit Logs: OAuth Consent and Mailbox Rule Gates
+
+SaaS control-plane events can create durable mailbox, file, or directory access without malware, host telemetry, or unusual process activity. Treat OAuth consent, service-principal grants, inbox rules, forwarding settings, and transport rules as first-class log-analysis patterns.
+
+**High-signal event families:**
+
+| Platform | Event Family | Example Event Names | Why It Matters |
+|----------|--------------|---------------------|----------------|
+| Microsoft Entra ID | OAuth consent / delegated grants | `Add delegated permission grant`, `Consent to application` | Grants an app durable user-scoped access such as mail or files |
+| Microsoft Entra ID | Service-principal app roles | `Add app role assignment to service principal` | Grants app-only permissions that may bypass normal user sessions |
+| Microsoft Purview / Exchange | Inbox rules and forwarding | `New-InboxRule`, `Set-InboxRule`, mailbox forwarding changes | Can copy or hide mail without endpoint indicators |
+| Microsoft Purview / Exchange | Transport rules | `New-TransportRule`, `Set-TransportRule` | Tenant-wide mail redirection or suppression path |
+| Google Workspace | Third-party app authorization | OAuth app authorization / token grant events | Durable Workspace data access by external apps |
+| Google Workspace | Gmail forwarding / routing | Gmail forwarding, routing, or user setting changes | Mail exfiltration or persistence without host malware |
+
+**Evidence gates before severity assignment:**
+
+```
+SAAS-AUDIT-01: Capture actor, actor role, target app/mailbox, target resource, permission scope, and client IP
+SAAS-AUDIT-02: Distinguish user consent, admin consent, app-only grants, and automated service-principal workflows
+SAAS-AUDIT-03: Require change ticket, approver, business purpose, expiry/review date, and owner for high-risk grants
+SAAS-AUDIT-04: For forwarding rules, capture recipient domain ownership, mailbox owner approval, copy/delete behavior, and rule name
+SAAS-AUDIT-05: Map vendor-specific event names and fields; do not assume Microsoft `OfficeActivity` schema applies to Google Workspace
+SAAS-AUDIT-06: Record audit ingestion delay, retention tier, and whether advanced audit or equivalent SaaS logging is enabled
+SAAS-AUDIT-07: If SaaS audit logs are unavailable for the incident window, mark OAuth/mailbox-rule confidence as incomplete
+```
+
+**Benign patterns that still require evidence:**
+
+- Legal hold or eDiscovery export app with approved `Mail.Read.All`, a named approver, and short expiry.
+- Mailbox migration, backup, DLP, or journaling workflow with documented recipient domain and retention policy.
+- Helpdesk or automation account creating rules only for approved shared mailboxes with ticket evidence.
+- Tenant-wide admin consent during a planned deployment, followed by post-change review of granted scopes.
+
+**Suspicious patterns to prioritize:**
+
+- Unverified or newly created app granted `Mail.Read`, `Mail.ReadWrite`, `Files.Read.All`, `Directory.Read.All`, or `offline_access`.
+- Consent or app-role assignment performed by a recently compromised user, unfamiliar admin, or impossible-travel session.
+- Inbox rule that forwards externally and deletes, hides, marks read, or moves messages matching financial/security keywords.
+- Transport rule forwarding mail outside the tenant without a matching change record.
+
 ### Step 2: Critical Windows Event IDs
 
 These Event IDs are the most security-relevant events in the Windows Security Event Log. Analysts should know these by memory.
@@ -351,6 +392,7 @@ Produce log analysis findings in this structure:
 | Systems | [Hostnames, IPs, or network segments] |
 | Users | [Usernames or "all users"] |
 | Log Sources | [List of log sources analyzed] |
+| Coverage Caveats | [Missing sources, ingestion delays, retention limits, SaaS advanced audit gaps] |
 
 ### Findings Summary
 | # | Finding | Severity | ATT&CK Technique | Log Source | Evidence |
@@ -363,6 +405,7 @@ Produce log analysis findings in this structure:
 **Severity:** [P1-P4]
 **ATT&CK Mapping:** [Technique ID -- Name]
 **Log Source:** [Source]
+**Evidence Gates:** [Required context fields captured / missing]
 **Evidence:**
 [Relevant log entries, timestamps, and entity details]
 
@@ -450,6 +493,10 @@ A single Event ID can have very different meanings depending on the context. Eve
 ### Pitfall 5: Not Establishing Baselines Before Looking for Anomalies
 
 Attempting to identify anomalous behavior without knowing what normal behavior looks like leads to both false positives (flagging normal activity as suspicious) and false negatives (missing truly anomalous activity that blends into an unfamiliar baseline). Invest in baseline establishment for high-value log sources before relying on anomaly-based analysis.
+
+### Pitfall 6: Treating Missing SaaS Audit Logs as Clean SaaS Activity
+
+OAuth consent abuse, service-principal grants, mailbox forwarding, inbox rules, and transport rules may not appear in endpoint or network telemetry. If Entra, Purview, Exchange, or Google Workspace audit logs are missing, delayed, or outside retention, state that SaaS persistence/exfiltration confidence is incomplete instead of concluding no SaaS abuse occurred.
 
 ---
 
