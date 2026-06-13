@@ -5,8 +5,8 @@ description: >
   authorization context omissions in cache keys, invalidation paths, CDN
   variants, DataLoader keys, and background refresh jobs. Produces findings for
   cross-tenant data exposure, privilege-level cache poisoning, stale entitlement
-  reuse, and unsafe shared caches mapped to OWASP API1/API3/API9, OWASP ASVS,
-  and CWE identifiers.
+  reuse, and unsafe shared caches mapped to OWASP API1/API3/API5/API8/API9,
+  OWASP ASVS, and CWE identifiers.
 tags: [appsec, cache, multi-tenant, authorization, api]
 role: [appsec-engineer, security-engineer]
 phase: [design, build, review]
@@ -197,7 +197,7 @@ function createLoaders(ctx) {
 
 ### 3.4 CDN Cache Missing Vary or Authorization Controls
 
-**Risk:** OWASP API9:2023 -- Improper Inventory Management,
+**Risk:** OWASP API8:2023 -- Security Misconfiguration,
 CWE-525 -- Use of Web Browser Cache Containing Sensitive Information.
 
 ```http
@@ -341,7 +341,7 @@ filtered for the current caller.
 |---|---|---|---|
 | Cross-tenant cached object returned to another tenant | API1:2023 | CWE-639, CWE-200 | High |
 | Admin-only fields cached and replayed to normal users | API3:2023 | CWE-863, CWE-200 | High |
-| Shared CDN caches authenticated per-user response | API9:2023 | CWE-525, CWE-200 | High |
+| Shared CDN caches authenticated per-user response | API8:2023 | CWE-525, CWE-200 | High |
 | Permission cache survives role downgrade or tenant removal | API5:2023 | CWE-613, CWE-863 | Medium to High |
 | Cache key omits tenant but value is public and identical | API9:2023 | CWE-1059 | Informational |
 
@@ -428,6 +428,7 @@ skill's review process.
 - OWASP API Security Top 10 2023 -- API3: Broken Object Property Level
   Authorization
 - OWASP API Security Top 10 2023 -- API5: Broken Function Level Authorization
+- OWASP API Security Top 10 2023 -- API8: Security Misconfiguration
 - OWASP API Security Top 10 2023 -- API9: Improper Inventory Management
 - OWASP ASVS 4.0.3 -- V4 Access Control
 - OWASP ASVS 4.0.3 -- V14 Configuration

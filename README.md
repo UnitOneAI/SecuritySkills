@@ -79,7 +79,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 | Secure Code Review | `skills/appsec/secure-code-review.md` | OWASP ASVS 4.0.3, CWE Top 25 |
 | OWASP Top 10 (Web) | `skills/appsec/owasp-top-10-web.md` | OWASP Top 10 2021 |
 | API Security Review | `skills/appsec/api-security.md` | OWASP API Security Top 10 2023 |
-| Tenant-Aware Cache Key Review | `skills/appsec/tenant-aware-cache-key-review/SKILL.md` | OWASP API Security Top 10 2023, OWASP ASVS, CWE |
+| Tenant-Aware Cache Key Review | `skills/appsec/tenant-aware-cache-key-review.md` | OWASP API Security Top 10 2023, OWASP ASVS, CWE |
 | Dependency Scanning | `skills/appsec/dependency-scanning.md` | SLSA v1.0, CycloneDX, SPDX |
 
 ### AI Security
