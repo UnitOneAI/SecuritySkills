@@ -94,6 +94,35 @@ Zero Trust is an architectural approach, not a product. NIST SP 800-207 defines 
 | **ID Management** | Enterprise identity provider and credential management |
 | **SIEM** | Aggregated security telemetry for monitoring and response |
 
+#### Zero Trust Decision Evidence Flow
+
+Use this flow to anchor maturity claims in evidence. The same trace should be collected for
+representative user, service/workload, and break-glass access paths.
+
+```mermaid
+flowchart LR
+  subject["Subject\nuser, device, workload, or service"]
+  signals["Current signals\nidentity, posture, risk, data class"]
+  pe["Policy Engine\npolicy version and decision"]
+  pa["Policy Administrator\nsession, token, cert, or route action"]
+  pep["Policy Enforcement Point\nallow, deny, monitor, terminate"]
+  resource["Resource\napp, workload, service, or data"]
+  logs["Audit / SIEM correlation\nrequest ID, PEP log, downstream event"]
+  exceptions["Degraded mode / exception register\nowner, expiry, compensating controls"]
+
+  subject --> signals --> pe --> pa --> pep --> resource
+  pe --> logs
+  pa --> logs
+  pep --> logs
+  exceptions -. constrains .-> pe
+  exceptions -. constrains .-> pa
+  exceptions -. observed in .-> logs
+```
+
+Review objective: prove that access decisions are based on fresh signals, policy-owned rules,
+enforced by a concrete PEP, and visible in logs. If degraded mode or legacy exceptions exist, prove
+they are owner-scoped, time-bound, compensated, and auditable.
+
 #### Policy Decision Traceability Evidence
 
 Zero trust maturity claims must be supported by decision evidence, not only architecture diagrams.
@@ -486,6 +515,15 @@ policy, and audit requirements.
 
 ### Policy Decision Trace Samples
 [Representative allow/deny traces from Policy Engine inputs through Policy Administrator action to PEP logs]
+
+### Evidence Trace Summary
+
+| Flow | Subject Type | Policy Version | Signal Freshness | PEP Evidence | Exception/Degraded Mode | Finding? |
+|---|---|---|---|---|---|---|
+| Normal user access | User + device |  |  |  |  |  |
+| Service-to-service access | Workload/service |  |  |  |  |  |
+| CI/CD deployment access | Automation/job |  |  |  |  |  |
+| Break-glass access | Privileged/emergency |  |  |  |  |  |
 
 ### Privileged and Break-Glass Access
 [Normal privileged path, emergency path, approvals, PAW/device posture, session recording, and post-use rotation]
