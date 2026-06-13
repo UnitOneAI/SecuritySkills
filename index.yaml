@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -63,6 +63,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/appsec/api-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: tenant-aware-cache-key-review
+    name: "Tenant-Aware Cache Key Review"
+    tags: [appsec, cache, multi-tenant, authorization, api]
+    role: [appsec-engineer, security-engineer]
+    phase: [design, build, review]
+    activity: [review, assess]
+    frameworks: [OWASP-API-Security-2023, OWASP-ASVS, CWE]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/tenant-aware-cache-key-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning
@@ -588,7 +600,7 @@ roles:
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, tenant-aware-cache-key-review, dependency-scanning, prompt-injection, owasp-top-10-web]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
