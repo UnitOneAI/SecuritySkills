@@ -16,7 +16,7 @@ time_estimate: "30-60min"
 version: "1.0.0"
 author: unitoneai
 license: MIT
-allowed-tools: Read, Grep, Glob
+allowed-tools: [Read, Grep, Glob]
 injection-hardened: true
 argument-hint: "[target-file-or-directory]"
 ---
