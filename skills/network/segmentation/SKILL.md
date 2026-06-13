@@ -143,7 +143,51 @@ route {
 
 ---
 
-#### 2.3 VLAN Design Review (CIS Control 12.2)
+#### 2.3 Private Access / ZTNA Connector Review
+
+Private access brokers and ZTNA connectors can be valid PEPs when direct user-to-app routing is blocked and identity/device policy is enforced before traffic reaches the target. Do not flag the absence of user VLAN routes as a failure when the intended path is brokered private access with tight connector scope and approval evidence.
+
+**Benign brokered access pattern:**
+
+```yaml
+private_access:
+  broker: ztna.example.com
+  published_apps:
+    - name: payroll-admin
+      connector_group: finance-connectors
+      allowed_idp_groups: ["finance-admins"]
+      device_posture_required: true
+network:
+  payroll_subnet:
+    inbound_from_user_vlans: deny
+    inbound_from_connector_subnet: tcp/443
+```
+
+Review the connector subnet as a segmentation-critical asset:
+
+```
+SEG-ZTNA-01: Connector egress is broad to RFC1918 or entire internal CIDR ranges instead of allowlisted per app/port
+SEG-ZTNA-02: Published app targets include sensitive hosts without app-owner and network-owner approval
+SEG-ZTNA-03: Direct VPN/user route to the protected app remains active and less restrictive than broker policy
+SEG-ZTNA-04: Connector group failover can move apps to a broader connector subnet or different egress policy
+SEG-ZTNA-05: Wildcard published apps (e.g., `*.internal.example.com`) can expose newly created admin services
+SEG-ZTNA-06: Device posture is checked only at login and does not block connector traffic on posture failure
+SEG-ZTNA-07: Split-tunnel VPN and ZTNA broker both reach the same protected subnet without equivalent controls
+SEG-ZTNA-08: App-publishing changes bypass segmentation owner review because they occur in the ZTNA control plane
+```
+
+**Required evidence:**
+
+- Published app definitions: internal targets, ports, protocols, wildcard patterns, and connector group.
+- Connector network policy: security group/firewall egress allowlist and inbound restrictions from the broker.
+- Identity policy: allowed IdP groups, MFA, device posture, session duration, and conditional-access result.
+- Ownership evidence: app owner approval, network/segmentation owner approval, change ticket, and expiry/review date.
+- Dual-path test: prove both direct VPN/user paths and broker/connector paths enforce the intended boundary.
+- Failover evidence: connector high-availability groups preserve the same target scope and egress restrictions.
+
+---
+
+#### 2.4 VLAN Design Review (CIS Control 12.2)
 
 CIS Control 12.2 requires establishing and maintaining a secure network architecture. Evaluate VLAN design:
 
@@ -284,6 +328,12 @@ Document or verify the existence of a segmentation testing process:
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
 
+### Private Access / ZTNA Path Review
+
+| Published App | Connector Group | Internal Target(s) | Direct Route Status | Broker Policy Evidence | Finding |
+|---------------|-----------------|--------------------|---------------------|------------------------|---------|
+| payroll-admin | finance-connectors | 10.20.5.10:443 | User VLAN denied | MFA + device posture + finance-admins | Pass |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -344,6 +394,8 @@ Document or verify the existence of a segmentation testing process:
 4. **Overlooking service mesh bypass paths.** Istio and Linkerd enforce policy on mesh-enrolled workloads only. Pods that bypass the sidecar proxy (hostNetwork: true, or init container misconfiguration) are not subject to mesh policy. Verify sidecar injection is enforced.
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
+
+6. **Ignoring ZTNA connector paths.** Private-access brokers can be the intended enforcement point, but connector subnets and published-app definitions are still segmentation boundaries. Verify connector egress allowlists, direct-route denial, app-owner approval, device posture enforcement, and failover connector scope.
 
 ---
 
