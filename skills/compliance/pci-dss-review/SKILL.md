@@ -13,7 +13,7 @@ phase: [assess, operate]
 frameworks: [PCI-DSS-v4.0]
 difficulty: advanced
 time_estimate: "90-180min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -42,7 +42,7 @@ PCI DSS v4.0, published March 2022 by the PCI Security Standards Council, is the
 
 Key changes in v4.0:
 - **Customized Approach**: Alternative to the traditional Defined Approach, allowing organizations to meet security objectives with controls tailored to their environment
-- **Targeted Risk Analysis**: Two types defined — targeted risk analysis for each requirement specifying flexibility (12.3.1) and targeted risk analysis for requirements allowing variable frequency (12.3.2)
+- **Targeted Risk Analysis**: Two types defined â€” targeted risk analysis for each requirement specifying flexibility (12.3.1) and targeted risk analysis for requirements allowing variable frequency (12.3.2)
 - **Authentication enhancements**: Multi-factor authentication (MFA) required for all access into the CDE (Req 8.4.2), not just remote access
 - **Encryption**: Expanded requirements for encrypting SAD and PAN in all locations
 - **Roles and responsibilities**: Explicitly documented for every requirement (x.1.1 pattern)
@@ -130,6 +130,28 @@ Evaluate and document applicable scope reduction techniques:
 - **Outsourcing**: Move payment processing to PCI-compliant third party; confirm responsibility matrix (Req 12.8, 12.9)
 - **Cloud considerations**: CSP infrastructure may be validated but shared responsibility model must be documented
 
+#### 1.3.1 Payment Flow and Tokenization Scope Evidence Gate
+
+Do not accept scope reduction claims based only on architecture labels such as "hosted checkout," "tokenized," or "outsourced." Require evidence proving where PAN/SAD is entered, processed, transmitted, stored, displayed, logged, exported, and administered.
+
+| Evidence Gate | Required Evidence | Scope Decision Impact |
+|---|---|---|
+| Payment capture pattern | Redirect, hosted iframe/fields, embedded merchant form, virtual terminal, mobile SDK, or MOTO flow documented with browser/app origins | Distinguishes SAQ A-style redirect from SAQ A-EP/payment-page-control scenarios |
+| PAN/SAD data-flow proof | Diagram and packet/log/application evidence showing whether merchant systems ever receive PAN, SAD, tokens, or payment field data | Determines CDE, connected-to, and security-impacting systems |
+| Origin and script ownership | Merchant-controlled origins, provider origins, tag managers, payment SDKs, CSP/SRI/equivalent controls, and rendered-page evidence | Determines whether Req 6.4.3 and 11.6.1 remain applicable |
+| Provider AOC and responsibility matrix | Current provider AOC plus Req 12.8/12.9 responsibility matrix showing which PCI DSS requirements remain with the merchant | Prevents over-reliance on provider compliance alone |
+| Token reversibility | Token type, token vault owner, detokenization APIs, IAM permissions, support/admin access, and whether merchant can retrieve PAN | Tokenized systems remain in scope if merchant can detokenize or influence vault mappings |
+| PAN reintroduction paths | Refunds, chargebacks, disputes, reconciliation, exports, emails, PDFs, support screens, dashboards, webhooks, analytics, session replay, and logs | Identifies non-checkout paths that reintroduce CHD/SAD |
+| Stored payment metadata | Brand, last4, expiration, cardholder name, payment intent/customer IDs, and whether any value is CHD, SAD, or non-CHD metadata | Distinguishes display data from full PAN/SAD while preserving handling requirements |
+| SAQ/ROC decision evidence | SAQ A vs SAQ A-EP vs SAQ D/ROC rationale, assessor/QSA notes, and scope-change approvals | Makes validation type decision auditable |
+
+**Decision guidance:**
+
+- Fully outsourced redirect checkout can support SAQ A only when PAN is entered solely on provider-controlled origins, merchant pages do not host payment fields, merchant cannot retrieve PAN, and only opaque provider identifiers plus non-sensitive display data are stored.
+- Hosted fields or iframes usually keep merchant-controlled checkout pages security-impacting because merchant scripts, CSP, tag managers, redirects, and DOM integrity can affect the payment flow.
+- Tokenization reduces scope only after detokenization authority, vault administration, token mapping, logs, exports, and support workflows are reviewed.
+- Provider AOC evidence is necessary but insufficient without the Req 12.8/12.9 responsibility matrix and merchant-retained control evidence.
+
 #### 1.4 Scope Validation (Req 12.5.2)
 
 PCI DSS v4.0 requires scope confirmation at least every 12 months and upon significant changes. Verify:
@@ -170,7 +192,7 @@ Key sub-requirements:
 - **2.2.5**: Non-console administrative access encrypted using strong cryptography
 - **2.2.6**: System security parameters configured to prevent misuse
 - **2.2.7**: All non-console administrative access encrypted using strong cryptography
-- **2.3.1**: Wireless environments connected to or accessing CDE — defaults changed (keys, passwords, SNMP strings)
+- **2.3.1**: Wireless environments connected to or accessing CDE â€” defaults changed (keys, passwords, SNMP strings)
 - **2.3.2**: Wireless vendor defaults changed; wireless encryption keys changed when personnel with knowledge depart
 
 #### Requirement 3: Protect Stored Account Data
@@ -179,7 +201,7 @@ Key sub-requirements:
 - **3.1.1**: Roles and responsibilities documented
 - **3.2.1**: Data retention and disposal policies limit storage amount and retention time; quarterly process to identify/delete excess data
 - **3.3.1**: SAD not retained after authorization (full track data)
-- **3.3.1.1**: SAD on issuer side — if stored, is justified and protected with strong cryptography
+- **3.3.1.1**: SAD on issuer side â€” if stored, is justified and protected with strong cryptography
 - **3.3.2**: SAD not retained after authorization (CAV2/CVC2/CVV2/CID)
 - **3.3.3**: SAD not retained after authorization (PIN/PIN block)
 - **3.4.1**: PAN masked when displayed (BIN + last four is maximum per business need)
@@ -210,7 +232,7 @@ Key sub-requirements:
 - **5.3.1**: Anti-malware mechanisms kept current via automatic updates
 - **5.3.2**: Anti-malware performs periodic scans and active/real-time scans (or continuous behavioral analysis)
 - **5.3.2.1**: If periodic scans used, frequency defined via targeted risk analysis (new v4.0)
-- **5.3.3**: For removable electronic media — anti-malware performs automatic scans when inserted/mounted/logically connected
+- **5.3.3**: For removable electronic media â€” anti-malware performs automatic scans when inserted/mounted/logically connected
 - **5.3.4**: Audit logs for anti-malware enabled and retained per Req 10.5.1
 - **5.3.5**: Anti-malware mechanisms cannot be disabled or altered by users unless specifically documented and time-limited
 - **5.4.1**: Mechanisms to detect and protect against phishing attacks (new v4.0, mandatory March 31, 2025)
@@ -222,15 +244,64 @@ Key sub-requirements:
 - **6.2.1**: Bespoke and custom software developed securely (OWASP, CERT, SANS)
 - **6.2.2**: Software development personnel trained in relevant secure coding techniques at least every 12 months
 - **6.2.3**: Bespoke and custom software reviewed prior to release to production to identify and correct potential coding vulnerabilities (manual review, static analysis, or both)
-- **6.2.3.1**: If manual code review used — performed by individuals other than the originating code author who are knowledgeable in review techniques and secure coding
+- **6.2.3.1**: If manual code review used â€” performed by individuals other than the originating code author who are knowledgeable in review techniques and secure coding
 - **6.2.4**: Software engineering techniques prevent or mitigate common software attacks (injection, buffer overflow, insecure crypto, etc.)
 - **6.3.1**: Security vulnerabilities identified and managed (vulnerability identification sources monitored)
 - **6.3.2**: Software inventory maintained; third-party components inventoried
 - **6.3.3**: Critical/high security patches installed within one month of release
 - **6.4.1**: Public-facing web applications protected against attacks (WAF, automated vulnerability security solution reviewed at least every 12 months)
-- **6.4.2**: Public-facing web applications — automated technical solution to detect and prevent web-based attacks (WAF in front of public-facing web apps, reviewed at least every 12 months)
+- **6.4.2**: Public-facing web applications â€” automated technical solution to detect and prevent web-based attacks (WAF in front of public-facing web apps, reviewed at least every 12 months)
 - **6.4.3**: All payment page scripts managed, authorized, integrity assured (new v4.0)
 - **6.5.1-6.5.6**: Change management procedures: impact documented, authorized, functionality tested, rollback procedures, separation of duties
+
+##### E-Commerce Payment Page Script Gate (Req 6.4.3 and 11.6.1)
+
+For SAQ A, SAQ A-EP, hosted payment fields, embedded iframes, redirect flows, checkout SPAs, and tag-manager-based payment pages, do not assume that outsourcing payment processing removes payment-page script obligations. PCI DSS v4.0 requires payment page scripts to be inventoried, authorized, justified, and integrity-protected, and requires mechanisms to detect unauthorized payment-page changes.
+
+**Evidence to collect:**
+
+```
+# Locate payment page and checkout surfaces
+Grep: "checkout|payment|card|pan|iframe|hosted.fields|stripe|adyen|braintree|paypal|cybersource|worldpay" in **/*.{html,js,ts,tsx,jsx,vue,svelte,md}
+
+# Locate third-party script injection and tag managers
+Grep: "<script|script.src|createElement('script')|createElement(\"script\")|gtm|googletagmanager|segment|tealium|adobe.launch|dataLayer" in **/*.{html,js,ts,tsx,jsx,vue,svelte}
+
+# Locate integrity, CSP, and change-detection controls
+Grep: "integrity=|crossorigin=|Content-Security-Policy|script-src|nonce|hash|report-uri|report-to|Subresource Integrity|SRI|tamper|change-detection" in **/*.{html,js,ts,tsx,jsx,vue,svelte,yaml,yml,md}
+```
+
+**Script inventory evidence table:**
+
+| Payment Page | Script Source | Business Justification | Owner | Authorization Evidence | Integrity / Change Detection | Status |
+|---|---|---|---|---|---|---|
+| `/checkout` | `https://js.stripe.com/v3/` | Hosted card fields | Payments Eng | Change ticket CHG-123 | CSP allowlist + vendor monitoring + 11.6.1 alert | Pass |
+| `/checkout` | Tag manager custom HTML | Marketing analytics | Marketing | No payment-page approval | No SRI/CSP hash and no tamper alert | Fail |
+
+**What to verify for Req 6.4.3:**
+
+- Every script loaded on payment pages is inventoried, including tag-manager-injected scripts, A/B testing snippets, fraud tools, analytics pixels, chat widgets, and payment-provider libraries.
+- Each script has documented business or technical justification and an accountable owner.
+- Script additions, removals, and source changes require explicit payment-page authorization, not only general web release approval.
+- Integrity controls are in place where technically feasible, such as Subresource Integrity, CSP nonces/hashes, strict `script-src` allowlists, tag manager governance, or vendor-provided integrity assurance.
+- Dynamic scripts that cannot use SRI have compensating evidence explaining how source control, CSP, vendor controls, and monitoring provide equivalent assurance.
+
+**What to verify for Req 11.6.1:**
+
+- A change- and tamper-detection mechanism monitors payment pages as rendered to users, not only source files in the repository.
+- Detection covers unauthorized script additions, removed integrity attributes, CSP weakening, payment iframe/redirect changes, and tag-manager container changes.
+- Alerts are generated and routed to personnel who can respond promptly.
+- The mechanism runs frequently enough for the payment risk profile and retains evidence of checks, alerts, and response.
+
+**Finding classification:**
+
+| Condition | Compliance Impact |
+|---|---|
+| Payment page uses third-party or tag-manager scripts with no inventory or authorization evidence | Requirement Not in Place for 6.4.3 |
+| Payment page has no rendered-page tamper/change detection mechanism | Requirement Not in Place for 11.6.1 |
+| Script inventory excludes tag-manager-injected scripts or vendor-managed checkout scripts | Requirement Not in Place unless scope justification proves exclusion |
+| Integrity control is absent for a script that supports SRI/CSP hash/nonce controls | Requirement Not in Place or CCW required |
+| Dynamic script lacks SRI but has documented owner, authorization, CSP restriction, vendor assurance, and 11.6.1 monitoring | Requirement in Place if testing evidence supports the control objective |
 
 #### Requirement 7: Restrict Access to System Components and Cardholder Data by Business Need to Know
 
@@ -256,11 +327,11 @@ Key sub-requirements:
 - **8.3.1**: All user access authenticated via at least one factor (something you know, have, or are)
 - **8.3.2**: Strong cryptography used to render all authentication factors unreadable during storage and transmission
 - **8.3.4**: Invalid authentication attempts limited (lockout after no more than 10 attempts)
-- **8.3.5**: If passwords used — minimum 12 characters containing both numeric and alphabetic (or complexity/strength comparable); must change to 12+ characters by March 31, 2025 (formerly 7 characters)
-- **8.3.6**: Passwords reset if used as authentication factor — minimum 12 characters
+- **8.3.5**: If passwords used â€” minimum 12 characters containing both numeric and alphabetic (or complexity/strength comparable); must change to 12+ characters by March 31, 2025 (formerly 7 characters)
+- **8.3.6**: Passwords reset if used as authentication factor â€” minimum 12 characters
 - **8.3.7**: New passwords not the same as any of the last four passwords
 - **8.3.9**: Passwords changed at least every 90 days OR dynamic analysis of account security posture performed (new v4.0 option)
-- **8.3.10**: If used as sole authentication factor on customer user accounts — either 8.3.10.1 (password changed once every 72 hours) or MFA
+- **8.3.10**: If used as sole authentication factor on customer user accounts â€” either 8.3.10.1 (password changed once every 72 hours) or MFA
 - **8.4.1**: MFA implemented for all non-console administrative access to the CDE
 - **8.4.2**: MFA implemented for all access into the CDE (new v4.0, mandatory March 31, 2025)
 - **8.4.3**: MFA for all remote network access originating from outside the entity's network
@@ -314,9 +385,9 @@ Key sub-requirements:
 - **11.4.2**: Internal penetration testing covers CDE perimeter and critical systems
 - **11.4.3**: External penetration testing at least every 12 months and after significant changes
 - **11.4.4**: Exploitable vulnerabilities found during penetration testing corrected and retested
-- **11.4.5**: If segmentation used — penetration testing validates segmentation controls at least every 12 months (every 6 months for service providers)
-- **11.4.6**: Service providers — segmentation testing every 6 months
-- **11.4.7**: Multi-tenant service providers — testing confirms support for customers' external penetration testing
+- **11.4.5**: If segmentation used â€” penetration testing validates segmentation controls at least every 12 months (every 6 months for service providers)
+- **11.4.6**: Service providers â€” segmentation testing every 6 months
+- **11.4.7**: Multi-tenant service providers â€” testing confirms support for customers' external penetration testing
 - **11.5.1**: Change-detection mechanisms (FIM) deployed on critical files; alerts generated
 - **11.5.1.1**: Change-detection mechanisms respond to unauthorized changes (new v4.0)
 - **11.5.2**: IDS/IPS deployed to detect and/or prevent intrusions; all traffic in the CDE monitored
@@ -334,11 +405,11 @@ Key sub-requirements:
 - **12.3.2**: Targeted risk analysis for customized approach requirements (new v4.0)
 - **12.3.3**: Cryptographic cipher suites and protocols documented and reviewed at least every 12 months
 - **12.3.4**: Hardware and software technologies reviewed at least every 12 months
-- **12.4.1**: Service providers — review confirms personnel compliance with security policies (quarterly)
-- **12.4.2**: Service providers — additional requirement for quarterly review
+- **12.4.1**: Service providers â€” review confirms personnel compliance with security policies (quarterly)
+- **12.4.2**: Service providers â€” additional requirement for quarterly review
 - **12.5.1**: ISMS scope documented
 - **12.5.2**: PCI DSS scope documented and confirmed at least every 12 months and upon changes
-- **12.5.2.1**: Service providers — scope documented and confirmed every 6 months and upon changes
+- **12.5.2.1**: Service providers â€” scope documented and confirmed every 6 months and upon changes
 - **12.5.3**: Significant changes result in scope impact analysis
 - **12.6.1**: Formal security awareness program
 - **12.6.2**: Security awareness program reviewed at least every 12 months and updated
@@ -451,6 +522,18 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 ## Targeted Risk Analyses
 [Documentation of all TRAs performed per 12.3.1 and 12.3.2]
 
+## Payment Page Script Controls
+
+| Payment Page | Script Inventory Complete | Authorization Evidence | Integrity Control | 11.6.1 Tamper Detection | Status |
+|--------------|---------------------------|------------------------|-------------------|-------------------------|--------|
+| [URL/path] | [Yes/No] | [ticket/approval/owner] | [SRI/CSP/vendor control/CCW] | [mechanism + alert route] | [In Place/Not in Place] |
+
+## Payment Flow and Tokenization Scope Evidence
+
+| Flow / Channel | Capture Pattern | PAN/SAD Touches Merchant? | Provider AOC / Responsibility Matrix | Token Reversibility | PAN Reintroduction Paths | SAQ / Scope Decision | Evidence |
+|----------------|-----------------|---------------------------|--------------------------------------|---------------------|--------------------------|----------------------|----------|
+| [checkout/support/refund/etc.] | [redirect/hosted fields/iframe/embedded/virtual terminal] | [Yes/No/Unknown] | [artifact/link] | [none/provider-only/merchant-detokenizes] | [logs/exports/support/dashboard/etc.] | [SAQ A/A-EP/D/ROC/in scope] | [evidence reviewed] |
+
 ## Remediation Roadmap
 
 ### Critical (0-30 days)
@@ -514,11 +597,17 @@ Maintain an Information Security Policy:                Requirement 12
 
 2. **Ignoring the new v4.0 future-dated requirements.** The 64 new requirements that were best practices until March 31, 2025, are now mandatory. Common misses include: automated audit log review (10.4.1.1), phishing protection mechanisms (5.4.1), MFA for all CDE access (8.4.2), payment page script management (6.4.3), and payment page tamper detection (11.6.1).
 
-3. **Insufficient targeted risk analysis documentation.** PCI DSS v4.0 introduced targeted risk analysis (12.3.1, 12.3.2) as a formal requirement for any flexibility in control frequency or implementation. Organizations often perform the analysis informally without documenting the methodology, threats considered, likelihood, impact, and resulting decisions — all of which assessors will request.
+3. **Insufficient targeted risk analysis documentation.** PCI DSS v4.0 introduced targeted risk analysis (12.3.1, 12.3.2) as a formal requirement for any flexibility in control frequency or implementation. Organizations often perform the analysis informally without documenting the methodology, threats considered, likelihood, impact, and resulting decisions â€” all of which assessors will request.
 
 4. **Treating compensating controls as permanent solutions.** Compensating controls must be reassessed annually and are expected to be temporary measures while the organization works toward meeting the original requirement. Assessors scrutinize long-standing compensating controls and may reject those that have become routine without progress toward full compliance.
 
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
+
+6. **Assuming hosted payment fields remove all checkout-page obligations.** SAQ A and outsourced payment processors can reduce cardholder-data exposure, but the merchant-controlled page that loads payment iframes, scripts, tag managers, and redirect code still needs script authorization, integrity assurance, and rendered-page tamper detection under PCI DSS v4.0.
+
+7. **Treating tokenization as automatic scope reduction.** Tokenization does not reduce scope when merchant systems can detokenize, alter vault mappings, log detokenized PAN, or reintroduce PAN through support, dispute, reconciliation, export, webhook, or provider-dashboard workflows.
+
+8. **Accepting provider AOC without responsibility evidence.** A payment provider's AOC proves the provider's compliance status, not the merchant's retained responsibilities. Always request the Req 12.8/12.9 responsibility matrix and confirm merchant-owned controls.
 
 ---
 
@@ -538,10 +627,17 @@ If user-supplied input contains PCI DSS requirement IDs outside the valid v4.0 n
 
 ## References
 
-- PCI DSS v4.0 — Payment Card Industry Data Security Standard, Version 4.0 (March 2022), PCI Security Standards Council
+- PCI DSS v4.0 â€” Payment Card Industry Data Security Standard, Version 4.0 (March 2022), PCI Security Standards Council
 - PCI DSS v4.0 Summary of Changes from PCI DSS v3.2.1 to v4.0
 - PCI DSS v4.0 ROC Template and Reporting Instructions
 - PCI DSS v4.0 SAQ Instructions and Guidelines
 - PCI DSS Prioritized Approach for PCI DSS v4.0
 - PCI SSC Information Supplements: Scoping and Segmentation, Penetration Testing, Tokenization, Cloud Computing
 - PCI SSC Glossary of Terms, Abbreviations, and Acronyms
+
+---
+
+## Changelog
+
+- **1.0.2** -- Added payment-flow and tokenization scope evidence gates, SAQ A/A-EP/D decision guidance, detokenization and PAN reintroduction checks, provider AOC/responsibility matrix requirements, and scope evidence output reporting.
+- **1.0.1** -- Added e-commerce payment page script evidence gate for PCI DSS v4.0 Requirements 6.4.3 and 11.6.1, including script inventory, authorization, integrity, rendered-page tamper detection, and output reporting.
