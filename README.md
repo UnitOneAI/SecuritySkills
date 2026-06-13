@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -69,7 +69,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -79,6 +79,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 | Secure Code Review | `skills/appsec/secure-code-review.md` | OWASP ASVS 4.0.3, CWE Top 25 |
 | OWASP Top 10 (Web) | `skills/appsec/owasp-top-10-web.md` | OWASP Top 10 2021 |
 | API Security Review | `skills/appsec/api-security.md` | OWASP API Security Top 10 2023 |
+| Pre-Signed Upload Validation Review | `skills/appsec/pre-signed-upload-validation-review.md` | OWASP API Security Top 10 2023, OWASP ASVS, CWE |
 | Dependency Scanning | `skills/appsec/dependency-scanning.md` | SLSA v1.0, CycloneDX, SPDX |
 
 ### AI Security
@@ -177,7 +178,7 @@ Pre-configured skill sequences for common security roles. Each bundle orchestrat
 | **vCISO** | Security program leadership, risk assessment, compliance, board reporting | nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling |
 | **SOC Analyst** | Alert triage, threat hunting, incident investigation, detection engineering | alert-triage, detection-engineering, ir-playbook, log-analysis, cve-triage |
 | **Security Engineer** | Building security into products and infrastructure | secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review |
-| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web |
+| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, pre-signed-upload-validation-review, dependency-scanning, prompt-injection, owasp-top-10-web |
 | **Cloud Security Engineer** | Cloud posture, IaC review, container security, identity | aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access |
 
 ---
