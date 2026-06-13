@@ -113,6 +113,7 @@ Safer pattern:
 
 ```typescript
 const ticket = await tickets.requireOpenOwnedTicket(req.user.id, req.body.ticketId);
+const plan = await billingPlans.requireAllowedPlan(req.body.plan);
 await authz.requireSupportPermission(req.user.id, "billing.plan.change", ticket.customerId);
 await billing.changePlan({ customerId: ticket.customerId, plan, actor: req.user.id });
 ```
@@ -195,7 +196,7 @@ Review questions:
   money, or export data?
 - Are step-up requirements risk based, including unusual location, new device,
   high-value customer, or high-impact action?
-- Are service-to-service calls scoped to the approved action and short lived?
+- Are service-to-service calls scoped to the approved action and short-lived?
 
 Finding trigger:
 
