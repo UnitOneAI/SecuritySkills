@@ -446,6 +446,20 @@ Score each criterion using the following maturity scale:
 | 3 | **Defined** | Controls are implemented and documented. Procedures are standardized. Evidence exists but may not cover the full audit period. |
 | 4 | **Managed** | Controls are fully implemented, documented, monitored, and operating effectively. Evidence covers the full audit period. Ready for SOC 2 Type II examination. |
 
+### Deficiency Closure Score Caps
+
+Before assigning a final score, check whether the criterion has known deficiencies in audit findings, readiness notes, risk registers, exceptions, vulnerability tickets, or control monitoring records. Apply the following caps when deficiency closure evidence is incomplete:
+
+| Deficiency Condition | Score Cap | Evidence Required to Remove Cap |
+|----------------------|-----------|---------------------------------|
+| Open, overdue, or unowned deficiency affects the criterion | 2 - Developing | Named owner, due date, current status, and approved remediation plan. |
+| Deficiency is marked closed without implementation evidence | 2 - Developing | Remediation artifact such as policy update, configuration change, workflow evidence, ticket, or training record. |
+| Deficiency is marked closed without retest evidence | 2 - Developing | Independent retest result, sample validation, monitoring output, or readiness reviewer sign-off. |
+| Deficiency is risk accepted without governance evidence | 2 - Developing | Authorized approver, residual risk rationale, compensating controls, expiration or review date, and auditor-facing explanation. |
+| Repeated medium or low deficiencies exist in one category | Category narrative downgrade | Category-level analysis explaining concentration risk and remediation sequencing. |
+
+Track closure status in a deficiency closure register with deficiency ID, criterion, severity, owner, due date, status, remediation evidence, retest evidence, closure approval, residual risk, and score impact.
+
 ### Scoring Template
 
 Complete the following matrix for all in-scope criteria:
