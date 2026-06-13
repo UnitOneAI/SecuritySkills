@@ -138,15 +138,15 @@ SaaS control-plane events can create durable mailbox, file, or directory access 
 
 **Evidence gates before severity assignment:**
 
-```
-SAAS-AUDIT-01: Capture actor, actor role, target app/mailbox, target resource, permission scope, and client IP
-SAAS-AUDIT-02: Distinguish user consent, admin consent, app-only grants, and automated service-principal workflows
-SAAS-AUDIT-03: Require change ticket, approver, business purpose, expiry/review date, and owner for high-risk grants
-SAAS-AUDIT-04: For forwarding rules, capture recipient domain ownership, mailbox owner approval, copy/delete behavior, and rule name
-SAAS-AUDIT-05: Map vendor-specific event names and fields; do not assume Microsoft `OfficeActivity` schema applies to Google Workspace
-SAAS-AUDIT-06: Record audit ingestion delay, retention tier, and whether advanced audit or equivalent SaaS logging is enabled
-SAAS-AUDIT-07: If SaaS audit logs are unavailable for the incident window, mark OAuth/mailbox-rule confidence as incomplete
-```
+| Gate | Evidence Required |
+|------|-------------------|
+| SAAS-AUDIT-01 | Capture actor, actor role, target app/mailbox, target resource, permission scope, and client IP |
+| SAAS-AUDIT-02 | Distinguish user consent, admin consent, app-only grants, and automated service-principal workflows |
+| SAAS-AUDIT-03 | Require change ticket, approver, business purpose, expiry/review date, and owner for high-risk grants |
+| SAAS-AUDIT-04 | For forwarding rules, capture recipient domain ownership, mailbox owner approval, copy/delete behavior, and rule name |
+| SAAS-AUDIT-05 | Map vendor-specific event names and fields; do not assume Microsoft `OfficeActivity` schema applies to Google Workspace |
+| SAAS-AUDIT-06 | Record audit ingestion delay, retention tier, and whether advanced audit or equivalent SaaS logging is enabled |
+| SAAS-AUDIT-07 | If SaaS audit logs are unavailable for the incident window, mark OAuth/mailbox-rule confidence as incomplete |
 
 **Benign patterns that still require evidence:**
 
