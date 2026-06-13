@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -136,6 +136,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: support-bot-action-approval-review
+    name: "Support Bot Action Approval Review"
+    tags: [identity, auth, support-automation, approval, audit]
+    role: [security-engineer, appsec-engineer, vciso]
+    phase: [design, build, operate, review]
+    activity: [review, assess]
+    frameworks: [OWASP-ASVS, OWASP-API-Security-2023, NIST-SP-800-53, CWE]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/identity/support-bot-action-approval-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------

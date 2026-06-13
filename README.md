@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -69,7 +69,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -101,6 +101,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 | RBAC/ABAC Design | `skills/identity/rbac-design.md` | NIST RBAC, NIST SP 800-162 |
 | Zero Trust Assessment | `skills/identity/zero-trust-assessment.md` | NIST SP 800-207, CISA ZTMM v2 |
 | Privileged Access Management | `skills/identity/privileged-access.md` | CIS Controls v8, NIST SP 800-53 |
+| Support Bot Action Approval Review | `skills/identity/support-bot-action-approval-review/SKILL.md` | OWASP ASVS, OWASP API Security, NIST SP 800-53 |
 
 ### Cloud Security
 
