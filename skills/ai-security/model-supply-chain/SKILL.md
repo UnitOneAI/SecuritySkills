@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.0"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -130,6 +130,115 @@ Glob: **/config.json
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
+
+---
+
+### Step 1.1 -- Serialization Safety Evidence Gate
+
+Do not treat "the model has a checksum" as proof that loading it is safe. A checksum can prove byte stability, but it does not prove that the serialization format is non-executable or that the loader is configured defensively. Review every model-loading path for the actual artifact format, loader API, runtime framework version, and any explicit unsafe override.
+
+**What to look for in code and configuration:**
+
+- Pickle-backed model artifacts (`.pkl`, `.pickle`, `.pt`, `.pth`, many `.bin` checkpoints) loaded in application, conversion, migration, evaluation, or CI jobs.
+- `torch.load(...)` calls that omit `weights_only=True`, set `weights_only=False`, or rely on an older PyTorch default where full pickle loading is still the default behavior.
+- `from_pretrained(...)` or framework wrappers that load pickle-backed checkpoints indirectly, especially when `use_safetensors` is absent or set to `False`.
+- `trust_remote_code=True`, custom model classes, or conversion scripts that execute registry-provided Python code before or during model loading.
+- Safetensors conversion pipelines that download the unsafe pickle artifact first, convert it on a developer workstation or CI runner, and then publish the converted file without recording the original digest, converter version, isolated environment, and post-conversion hash.
+- Allowlisted safe globals, custom unpicklers, or compatibility shims that are broader than the exact tensor classes needed for the model.
+
+**Detection methods using allowed tools:**
+
+```
+# Locate model artifacts and potentially executable checkpoint formats
+Glob: **/*.{pkl,pickle,pt,pth,bin,ckpt,safetensors,onnx,gguf,ggml}
+
+# Locate direct and indirect loading paths
+Grep: "torch.load|pickle.load|joblib.load|dill.load|cloudpickle|from_pretrained|load_state_dict" in **/*.py
+Grep: "weights_only|use_safetensors|trust_remote_code|safe_globals|add_safe_globals" in **/*.py
+
+# Locate conversion and publishing workflows
+Grep: "convert|safetensors|save_pretrained|push_to_hub|upload_file" in **/*.{py,yaml,yml,sh}
+```
+
+**Serialization evidence table:**
+
+| Model | Artifact | Loader | Safety Control | Conversion Provenance | Status |
+|---|---|---|---|---|---|
+| `classifier-v3` | `model.safetensors` | `safe_open` | Non-pickle format, pinned digest | Internal registry conversion job with source digest and output hash | Pass |
+| `legacy-ranker` | `ranker.pth` | `torch.load` | `weights_only=False` for custom class | No isolated conversion record | Fail |
+
+**Review questions:**
+
+- Is the runtime using a PyTorch version where `weights_only=True` is guaranteed, or is the code explicit so the result is stable across environments?
+- If unsafe loading is required for a legacy checkpoint, is it restricted to an isolated conversion job with no production secrets, no network egress, and a signed converted artifact as the only promoted output?
+- Does production load the converted non-pickle artifact, rather than repeating unsafe deserialization at runtime?
+- Are `trust_remote_code=True` and custom model classes reviewed as executable code dependencies with pinned revisions and code-owner approval?
+- Can the team reproduce which source artifact, digest, conversion tool version, and output digest produced the production model?
+
+**Finding classification:**
+
+| Condition | Severity |
+|---|---|
+| Production or CI loads an untrusted pickle-backed model with `weights_only=False` or equivalent unsafe loader behavior | Critical |
+| Unsafe deserialization is required for conversion but runs with production secrets, broad filesystem access, or network egress | High |
+| `from_pretrained` can fall back to pickle-backed weights when a safetensors artifact exists | High |
+| `trust_remote_code=True` is enabled without pinned revision and code review evidence | High |
+| Conversion to safetensors lacks source digest, converter version, isolated environment, or output digest evidence | Medium |
+| Loader behavior depends on framework defaults instead of explicit `weights_only` / `use_safetensors` settings | Medium |
+
+---
+
+### Step 1.2 -- Model Component Inventory and Runtime Promotion Gate
+
+Do not treat "model" as a single artifact when the deployment uses multiple independently sourced components. Inventory and verify the provenance of each component that can change model behavior or execute code.
+
+**Component inventory requirements:**
+
+| Component Type | Examples | Required Evidence |
+|---|---|---|
+| Base model | Foundation model, embedding model, classifier checkpoint | Source registry, immutable revision or digest, format, license, model card, checksum or signature, approval to use. |
+| Adapter | LoRA, QLoRA, PEFT adapter, task vector | Adapter source, immutable revision/hash, adapter card, fine-tuning dataset lineage, merge approver, merged output hash, rollback path. |
+| Tokenizer/processor | Tokenizer files, image/audio processors, chat templates | Source revision, hash, compatibility with base model, approval for template changes. |
+| Custom remote code | `trust_remote_code=True`, custom modeling/tokenization files | Default-deny policy, pinned commit, code owner review, SCA results, sandbox/allowlist justification. |
+| Derived artifact | GGUF, GGML, ONNX, TensorRT, quantized weights | Source model hash, converter version, conversion command/config, quantization settings, output hash, signer, promotion path. |
+| Runtime cache | Startup-downloaded weights, Hugging Face cache, mounted model volume | Build-time vs runtime source, offline mode, immutable cache policy, trusted hash verification before serving traffic. |
+
+**Environment classification gate:**
+
+Classify every model reference before assigning severity:
+
+| Environment | Examples | Severity Guidance |
+|---|---|---|
+| Production serving | Online inference, batch scoring, customer-facing embedding pipeline | Treat unpinned, unsigned, runtime-downloaded, or remotely executable artifacts as High or Critical depending on execution path. |
+| Training or fine-tuning | Jobs that produce weights, adapters, or deployment artifacts | Treat mutable sources or missing provenance as High because outputs may enter production. |
+| Release-gating evaluation | Benchmarks, regression tests, smoke tests that block deployment | Treat unpinned or mutable model sources as Medium to High depending on whether results affect release decisions. |
+| Offline research or documentation | Local experiments, examples, docs, non-gating notebooks | Usually Low or Informational unless artifacts are promoted or secrets/network access are exposed. |
+| Test-only compatibility check | CI smoke test that does not ship artifacts or gate production decisions | Prefer reproducibility finding over High supply-chain finding unless the test writes artifacts or influences release approval. |
+
+**Runtime download checks:**
+
+- Determine whether weights, adapters, tokenizers, and remote code are fetched at image build time, deployment time, or process startup.
+- If downloads occur at runtime, require restricted egress to an internal immutable registry or allowlisted source.
+- Require startup verification against a trusted digest or signature before the model serves traffic.
+- Require offline mode or immutable cache controls so a restarted container cannot silently pick up a different artifact.
+- Treat container SBOM or image signing as incomplete when the actual model artifact is fetched after the image build.
+
+**Adapter and derived artifact checks:**
+
+- Record base-model and adapter provenance separately; do not let a trusted base model hide an untrusted adapter.
+- Preserve adapter lineage after `merge_and_unload()` or equivalent merge operations by recording source adapter hash, merge command, output hash, and approver.
+- Track conversion and quantization provenance for GGUF/GGML/ONNX/TensorRT artifacts, including source digest, converter version, quantization config, output digest, signer, and promotion location.
+- Verify rollback paths for merged adapters and converted artifacts so production can return to the last approved base or merged model.
+
+**Finding classification:**
+
+| Condition | Severity |
+|---|---|
+| Production runtime downloads model weights, adapters, tokenizer, or remote code from a mutable public source without trusted digest verification | High |
+| `trust_remote_code=True` uses a branch/tag or unreviewed repository in a production or release-gating path | High |
+| LoRA/PEFT adapter is unpinned or lacks adapter card, data lineage, merge approval, or output hash before production merge | High |
+| Quantized or converted artifact lacks source digest, converter version, conversion config, output hash, or signer | Medium |
+| Unpinned public model appears only in a non-gating smoke test and does not produce artifacts | Low |
 
 ---
 
@@ -378,9 +487,21 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 ## Model Inventory
 
-| Model | Source | Format | Checksum Verified | Pinned Version | Model Card |
-|---|---|---|---|---|---|
-| [name] | [source] | [format] | [Yes/No] | [Yes/No] | [Complete/Partial/Missing] |
+| Component | Type | Environment | Source | Revision / Hash | Format | Loader / Execution Risk | Provenance Evidence | Promotion Status |
+|---|---|---|---|---|---|---|---|---|
+| [name] | [base / adapter / tokenizer / remote-code / derived / runtime-cache] | [prod/training/release-gating/test/docs] | [source] | [hash] | [format] | [Safe / Unsafe / Unknown] | [model card / adapter card / attestation / approval] | [approved / blocked / research-only] |
+
+## Runtime Download and Promotion Review
+
+| Artifact | Build-Time or Runtime | Source / Registry | Egress Restriction | Trusted Digest Verification | Offline / Immutable Cache | Finding |
+|---|---|---|---|---|---|---|
+| [artifact] | [build/runtime/startup] | [source] | [Yes/No] | [Yes/No] | [Yes/No] | [finding] |
+
+## Adapter and Derived Artifact Provenance
+
+| Base Model | Adapter / Derived Artifact | Source Revision | Dataset / Conversion Lineage | Merge / Conversion Approver | Output Hash | Rollback Path |
+|---|---|---|---|---|---|---|
+| [base] | [adapter/gguf/onnx/etc.] | [hash] | [dataset/converter/config] | [approver] | [hash] | [path] |
 
 ## Findings
 
@@ -401,6 +522,10 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Domain | Current State | Target State | Gap Severity |
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
+| Serialization safety | [description] | [recommendation] | [severity] |
+| Component inventory | [description] | [recommendation] | [severity] |
+| Runtime download policy | [description] | [recommendation] | [severity] |
+| Adapter and derived artifact provenance | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
@@ -441,6 +566,12 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
 
+6. **Converting unsafe checkpoints without preserving provenance.** Converting `.bin`, `.pt`, or `.pth` files to `safetensors` is useful only when the conversion job is isolated and records the source digest, converter version, output digest, and promotion approval. Otherwise the team may replace a runtime deserialization risk with an untraceable supply-chain step.
+
+7. **Treating adapters and runtime caches as part of the trusted base model.** A pinned base model does not prove that a LoRA/PEFT adapter, tokenizer, chat template, runtime cache, or quantized derivative is trustworthy. Each behavior-changing component needs its own source, revision, approval, hash, and rollback evidence.
+
+8. **Over-scoring test-only model references.** An unpinned public model in a non-gating smoke test is a reproducibility concern, but it is not automatically a High production supply-chain issue unless the test gates release, writes artifacts, or influences model promotion.
+
 ---
 
 ## References
@@ -456,3 +587,10 @@ Assess whether architectural and procedural controls exist to detect model backd
 - Hugging Face. "Safetensors: A Simple and Safe Serialization Format" -- https://huggingface.co/docs/safetensors
 - NIST AI Risk Management Framework 1.0 -- https://www.nist.gov/aiframework
 - Open Source Security Foundation (OpenSSF) -- https://openssf.org
+
+---
+
+## Changelog
+
+- **1.0.2** -- Added granular model component inventory, environment classification, adapter provenance, runtime download checks, derived artifact provenance, and output tables for promotion evidence.
+- **1.0.1** -- Added serialization safety evidence gate covering pickle-backed checkpoints, explicit loader controls, safetensors conversion provenance, `trust_remote_code`, and loader-safety output reporting.
