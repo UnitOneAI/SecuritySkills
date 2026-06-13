@@ -3,16 +3,16 @@ name: sast-config
 description: >
   Reviews and tunes SAST tool configurations against OWASP ASVS 4.0.3 and
   CWE Top 25. Auto-invoked when reviewing Semgrep rules, CodeQL queries, SAST
-  CI integration, or false positive triage workflows. Produces a SAST maturity
-  assessment covering rule authoring, severity tuning, custom rule development,
-  and CI integration patterns.
+  CI integration, SARIF upload workflows, or false positive triage workflows.
+  Produces a SAST maturity assessment covering rule authoring, severity tuning,
+  custom rule development, scanner-failure handling, and CI integration patterns.
 tags: [devsecops, sast, semgrep, codeql]
 role: [security-engineer, appsec-engineer]
 phase: [build]
 frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -22,7 +22,7 @@ argument-hint: "[target-file-or-directory]"
 
 # SAST Tool Configuration and Tuning
 
-A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, and CI integration. All findings map to ASVS controls and CWE identifiers.
+A structured, repeatable process for reviewing and tuning Static Application Security Testing (SAST) tool configurations against OWASP ASVS 4.0.3 verification requirements and the CWE Top 25 Most Dangerous Software Weaknesses. This skill covers Semgrep rule authoring, CodeQL query patterns, severity tuning, false positive management, custom rule development, scanner-failure handling, SARIF upload integrity, and CI integration. All findings map to ASVS controls and CWE identifiers.
 
 ---
 
@@ -91,6 +91,27 @@ Categorize by:
 - **Rule source:** Default/managed rules, community rules, custom org rules.
 - **Integration point:** Pre-commit, PR check, scheduled scan, IDE plugin.
 
+#### 1.1 Repository Coverage Inventory
+
+Before judging whether SAST coverage is adequate, build an inventory of what must be scanned. A monorepo can have multiple package roots, languages, generated-code directories, and deployment artifacts; the presence of one SAST workflow does not prove all production code is covered.
+
+| Field | Evidence |
+|---|---|
+| Language and framework | `package.json`, `pyproject.toml`, `go.mod`, `pom.xml`, `build.gradle`, `Cargo.toml`, framework imports, route/controller files |
+| Package or service root | Application/service directory, workspace package, deployable module, container build context |
+| Deployment artifact path | Dockerfile, build output, package manifest, release bundle, serverless function path |
+| Generated-code path | OpenAPI/protobuf clients, ORM migrations, generated server stubs, vendored SDKs |
+| Test/fixture path | `tests/fixtures`, `testdata`, `benchmark/vulnerable`, security labs, docs/examples |
+| SAST tool coverage | Semgrep/CodeQL/Sonar/Bandit config, language matrix, path includes/excludes, scheduled scans |
+| Owner | Team or service owner accountable for coverage gaps |
+
+```
+| Root | Language / Framework | Deploys? | Generated? | Test Fixture? | SAST Tool | Scan Mode | Coverage Status | Owner |
+|------|----------------------|----------|------------|---------------|-----------|-----------|-----------------|-------|
+```
+
+**Finding classification:** An active production package root, language, or framework with no matching SAST coverage is **High** for CWE Top 10-relevant stacks and **Medium** otherwise. Missing owner or deployment evidence is **Medium**.
+
 ---
 
 ### Step 2: Rule Coverage Analysis Against CWE Top 25
@@ -152,6 +173,22 @@ node_modules/
 - Custom rule directory exists and contains organization-specific rules.
 - `.semgrepignore` exclusions are justified (test files are acceptable; production code paths are not).
 - `--error` flag is used in CI to fail the pipeline on findings (not just report).
+
+#### 3.1.1 Non-Runtime Fixture and Generated-Code Classification
+
+Do not report intentionally vulnerable SAST rule fixtures as production vulnerabilities when they are clearly non-runtime artifacts. Conversely, do not blindly ignore all test, generated, or example paths without evidence that they are absent from deployed artifacts.
+
+| Path Type | Required Evidence | Finding If Missing |
+|---|---|---|
+| Intentionally vulnerable fixture | Path under test corpus, rule test, security lab, or documentation example; excluded from packaging/deployment; owner confirms purpose | Medium false-positive risk if reported as production vulnerability |
+| Generated client code | Generator source/config tracked; generated output not hand-edited; vulnerability belongs in generator/template or upstream SDK | Low/Informational unless deployed and hand-edited |
+| Generated server stub | Deployment evidence and hand-edit status checked; auth/input-validation responsibilities documented | Medium/High if deployed generated handlers are excluded without compensating checks |
+| Test helper or integration service | Not copied into production image/package; no production credentials or exposed service path | Medium if ignored without packaging evidence |
+| Docs/example insecure snippet | Documentation-only path, not compiled or packaged; clearly labeled insecure if educational | Low unless users are instructed to deploy it |
+
+Review `.semgrepignore`, `paths-ignore`, CodeQL `paths-ignore`, SARIF upload filters, and scanner CLI excludes against build/deployment evidence. A path is low risk only when it is absent from containers, release packages, serverless bundles, and runtime import paths.
+
+**Finding classification:** Vulnerable fixtures reported as production findings without non-runtime classification are **Low/Medium** process findings. Production or deployable paths excluded as "test/generated" without package/deployment evidence are **High** when they can contain CWE Top 10 issues.
 
 #### 3.2 Custom Semgrep Rule Authoring (YAML format)
 
@@ -260,6 +297,21 @@ query-filters:
 - Custom query directory exists for org-specific patterns.
 - `paths-ignore` does not exclude production source code.
 - `query-filters` exclusions have documented justification.
+
+#### 4.1.1 CodeQL Build Mode and Matrix Coverage
+
+For compiled languages and monorepos, "CodeQL completed" is not the same as "CodeQL covered every deployable target." Review the language matrix, build mode, generated source handling, and logs for skipped targets.
+
+| Check | Required Evidence |
+|---|---|
+| Language matrix completeness | Every active language from the repository coverage inventory appears in the CodeQL matrix or is covered by another SAST tool. |
+| Package root coverage | Each deployable package/service root is included in checkout, build, dependency install, and analysis scope. |
+| Build mode | Compiled languages use successful autobuild or explicit manual build steps for the relevant targets. |
+| Build failure behavior | Dependency install, compilation, extraction, and database creation failures fail the job rather than producing partial "no findings" results. |
+| Generated source handling | Generated sources that are deployed or hand-edited are included or covered at generator/template level. |
+| Skipped target reporting | Logs or summaries identify skipped projects, unsupported languages, and excluded paths. |
+
+**Finding classification:** CodeQL matrix omits an active production language or package root is **High**. Compiled-language CodeQL uses missing/incorrect build steps while still passing is **High**. Generated deployed stubs excluded without generator/template coverage are **Medium/High** depending on exposure.
 
 #### 4.2 CodeQL Custom Query Structure
 
@@ -435,13 +487,65 @@ jobs:
 
 ---
 
+#### 6.2 Scanner Failure and SARIF Integrity Gates
+
+A required SAST status check is only meaningful when it proves that the scanner actually ran, completed successfully, and uploaded results from the current commit. Workflows sometimes make SAST look green by allowing scanner failures, uploading stale or empty SARIF, or continuing after dependency/build setup failed.
+
+**Patterns that can create false assurance:**
+
+```yaml
+# BAD: scanner failure is swallowed, but later steps still upload SARIF
+- run: semgrep ci --sarif --output semgrep.sarif || true
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: semgrep.sarif
+
+# BAD: job is green even when the scanner step fails
+- name: Run SAST
+  continue-on-error: true
+  run: npm run sast
+
+# BAD: upload always runs without checking that analysis produced current results
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: results.sarif
+```
+
+**What to verify:**
+
+- Scanner steps do not use `continue-on-error: true`, `|| true`, `; true`, broad `if: always()`, or shell wrappers that hide non-zero exit codes unless a separate gate fails the job on scanner failure.
+- SARIF upload steps depend on successful analysis steps and do not upload stale artifacts from previous jobs, caches, or fallback files.
+- SARIF files are generated from the current commit/SHA and contain at least one valid run with tool metadata, rule metadata, and result counts or explicit zero-result evidence.
+- Dependency install, build/autobuild, language extraction, and CodeQL database creation failures fail the SAST job instead of producing a partial "no findings" report.
+- Baseline or diff-aware scans are paired with scheduled full scans, and PR checks clearly distinguish "no new findings" from "analysis did not complete."
+- Required branch protection points at the analysis job outcome, not only a SARIF upload, notification, or wrapper job that can pass independently.
+- Diff-only or baseline PR scans document blind spots for cross-file taint, old vulnerable sinks, sanitizer changes, generated-code changes, and framework configuration changes.
+
+**Finding classification:** Scanner failures swallowed by `continue-on-error`, `|| true`, or equivalent wrappers are **High**. Uploading SARIF without proving it belongs to the current commit is **High**. Uploading empty or partial SARIF without an explicit successful-analysis marker is **Medium**. Required status checks that track only a wrapper/upload job instead of the scanner result are **High**. Diff-only scanning without scheduled full-repo analysis is **Medium**, or **High** when it is the only gate for cross-file taint-capable languages/frameworks.
+
+**Failure integrity record:**
+
+```
+SAST Failure Integrity:
+- Scanner command:              [command/action]
+- Failure handling:             [fail-fast / continue-on-error / shell wrapper]
+- SARIF source:                 [generated in job / artifact download / cache / external]
+- Current commit binding:       [SHA/run ID evidence]
+- Empty-result handling:        [valid zero findings / partial scan / unknown]
+- Required check target:        [scanner job / wrapper job / upload job]
+- Status:                       [Pass/Fail/Not Evaluable]
+```
+
+---
+
 ## Findings Classification
 
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No SAST tooling deployed; CWE Top 5 weaknesses with zero rule coverage for languages in active use. |
-| **High** | SAST not a required CI check; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
-| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
+| **High** | SAST not a required CI check; scanner failures hidden by `continue-on-error`, `|| true`, or wrapper jobs; SARIF upload not bound to current analysis; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
+| **Medium** | CWE 11-25 coverage gap; empty/partial SARIF without explicit successful-analysis evidence; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%; missing non-runtime fixture classification. |
 | **Low** | Rule naming convention inconsistencies; missing metadata on custom rules; suboptimal scan performance; cosmetic configuration issues. |
 
 ---
@@ -457,6 +561,12 @@ jobs:
 - Configuration files analyzed: <list of file paths>
 - Date: <assessment date>
 - Frameworks applied: OWASP ASVS 4.0.3, CWE Top 25
+
+### Repository Coverage Inventory
+
+| Root | Language / Framework | Deploys? | Generated? | Test Fixture? | SAST Tool | Scan Mode | Coverage Status | Owner |
+|------|----------------------|----------|------------|---------------|-----------|-----------|-----------------|-------|
+| <path> | <language/framework> | Yes/No | Yes/No | Yes/No | <tool> | <full/diff/baseline> | <covered/gap/not evaluable> | <owner> |
 
 ### CWE Top 25 Coverage
 
@@ -474,6 +584,27 @@ jobs:
 | Required status check | Yes/No | <branch protection config> |
 | Scheduled full scan | Yes/No | <cron schedule> |
 | Results dashboard | Yes/No | <dashboard URL or tool> |
+
+### SAST Failure Integrity
+
+| Check | Status | Evidence |
+|-------|--------|----------|
+| Scanner step fails closed | Yes/No | <workflow step and shell flags> |
+| SARIF generated for current commit | Yes/No | <commit SHA, run ID, artifact source> |
+| Empty results distinguish success from skipped analysis | Yes/No | <SARIF run metadata or scanner summary> |
+| Required check tracks scanner outcome | Yes/No | <branch protection or required status check> |
+
+### CodeQL Build and Monorepo Coverage
+
+| Language / Root | Matrix Entry | Build Mode | Build Evidence | Generated Source Handling | Skipped Targets | Status |
+|-----------------|--------------|------------|----------------|---------------------------|-----------------|--------|
+| <language/root> | <matrix value> | <autobuild/manual/none> | <workflow/log evidence> | <included/excluded/template coverage> | <none/list> | <pass/fail/not evaluable> |
+
+### Fixture / Generated-Code Classification
+
+| Path | Classification | Packaged / Deployed? | Evidence | SAST Treatment | Status |
+|------|----------------|----------------------|----------|----------------|--------|
+| <path> | <fixture/generated/docs/test helper> | Yes/No | <build/package evidence> | <scan/exclude/lower severity> | <accepted/finding> |
 
 ### Findings
 
@@ -536,6 +667,12 @@ jobs:
 
 5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
+6. **Treating SARIF upload as proof that SAST ran.** A workflow can upload stale, empty, or partial SARIF after the scanner failed if it uses `continue-on-error`, `|| true`, broad `if: always()`, or wrapper jobs. Required checks must fail on scanner failure and prove results came from the current commit.
+
+7. **Treating monorepo SAST presence as monorepo SAST coverage.** A single green CodeQL or Semgrep workflow may cover only one language, package root, or build mode. Always compare scanner config to the repository coverage inventory.
+
+8. **Reporting intentionally vulnerable fixtures as production vulnerabilities.** Rule-test corpora, security labs, and documentation examples need non-runtime evidence. Without that evidence, classify the path, not just the finding text.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -564,4 +701,6 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 
 ## Changelog
 
+- **1.1.1** -- Added repository coverage inventory, non-runtime fixture and generated-code classification, CodeQL build-mode/matrix coverage gates, diff-only scan blind-spot guidance, and output tables for monorepo coverage evidence.
+- **1.1.0** -- Added scanner-failure and SARIF integrity gates covering hidden scanner failures, stale or empty SARIF uploads, current-commit binding, and required-check outcome evidence.
 - **1.0.0** -- Initial release. Full coverage of SAST configuration review against OWASP ASVS 4.0.3 and CWE Top 25, with Semgrep and CodeQL patterns.
