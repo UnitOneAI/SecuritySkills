@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-13"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -75,6 +75,18 @@ skills:
     difficulty: intermediate
     time_estimate: "15-30min"
     file: skills/appsec/dependency-scanning/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: browser-pdf-redaction-integrity-review
+    name: "Browser PDF Redaction Integrity Review"
+    tags: [appsec, privacy, redaction, pdf, document-export]
+    role: [appsec-engineer, security-engineer, privacy-engineer]
+    phase: [design, build, review]
+    activity: [review, assess]
+    frameworks: [OWASP-ASVS, CWE, NIST-SP-800-53]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/browser-pdf-redaction-integrity-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Identity -------------------------------------------------------------

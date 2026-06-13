@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -69,7 +69,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -80,6 +80,7 @@ Each skill is a directory with `SKILL.md` as the entrypoint, following the [Agen
 | OWASP Top 10 (Web) | `skills/appsec/owasp-top-10-web.md` | OWASP Top 10 2021 |
 | API Security Review | `skills/appsec/api-security.md` | OWASP API Security Top 10 2023 |
 | Dependency Scanning | `skills/appsec/dependency-scanning.md` | SLSA v1.0, CycloneDX, SPDX |
+| Browser PDF Redaction Integrity Review | `skills/appsec/browser-pdf-redaction-integrity-review/SKILL.md` | OWASP ASVS, CWE, NIST SP 800-53 |
 
 ### AI Security
 
