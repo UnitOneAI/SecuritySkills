@@ -241,7 +241,7 @@ Preserve:
 1. Tool-call timeline: timestamp, tool name, target system, request summary, response summary
 2. Human approval events: who approved, what was approved, timestamp, and exact action boundary
 3. External action IDs: created issue/PR/message/ticket/form IDs, URLs, or API request IDs
-4. Prompt/context evidence: source list plus hashes or sealed copies; avoid raw sensitive prompts in reports
+4. Prompt/context evidence: sealed copies of mutable tickets, chats, web pages, repository files, and retrieved context; include hashes, source IDs, timestamps, and redacted report summaries
 5. MCP/plugin/server logs: server name, permission scope, request IDs, errors, and retention window
 ```
 
@@ -258,7 +258,9 @@ Preserve:
 
 **Privacy and secret-handling boundary:**
 - Do not collect raw cookies, bearer tokens, passwords, private keys, or full customer data unless legal/incident authorization explicitly requires sealed evidence.
-- Prefer hashes, source locations, short summaries, and sealed evidence containers over pasting secrets or private prompts into reports.
+- Preserve sealed copies for mutable prompt/context sources whenever authorized; a hash or URL alone cannot reconstruct a poisoned instruction after the source changes or is deleted.
+- If prompt/context content cannot be retained, document the reason, source ID/URL, collection timestamp, collector, hash/reference, and the best available redacted excerpt or immutable snapshot.
+- Prefer sealed evidence containers, hashes, source locations, and short report summaries over pasting secrets or private prompts into reports.
 - Document any redaction: field name, reason for redaction, examiner, and where the sealed original is stored.
 
 ### Step 4: Non-Volatile Data Capture (Disk Imaging)
@@ -424,6 +426,7 @@ the order of collection, and any evidence that could not be obtained.]
 | Artifact | Source | Run/Session ID | Collection Time (UTC) | Hash/Reference | Notes |
 |---|---|---|---|---|---|
 | Tool-call timeline | [agent log path or service] | [run-id] | [timestamp] | [hash/ref] | [approval boundary, target system] |
+| Prompt/context snapshot | [ticket/chat/page/repo file] | [run-id] | [timestamp] | [hash/sealed evidence ID] | [redaction status or retention exception] |
 | Browser automation log | [profile/log path] | [run-id] | [timestamp] | [hash/ref] | [origin, extension scope] |
 | External action IDs | [GitHub/CRM/email/etc.] | [run-id] | [timestamp] | [URL/request ID] | [created or modified object] |
 
