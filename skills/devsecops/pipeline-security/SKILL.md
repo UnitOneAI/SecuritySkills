@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -252,6 +252,8 @@ on: pull_request_target
 
 - **Indirect PPE:** Workflows that execute scripts, Makefiles, or config files that exist in the repository and can be modified by a pull request.
 - **Public fork access:** Whether the repository allows workflows to run on pull requests from forks with access to secrets.
+- **Cross-workflow artifact poisoning:** Lower-trust workflows, such as pull request tests, producing artifacts that are downloaded, executed, deployed, or published by a later privileged `workflow_run` workflow.
+- **Reusable workflow privilege inheritance:** `workflow_call` callees receiving caller-granted permissions, `secrets: inherit`, OIDC, or input-controlled deploy/publish behavior.
 - Injection of untrusted input into shell commands:
 
 ```yaml
@@ -264,7 +266,26 @@ on: pull_request_target
     PR_TITLE: ${{ github.event.pull_request.title }}
 ```
 
-**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+**Trust-boundary review matrix:**
+
+| Workflow / Job | Event Source | Actor Trust | Artifact/Cache Producer | Artifact/Cache Consumer | Effective Permissions | Secrets/OIDC | Deploy/Release Impact | Status |
+|---|---|---|---|---|---|---|---|---|
+| `deploy-after-tests` | `workflow_run` from PR tests | lower trust | PR workflow artifact | privileged deploy job | write + id-token | available | deploy/publish | High risk |
+| `publish-readonly-summary` | `workflow_run` metadata only | read-only | none | none | contents: read | none | none | No finding |
+
+**`workflow_run` classification:**
+
+- Read-only metadata consumers that do not check out code, download artifacts, use secrets/OIDC, or write/publish resources should be treated as no finding or low hardening note.
+- `workflow_run` jobs that download artifacts from lower-trust workflows and execute scripts, deploy packages, publish releases, push images, or request OIDC tokens are **High** or **Critical** depending on production impact.
+- Require artifact provenance, producer workflow identity, source SHA, digest/signature verification, and explicit trust decision before privileged consumption.
+
+**Reusable workflow tracing:**
+
+- Trace `workflow_call` callers to compute effective permissions per job, not only callee YAML.
+- Flag `secrets: inherit` when the callee can publish, deploy, upload artifacts, request OIDC, or run caller-controlled scripts.
+- Review boolean/string inputs such as `publish`, `deploy`, `environment`, and `dry_run` for caller-controlled privilege switches.
+
+**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, whether PR code can influence privileged pipelines, `workflow_run` artifact boundary crossings, reusable workflow permission inheritance, and effective job permissions.
 
 ---
 
@@ -392,6 +413,9 @@ docker.sock
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Artifacts produced in untrusted PR or lower-privilege workflows consumed by higher-privilege deploy/release workflows without digest, signature, or producer-context validation.
+- Shared caches restored across pull request, protected branch, release, and deployment contexts with broad `restore-keys`.
+- Executable cache paths such as `node_modules`, virtualenvs, compiler plugins, build outputs, or tool directories reused without reinstall or integrity verification.
 
 **Grep patterns:**
 
@@ -412,9 +436,31 @@ sbom
 # Look for digest pinning in container references
 image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
+
+# Look for GitHub Actions artifact/cache boundary crossings
+actions/upload-artifact
+actions/download-artifact
+actions/cache
+restore-keys
+workflow_run
+workflow_call
+secrets: inherit
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+**Artifact/cache trust-boundary checks:**
+
+| Check | Required Evidence |
+|---|---|
+| Artifact producer trust | Event source, source SHA, branch/ref protection, and whether PR/fork code can write the artifact. |
+| Artifact consumer privilege | Effective job permissions, secrets, OIDC token availability, environment protection, release/deploy scope. |
+| Artifact integrity | Digest/signature verification, signed provenance, artifact name/path allowlist, and extraction path controls. |
+| Artifact execution | Whether downloaded artifacts are executed, sourced, imported, deployed, uploaded, or published. |
+| Cache key trust boundary | Cache key includes trust context such as event type/ref/SHA where needed; protected branch builds do not restore untrusted PR-written caches. |
+| Cache path risk | Cache stores immutable downloads only, or reinstall/hash verification occurs before executing cached contents. |
+
+**Finding classification:** Executing or deploying an artifact produced by a lower-trust workflow inside a privileged workflow is **High**, or **Critical** when it reaches production, releases, packages, or OIDC cloud credentials. Broad cache restore across PR and protected-branch contexts is **Medium**, or **High** when executable build outputs/tools are restored without integrity verification.
+
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, whether artifact/cache producer and consumer trust levels differ, and whether cached/extracted contents can execute in privileged jobs.
 
 ---
 
@@ -470,6 +516,24 @@ Produce the final report using the following structure:
   - L1: <met/not met> -- <evidence>
   - L2: <met/not met> -- <evidence>
   - L3: <met/not met> -- <evidence>
+
+### CI/CD Trust-Boundary Matrix
+
+| Workflow / Job | Event Source | Actor Trust | Artifact/Cache Producer | Artifact/Cache Consumer | Effective Permissions | Secrets/OIDC | Deploy/Release Impact | Status |
+|----------------|--------------|-------------|-------------------------|-------------------------|-----------------------|--------------|-----------------------|--------|
+| <workflow/job> | <push/pr/workflow_run/workflow_call> | <trusted/untrusted/mixed> | <source> | <consumer> | <permissions> | <available/not available> | <none/staging/prod/release> | <pass/finding> |
+
+### Artifact and Cache Boundary Review
+
+| Boundary | Producer Context | Consumer Context | Integrity Evidence | Execution/Deploy Use | Finding |
+|----------|------------------|------------------|--------------------|----------------------|---------|
+| <artifact/cache> | <event/ref/sha> | <workflow/job/permissions> | <digest/signature/provenance/cache key> | <executed/deployed/published/no> | <finding> |
+
+### Reusable Workflow Permission Trace
+
+| Caller Workflow | Callee Workflow | Caller Permissions | Secrets Inherited? | OIDC Available? | Privileged Inputs | Status |
+|-----------------|-----------------|--------------------|--------------------|-----------------|------------------|--------|
+| <caller> | <callee> | <permissions> | Yes/No | Yes/No | <publish/deploy/etc.> | <pass/finding> |
 - **Gap to next level:** <what is needed to reach the next SLSA level>
 
 ### OWASP CICD-SEC Findings
@@ -557,4 +621,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Added CI/CD trust-boundary matrix, `workflow_run` artifact poisoning classification, reusable workflow permission tracing, cache poisoning checks, effective job permission guidance, and artifact/cache boundary output tables.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
