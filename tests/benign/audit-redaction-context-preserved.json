@@ -1,0 +1,50 @@
+{
+  "case": "audit-redaction-context-preserved",
+  "description": "An audit pipeline redacts sensitive fields by schema while retaining investigation context and sink-specific event views.",
+  "producer": "admin-api",
+  "event_schema": {
+    "actorId": "stable pseudonymous identifier",
+    "tenantId": "tenant-scoped identifier",
+    "targetUserId": "stable pseudonymous identifier",
+    "action": "support.user_impersonation.start",
+    "decision": "allow",
+    "policyVersion": "iam-policy-v42",
+    "approvalId": "approval-8842",
+    "reasonCode": "customer-support-ticket",
+    "correlationId": "req-123",
+    "sensitiveFields": [
+      "authorization",
+      "cookie",
+      "resetLink",
+      "requestBody.password",
+      "requestBody.ssn",
+      "exception.stack.locals"
+    ]
+  },
+  "controls": {
+    "redaction_stage": "producer middleware before serialization and fan-out",
+    "redaction_strategy": "schema-based redaction with salted fingerprints for correlation",
+    "sink_views": {
+      "siem": "redacted security view with actor, tenant, object, action, decision, approval, policy version, and correlation ID",
+      "support": "ticket-scoped view without tokens, cookies, personal data, or raw payloads",
+      "data_lake": "encrypted restricted raw store with audited break-glass access"
+    },
+    "unmask_workflow": "requires scoped reason, approver, expiry, and records a separate redacted unmask audit event",
+    "tests": [
+      "auth header redacted before APM ingestion",
+      "nested personal fields redacted",
+      "approval context preserved",
+      "support webhook receives redacted view",
+      "debug exception locals scrubbed",
+      "unmask event audited without raw value"
+    ]
+  },
+  "pass_gates": [
+    "FAR-01",
+    "FAR-02",
+    "FAR-03",
+    "FAR-04",
+    "FAR-05",
+    "FAR-06"
+  ]
+}
