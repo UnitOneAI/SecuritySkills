@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -63,6 +63,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/appsec/api-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: background-retry-idempotency-security
+    name: "Background Retry Idempotency Security Review"
+    tags: [appsec, async, idempotency, job-queues]
+    role: [appsec-engineer, security-engineer, architect]
+    phase: [design, build, operate, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, CWE, NIST-SP-800-53]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/background-retry-idempotency-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning
@@ -389,7 +401,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md

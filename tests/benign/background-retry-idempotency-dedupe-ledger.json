@@ -1,0 +1,44 @@
+{
+  "id": "background-retry-idempotency-dedupe-ledger",
+  "skill": "background-retry-idempotency-security",
+  "classification": "benign",
+  "workflow": "entitlement_grant_worker",
+  "delivery_model": "at-least-once",
+  "risk_summary": "Duplicate deliveries return the first committed result because the worker uses a stable business idempotency key, a unique ledger insert, and replay provenance.",
+  "evidence": {
+    "queue": "entitlements.grant",
+    "retry_policy": {
+      "max_attempts": 8,
+      "backoff": "exponential",
+      "dead_letter_queue": "entitlements.grant.dlq"
+    },
+    "message": {
+      "tenant_id": "tenant-a",
+      "actor_id": "admin-17",
+      "subject_id": "user-44",
+      "resource_id": "workspace-9",
+      "action": "grant_editor",
+      "authorization_policy_version": "2026-06-01",
+      "payload_hash": "sha256:example"
+    },
+    "idempotency_key": "sha256(tenant_id,subject_id,resource_id,action,authorization_policy_version)",
+    "controls": [
+      "unique ledger constraint on idempotency_key",
+      "ledger insert and entitlement grant occur in one transaction",
+      "duplicate attempt returns prior result without changing privileges",
+      "DLQ replay requires operator approval and preserves original actor/policy context",
+      "audit log links enqueue, attempt, replay operator, and final result"
+    ]
+  },
+  "expected_assessment": {
+    "gate_results": {
+      "IDEMP-01": "pass",
+      "IDEMP-02": "pass",
+      "SIDE-EFFECT-01": "pass",
+      "RETRY-PROV-01": "pass",
+      "DLQ-01": "pass",
+      "FIN-PRIV-01": "pass"
+    },
+    "review_note": "The workflow is a useful benign comparator because replay preserves the same idempotency key and original authorization provenance."
+  }
+}

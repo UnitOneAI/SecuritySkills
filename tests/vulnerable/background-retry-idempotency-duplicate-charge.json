@@ -1,0 +1,53 @@
+{
+  "id": "background-retry-idempotency-duplicate-charge",
+  "skill": "background-retry-idempotency-security",
+  "classification": "vulnerable",
+  "workflow": "payment_capture_worker",
+  "delivery_model": "at-least-once",
+  "risk_summary": "A retry can capture the same order twice because the worker generates a fresh provider idempotency key on every attempt and records completion only after the external charge.",
+  "evidence": {
+    "queue": "payments.capture",
+    "retry_policy": {
+      "max_attempts": 5,
+      "backoff": "exponential",
+      "dead_letter_queue": "payments.capture.dlq"
+    },
+    "message": {
+      "tenant_id": "tenant-a",
+      "order_id": "ord-1001",
+      "customer_id": "cus-901",
+      "amount": 4999,
+      "currency": "USD",
+      "attempt": 2
+    },
+    "worker_pseudocode": [
+      "provider_key = uuid()",
+      "charge = payment_provider.capture(customer_id, amount, provider_key)",
+      "orders.mark_captured(order_id, charge.id)",
+      "ack_message()"
+    ],
+    "missing_controls": [
+      "stable business idempotency key",
+      "database uniqueness constraint on tenant/order/action/amount",
+      "provider idempotency key reuse across retries",
+      "safe handling for timeout after provider success"
+    ]
+  },
+  "expected_findings": [
+    {
+      "gate": "IDEMP-01",
+      "severity": "High",
+      "reason": "The idempotency key is random per attempt instead of bound to tenant, order, action, amount, and currency."
+    },
+    {
+      "gate": "IDEMP-02",
+      "severity": "High",
+      "reason": "No durable duplicate ledger prevents concurrent or replayed captures."
+    },
+    {
+      "gate": "SIDE-EFFECT-01",
+      "severity": "High",
+      "reason": "The external charge occurs before local committed state can suppress a retry."
+    }
+  ]
+}
