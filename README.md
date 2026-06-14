@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -111,7 +111,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -140,6 +140,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 |-------|------|------------|
 | IAM Security Review | `skills/identity/iam-review/` | NIST SP 800-63B, CIS Controls v8 |
 | Access Review | `skills/identity/access-review/` | CIS Controls v8, NIST SP 800-53 |
+| Browser Extension SSO Boundary Review | `skills/identity/browser-extension-sso-boundary-review/` | OWASP ASVS, NIST SP 800-53, NIST SP 800-63B |
 | RBAC/ABAC Design | `skills/identity/rbac-design/` | NIST RBAC, NIST SP 800-162 |
 | Zero Trust Assessment | `skills/identity/zero-trust-assessment/` | NIST SP 800-207, CISA ZTMM v2 |
 | Privileged Access Management | `skills/identity/privileged-access/` | CIS Controls v8, NIST SP 800-53 |
