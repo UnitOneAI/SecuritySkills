@@ -23,7 +23,7 @@ skills:
     role: [security-engineer, architect, appsec-engineer, vciso]
     phase: [design, review]
     activity: [assess, design]
-    frameworks: [STRIDE, PASTA, MITRE-ATT&CK]
+    frameworks: [STRIDE, PASTA, MITRE-ATT&CK, GDPR, Data-Residency]
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/appsec/threat-modeling/SKILL.md
