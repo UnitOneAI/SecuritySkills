@@ -1,0 +1,40 @@
+{
+  "id": "tenant-cache-key-scoped-isolated",
+  "description": "A safer cache-backed API derives authorization context first and includes tenant, actor, role, resource, and policy dimensions in cache keys.",
+  "surface": {
+    "endpoint": "GET /api/projects/{projectId}/summary",
+    "cache_layer": "redis",
+    "actor": "tenant-user",
+    "tenant_source": "server_session"
+  },
+  "controls": {
+    "lookup_after_authorization_context": true,
+    "key_dimensions": ["tenant_id", "workspace_id", "actor_id", "role_hash", "project_id", "field_set", "policy_version"],
+    "namespace": "prod:project-summary:v4",
+    "ttl_seconds": 120,
+    "membership_change_invalidation": true,
+    "role_change_invalidation": true,
+    "tenant_transfer_invalidation": true,
+    "impersonation_separate_namespace": true,
+    "private_response_headers": {
+      "Cache-Control": "private, no-store",
+      "Vary": "Authorization, Cookie, X-Tenant-ID"
+    }
+  },
+  "regression_tests": [
+    "same-tenant same-role cache hit returns expected summary",
+    "cross-tenant same project id returns miss and reauthorizes",
+    "role downgrade invalidates admin summary cache",
+    "impersonation response does not populate user cache",
+    "policy version bump invalidates stale cache entries"
+  ],
+  "pass_gates": [
+    "TCK-01",
+    "TCK-02",
+    "TCK-03",
+    "TCK-04",
+    "TCK-05",
+    "TCK-06"
+  ],
+  "review_note": "The flow is a safe comparator because cache lookup occurs after authorization context is known, keys include the dimensions that affect visibility, and sensitive cache entries are invalidated on authority changes."
+}

@@ -1,0 +1,39 @@
+{
+  "id": "tenant-cache-key-context-drop",
+  "description": "A vulnerable cache-backed API builds keys from object id and path only, so tenant and role changes can return another user's authorized response.",
+  "surface": {
+    "endpoint": "GET /api/projects/{projectId}/summary",
+    "cache_layer": "redis",
+    "actor": "tenant-user",
+    "tenant_source": "server_session"
+  },
+  "vulnerable_cache": {
+    "key_template": "project-summary:{projectId}",
+    "omitted_dimensions": ["tenant_id", "actor_id", "role_hash", "policy_version"],
+    "lookup_before_authorization": true,
+    "ttl_seconds": 3600,
+    "role_change_invalidation": false,
+    "tenant_switch_invalidation": false
+  },
+  "attack_example": {
+    "first_request": {
+      "tenant": "tenant-a",
+      "actor": "admin-a",
+      "project_id": "shared-123",
+      "cached_value": "admin-only budget and customer summary"
+    },
+    "second_request": {
+      "tenant": "tenant-b",
+      "actor": "viewer-b",
+      "project_id": "shared-123",
+      "observed": "admin-only budget and customer summary"
+    }
+  },
+  "expected_findings": [
+    "TCK-01",
+    "TCK-02",
+    "TCK-03",
+    "TCK-06"
+  ],
+  "risk": "A viewer in another tenant can receive a stale privileged cached response because the key omits tenant, actor, role, and policy context."
+}
