@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [SSVC-2.1, EPSS-v3, CISA-KEV]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -46,12 +46,14 @@ Before starting, collect or confirm:
 
 - [ ] **Vulnerability inventory:** List of CVEs or vulnerability findings pending remediation, including scanner source (Qualys, Tenable, Rapid7, Snyk, Trivy)
 - [ ] **Current SLA assignments:** Existing SLA tiers and deadlines for each finding, if previously triaged
-- [ ] **Asset inventory context:** Business criticality, exposure (internet-facing, internal, air-gapped), owner, and environment (production, staging, dev) for affected systems
+- [ ] **Asset inventory context:** Business criticality, exposure (internet-facing, internal, air-gapped), owner, environment (production, staging, dev), evidence timestamp, and source confidence for affected systems
+- [ ] **Context freshness:** Maximum TTL for internet exposure, asset criticality, owner, environment, compensating-control, KEV, and exploit-maturity evidence used in SLA decisions
 - [ ] **Patch availability:** Whether vendor patches, hotfixes, or workarounds exist for each CVE
 - [ ] **Change management constraints:** Maintenance windows, freeze periods, change advisory board (CAB) schedules
 - [ ] **Compensating controls inventory:** WAF rules, network segmentation, EDR policies, disabled features currently in place
 - [ ] **Compliance mandates:** Applicable regulatory requirements (CISA BOD 22-01, PCI DSS 4.0 Requirement 6.3.3, HIPAA, FedRAMP)
 - [ ] **Historical EPSS data:** EPSS score trends over 7/30/90 days if available (API: https://api.first.org/data/v1/epss)
+- [ ] **Retriage triggers:** Events that force SLA recalculation, including new internet exposure, external scan closure, KEV listing, exploit maturity increase, ownership transfer, service decommissioning, and business criticality changes
 
 If asset context is missing, assume internet-facing and business-critical, and flag assumptions in the output.
 
@@ -76,6 +78,8 @@ Vulnerability Inventory Entry:
 - Asset:               [hostname / IP / application name]
 - Asset Criticality:   [Critical | High | Medium | Low]
 - Exposure:            [Internet-facing | Internal | Air-gapped]
+- Exposure Evidence:   [Source, observed state, observed_at, TTL, confidence]
+- Criticality Evidence:[Source, value, observed_at, TTL, confidence]
 - Scanner Source:      [Scanner name and plugin/QID]
 - CVSS 4.0 Base:       [0.0 - 10.0]
 - EPSS Score:          [0.0 - 1.0] (as of [date])
@@ -84,7 +88,23 @@ Vulnerability Inventory Entry:
 - Patch Available:     [Yes (version) | No | Workaround Only]
 - Current SLA:         [Tier and deadline]
 - SLA Status:          [Within SLA | At Risk | Breached]
+- Context Status:      [Fresh | Stale | Contradictory | Missing]
 ```
+
+#### Asset Context Freshness Gates
+
+Asset context is part of the risk decision and must not be treated as timeless metadata. Require freshness evidence before using internet exposure or business criticality to escalate or relax an SLA.
+
+| Context Signal | Required Evidence | Suggested Max TTL | Stale-Context Action |
+|---|---|---:|---|
+| Internet exposure | External scan, attack-surface inventory, cloud security posture, load balancer/API gateway config | 24 hours for cloud assets; 72 hours for static perimeter assets | Re-scan or mark as unknown and assume exposed until verified |
+| Exposure closure | Current external scan showing closed port/path plus change ticket | 24 hours | Do not downgrade solely from historical closure |
+| Asset criticality | CMDB/service catalog record with owner and data classification | 30 days | Confirm owner/service status before using criticality to escalate |
+| Decommissioned asset | CMDB retirement record plus scanner absence or network disconnect evidence | 7 days | Treat as contradictory if scanner still reports the asset live |
+| Compensating control | Control test, WAF/ACL/EDR evidence, or validation scan | 7 days for P1/P2; 30 days for P3/P4 | Remove SLA extension until control is revalidated |
+| KEV/exploit maturity | CISA KEV feed, vendor advisory, exploit intel, or SSVC exploitation status | 24 hours | Recalculate SLA immediately when status changes |
+
+**Do not escalate solely on stale historical labels.** For example, an asset tagged `internet_exposed=true` last month may be a false escalation if current external scans show the exposure was closed within an approved change window. Conversely, if a system becomes internet-facing after triage, recalculate the patch SLA even if the original decision was internal-only.
 
 ### Step 2: Apply SLA Framework by Severity Tier
 
@@ -109,6 +129,9 @@ Assign or validate SLA tiers using the following matrix. SLA tiers are derived f
 2. **SSVC primacy:** The SSVC decision outcome is the primary driver; EPSS and CVSS serve as secondary validation
 3. **Upward adjustment only:** If EPSS or KEV status indicates higher urgency than the SSVC decision alone, escalate the tier; never use EPSS to downgrade an SSVC Immediate decision
 4. **Asset criticality modifier:** For non-critical assets (dev, test, sandbox), the SLA tier may be relaxed by one level with documented justification
+5. **Fresh-context requirement:** Exposure and criticality modifiers require non-expired evidence. If evidence is stale or contradictory, mark context as unknown and use the more conservative SLA until refreshed
+6. **Retriage on context change:** Recalculate SLA tier and deadline when internet exposure, KEV status, exploit maturity, asset owner, environment, compensating-control effectiveness, or business criticality changes
+7. **Exception tightening:** If exploit availability changes from no public exploit to PoC or active exploitation, shorten outstanding exception due dates to the maximum allowed for the new tier
 
 ### Step 3: EPSS Trend Analysis
 
@@ -225,6 +248,8 @@ A risk acceptance is only valid when ALL of the following conditions are met:
 3. **Residual risk quantified:** The remaining risk after compensating controls is documented with potential business impact
 4. **Expiration date set:** Every risk acceptance has a mandatory review/expiration date (maximum 90 days for P1-P2, 180 days for P3-P4)
 5. **Appropriate authority approval:** Risk acceptance is signed by the appropriate level based on severity tier
+6. **Fresh context evidence:** Exposure, criticality, and compensating-control evidence used to justify the exception are within their maximum TTLs
+7. **Retriage trigger defined:** The exception names events that will tighten or revoke it, including KEV listing, exploit maturity increase, new internet exposure, or failed compensating-control validation
 
 #### Approval Authority Matrix
 
@@ -254,6 +279,8 @@ Risk Exception Request:
 - Approver:               [Name, title]
 - Approval Date:          [YYYY-MM-DD]
 - Status:                 [Pending | Approved | Denied | Expired]
+- Context Evidence Age:   [Exposure age, criticality age, control-test age]
+- Retriage Triggers:      [KEV/exploit/exposure/control changes that reopen the decision]
 ```
 
 ---
@@ -307,6 +334,12 @@ findings requiring immediate action.]
 |---|---|---|---|---|
 | [CVE-ID] | [score] | [score] | [Surging/Rising] | [Action] |
 
+### Context Freshness and Retriage
+
+| Finding | Asset | Exposure Evidence | Criticality Evidence | Context Status | Retriage Trigger | SLA Impact |
+|---|---|---|---|---|---|---|
+| [CVE-ID] | [asset] | [source, observed_at, TTL] | [source, observed_at, TTL] | [Fresh/Stale/Unknown] | [Exposure/KEV/Exploit/Criticality change] | [Escalate/Maintain/Downgrade blocked] |
+
 ### Prioritized Patch Schedule
 
 | Priority | CVE ID(s) | Target System | Patch | Scheduled Window | SLA Deadline | Status |
@@ -323,9 +356,9 @@ findings requiring immediate action.]
 ### Risk Exceptions
 [List all active risk acceptance/exception records]
 
-| Exception ID | CVE ID(s) | Original SLA | New Deadline | Approver | Status |
-|---|---|---|---|---|---|
-| [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Approved/Pending] |
+| Exception ID | CVE ID(s) | Original SLA | New Deadline | Approver | Context Evidence Age | Retriage Triggers | Status |
+|---|---|---|---|---|---|---|---|
+| [EXC-ID] | [CVE-IDs] | [tier] | [date] | [name] | [Exposure/Criticality/Control age] | [KEV/exploit/exposure changes] | [Approved/Pending] |
 
 ### Recommendations
 1. [Highest-priority actionable recommendation]
@@ -373,6 +406,12 @@ Known Exploited Vulnerabilities catalog maintained by CISA. Contains CVEs with c
 4. **Ignoring EPSS trend direction.** A CVE with a low absolute EPSS score but a rapidly rising trend (e.g., from 0.02 to 0.15 in two weeks) signals that exploit development is progressing. Treating EPSS as a static snapshot rather than a time series misses emerging threats. Always evaluate 7/30/90-day trends.
 
 5. **Scheduling patches without rollback plans.** Patch deployment failures without rollback procedures cause unplanned outages that erode trust in the patching program. Every patch window must include a validated rollback procedure, tested in a non-production environment where possible.
+
+6. **Using stale exposure labels as permanent truth.** Cloud assets, blue/green deployments, and temporary test endpoints can change exposure within minutes. A historical `internet-facing` label should not permanently escalate a dead or closed asset, and a stale `internal-only` label should not relax an asset that became public after triage. Require observed-at timestamps, source confidence, and TTLs.
+
+7. **Letting business criticality outlive the service.** CMDB criticality is often copied forward after migrations or decommissioning. Before escalating a patch because an asset is `Critical`, verify the service is live, still owns sensitive data, and has a current business owner. If criticality evidence is stale, recalculate only after owner confirmation or keep the conservative tier.
+
+8. **Not tightening exceptions when exploit maturity changes.** A risk exception approved before public PoC or active exploitation may no longer be valid. KEV listing, SSVC exploitation changes, or credible exploit publication must trigger immediate retiering and exception due-date review.
 
 ---
 
