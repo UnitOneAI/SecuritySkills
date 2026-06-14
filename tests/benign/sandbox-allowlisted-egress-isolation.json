@@ -1,0 +1,54 @@
+{
+  "id": "sandbox-allowlisted-egress-isolation",
+  "skill": "sandboxed-code-execution-egress-review",
+  "classification": "benign",
+  "flow": "isolated_code_execution",
+  "risk_summary": "The sandbox denies network egress by default, blocks metadata and internal ranges, uses task-scoped credentials, and applies the same allowlist to helper channels.",
+  "evidence": {
+    "runtime": {
+      "type": "ephemeral_worker_vm",
+      "network_policy": "default_deny",
+      "runtime_identity": "job-scoped-workload-identity",
+      "credential_ttl_minutes": 15,
+      "tenant_scope": "tenant-a/job-9001"
+    },
+    "allowed_destinations": [
+      {
+        "host": "packages.example-mirror.com",
+        "protocol": "https",
+        "port": 443,
+        "purpose": "approved package mirror"
+      },
+      {
+        "host": "artifacts.tenant-a.example.com",
+        "protocol": "https",
+        "port": 443,
+        "purpose": "tenant-scoped result upload"
+      }
+    ],
+    "blocked_destinations": [
+      "169.254.169.254",
+      "127.0.0.0/8",
+      "10.0.0.0/8",
+      "metadata.internal",
+      "arbitrary DNS resolver"
+    ],
+    "helper_controls": [
+      "URL fetcher canonicalizes redirects and DNS before policy checks",
+      "package installer uses the approved mirror only",
+      "result uploader enforces tenant namespace",
+      "policy decision logs include job id, tenant id, helper, destination, and correlation id"
+    ]
+  },
+  "expected_assessment": {
+    "gate_results": {
+      "SBX-EGRESS-01": "pass",
+      "SBX-EGRESS-02": "pass",
+      "SBX-EGRESS-03": "pass",
+      "SBX-EGRESS-04": "pass",
+      "SBX-EGRESS-05": "pass",
+      "SBX-EGRESS-06": "pass"
+    },
+    "review_note": "The flow is a safe comparator because untrusted code and helper channels share default-deny egress, metadata blocking, tenant-scoped identity, and auditable policy decisions."
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "id": "sandbox-unrestricted-egress-metadata",
+  "skill": "sandboxed-code-execution-egress-review",
+  "classification": "vulnerable",
+  "flow": "untrusted_code_execution",
+  "risk_summary": "The sandbox runs user code with unrestricted outbound egress, inherited environment secrets, and access to cloud metadata and helper fetch channels.",
+  "evidence": {
+    "runtime": {
+      "type": "containerized_notebook",
+      "network_policy": "allow_all",
+      "runtime_identity": "worker-pool-service-account",
+      "environment": [
+        "REGISTRY_TOKEN",
+        "INTERNAL_API_BASE_URL",
+        "JOB_CALLBACK_URL"
+      ]
+    },
+    "reachable_destinations": [
+      "169.254.169.254",
+      "10.0.0.12:6379",
+      "metadata.internal",
+      "arbitrary DNS resolver"
+    ],
+    "helper_channels": {
+      "package_install": "direct internet",
+      "url_fetcher": "runs outside sandbox network policy",
+      "log_shipper": "accepts user-controlled destination tags"
+    },
+    "missing_controls": [
+      "default-deny egress",
+      "metadata endpoint block",
+      "task-scoped environment",
+      "helper channel allowlist",
+      "tenant-scoped runtime identity",
+      "egress decision logging"
+    ]
+  },
+  "expected_findings": [
+    {
+      "gate": "SBX-EGRESS-01",
+      "severity": "High",
+      "reason": "User code can open outbound connections to arbitrary destinations."
+    },
+    {
+      "gate": "SBX-EGRESS-02",
+      "severity": "Critical",
+      "reason": "Cloud metadata and internal service addresses are reachable from untrusted code."
+    },
+    {
+      "gate": "SBX-EGRESS-03",
+      "severity": "High",
+      "reason": "The runtime inherits sensitive environment values unrelated to the submitted job."
+    },
+    {
+      "gate": "SBX-EGRESS-04",
+      "severity": "High",
+      "reason": "Helper fetch and install channels bypass sandbox network policy."
+    }
+  ]
+}
