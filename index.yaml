@@ -1,12 +1,12 @@
 # index.yaml
-# Security Skills Index — unitoneai/security-skills
+# Security Skills Index â€” unitoneai/security-skills
 # Schema version: 1.0
 # Discovery: grep tags, jq .skills[], or LLM native parse
 
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 48
   role_count: 5
 
 tag_vocabulary:
@@ -77,6 +77,18 @@ skills:
     file: skills/appsec/dependency-scanning/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
+  - id: sandboxed-code-execution-egress-review
+    name: "Sandboxed Code Execution Egress Review"
+    tags: [appsec, sandbox, code-execution, egress, isolation]
+    role: [appsec-engineer, security-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, NIST-SP-800-53, MITRE-ATT&CK]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/appsec/sandboxed-code-execution-egress-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
   # -- Identity -------------------------------------------------------------
   - id: iam-review
     name: "IAM Security Review"
@@ -112,6 +124,30 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/rbac-design/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: tenant-domain-takeover-review
+    name: "Tenant Domain Takeover Review"
+    tags: [identity, auth, multi-tenant, domain-verification, takeover]
+    role: [security-engineer, appsec-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, NIST-SP-800-63B, NIST-SP-800-53]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/tenant-domain-takeover-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: cross-tenant-search-suggestion-review
+    name: "Cross-Tenant Search Suggestion Review"
+    tags: [identity, auth, multi-tenant, search, data-leakage]
+    role: [security-engineer, appsec-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, OWASP-API-Security-2023, NIST-SP-800-53]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/cross-tenant-search-suggestion-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: zero-trust-assessment
@@ -569,7 +605,7 @@ skills:
 roles:
   - id: vciso
     name: "Virtual CISO"
-    description: "Security program leadership — risk assessment, compliance, board reporting"
+    description: "Security program leadership â€” risk assessment, compliance, board reporting"
     skills: [nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling]
     file: roles/vciso/SKILL.md
 
@@ -581,14 +617,14 @@ roles:
 
   - id: security-engineer
     name: "Security Engineer"
-    description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    description: "Building security into products and infrastructure â€” reviews, tooling, remediation"
+    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review, tenant-domain-takeover-review, cross-tenant-search-suggestion-review]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, sandboxed-code-execution-egress-review, tenant-domain-takeover-review, cross-tenant-search-suggestion-review, prompt-injection, owasp-top-10-web]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
