@@ -289,6 +289,57 @@ Preserve logs before rotation policies destroy them. Export and hash logs from e
 4. Store alongside disk and memory evidence in the case folder
 ```
 
+**SaaS audit-log export integrity gates:**
+
+When SaaS audit logs are the system of record, preserve enough context to prove
+that the export is complete, reproducible, and within the provider's retention
+window. Hashing the downloaded CSV or JSON file is necessary but not sufficient.
+
+For each SaaS audit export, record:
+
+- Provider and workload, such as Microsoft 365 Unified Audit Log, Google
+  Workspace Admin Audit, Okta System Log, Salesforce Event Monitoring, or GitHub
+  audit log.
+- Tenant, organization, workspace, or account identifier.
+- Export actor and authorization path, including admin role or service account.
+- Query string, filters, event types, time zone, and UTC start/end timestamps.
+- Provider retention window for the relevant workload and license tier.
+- Export time, API endpoint or UI path, request ID, and tool/version used.
+- Page cursor, next-token, or checkpoint for every paginated API response.
+- Expected event count when available, exported event count, and any dropped or
+  unavailable workloads.
+- Raw API responses when possible, plus normalized CSV/JSON derived from them.
+- SHA-256 hash for each raw page and final assembled export.
+
+**SaaS completeness checks:**
+
+```
+SaaS Audit Export Integrity Record
+==================================
+Provider / Workload:  [Microsoft 365 Unified Audit Log / Okta System Log / etc.]
+Tenant / Org ID:      [tenant or organization identifier]
+Case / Evidence ID:   [IR-YYYY-NNNN / EVD-NNNN]
+Export Actor:         [user or service account]
+Authorization Role:   [admin role or API scope]
+Query / Filters:      [exact query, event types, users, objects]
+Time Range (UTC):     [start] to [end]
+Time Zone Displayed:  [UTC / local time zone used by console]
+Retention Window:     [provider/workload/license retention period]
+Export Method:        [API endpoint or admin UI path]
+Request IDs:          [provider request IDs, if available]
+Pagination Evidence:  [page count, cursors, next tokens, checkpoints]
+Expected Count:       [count from provider, if available]
+Exported Count:       [records preserved]
+Unavailable Data:     [expired workloads, disabled logs, API errors]
+Raw Page Hashes:      [SHA-256 per API page or downloaded archive]
+Final Export Hash:    [SHA-256 of assembled evidence file]
+```
+
+Flag an evidence gap when a SaaS export omits the query, time zone, retention
+window, export actor, pagination context, event count, or raw response hash. A
+CSV export without event IDs or cursor/page evidence may be useful for triage,
+but it should not be treated as complete forensic evidence without corroboration.
+
 ### Step 6: Cloud Forensics
 
 Cloud environments require different acquisition techniques because direct hardware access is not available.
@@ -338,6 +389,12 @@ gcloud logging read 'timestamp>="YYYY-MM-DDT00:00:00Z" AND timestamp<="YYYY-MM-D
 - Cloud provider logs are the primary evidence source; without pre-enabled logging, critical evidence may not exist
 - Multi-region deployments require evidence collection across all regions
 - Serverless environments (Lambda, Cloud Functions) produce only invocation logs -- there is no disk to image
+- SaaS audit logs are often controlled by product-specific retention, license tier,
+  and workload settings. Record these limits before treating missing events as
+  evidence of no activity.
+- Provider APIs can be eventually consistent after high-volume incidents. Record
+  export time and rerun the same query after the provider's documented lag window
+  when completeness matters.
 
 ---
 
@@ -401,6 +458,11 @@ the order of collection, and any evidence that could not be obtained.]
 | Cloud Provider | Resource | Evidence Type | Collected | Notes |
 |---|---|---|---|---|
 | [AWS/Azure/GCP] | [Resource ID] | [Snapshot/Logs/Config] | [Yes/No] | [Notes] |
+
+### SaaS Audit Log Integrity (if applicable)
+| Provider / Workload | Query Preserved | Retention Verified | Pagination Preserved | Expected vs Exported Count | Raw Hashes | Gaps |
+|---|---|---|---|---|---|---|
+| [Provider] | [Yes/No] | [Yes/No] | [Yes/No] | [expected/exported] | [hash refs] | [Notes] |
 ```
 
 ---
@@ -460,6 +522,15 @@ Applying traditional forensic methods to cloud environments without adaptation l
 ### Pitfall 5: Overwriting Evidence with Collection Activity
 
 Every action on a live system modifies it -- writing memory dump files to the evidence drive changes timestamps and consumes disk space, running commands updates shell history and modifies access times. Minimize evidence contamination by writing collection output to external media (USB, network share, S3 bucket), documenting every command executed on the system, and noting the expected impact of each collection action on the evidence state.
+
+### Pitfall 6: Treating SaaS CSV Exports as Complete Without Reproducibility Evidence
+
+SaaS admin-console exports can lose pagination context, event IDs, request IDs,
+or the exact query used to produce the file. They can also hide retention gaps
+when one workload has a shorter retention period than another. Preserve raw API
+pages, cursors, query filters, time zone, export actor, event counts, retention
+limits, and hashes so another examiner can reproduce the export and identify
+silent gaps.
 
 ---
 
