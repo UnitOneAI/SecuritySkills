@@ -1,0 +1,17 @@
+{
+  "id": "signed-build-manifest-mutable-tag",
+  "skill": "signed-build-manifest-review",
+  "expected_severity": "high",
+  "scenario": "A production promotion manifest authorizes a mutable image tag and stores the digest in an unsigned sidecar file.",
+  "signals": [
+    "release manifest references registry.example.com/payments-api:latest",
+    "signed payload contains no per-artifact sha256 digest",
+    "deployment workflow verifies only that a manifest signature exists",
+    "production job resolves the tag at deploy time"
+  ],
+  "expected_findings": [
+    "mutable tag accepted as release authority",
+    "artifact digest is not covered by the signed manifest",
+    "approval can be replayed to deploy a different image"
+  ]
+}

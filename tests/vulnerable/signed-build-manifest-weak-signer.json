@@ -1,0 +1,17 @@
+{
+  "id": "signed-build-manifest-weak-signer",
+  "skill": "signed-build-manifest-review",
+  "expected_severity": "high",
+  "scenario": "A release gate accepts any valid Sigstore signature without checking certificate identity or OIDC issuer.",
+  "signals": [
+    "cosign verify is run without certificate identity policy",
+    "verification checks are pass/fail only for signature existence",
+    "the workflow does not restrict issuer, repository, branch, or workflow path",
+    "a pull request workflow can produce a signed manifest"
+  ],
+  "expected_findings": [
+    "wrong-signer manifests may pass verification",
+    "provenance is not bound to the trusted release workflow",
+    "release authority can be shifted outside protected branches"
+  ]
+}

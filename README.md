@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -111,7 +111,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -204,6 +204,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 | Skill | Path | Frameworks |
 |-------|------|------------|
 | Pipeline Security | `skills/devsecops/pipeline-security/` | SLSA v1.0, OWASP CI/CD Top 10 |
+| Signed Build Manifest Review | `skills/devsecops/signed-build-manifest-review/` | SLSA v1.0, in-toto, Sigstore |
 | Secrets Management | `skills/devsecops/secrets-management/` | OWASP Secrets Mgmt, NIST SP 800-57 |
 | SAST Configuration | `skills/devsecops/sast-config/` | OWASP ASVS, CWE Top 25 |
 | DAST Configuration | `skills/devsecops/dast-config/` | OWASP Top 10, OWASP Testing Guide |
@@ -218,9 +219,9 @@ Pre-configured skill sequences for common security roles. Each bundle orchestrat
 |------|-------------|--------|
 | **vCISO** | Security program leadership, risk assessment, compliance, board reporting | nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling |
 | **SOC Analyst** | Alert triage, threat hunting, incident investigation, detection engineering | alert-triage, detection-engineering, ir-playbook, log-analysis, cve-triage |
-| **Security Engineer** | Building security into products and infrastructure | secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review |
-| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web |
-| **Cloud Security Engineer** | Cloud posture, IaC review, container security, identity | aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access |
+| **Security Engineer** | Building security into products and infrastructure | secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, signed-build-manifest-review, container-security, iam-review |
+| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, dependency-scanning, signed-build-manifest-review, prompt-injection, owasp-top-10-web |
+| **Cloud Security Engineer** | Cloud posture, IaC review, container security, identity | aws-review, azure-review, gcp-review, iac-security, signed-build-manifest-review, container-security, zero-trust-assessment, privileged-access |
 
 ---
 

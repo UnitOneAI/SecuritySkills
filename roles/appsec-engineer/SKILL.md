@@ -37,7 +37,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is about infrastructure security (e.g., "review our Kubernetes RBAC") or program-level maturity (e.g., "assess our overall security posture"), use the `security-engineer` or `vciso` role bundle instead. This bundle is for application-layer security work.
 
-**Skills:** All skills referenced in this bundle are available: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`, `api-security`, `dependency-scanning`, `owasp-top-10-web`, `sast-config`, `agent-security`.
+**Skills:** All skills referenced in this bundle are available: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`, `api-security`, `dependency-scanning`, `signed-build-manifest-review`, `owasp-top-10-web`, `sast-config`, `agent-security`.
 
 ---
 
@@ -52,7 +52,7 @@ Each engagement type defines a skill sequence. Run the skills in order — each 
 **Skill sequence:**
 
 ```
-threat-modeling → secure-code-review → api-security → dependency-scanning
+threat-modeling → secure-code-review → api-security → dependency-scanning → signed-build-manifest-review
 ```
 
 | Step | Skill | Purpose |
@@ -61,6 +61,7 @@ threat-modeling → secure-code-review → api-security → dependency-scanning
 | 2 | `secure-code-review` | Review the implementation against the threat model findings. Focus on the code paths identified as high-risk: authentication flows, authorization checks, input validation at trust boundaries, data encryption at rest and in transit, and error handling that might leak information. |
 | 3 | `api-security` | If the application exposes APIs: assess against the OWASP API Security Top 10. Test for broken object-level authorization (BOLA), broken authentication, excessive data exposure, lack of rate limiting, and mass assignment. API flaws are the leading cause of application-layer breaches. |
 | 4 | `dependency-scanning` | Audit all third-party dependencies: known CVEs, license compliance, maintenance status, and supply chain risk. A single compromised or abandoned dependency can undermine an otherwise secure application. |
+| 5 | `signed-build-manifest-review` | For application releases with signed manifests, SBOMs, or provenance attestations, verify artifact digest binding, signer identity, and promotion controls before customers receive the build. |
 
 **Deliverable:** Threat model document, code review findings with CWE classification, API security assessment results, dependency audit, and consolidated risk summary with remediation priorities.
 

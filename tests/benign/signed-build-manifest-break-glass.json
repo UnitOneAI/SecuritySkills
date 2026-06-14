@@ -1,0 +1,16 @@
+{
+  "id": "signed-build-manifest-break-glass",
+  "skill": "signed-build-manifest-review",
+  "expected_result": "pass",
+  "scenario": "Emergency unsigned release is allowed only with dual approval, short expiry, artifact digest capture, and follow-up reconciliation.",
+  "controls": [
+    "two independent approvers are required",
+    "exception expires after one deployment window",
+    "artifact digest and reason are logged before deployment",
+    "post-release task requires signed manifest replacement or rollback"
+  ],
+  "review_notes": [
+    "break-glass does not become a permanent signing bypass",
+    "audit events link approver, artifact digest, environment, and reason"
+  ]
+}

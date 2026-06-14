@@ -37,7 +37,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is a program-level concern (e.g., "assess our overall security maturity"), use the `vciso` role bundle instead. This bundle is for hands-on engineering work.
 
-**Skills:** All skills referenced in this bundle are available: `secure-code-review`, `cve-triage`, `pipeline-security`, `iam-review`, `threat-modeling`, `dependency-scanning`, `sast-config`, `secrets-management`, `container-security`, `patch-prioritization`, `scanner-tuning`, `firewall-review`.
+**Skills:** All skills referenced in this bundle are available: `secure-code-review`, `cve-triage`, `pipeline-security`, `signed-build-manifest-review`, `iam-review`, `threat-modeling`, `dependency-scanning`, `sast-config`, `secrets-management`, `container-security`, `patch-prioritization`, `scanner-tuning`, `firewall-review`.
 
 ---
 
@@ -72,14 +72,15 @@ secure-code-review → dependency-scanning → sast-config
 **Skill sequence:**
 
 ```
-pipeline-security → secrets-management → container-security
+pipeline-security → signed-build-manifest-review → secrets-management → container-security
 ```
 
 | Step | Skill | Purpose |
 |------|-------|---------|
 | 1 | `pipeline-security` | Assess the full build and deployment pipeline: source integrity (signed commits, branch protection), build isolation (ephemeral runners, no shared state), artifact integrity (signing, provenance), and deployment controls (approval gates, rollback capability). Map findings to SLSA levels. |
-| 2 | `secrets-management` | Audit how secrets are stored, rotated, and accessed across the pipeline. Check for hardcoded credentials in code, configuration, CI variables, and container images. Verify vault integration, rotation policies, and least-privilege access to secret stores. |
-| 3 | `container-security` | If the pipeline produces container images: scan base images for vulnerabilities, verify minimal image construction (no build tools in production images), check for running as root, validate image signing, and review registry access controls. |
+| 2 | `signed-build-manifest-review` | Validate signed release manifests, provenance attestations, artifact digest binding, promotion gates, replay controls, and exception paths so artifact trust is enforced at deployment time. |
+| 3 | `secrets-management` | Audit how secrets are stored, rotated, and accessed across the pipeline. Check for hardcoded credentials in code, configuration, CI variables, and container images. Verify vault integration, rotation policies, and least-privilege access to secret stores. |
+| 4 | `container-security` | If the pipeline produces container images: scan base images for vulnerabilities, verify minimal image construction (no build tools in production images), check for running as root, validate image signing, and review registry access controls. |
 
 **Deliverable:** Pipeline security assessment report with SLSA level mapping, secrets audit findings, container image hardening recommendations, and prioritized remediation plan.
 

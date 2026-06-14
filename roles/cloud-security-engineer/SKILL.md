@@ -38,7 +38,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is about application-layer security (e.g., "review this API for BOLA"), use the `appsec-engineer` role bundle. If the ask is about overall security program maturity, use the `vciso` role bundle. This bundle is for cloud infrastructure security.
 
-**Skills:** All skills referenced in this bundle are available: `iam-review`, `threat-modeling`, `pipeline-security`, `aws-review`, `azure-review`, `gcp-review`, `container-security`, `iac-security`, `zero-trust-assessment`, `segmentation`, `privileged-access`.
+**Skills:** All skills referenced in this bundle are available: `iam-review`, `threat-modeling`, `pipeline-security`, `aws-review`, `azure-review`, `gcp-review`, `container-security`, `iac-security`, `signed-build-manifest-review`, `zero-trust-assessment`, `segmentation`, `privileged-access`.
 
 ---
 
@@ -53,7 +53,7 @@ Each engagement type defines a skill sequence. Run the skills in order — each 
 **Skill sequence:**
 
 ```
-aws-review → iam-review → container-security → iac-security
+aws-review → iam-review → container-security → iac-security → signed-build-manifest-review
 ```
 
 | Step | Skill | Purpose |
@@ -62,6 +62,7 @@ aws-review → iam-review → container-security → iac-security
 | 2 | `iam-review` | Deep dive into IAM: overprivileged roles, policies with wildcard actions or resources, unused roles and access keys, cross-account assume-role trust policies, IAM Access Analyzer findings, and service-linked role configurations. AWS breaches start with IAM — this is the highest-leverage review. |
 | 3 | `container-security` | If EKS or ECS is in use: review cluster configuration, IRSA (IAM Roles for Service Accounts), pod security standards, network policies, Fargate vs. EC2 security trade-offs, ECR image scanning, and container runtime configuration. |
 | 4 | `iac-security` | Review Terraform or CloudFormation templates for security misconfigurations before they reach production: S3 buckets without encryption, security groups with 0.0.0.0/0 ingress, RDS instances without encryption at rest, Lambda functions with overprivileged execution roles. Shift cloud security left into the IaC pipeline. |
+| 5 | `signed-build-manifest-review` | Review cloud artifact signing, provenance, promotion, and rollback controls so only digest-bound trusted builds can move into production environments. |
 
 **Deliverable:** AWS security posture report with CIS Benchmark mapping, IAM findings with privilege escalation paths, container security assessment, IaC hardening recommendations, and prioritized remediation plan.
 
@@ -74,7 +75,7 @@ aws-review → iam-review → container-security → iac-security
 **Skill sequence:**
 
 ```
-azure-review → iam-review → container-security → iac-security
+azure-review → iam-review → container-security → iac-security → signed-build-manifest-review
 ```
 
 | Step | Skill | Purpose |
@@ -83,6 +84,7 @@ azure-review → iam-review → container-security → iac-security
 | 2 | `iam-review` | Review Entra ID (Azure AD) and Azure RBAC: overprivileged role assignments, custom roles with excessive permissions, PIM (Privileged Identity Management) configuration, conditional access policies, service principal credentials and expiration, and managed identity usage patterns. |
 | 3 | `container-security` | If AKS is in use: review cluster configuration, Azure AD workload identity, pod security admission, network policies, Azure Policy for AKS, ACR (Azure Container Registry) security, and Defender for Containers findings. |
 | 4 | `iac-security` | Review Bicep, ARM templates, or Terraform configurations for security misconfigurations: storage accounts with public blob access, NSGs with overly permissive rules, Key Vaults without purge protection, App Services without HTTPS enforcement, and SQL servers without auditing. |
+| 5 | `signed-build-manifest-review` | Review cloud artifact signing, provenance, promotion, and rollback controls so only digest-bound trusted builds can move into production environments. |
 
 **Deliverable:** Azure security posture report with CIS Benchmark and Azure Security Benchmark mapping, Entra ID findings, container security assessment, IaC hardening recommendations, and prioritized remediation plan.
 
@@ -95,7 +97,7 @@ azure-review → iam-review → container-security → iac-security
 **Skill sequence:**
 
 ```
-gcp-review → iam-review → container-security → iac-security
+gcp-review → iam-review → container-security → iac-security → signed-build-manifest-review
 ```
 
 | Step | Skill | Purpose |
@@ -104,6 +106,7 @@ gcp-review → iam-review → container-security → iac-security
 | 2 | `iam-review` | Review GCP IAM: overprivileged roles (especially primitive roles like Editor and Owner), service account key sprawl, service account impersonation chains, Workload Identity Federation configuration, IAM Recommender findings, and organization-level IAM bindings. |
 | 3 | `container-security` | If GKE is in use: review cluster configuration, Workload Identity, Binary Authorization, network policies, GKE Autopilot security posture, Artifact Registry scanning, and Security Posture Dashboard findings. |
 | 4 | `iac-security` | Review Terraform configurations for GCP-specific misconfigurations: Cloud Storage buckets with uniform access disabled, firewall rules allowing 0.0.0.0/0 ingress, Cloud SQL without SSL enforcement, Compute instances with default service accounts, and Cloud Functions with overprivileged service accounts. |
+| 5 | `signed-build-manifest-review` | Review cloud artifact signing, provenance, promotion, and rollback controls so only digest-bound trusted builds can move into production environments. |
 
 **Deliverable:** GCP security posture report with CIS Benchmark mapping, IAM findings with impersonation chain analysis, container security assessment, IaC hardening recommendations, and prioritized remediation plan.
 

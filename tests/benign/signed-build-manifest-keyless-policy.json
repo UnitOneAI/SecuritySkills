@@ -1,0 +1,16 @@
+{
+  "id": "signed-build-manifest-keyless-policy",
+  "skill": "signed-build-manifest-review",
+  "expected_result": "pass",
+  "scenario": "Keyless signing is constrained to a protected release workflow and verified with transparency log and issuer checks.",
+  "controls": [
+    "cosign verify requires certificate identity matching the release workflow",
+    "OIDC issuer is restricted to the managed CI provider",
+    "transparency log verification is mandatory",
+    "pull request workflows cannot mint production release manifests"
+  ],
+  "review_notes": [
+    "signing authority is tied to protected branch release automation",
+    "wrong-signer and forked-workflow signatures are rejected"
+  ]
+}

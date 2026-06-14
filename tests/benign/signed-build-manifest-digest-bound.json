@@ -1,0 +1,17 @@
+{
+  "id": "signed-build-manifest-digest-bound",
+  "skill": "signed-build-manifest-review",
+  "expected_result": "pass",
+  "scenario": "A release manifest binds every artifact to a digest, source commit, workflow path, builder identity, and signing certificate identity.",
+  "controls": [
+    "manifest subject lists each artifact sha256 digest",
+    "SLSA provenance includes builder ID and source commit",
+    "cosign verification checks certificate identity and OIDC issuer",
+    "deployment uses digest references only"
+  ],
+  "review_notes": [
+    "verification happens at promotion time",
+    "approval is attached to the artifact digest",
+    "rollback uses a signed previous manifest"
+  ]
+}

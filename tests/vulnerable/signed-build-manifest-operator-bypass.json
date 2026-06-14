@@ -1,0 +1,17 @@
+{
+  "id": "signed-build-manifest-operator-bypass",
+  "skill": "signed-build-manifest-review",
+  "expected_severity": "critical",
+  "scenario": "An emergency environment variable lets the same release operator bypass manifest verification for production.",
+  "signals": [
+    "ALLOW_UNSIGNED_RELEASE can be set by the deployment trigger actor",
+    "manual deployment accepts an uploaded manifest URL",
+    "no second approver is required for unsigned releases",
+    "exception records have no expiry or post-release reconciliation"
+  ],
+  "expected_findings": [
+    "single-operator production signing bypass",
+    "manual path lacks independent digest verification",
+    "break-glass control is unaudited and not time-bound"
+  ]
+}
