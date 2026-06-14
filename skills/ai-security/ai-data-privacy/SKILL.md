@@ -13,7 +13,7 @@ phase: [design, build, review, operate]
 frameworks: [NIST-AI-RMF-1.0, OWASP-LLM02-2025]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -80,6 +80,7 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Training/fine-tuning data documentation | Data pipeline docs, dataset cards | Identifies personal data in training corpus |
 | Consent management implementation | Frontend code, API code, database schemas | Shows how user consent is captured and enforced |
 | Data classification scheme | Governance documentation | Defines sensitivity levels applied to AI data flows |
+| RAG retrieval and authorization design | Architecture docs, vector DB configs, source ACL services, cache configs | Shows where tenant/project/document permissions are enforced before data reaches models, rerankers, logs, traces, or caches |
 | Regulatory requirements | Compliance documentation, legal counsel input | Identifies applicable data protection obligations |
 
 ---
@@ -162,6 +163,8 @@ Grep: "openai|anthropic|api.key|azure.openai|bedrock|vertex.ai|cohere|mistral" i
 
 # Check for access control in RAG retrieval
 Grep: "metadata_filter|access_control|permission|authorization|tenant" in **/*.{py,ts,js}
+Grep: "vector|embedding|retriev|rerank|semantic.cache|prompt.cache|eval.store|trace" in **/*.{py,ts,js,yaml,yml}
+Grep: "tenant_id|document_id|allowed_users|group_id|acl|rbac|source_of_truth" in **/*.{py,ts,js,yaml,yml,json}
 ```
 
 **Model memorization risk:** LLMs can memorize and reproduce training data, including PII. Research by Carlini et al. (2021, 2023) demonstrated that GPT-2 and GPT-3 could be prompted to emit memorized training data including names, phone numbers, email addresses, and physical addresses. The risk is proportional to data frequency in training (repeated PII is more likely to be memorized) and inversely proportional to model size diversity (smaller fine-tuned models on narrow datasets memorize more). For fine-tuned models, this risk is especially acute -- the fine-tuning data is typically smaller and more repetitive than pre-training data, increasing memorization likelihood.
@@ -174,9 +177,71 @@ Grep: "metadata_filter|access_control|permission|authorization|tenant" in **/*.{
 | Health data (PHI) included in prompts without HIPAA-compliant safeguards | Critical |
 | No PII detection on model completions before returning to users | High |
 | RAG retrieval returns documents across tenant or authorization boundaries | High |
+| Unauthorized RAG candidates reach rerankers, model context, traces, logs, or caches before authorization filtering | High |
+| Vector-store ACL metadata is stale and no source-system recheck occurs before prompt assembly | High |
+| Chunk-level permissions are broader than source document, row, field, attachment, or thread permissions | High |
 | User prompts containing PII are sent to the model without redaction | High |
 | System prompts contain hardcoded PII (even test data) | Medium |
 | No assessment of model memorization risk for fine-tuned models trained on PII-containing data | Medium |
+
+---
+
+### Step 2b -- RAG Authorization and Retrieval Boundary
+
+For retrieval-augmented generation, verify where authorization is enforced in the retrieval path. Do not fail a design solely because the vector query lacks an inline `tenant_id` metadata filter if the system uses a documented per-tenant or per-project index and performs a current source-of-truth ACL check before any chunk text leaves the trusted retrieval boundary. Conversely, do not pass a design just because the final answer is filtered if unauthorized chunks already reached a reranker, prompt builder, trace, semantic cache, replay buffer, evaluation store, or client-visible callback.
+
+**Required evidence fields:**
+
+| Field | What to Capture | Pass Condition |
+|---|---|---|
+| `rag_index_scope` | Global, tenant, project, user, document, or source-system collection scope | Scope matches the intended isolation boundary and routing is enforced server-side |
+| `authorization_source_of_truth` | Source ACL service, IAM group, app RBAC, DLP label, static vector metadata, or hybrid control | Source of truth is current, documented, and authoritative for the source data |
+| `acl_freshness` | Last sync time, max staleness, revocation propagation SLA, failure mode, and offboarding behavior | Revoked access is removed or rechecked before prompt assembly within an approved SLA |
+| `authorization_stage` | Pre-query, vector filter, post-retrieval before text access, rerank-time, prompt-time, or output-time | Authorization occurs before unauthorized text can leave the trusted retrieval service |
+| `overfetch_exposure` | Whether unauthorized candidates can reach rerankers, LLMs, logs, traces, caches, callbacks, or clients | Unauthorized candidates are never exposed outside the trusted retrieval boundary |
+| `permission_granularity` | Tenant, document, section, row, field, attachment, thread, or record-level permissions | Chunk permissions are at least as restrictive as the source object and sub-object permissions |
+| `cache_authorization` | Prompt, semantic, trace-replay, and evaluation cache reauthorization behavior | Cached chunks are reauthorized against current source permissions before reuse |
+| `not_evaluable_reason` | Missing ACL source, unknown cache behavior, unknown reranker exposure, stale metadata, or missing chunk mapping | Unknowns are recorded as Not Evaluable, not silently passed |
+
+**Benign patterns that should not be flagged by default:**
+
+- Per-tenant or per-project vector indexes where authenticated routing is enforced server-side and source ACLs are rechecked before prompt assembly.
+- Global indexes where metadata filters are backed by current source-of-truth ACL checks and unauthorized text is not returned to rerankers, traces, caches, callbacks, or clients.
+- Post-retrieval filtering inside a trusted retrieval service before chunk text is logged, cached, reranked, or appended to model context.
+
+**High-risk patterns:**
+
+- Ingest-time `allowed_users`, `group_id`, or `tenant_id` metadata with no ACL refresh, revocation propagation SLA, or source-system recheck.
+- Overfetching hundreds of global candidates, sending raw text to an LLM reranker or trace, and filtering by tenant only after reranking.
+- Flattening spreadsheets, tickets, email threads, CRM records, or wiki pages into chunks while replacing row, field, attachment, thread, or section permissions with coarse document ACLs.
+- Tombstoning source/vector rows while leaving prior chunks in prompt caches, semantic caches, trace replay, or evaluation datasets that can answer future queries.
+- Treating embeddings as permissionless because raw text is not stored; embeddings inherit the source document's access, deletion, and retention policy.
+
+**Scoring guardrails:**
+
+| Condition | Severity |
+|---|---|
+| Unauthorized chunks reach an LLM, reranker, trace, callback, prompt cache, semantic cache, or client before filtering | High |
+| Unauthorized PHI, financial, HR, regulated, or cross-tenant SaaS chunks reach an LLM, reranker, trace, cache, or client | Critical |
+| Ingest-time ACL metadata has no refresh, invalidation, or source recheck for private data | High |
+| Per-tenant index plus current source ACL recheck before prompt assembly | Informational or no finding |
+| Missing evidence for ACL freshness, overfetch exposure, or cache reauthorization | Not Evaluable |
+
+**Detection methods using allowed tools:**
+
+```
+# Locate RAG retrieval and vector-store clients
+Grep: "vector|embedding|retriev|similarity|hybrid.search|semantic.search" in **/*.{py,ts,js}
+Grep: "pinecone|weaviate|qdrant|milvus|chroma|pgvector|opensearch|elasticsearch" in **/*.{py,ts,js,yaml,yml,json}
+
+# Locate authorization and ACL freshness controls
+Grep: "tenant_id|document_id|allowed_users|group_id|acl|rbac|permission|sourceAcl|checkAccess" in **/*.{py,ts,js}
+Grep: "acl_sync|membership_sync|offboard|revok|tombstone|delete_embedding|delete_vector" in **/*.{py,ts,js,yaml,yml}
+
+# Locate overfetch, reranking, tracing, and cache exposure points
+Grep: "topK|top_k|rerank|reranker|callback|trace|span|prompt_cache|semantic_cache|eval|replay" in **/*.{py,ts,js,yaml,yml,json}
+Grep: "build_prompt|context_chunks|retrieved_context|source_documents|map\\(.*text" in **/*.{py,ts,js}
+```
 
 ---
 
@@ -249,7 +314,7 @@ Evaluate the risk that models deployed in the system have memorized and can repr
 - Models fine-tuned on small, narrow datasets containing personal data (highest memorization risk).
 - No testing for memorization in model evaluation pipeline.
 - Models deployed without output filtering that could catch memorized PII.
-- Retrieval-augmented systems where the model may reproduce PII from retrieved context in responses to unrelated queries (context bleed).
+- Retrieval-augmented systems where the model may reproduce PII from retrieved context in responses to unrelated queries (context bleed), including chunks that were authorized in the past but are no longer authorized for the current user.
 - No temperature or sampling controls that could increase the likelihood of verbatim memorized output reproduction (temperature 0 is highest risk for exact memorization reproduction).
 
 **Key research context:**
@@ -384,7 +449,7 @@ Grep: "consent_check|is_consented|has_consent|filter_consented|exclude_opted_out
 | Severity | Criteria | Response SLA |
 |---|---|---|
 | **Critical** | Personal data processed without legal basis, PHI exposed without HIPAA controls, or regulatory non-compliance with immediate enforcement risk. | Immediate -- halt processing |
-| **High** | Significant privacy risk with clear exposure path: PII in prompts without redaction, missing retention policies on PII-containing stores, or no consent mechanism for training data. | 7 days -- remediate before next release |
+| **High** | Significant privacy risk with clear exposure path: PII in prompts without redaction, missing retention policies on PII-containing stores, unauthorized RAG overfetch exposure, stale retrieval ACLs, or no consent mechanism for training data. | 7 days -- remediate before next release |
 | **Medium** | Moderate privacy gap requiring specific conditions: incomplete documentation, missing memorization testing, or partial consent implementation. | 30 days -- schedule remediation |
 | **Low** | Minor gap with limited direct privacy risk: defense-in-depth recommendations, documentation improvements, or best practice deviations. | 90 days -- track in backlog |
 | **Informational** | Recommendations for improvement with no current privacy risk. | No SLA -- advisory |
@@ -411,7 +476,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 ## Findings
 
 ### Finding [N]: [Title]
-- **Category:** [Training Data | Prompt/Completion PII | Data Retention | Memorization | EU AI Act | Consent]
+- **Category:** [Training Data | Prompt/Completion PII | RAG Authorization | Data Retention | Memorization | EU AI Act | Consent]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP LLM Category:** LLM02:2025 -- Sensitive Information Disclosure
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -429,6 +494,7 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 |---|---|---|---|
 | Training data privacy | [Yes/Partial/No] | [description] | [severity] |
 | PII in prompts/completions | [Yes/Partial/No] | [description] | [severity] |
+| RAG authorization boundary | [Yes/Partial/No/N/A] | [index scope, ACL freshness, overfetch, chunk permission, and cache reauthorization gaps] | [severity] |
 | Data retention | [Yes/Partial/No] | [description] | [severity] |
 | Memorization risk | [Yes/Partial/No] | [description] | [severity] |
 | EU AI Act compliance | [Yes/Partial/No/N/A] | [description] | [severity] |
@@ -471,6 +537,8 @@ user input -> prompt assembly -> LLM API -> completion -> output -> logging/stor
 4. **Conflating data minimization with data deletion.** Data minimization (collecting only what is necessary) is a design-time principle. Data deletion (removing data when it is no longer needed or when a subject requests erasure) is an operational requirement. Both are needed. Many teams implement minimization at the application layer but fail to propagate deletion to downstream AI data stores (vector databases, training dataset snapshots, model checkpoints, conversation logs, analytics pipelines).
 
 5. **Ignoring model memorization as a privacy risk.** Organizations that use pre-trained or fine-tuned models often do not test for memorization of personal data. A model that has memorized PII from its training corpus is effectively a data store containing personal data -- it can reproduce that data on specific prompts. This has regulatory implications: if the model contains memorized PII of EU residents, GDPR obligations apply to the model weights themselves, not just the training dataset.
+
+6. **Filtering RAG results too late.** In retrieval pipelines, the privacy boundary is before unauthorized chunk text reaches rerankers, prompt builders, model calls, traces, logs, caches, callbacks, or clients. Filtering the final answer does not undo exposure that already happened in hidden retrieval, ranking, observability, or cache layers.
 
 ---
 
