@@ -1,0 +1,40 @@
+id: jwt-validation-alg-confusion
+skill: jwt-validation-security
+type: vulnerable
+language: javascript
+framework: express
+description: JWT middleware verifies a token without an algorithm allowlist, skips expiration, and trusts claims without issuer or audience binding.
+sample: |
+  const jwt = require("jsonwebtoken");
+
+  function authRequired(req, res, next) {
+    const header = req.headers.authorization || "";
+    const token = header.replace(/^Bearer\s+/i, "");
+    if (!token) {
+      return res.status(401).json({ error: "missing token" });
+    }
+
+    try {
+      const claims = jwt.verify(token, process.env.JWT_PUBLIC_KEY, {
+        ignoreExpiration: true
+      });
+
+      req.user = {
+        id: claims.sub,
+        tenant: claims.tenant,
+        scopes: claims.scope
+      };
+      return next();
+    } catch (error) {
+      console.error("auth failed", token, error.message);
+      return res.status(401).json({ error: "invalid token" });
+    }
+  }
+expected_findings:
+  - JWT-VAL-01
+  - JWT-VAL-04
+  - JWT-VAL-05
+  - JWT-VAL-06
+  - JWT-VAL-10
+expected_result: fail
+remediation_hint: Pin the expected algorithm, enforce expiration, bind issuer and audience, and redact bearer tokens from logs.

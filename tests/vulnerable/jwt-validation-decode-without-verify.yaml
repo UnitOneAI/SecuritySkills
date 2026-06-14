@@ -1,0 +1,29 @@
+id: jwt-validation-decode-without-verify
+skill: jwt-validation-security
+type: vulnerable
+language: python
+framework: fastapi
+description: API code decodes a JWT without signature verification and trusts role and tenant claims for authorization decisions.
+sample: |
+  import jwt
+  from fastapi import HTTPException, Request
+
+  async def require_admin(request: Request):
+      token = request.headers.get("authorization", "").removeprefix("Bearer ")
+      if not token:
+          raise HTTPException(status_code=401)
+
+      claims = jwt.decode(token, options={"verify_signature": False})
+      if claims.get("role") != "admin":
+          raise HTTPException(status_code=403)
+
+      request.state.tenant = claims.get("tenant")
+      request.state.user = claims.get("sub")
+      return claims
+expected_findings:
+  - JWT-VAL-03
+  - JWT-VAL-05
+  - JWT-VAL-06
+  - JWT-VAL-09
+expected_result: fail
+remediation_hint: Verify the signature and required claims before reading role, tenant, or subject claims for authorization.

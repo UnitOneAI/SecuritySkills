@@ -1,0 +1,33 @@
+id: jwt-validation-redacted-logging
+skill: jwt-validation-security
+type: benign
+language: javascript
+framework: express
+description: Failed JWT validation logs only a token fingerprint and never writes the full bearer token to logs or responses.
+sample: |
+  const crypto = require("crypto");
+  const jwt = require("jsonwebtoken");
+
+  function fingerprint(token) {
+    return crypto.createHash("sha256").update(token).digest("hex").slice(0, 12);
+  }
+
+  function verifyToken(token, key, logger) {
+    try {
+      return jwt.verify(token, key, {
+        algorithms: ["RS256"],
+        issuer: "https://issuer.example.com/",
+        audience: "api://orders",
+        clockTolerance: 60
+      });
+    } catch (error) {
+      logger.warn({ token_fingerprint: fingerprint(token), reason: error.name }, "JWT validation failed");
+      throw error;
+    }
+  }
+expected_findings: []
+expected_result: pass
+positive_controls:
+  - full bearer token is not logged
+  - validation includes algorithm, issuer, audience, and bounded clock tolerance
+  - error response can be generated without exposing credential material

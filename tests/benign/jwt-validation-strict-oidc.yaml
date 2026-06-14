@@ -1,0 +1,33 @@
+id: jwt-validation-strict-oidc
+skill: jwt-validation-security
+type: benign
+language: typescript
+framework: express
+description: JWT middleware validates algorithm, issuer, audience, clock tolerance, and token type before trusting claims.
+sample: |
+  import jwt, { JwtPayload } from "jsonwebtoken";
+
+  const issuer = "https://login.example.com/";
+  const audience = "api://orders";
+
+  export function verifyAccessToken(token: string, publicKey: string): JwtPayload {
+    const claims = jwt.verify(token, publicKey, {
+      algorithms: ["RS256"],
+      issuer,
+      audience,
+      clockTolerance: 60
+    }) as JwtPayload;
+
+    if (claims.token_use !== "access") {
+      throw new Error("unexpected token type");
+    }
+
+    return claims;
+  }
+expected_findings: []
+expected_result: pass
+positive_controls:
+  - explicit RS256 algorithm allowlist
+  - issuer and audience binding
+  - bounded clock tolerance
+  - access-token type check before claims are returned

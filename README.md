@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -139,6 +139,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 | Skill | Path | Frameworks |
 |-------|------|------------|
 | IAM Security Review | `skills/identity/iam-review/` | NIST SP 800-63B, CIS Controls v8 |
+| JWT Validation Security | `skills/identity/jwt-validation-security/` | RFC 8725, OWASP ASVS, CWE-345 |
 | Access Review | `skills/identity/access-review/` | CIS Controls v8, NIST SP 800-53 |
 | RBAC/ABAC Design | `skills/identity/rbac-design/` | NIST RBAC, NIST SP 800-162 |
 | Zero Trust Assessment | `skills/identity/zero-trust-assessment/` | NIST SP 800-207, CISA ZTMM v2 |
@@ -218,8 +219,8 @@ Pre-configured skill sequences for common security roles. Each bundle orchestrat
 |------|-------------|--------|
 | **vCISO** | Security program leadership, risk assessment, compliance, board reporting | nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling |
 | **SOC Analyst** | Alert triage, threat hunting, incident investigation, detection engineering | alert-triage, detection-engineering, ir-playbook, log-analysis, cve-triage |
-| **Security Engineer** | Building security into products and infrastructure | secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review |
-| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web |
+| **Security Engineer** | Building security into products and infrastructure | secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review, jwt-validation-security |
+| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, jwt-validation-security, dependency-scanning, prompt-injection, owasp-top-10-web |
 | **Cloud Security Engineer** | Cloud posture, IaC review, container security, identity | aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access |
 
 ---

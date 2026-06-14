@@ -37,7 +37,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is a program-level concern (e.g., "assess our overall security maturity"), use the `vciso` role bundle instead. This bundle is for hands-on engineering work.
 
-**Skills:** All skills referenced in this bundle are available: `secure-code-review`, `cve-triage`, `pipeline-security`, `iam-review`, `threat-modeling`, `dependency-scanning`, `sast-config`, `secrets-management`, `container-security`, `patch-prioritization`, `scanner-tuning`, `firewall-review`.
+**Skills:** All skills referenced in this bundle are available: `secure-code-review`, `cve-triage`, `pipeline-security`, `iam-review`, `jwt-validation-security`, `threat-modeling`, `dependency-scanning`, `sast-config`, `secrets-management`, `container-security`, `patch-prioritization`, `scanner-tuning`, `firewall-review`.
 
 ---
 
@@ -129,15 +129,17 @@ iam-review → firewall-review → container-security
 
 Skills are not ordered arbitrarily. The sequence follows the logic of how security engineering actually works:
 
-1. **Manual before automated.** In code review, manual analysis comes before SAST configuration because you need to understand the application's security-relevant behavior before you can configure tools to detect deviations. SAST without context produces noise. Manual review findings inform what automated checks should look for going forward.
+1. **Manual review before automation.** Secure code review comes before dependency scanning and SAST tuning because automated tools find known patterns, but manual review finds context-specific logic flaws. Once manual review identifies risky patterns, SAST can be configured to catch them going forward.
 
-2. **Pipeline before secrets before containers.** Pipeline security establishes the trust boundary for the entire build process. Secrets management secures the credentials that pipeline components use. Container security hardens the artifacts the pipeline produces. Each layer depends on the one before it — a signed container image means nothing if the pipeline that built it was compromised.
+2. **Token validation before token trust.** When a service accepts JWTs, run `jwt-validation-security` before treating identity or authorization claims as reliable. Algorithm, issuer, audience, key, and token-type checks determine whether downstream IAM, API, and authorization reviews are evaluating a trustworthy principal.
 
-3. **Triage before prioritization.** Not every vulnerability matters to every organization. CVE triage determines which vulnerabilities actually apply to the environment. Patch prioritization orders the confirmed vulnerabilities by business risk. Running prioritization without triage wastes engineering time on vulnerabilities that do not affect deployed systems.
+3. **Pipeline before secrets before containers.** Pipeline security establishes the trust boundary for the entire build process. Secrets management secures the credentials that pipeline components use. Container security hardens the artifacts the pipeline produces. Each layer depends on the one before it — a signed container image means nothing if the pipeline that built it was compromised.
 
-4. **Identity before network.** In infrastructure review, IAM comes before firewall review because identity compromise bypasses network controls. An attacker with valid credentials and an overprivileged role does not need to punch through a firewall. Fix the control plane before hardening the data plane.
+4. **Triage before prioritization.** Not every vulnerability matters to every organization. CVE triage determines which vulnerabilities actually apply to the environment. Patch prioritization orders the confirmed vulnerabilities by business risk. Running prioritization without triage wastes engineering time on vulnerabilities that do not affect deployed systems.
 
-5. **Remediation feeds back into scanning.** Scanner tuning happens after vulnerability response, not before, because real-world findings reveal what the scanner is missing and what it is incorrectly flagging. The response cycle produces the data needed to make scanning more accurate.
+5. **Identity before network.** In infrastructure review, IAM comes before firewall review because identity compromise bypasses network controls. An attacker with valid credentials and an overprivileged role does not need to punch through a firewall. Fix the control plane before hardening the data plane.
+
+6. **Remediation feeds back into scanning.** Scanner tuning happens after vulnerability response, not before, because real-world findings reveal what the scanner is missing and what it is incorrectly flagging. The response cycle produces the data needed to make scanning more accurate.
 
 ---
 

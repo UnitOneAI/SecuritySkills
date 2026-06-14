@@ -37,7 +37,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is about infrastructure security (e.g., "review our Kubernetes RBAC") or program-level maturity (e.g., "assess our overall security posture"), use the `security-engineer` or `vciso` role bundle instead. This bundle is for application-layer security work.
 
-**Skills:** All skills referenced in this bundle are available: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`, `api-security`, `dependency-scanning`, `owasp-top-10-web`, `sast-config`, `agent-security`.
+**Skills:** All skills referenced in this bundle are available: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`, `api-security`, `jwt-validation-security`, `dependency-scanning`, `owasp-top-10-web`, `sast-config`, `agent-security`.
 
 ---
 
@@ -92,14 +92,15 @@ secure-code-review → owasp-top-10-web
 **Skill sequence:**
 
 ```
-api-security → owasp-top-10-web → sast-config
+api-security → jwt-validation-security → owasp-top-10-web → sast-config
 ```
 
 | Step | Skill | Purpose |
 |------|-------|---------|
 | 1 | `api-security` | Full assessment against OWASP API Security Top 10 2023: broken object-level authorization, broken authentication, broken object property-level authorization, unrestricted resource consumption, broken function-level authorization, unrestricted access to sensitive business flows, SSRF, security misconfiguration, improper inventory management, and unsafe consumption of APIs. |
-| 2 | `owasp-top-10-web` | Assess the web layer that serves the API: transport security, CORS configuration, content-type validation, error handling, and any web-specific attack vectors (CSRF for cookie-authenticated APIs, clickjacking for APIs with browser-rendered responses). |
-| 3 | `sast-config` | Configure static analysis rules specific to the API framework in use. Ensure SAST covers the vulnerability patterns found during manual assessment so future changes are automatically checked. API-specific rules: missing authorization decorators, unvalidated path parameters, missing rate limit annotations. |
+| 2 | `jwt-validation-security` | If the API accepts JWT bearer tokens: verify algorithm allowlists, issuer/audience binding, JWKS/key rotation, clock handling, token type separation, and bearer token leakage before trusting claims in resolver or route authorization. |
+| 3 | `owasp-top-10-web` | Assess the web layer that serves the API: transport security, CORS configuration, content-type validation, error handling, and any web-specific attack vectors (CSRF for cookie-authenticated APIs, clickjacking for APIs with browser-rendered responses). |
+| 4 | `sast-config` | Configure static analysis rules specific to the API framework in use. Ensure SAST covers the vulnerability patterns found during manual assessment so future changes are automatically checked. API-specific rules: missing authorization decorators, unvalidated path parameters, missing rate limit annotations. |
 
 **Deliverable:** API security assessment report with findings mapped to OWASP API Security Top 10, web layer security findings, updated SAST configuration, and remediation plan.
 

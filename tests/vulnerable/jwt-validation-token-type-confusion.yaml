@@ -1,0 +1,30 @@
+id: jwt-validation-token-type-confusion
+skill: jwt-validation-security
+type: vulnerable
+language: typescript
+framework: express
+description: Resource-server middleware verifies signature and audience but accepts any token type, allowing ID tokens to reach access-token protected routes.
+sample: |
+  import jwt, { JwtPayload } from "jsonwebtoken";
+
+  export function verifyApiToken(token: string, publicKey: string): JwtPayload {
+    return jwt.verify(token, publicKey, {
+      algorithms: ["RS256"],
+      issuer: "https://issuer.example.com/",
+      audience: "api://orders"
+    }) as JwtPayload;
+  }
+
+  export function requireOrdersRead(req, res, next) {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    const claims = verifyApiToken(token, process.env.JWT_PUBLIC_KEY || "");
+    if (!String(claims.scope || "").includes("orders:read")) {
+      return res.status(403).end();
+    }
+    req.user = claims.sub;
+    next();
+  }
+expected_findings:
+  - JWT-VAL-08
+expected_result: fail
+remediation_hint: Require an access-token type claim, such as token_use=access or typ=at+jwt, before accepting claims at API routes.

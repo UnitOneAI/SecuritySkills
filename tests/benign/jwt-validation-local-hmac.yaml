@@ -1,0 +1,28 @@
+id: jwt-validation-local-hmac
+skill: jwt-validation-security
+type: benign
+language: python
+framework: flask
+description: A local service validates an internally issued HMAC JWT with explicit algorithm, issuer, audience, required claims, and bounded leeway.
+sample: |
+  import jwt
+
+  REQUIRED = ["exp", "iat", "nbf", "iss", "aud", "sub"]
+
+  def verify_internal_token(token: str, secret: str) -> dict:
+      return jwt.decode(
+          token,
+          secret,
+          algorithms=["HS256"],
+          issuer="urn:internal-auth",
+          audience="urn:inventory-worker",
+          leeway=30,
+          options={"require": REQUIRED},
+      )
+expected_findings: []
+expected_result: pass
+positive_controls:
+  - explicit HS256 algorithm allowlist matching symmetric key material
+  - issuer and audience binding
+  - required exp, iat, nbf, iss, aud, and sub claims
+  - bounded 30 second leeway
