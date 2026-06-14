@@ -11,7 +11,7 @@ phase: [design, build, review]
 frameworks: [OWASP-API-Security-2023, OWASP-ASVS]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -184,6 +184,45 @@ Deeply nested or highly complex queries can exhaust server resources (API4:2023)
 ### Field-Level Authorization
 
 Unlike REST, where authorization can be enforced per endpoint, GraphQL requires authorization at the resolver level. Every resolver that returns sensitive data or performs a privileged mutation must independently verify permissions.
+
+### Tenant-Aware DataLoader and Cache Isolation
+
+GraphQL batching and caching layers can bypass otherwise correct resolver authorization if cached objects are reused across tenants, roles, or impersonation scopes. Review DataLoader, persisted query, subscription, CDN, and APQ caches as part of API1/API3 authorization analysis.
+
+Flag GraphQL cache designs when any of these conditions are present:
+
+- A DataLoader or equivalent batch cache is process-wide, singleton-scoped, or shared across requests for tenant-specific data.
+- Cache keys include only object identifiers, operation hashes, or field names without tenant, subject, role, authorization scope, and impersonation context.
+- Persisted query or APQ allowlists validate authorization only at registration time instead of re-checking viewer permissions at execution time.
+- Subscription resolvers authorize the initial connection but do not re-check tenant and resource access for each pushed event.
+- Field masking is applied in a parent resolver while child resolvers can return the same cached object without the same property-level checks.
+
+Treat per-request loaders with tenant-aware cache keys as benign when the loader lifecycle is tied to the request context and the key includes the relevant authorization boundary.
+
+```javascript
+// Benign: per-request loader, tenant-aware cache key, scoped data access
+function buildLoaders(ctx) {
+  return {
+    userById: new DataLoader(
+      ids => loadUsersForTenant(ctx.tenantId, ids),
+      { cacheKeyFn: id => `${ctx.tenantId}:${ctx.subjectId}:${id}` }
+    ),
+  };
+}
+```
+
+```javascript
+// Vulnerable: process-wide loader caches tenant-specific objects by user ID only
+const userById = new DataLoader(ids => loadUsers(ids));
+
+const resolvers = {
+  Query: {
+    user: (_, { id }, ctx) => userById.load(id),
+  },
+};
+```
+
+**Evidence to collect:** loader construction location, request context wiring, cache key function, tenant-aware query predicate, resolver authorization test, APQ/CDN cache key configuration, and subscription event authorization path.
 
 ### Alias-Based Attacks
 

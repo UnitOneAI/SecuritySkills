@@ -63,6 +63,20 @@ const resolvers = {
 };
 ```
 
+```javascript
+// VULNERABLE: Singleton loader caches tenant data by object ID only
+const userById = new DataLoader(ids => User.find({ id: { $in: ids } }));
+
+const resolvers = {
+  Query: {
+    user: async (_, { id }, context) => {
+      await requireTenantMember(context.user, context.tenantId);
+      return userById.load(id); // Cache can return another tenant's warmed object
+    },
+  },
+};
+```
+
 Remediation:
 
 ```javascript
@@ -78,6 +92,18 @@ const resolvers = {
     },
   },
 };
+```
+
+```javascript
+// SECURE: Loader is created per request and keys include the tenant boundary
+function createLoaders(context) {
+  return {
+    userById: new DataLoader(
+      ids => User.find({ tenantId: context.tenantId, id: { $in: ids } }),
+      { cacheKeyFn: id => `${context.tenantId}:${context.user.id}:${id}` }
+    ),
+  };
+}
 ```
 
 ### BOLA vs BFLA Distinction
@@ -101,6 +127,8 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Batch/list endpoints filter results by the caller's permissions.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] GraphQL DataLoader or batch caches are request-scoped and keyed by tenant, subject, role, and resource scope for sensitive objects.
+- [ ] Persisted query, APQ, CDN, and subscription caches re-check authorization at execution or event delivery time, not only at registration or connection time.
 
 ---
 
@@ -224,6 +252,7 @@ const UserType = new GraphQLObjectType({
 - [ ] Sensitive fields (credentials, PII, internal metadata) are excluded from standard responses.
 - [ ] Update endpoints use an allowlist of modifiable fields; mass assignment is impossible.
 - [ ] GraphQL fields containing sensitive data have resolver-level authorization.
+- [ ] GraphQL child resolvers and DataLoader return paths apply the same field masking and tenant checks as parent resolvers.
 - [ ] API documentation (OpenAPI spec) accurately reflects the actual response schema.
 
 ---
