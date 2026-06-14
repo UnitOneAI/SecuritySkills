@@ -1,0 +1,32 @@
+{
+  "id": "cross-tenant-search-suggestion-leak",
+  "description": "A vulnerable autocomplete flow trusts a client-supplied tenant id and filters after ranking, allowing cross-tenant record discovery through prefixes and cached suggestions.",
+  "surface": {
+    "endpoint": "GET /api/search/suggest?q={prefix}&tenantId={tenantId}",
+    "actor": "tenant-user",
+    "tenant_source": "client_parameter",
+    "index": "shared-global-suggestions"
+  },
+  "vulnerable_behavior": {
+    "query_scope": "searches all tenants before application filtering",
+    "ranking": "unauthorized matches affect order and result counts",
+    "cache_key": "suggest:{query_prefix}",
+    "minimum_query_length": 1,
+    "admin_recent_search_sync": true
+  },
+  "attack_example": {
+    "actor_tenant": "tenant-a",
+    "submitted_tenant_id": "tenant-b",
+    "query": "pay",
+    "observed_suggestion": "Payroll Audit Q4",
+    "leaked_fields": ["record_title", "tenant_slug", "result_count"]
+  },
+  "expected_findings": [
+    "CTS-01",
+    "CTS-02",
+    "CTS-03",
+    "CTS-04",
+    "CTS-05"
+  ],
+  "risk": "A tenant user can enumerate another tenant's records and infer sensitive project or financial activity from suggestions."
+}

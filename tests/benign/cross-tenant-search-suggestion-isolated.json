@@ -1,0 +1,36 @@
+{
+  "id": "cross-tenant-search-suggestion-isolated",
+  "description": "A safer autocomplete flow binds tenant scope on the server, uses tenant-aware index filters, and keeps cache/ranking signals isolated.",
+  "surface": {
+    "endpoint": "GET /api/search/suggest?q={prefix}",
+    "actor": "tenant-user",
+    "tenant_source": "server_session",
+    "index": "tenant-filtered-suggestions"
+  },
+  "controls": {
+    "server_derived_context": true,
+    "mandatory_index_filter": ["tenant_id", "workspace_id", "visibility"],
+    "direct_read_authorization_per_result": true,
+    "cache_key_dimensions": ["actor_id", "tenant_id", "workspace_id", "role_hash", "query_prefix"],
+    "minimum_query_length": 3,
+    "role_change_invalidation": true,
+    "admin_search_separate_cache": true,
+    "search_provider_filter_failure_mode": "fail_closed"
+  },
+  "regression_tests": [
+    "same-tenant prefix returns authorized records",
+    "cross-tenant prefix returns generic empty response",
+    "role removal invalidates cached suggestions",
+    "admin search result does not enter user suggestion cache",
+    "index alias swap preserves tenant_id and visibility filters"
+  ],
+  "pass_gates": [
+    "CTS-01",
+    "CTS-02",
+    "CTS-03",
+    "CTS-04",
+    "CTS-05",
+    "CTS-06"
+  ],
+  "review_note": "The flow is a safe comparator because search scope is server-bound, authorization happens before disclosure, and caches, ranking, admin search, and regression evidence preserve tenant boundaries."
+}
