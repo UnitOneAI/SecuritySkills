@@ -10,7 +10,7 @@ description: >
 tags: [compliance, iso27001, isms]
 role: [vciso, security-engineer]
 phase: [assess, operate]
-frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
 difficulty: intermediate
 time_estimate: "90-180min"
 version: "1.0.0"
