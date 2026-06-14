@@ -1,0 +1,28 @@
+{
+  "case": "egress-destination-policy-bypass",
+  "category": "vulnerable",
+  "description": "A hostname allow-list permits broad wildcards and validates hostnames before DNS resolution only.",
+  "workload": {
+    "serviceAccount": "invoice-renderer",
+    "environment": "production"
+  },
+  "egressPolicy": {
+    "allowedHosts": ["*.example.com", "*.cdn.example.net"],
+    "blockedIpRanges": [],
+    "validateResolvedIp": false,
+    "allowRedirects": true,
+    "redirectValidation": "initial-host-only"
+  },
+  "attackPath": {
+    "initialUrl": "https://assets.example.com/redirect",
+    "redirectTarget": "http://169.254.169.254/latest/meta-data/",
+    "risk": "metadata-service access through a trusted hostname redirect"
+  },
+  "expectedFindings": [
+    "EGRESS-DEST-01",
+    "EGRESS-DEST-02",
+    "EGRESS-DEST-03",
+    "EGRESS-SSRF-01"
+  ],
+  "expectedSeverity": "critical"
+}

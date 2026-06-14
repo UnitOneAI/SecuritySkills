@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -481,6 +481,18 @@ skills:
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Network --------------------------------------------------------------
+  - id: egress-proxy-authz-review
+    name: "Egress Proxy Authorization Review"
+    tags: [network, egress, proxy, authorization, zero-trust]
+    role: [security-engineer, architect, cloud-security-engineer]
+    phase: [design, deploy, operate]
+    activity: [review, assess, test]
+    frameworks: [NIST-SP-800-207, NIST-SP-800-53-AC-4, NIST-SP-800-53-SC-7, OWASP-SSRF-Prevention]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/network/egress-proxy-authz-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
   - id: firewall-review
     name: "Firewall Rule Audit"
     tags: [network, firewall, segmentation]

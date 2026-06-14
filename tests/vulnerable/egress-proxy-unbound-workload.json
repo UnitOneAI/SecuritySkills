@@ -1,0 +1,32 @@
+{
+  "case": "egress-proxy-unbound-workload",
+  "category": "vulnerable",
+  "description": "A central egress proxy authorizes requests from a caller-supplied header instead of verified workload identity.",
+  "egressProxy": {
+    "name": "shared-outbound-proxy",
+    "identitySource": "X-Workload-Name",
+    "identityVerifiedByProxy": false,
+    "defaultDecision": "allow"
+  },
+  "requestExample": {
+    "sourceServiceAccount": "billing-api",
+    "headers": {
+      "X-Workload-Name": "reporting-service",
+      "X-Tenant-ID": "tenant-a"
+    },
+    "destination": "https://exports.example.net/v1/upload"
+  },
+  "policy": {
+    "reporting-service": [
+      {
+        "host": "exports.example.net",
+        "methods": ["POST"]
+      }
+    ]
+  },
+  "expectedFindings": [
+    "EGRESS-ID-01",
+    "EGRESS-ID-02"
+  ],
+  "expectedSeverity": "high"
+}

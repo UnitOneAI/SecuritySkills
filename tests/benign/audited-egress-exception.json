@@ -1,0 +1,28 @@
+{
+  "case": "audited-egress-exception",
+  "category": "benign",
+  "description": "A temporary egress exception is approved, time bounded, logged, and scoped to one workload and destination.",
+  "exception": {
+    "id": "egress-exc-2026-041",
+    "owner": "payments-platform",
+    "approver": "security-architecture",
+    "reason": "temporary processor migration validation",
+    "expiresAt": "2026-07-01T00:00:00Z",
+    "reviewCadenceDays": 7
+  },
+  "scope": {
+    "workloadIdentity": "spiffe://prod/ns/payments/sa/settlement-worker",
+    "destinationHost": "migration-api.payment-processor.example",
+    "resolvedIpRanges": ["198.51.100.64/27"],
+    "port": 443,
+    "methods": ["POST"]
+  },
+  "audit": {
+    "matchedPolicyId": "egress-exc-2026-041",
+    "logsAllowAndDeny": true,
+    "logsWorkloadIdentity": true,
+    "logsTraceId": true,
+    "alertsBeforeExpiry": true
+  },
+  "expectedDecision": "no finding"
+}

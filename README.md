@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -111,7 +111,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -195,6 +195,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 
 | Skill | Path | Frameworks |
 |-------|------|------------|
+| Egress Proxy Authorization Review | `skills/network/egress-proxy-authz-review/` | NIST SP 800-207, NIST SP 800-53, OWASP SSRF Prevention |
 | Firewall Rule Audit | `skills/network/firewall-review/` | CIS Controls v8, NIST SP 800-41 |
 | Network Segmentation | `skills/network/segmentation/` | NIST SP 800-207, CIS Controls v8 |
 | DNS Security | `skills/network/dns-security/` | NIST SP 800-81, CIS Controls v8 |

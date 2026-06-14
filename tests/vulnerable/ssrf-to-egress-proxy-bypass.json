@@ -1,0 +1,29 @@
+{
+  "case": "ssrf-to-egress-proxy-bypass",
+  "category": "vulnerable",
+  "description": "A URL preview worker sends user-controlled URLs through the egress proxy, but the worker subnet also has direct NAT egress.",
+  "broker": {
+    "name": "url-preview-worker",
+    "inputSource": "customer_url",
+    "allowedSchemes": ["http", "https"],
+    "privateRangeDenyList": ["10.0.0.0/8"],
+    "metadataServiceDenied": false
+  },
+  "network": {
+    "requiresProxy": false,
+    "directNatGateway": true,
+    "hostNetworkAllowed": true,
+    "meshSidecarRequired": false
+  },
+  "testUrls": [
+    "http://127.0.0.1:8080/admin",
+    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "file:///etc/passwd"
+  ],
+  "expectedFindings": [
+    "EGRESS-SSRF-01",
+    "EGRESS-BYPASS-01",
+    "EGRESS-BYPASS-02"
+  ],
+  "expectedSeverity": "critical"
+}

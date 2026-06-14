@@ -1,0 +1,30 @@
+{
+  "case": "fail-closed-egress-broker",
+  "category": "benign",
+  "description": "The broker denies new outbound requests when identity, policy, DNS, or audit dependencies are unavailable.",
+  "egressBroker": {
+    "name": "connector-egress-broker",
+    "policyOutageMode": "deny-new-requests",
+    "identityOutageMode": "deny",
+    "dnsResolutionOutageMode": "deny",
+    "auditOutageMode": "deny-sensitive-flows"
+  },
+  "cachePolicy": {
+    "enabled": true,
+    "maxAgeSeconds": 300,
+    "cacheKey": [
+      "workloadIdentity",
+      "tenantId",
+      "destinationHost",
+      "resolvedIpRange",
+      "method",
+      "dataClass"
+    ]
+  },
+  "dnsDefense": {
+    "validateAfterRedirect": true,
+    "blockPrivateRangesAfterResolution": true,
+    "connectionReusePinnedToAuthorizedDestination": true
+  },
+  "expectedDecision": "no finding"
+}

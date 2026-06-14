@@ -1,0 +1,33 @@
+{
+  "case": "workload-bound-egress-policy",
+  "category": "benign",
+  "description": "Outbound requests are authorized by verified workload identity, exact destination, resolved IP range, and method.",
+  "workload": {
+    "serviceAccount": "billing-reconciler",
+    "spiffeId": "spiffe://prod/ns/payments/sa/billing-reconciler",
+    "environment": "production"
+  },
+  "egressProxy": {
+    "identitySource": "mTLS client certificate",
+    "identityVerifiedByProxy": true,
+    "defaultDecision": "deny",
+    "failMode": "closed"
+  },
+  "policy": [
+    {
+      "workloadIdentity": "spiffe://prod/ns/payments/sa/billing-reconciler",
+      "host": "api.payment-processor.example",
+      "resolvedIpRanges": ["203.0.113.0/24"],
+      "port": 443,
+      "protocol": "HTTPS",
+      "methods": ["POST"],
+      "tenantScope": "merchant-account-id"
+    }
+  ],
+  "audit": {
+    "logsDecision": true,
+    "logsMatchedPolicyId": true,
+    "logsResolvedIp": true
+  },
+  "expectedDecision": "no finding"
+}
