@@ -1,0 +1,23 @@
+{
+  "id": "account-bound-invoice-token",
+  "skill": "invoice-email-link-security",
+  "case_type": "benign",
+  "summary": "Invoice view token is scoped to invoice, tenant, account, action, and recipient role.",
+  "email_link": {
+    "link_type": "view_invoice",
+    "ttl_minutes": 30,
+    "single_use": true
+  },
+  "binding": {
+    "tenant_id": "tenant-redacted",
+    "account_id": "account-redacted",
+    "invoice_id": "invoice-redacted",
+    "action": "view_invoice",
+    "recipient_role": "billing_contact"
+  },
+  "logging": {
+    "raw_token_logged": false,
+    "redacts_tokenized_url": true
+  },
+  "expected_result": "No finding if server-side validation enforces all bindings and expiry."
+}

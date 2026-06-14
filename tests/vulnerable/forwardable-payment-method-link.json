@@ -1,0 +1,21 @@
+{
+  "id": "forwardable-payment-method-link",
+  "skill": "invoice-email-link-security",
+  "case_type": "vulnerable",
+  "summary": "Forwarded billing email link allows payment method replacement without login or step-up.",
+  "link_type": "update_payment_method",
+  "authority": {
+    "requires_authenticated_session": false,
+    "requires_step_up": false,
+    "allows_state_change": true
+  },
+  "forwarding_behavior": {
+    "works_for_unintended_recipient": true,
+    "limits_to_original_invoice": false
+  },
+  "expected_findings": [
+    "INV-AUTHZ-01",
+    "INV-STEP-01",
+    "INV-BIND-01"
+  ]
+}

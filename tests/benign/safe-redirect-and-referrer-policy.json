@@ -1,0 +1,17 @@
+{
+  "id": "safe-redirect-and-referrer-policy",
+  "skill": "invoice-email-link-security",
+  "case_type": "benign",
+  "summary": "Invoice link uses a server-side destination id and strips token before leaving the invoice surface.",
+  "redirect": {
+    "destination_id": "payment_processor_checkout",
+    "user_controlled_url": false,
+    "allow_listed": true,
+    "token_stripped_before_redirect": true
+  },
+  "headers": {
+    "referrer_policy": "strict-origin",
+    "host_header_used_for_link_generation": false
+  },
+  "expected_result": "No INV-LEAK finding when redirects are allow-listed and tokenized URLs are not disclosed."
+}

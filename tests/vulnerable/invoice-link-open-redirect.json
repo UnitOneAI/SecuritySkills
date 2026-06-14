@@ -1,0 +1,22 @@
+{
+  "id": "invoice-link-open-redirect",
+  "skill": "invoice-email-link-security",
+  "case_type": "vulnerable",
+  "summary": "Tokenized invoice link accepts an attacker-controlled return URL.",
+  "email_link": {
+    "path": "/invoice/open",
+    "query": {
+      "token": "live-token-redacted",
+      "returnUrl": "https://attacker.example/collect"
+    }
+  },
+  "redirect_validation": {
+    "allow_listed": false,
+    "relative_only": false,
+    "strips_token_before_redirect": false
+  },
+  "expected_findings": [
+    "INV-LEAK-01",
+    "INV-LEAK-02"
+  ]
+}

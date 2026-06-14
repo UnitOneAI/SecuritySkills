@@ -1,0 +1,27 @@
+{
+  "id": "invoice-email-link-unbound-token",
+  "skill": "invoice-email-link-security",
+  "case_type": "vulnerable",
+  "summary": "Invoice email token is reusable and only tied to an invoice id.",
+  "email_link": {
+    "path": "/billing/invoice",
+    "query": {
+      "invoice_id": "INV-1042",
+      "token": "live-token-redacted"
+    },
+    "ttl_hours": 720,
+    "single_use": false
+  },
+  "validation_logic": {
+    "checks_token_exists": true,
+    "checks_account_owner": false,
+    "checks_tenant": false,
+    "checks_recipient_role": false
+  },
+  "expected_findings": [
+    "INV-TOKEN-03",
+    "INV-TOKEN-05",
+    "INV-BIND-02",
+    "INV-BIND-03"
+  ]
+}

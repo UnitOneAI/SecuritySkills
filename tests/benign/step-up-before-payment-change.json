@@ -1,0 +1,15 @@
+{
+  "id": "step-up-before-payment-change",
+  "skill": "invoice-email-link-security",
+  "case_type": "benign",
+  "summary": "Email link can start payment method update but backend requires login, account ownership, and recent step-up before saving.",
+  "link_type": "update_payment_method",
+  "controls": {
+    "requires_authenticated_session": true,
+    "checks_account_owner": true,
+    "requires_recent_step_up": true,
+    "enforces_step_up_on_backend": true,
+    "audit_event_written": true
+  },
+  "expected_result": "No INV-STEP finding when the state-changing endpoint independently enforces step-up."
+}
