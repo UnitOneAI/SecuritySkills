@@ -13,7 +13,7 @@ phase: [recover]
 frameworks: [NIST-SP-800-61r2]
 difficulty: beginner
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -266,10 +266,10 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 
 **Remediation action template:**
 
-| ID | Finding | Action | Owner | Priority | Deadline | Tracking |
-|---|---|---|---|---|---|---|
-| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] |
-| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Tracking | Aging Status | Validation Evidence | Closure Approver |
+|---|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Specific finding from RCA or control failure mapping] | [Specific remediation action] | [Name and team] | [P0/P1/P2/P3] | [YYYY-MM-DD] | [Ticket ID] | [On track / Due within 14 days / Overdue / Blocked] | [Test, control evidence, or monitoring proof required to close] | [Control owner / risk owner] |
+| REM-002 | [Finding] | [Action] | [Owner] | [Priority] | [Deadline] | [Ticket ID] | [Status] | [Evidence] | [Approver] |
 
 **Remediation prioritization:**
 
@@ -279,6 +279,27 @@ Convert analysis findings into specific, measurable, assignable, and time-bound 
 | P1 | Significant gap that contributed to the incident severity or delayed response | 30 days |
 | P2 | Moderate gap that represents a defense-in-depth weakness | 90 days |
 | P3 | Minor improvement or best-practice enhancement | Next quarter |
+
+**Remediation governance gates:**
+
+Before the PIR can treat remediation as governed, each action item must show:
+
+- **Risk-ranked due date** -- The deadline is justified by severity, recurrence risk, regulatory commitment, and exposure window. Long-running remediation is acceptable only when the due date, dependency, and interim mitigation are explicit.
+- **Interim mitigation evidence** -- If the final fix depends on vendor timelines, architecture review, legal approval, procurement, or change windows, record the compensating control, owner, expiration/review date, and evidence that the mitigation is operating.
+- **Aging bucket** -- Classify every open action as `On track`, `Due within 14 days`, `Overdue 1-30 days`, `Overdue >30 days`, or `Blocked with approved dependency`. Overdue or blocked actions require escalation owner and next review date.
+- **Recurrence linkage** -- Link repeated incidents, near misses, or control failures back to the same delayed remediation ticket. A recurring incident tied to an overdue action must be reported as backlog risk, not as an isolated new lesson learned.
+- **Control-owner acceptance** -- Closure requires the control owner or risk owner to accept the evidence, not only the assignee marking a ticket done. Ticket status alone is insufficient closure evidence.
+- **Validation evidence** -- Closure must reference the test, monitoring result, configuration evidence, detection rule proof, tabletop result, or other artifact proving the intended control changed and works.
+
+**Closure decision guide:**
+
+| Action State | PIR Treatment |
+|---|---|
+| Due date present, owner assigned, interim mitigation active, validation criteria defined | Track as governed open remediation. |
+| Overdue without approved dependency or interim mitigation | Escalate as unmanaged remediation aging. Do not mark PIR follow-up complete. |
+| Closed by assignee but missing validation evidence or control-owner acceptance | Reopen or mark `Closure not verified`. |
+| Repeated incident maps to the same delayed fix | Link recurrence to backlog risk and update priority/aging status. |
+| Vendor/legal/architecture dependency exists with approved risk acceptance | Keep open with dependency owner, review date, interim mitigation, and acceptance evidence. |
 
 ---
 
@@ -302,7 +323,7 @@ Produce the post-incident review report with these exact sections:
 ## Post-Incident Review: [Incident ID]
 **Date of Review:** [YYYY-MM-DD]
 **Date of Incident:** [YYYY-MM-DD]
-**Skill:** post-incident-review v1.0.0
+**Skill:** post-incident-review v1.0.1
 **Framework:** NIST SP 800-61 Rev 2
 **PIR Facilitator:** [Name or "AI-assisted -- human facilitator required"]
 
@@ -354,9 +375,18 @@ root cause, and the number/priority of remediation actions identified.]
 - [Gap or failure identified during retrospective]
 
 ### Remediation Plan
-| ID | Finding | Action | Owner | Priority | Deadline | Ticket |
-|---|---|---|---|---|---|---|
-| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] |
+| ID | Finding | Action | Owner | Priority | Deadline | Ticket | Aging Status | Interim Mitigation | Validation Evidence | Closure Approver |
+|---|---|---|---|---|---|---|---|---|---|---|
+| REM-001 | [Finding] | [Action] | [Owner] | [P0-P3] | [Date] | [ID] | [On track / Due within 14 days / Overdue / Blocked] | [Control and expiry/review date] | [Artifact required before closure] | [Control owner / risk owner] |
+
+### Remediation Aging and Acceptance
+| Bucket | Count | Highest Priority | Escalation Owner | Recurrence Link | Next Review |
+|---|---:|---|---|---|---|
+| On track | [#] | [P0-P3] | [Owner] | [Incident IDs or None] | [YYYY-MM-DD] |
+| Due within 14 days | [#] | [P0-P3] | [Owner] | [Incident IDs or None] | [YYYY-MM-DD] |
+| Overdue 1-30 days | [#] | [P0-P3] | [Owner] | [Incident IDs or None] | [YYYY-MM-DD] |
+| Overdue >30 days | [#] | [P0-P3] | [Owner] | [Incident IDs or None] | [YYYY-MM-DD] |
+| Blocked with approved dependency | [#] | [P0-P3] | [Dependency owner] | [Incident IDs or None] | [YYYY-MM-DD] |
 
 ### Follow-Up Schedule
 - **Remediation Review Date:** [YYYY-MM-DD -- typically 30 days after PIR]
@@ -412,11 +442,15 @@ When the PIR focuses on who made mistakes rather than what systemic conditions e
 
 Documenting lessons learned and remediation actions in a PIR report that is then filed and forgotten produces zero security improvement. Every remediation action must be entered into the organization's work tracking system (Jira, ServiceNow, Azure DevOps) with an owner, priority, deadline, and scheduled review date. The PIR facilitator should schedule a follow-up review (typically 30 days after the PIR) to verify remediation progress.
 
-### Pitfall 4: Stopping Root Cause Analysis at the Proximate Cause
+### Pitfall 4: Closing Remediation Based on Ticket Status Alone
+
+A ticket marked `Done` does not prove the control changed or that the incident class is less likely to recur. Require validation evidence, control-owner acceptance, and recurrence linkage before treating a remediation item as closed. If an action is overdue, blocked without approved dependency, or linked to a repeated incident, keep PIR follow-up open and escalate the aging risk.
+
+### Pitfall 5: Stopping Root Cause Analysis at the Proximate Cause
 
 "The attacker exploited an unpatched vulnerability" is a proximate cause, not a root cause. The root cause analysis should continue: Why was the system unpatched? Was there a patch management gap? Was the system excluded from scanning? Was the patch tested and rolled back? Was the vulnerability not prioritized? Stopping at the first "why" produces surface-level remediations (patch this specific system) rather than systemic fixes (improve vulnerability prioritization and patch management process).
 
-### Pitfall 5: Waiting Too Long to Conduct the PIR
+### Pitfall 6: Waiting Too Long to Conduct the PIR
 
 NIST recommends conducting the PIR within several days of incident closure. Waiting weeks or months causes participants to forget critical details, misremember the sequence of events, and lose the emotional context that drives honest reflection. Schedule the PIR meeting before the incident is closed, ideally within 3-5 business days of recovery completion.
 
