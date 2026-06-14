@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -136,6 +136,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: customer-support-screen-share-security
+    name: "Customer Support Screen Share Security"
+    tags: [identity, support, screen-share, privacy]
+    role: [security-engineer, appsec-engineer, soc-analyst, vciso]
+    phase: [design, build, operate, respond]
+    activity: [review, audit, assess]
+    frameworks: [NIST-SP-800-53-AC, NIST-SP-800-53-AU, OWASP-ASVS]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/customer-support-screen-share-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------
@@ -389,7 +401,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md

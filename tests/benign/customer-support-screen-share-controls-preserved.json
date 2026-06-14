@@ -1,0 +1,80 @@
+{
+  "caseId": "customer-support-screen-share-controls-preserved",
+  "description": "A support screen-share workflow preserves customer consent, masks sensitive data across live and replay channels, and audits operator actions.",
+  "session": {
+    "sessionId": "support-share-9244",
+    "tenantId": "tenant-beta",
+    "customerUserId": "user-456",
+    "ticketId": "TCK-2033",
+    "consent": {
+      "mode": "explicit-customer-approved",
+      "visibleIndicator": true,
+      "customerCanPause": true,
+      "customerCanRevoke": true,
+      "ttlMinutes": 30,
+      "boundToDevice": true,
+      "boundToTicket": true
+    },
+    "operator": {
+      "identity": "agent-8842",
+      "mfaRequired": true,
+      "role": "support-viewer",
+      "jitGrantExpiresAt": "2026-06-15T08:30:00Z",
+      "tenantScoped": true
+    }
+  },
+  "streams": {
+    "liveMasking": {
+      "passwordFields": "server-enforced",
+      "mfaCodes": "redacted",
+      "paymentFields": "redacted",
+      "customerSecrets": "deterministic-fingerprint-only"
+    },
+    "domSnapshot": {
+      "includesRawValues": false,
+      "sampleFields": ["field_label", "redaction_policy_id", "stable_fingerprint"]
+    },
+    "recording": {
+      "enabled": true,
+      "redactionAtCapture": true,
+      "replayAudience": "approved-investigators-only",
+      "retentionDays": 30
+    },
+    "clipboardTransfer": {
+      "operatorCanReadClipboard": false,
+      "operatorCanWriteClipboard": false
+    }
+  },
+  "actions": {
+    "operatorCanControlMouse": false,
+    "operatorCanApproveStepUpPrompts": false,
+    "privilegedActionsAllowed": [],
+    "backendActorRecordedAs": "customerUserId+operatorId+ticketId+consentId"
+  },
+  "audit": {
+    "events": [
+      "invite_created",
+      "customer_consented",
+      "operator_joined",
+      "redaction_policy_applied",
+      "customer_revoked",
+      "session_closed"
+    ],
+    "requiredFields": ["operatorIndividualId", "policyVersion", "consentEvidence", "ticketId", "tenantId"],
+    "tamperProtected": true
+  },
+  "backgroundPaths": {
+    "reconnectAfterLogout": false,
+    "vendorWebhookCanExportReplay": false,
+    "breakGlassRequiresDualApproval": true
+  },
+  "expectedPassGates": [
+    "CSS-01",
+    "CSS-02",
+    "CSS-03",
+    "CSS-04",
+    "CSS-05",
+    "CSS-06",
+    "CSS-07"
+  ]
+}
