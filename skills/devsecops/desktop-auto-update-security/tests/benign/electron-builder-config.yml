@@ -1,0 +1,11 @@
+publish:
+  provider: generic
+  url: https://updates.example.com/stable
+detectUpdateChannel: true
+win:
+  verifyUpdateCodeSignature: true
+  publisherName:
+    - Example Software Inc.
+mac:
+  hardenedRuntime: true
+  notarize: true

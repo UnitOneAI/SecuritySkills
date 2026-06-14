@@ -1,0 +1,9 @@
+publish:
+  provider: generic
+  url: http://updates.example.com/beta
+detectUpdateChannel: false
+win:
+  verifyUpdateCodeSignature: false
+  publisherName: []
+mac:
+  gatekeeperAssess: false

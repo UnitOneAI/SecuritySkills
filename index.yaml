@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -389,7 +389,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md
@@ -542,6 +542,18 @@ skills:
     file: skills/devsecops/secrets-management/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
+  - id: desktop-auto-update-security
+    name: "Desktop Auto-Update Security Review"
+    tags: [devsecops, desktop, auto-update, supply-chain, electron]
+    role: [security-engineer, appsec-engineer]
+    phase: [build, deploy, review]
+    activity: [review, test]
+    frameworks: [Electron-autoUpdater, SLSA-v1.0, CWE-345, CWE-353, CWE-494]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/devsecops/desktop-auto-update-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
   - id: sast-config
     name: "SAST Tool Configuration & Tuning"
     tags: [devsecops, sast, semgrep, codeql]
@@ -582,13 +594,13 @@ roles:
   - id: security-engineer
     name: "Security Engineer"
     description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, desktop-auto-update-security, pipeline-security, container-security, iam-review]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, desktop-auto-update-security, dependency-scanning, prompt-injection, owasp-top-10-web]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
