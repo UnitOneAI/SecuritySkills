@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -39,6 +39,18 @@ skills:
     difficulty: intermediate
     time_estimate: "15-45min per module"
     file: skills/appsec/secure-code-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: path-traversal-review
+    name: "Path Traversal Review"
+    tags: [appsec, path-traversal, file-access, input-validation]
+    role: [appsec-engineer, security-engineer]
+    phase: [build, review]
+    activity: [review, test]
+    frameworks: [CWE-22, CWE-23, CWE-36, OWASP-WSTG]
+    difficulty: intermediate
+    time_estimate: "20-45min"
+    file: skills/appsec/path-traversal-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: owasp-top-10-web
@@ -389,7 +401,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md
@@ -582,13 +594,13 @@ roles:
   - id: security-engineer
     name: "Security Engineer"
     description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    skills: [secure-code-review, path-traversal-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, path-traversal-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
