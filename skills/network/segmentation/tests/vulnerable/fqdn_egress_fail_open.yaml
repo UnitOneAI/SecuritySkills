@@ -1,0 +1,9 @@
+egress_policy:
+  allow:
+    - fqdn: "*.payments.example.com"
+  dns_controls:
+    resolver: any
+    cname_chain_validation: missing
+    ttl_revalidation: missing
+    fail_closed_on_dns_error: false
+    private_dns_shadowing: not_checked

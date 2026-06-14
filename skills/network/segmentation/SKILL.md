@@ -13,7 +13,7 @@ phase: [design, operate]
 frameworks: [NIST-SP-800-207, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -66,12 +66,18 @@ Use Glob and Grep to locate network configuration files, diagrams-as-code, and i
 **/network-policy*
 **/calico*
 **/cilium*
+**/istio*
+**/authorizationpolicy*
+**/egress-gateway*
 
 # Cloud-native
 **/firewall-rule*
 **/security-group*
 **/nsg*
 **/route-table*
+**/egress-only*
+**/private-dns*
+**/resolver*
 
 # Traditional
 **/vlan*
@@ -80,9 +86,11 @@ Use Glob and Grep to locate network configuration files, diagrams-as-code, and i
 ```
 
 Catalog all discovered files by layer:
-- **Layer 3:** VLANs, subnets, VPCs, route tables.
+- **Layer 3:** VLANs, subnets, VPCs, route tables, IPv4 and IPv6 CIDR assignments.
 - **Layer 4-7:** Security groups, NACLs, network policies, WAF rules.
 - **Overlay:** Service mesh policies (Istio, Linkerd), micro-segmentation (Calico, Cilium).
+- **Name-based egress:** DNS resolvers, private hosted zones, FQDN policies, egress gateways.
+- **Control-plane paths:** Metadata services, node-local DNS, kubelet/API server paths, cloud control-plane endpoints.
 
 ---
 
@@ -208,7 +216,91 @@ Evaluate the environment's readiness for workload-level segmentation:
 
 ---
 
-### Step 4: DMZ Architecture Review (NIST SP 800-41, Section 4.1; CIS Control 12.2)
+### Step 4: Dual-Stack and Egress Bypass Review
+
+Segmentation evidence is incomplete until bypass paths outside the primary IPv4 zone matrix are checked. Many environments have IPv4 firewall rules, but IPv6, link-local, DNS/FQDN, or Kubernetes node-local paths can still cross zones.
+
+#### 4.1 IPv6 / Dual-Stack Validation
+
+For each zone and workload, determine whether IPv6 is disabled, partially enabled, or fully routed. Do not report an IPv6 finding when there is no IPv6 address assignment, route, or listener evidence. Do report a finding when IPv6 is reachable but not governed by equivalent controls.
+
+**Patterns to check:**
+
+```hcl
+# Terraform security group with IPv4 restriction but open IPv6 egress
+egress {
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+  cidr_blocks = ["10.0.0.0/8"]
+}
+
+egress {
+  from_port        = 0
+  to_port          = 0
+  protocol         = "-1"
+  ipv6_cidr_blocks = ["::/0"]
+}
+```
+
+Verify:
+
+- VPC/subnet IPv6 CIDRs, egress-only internet gateways, route tables, and load balancer IPv6 listeners.
+- Security group, NACL, firewall, CNI, and mesh policy parity between IPv4 and IPv6.
+- Whether Kubernetes dual-stack service CIDRs or pod CIDRs are enabled.
+- Negative reachability tests for unauthorized IPv6 paths between zones.
+
+**Finding classification:** IPv4 segmentation with open or unfiltered IPv6 egress from production zones is **High**. Treat it as **Critical** when it exposes CDE, management, identity, or data-tier resources.
+
+#### 4.2 Link-Local, Metadata, and Control-Plane Bypass
+
+Segmentation reviews must include non-application endpoints that can grant credentials or control-plane access. A workload blocked from the data tier can still bypass segmentation if it can reach metadata services, node-local services, or cloud APIs with stolen workload identity.
+
+**Examples to check:**
+
+```yaml
+link_local_paths:
+  - 169.254.169.254/32   # instance metadata
+  - 169.254.169.253/32   # resolver / node-local service path
+  - fd00:ec2::254/128    # IPv6 metadata pattern in some environments
+```
+
+Verify:
+
+- IMDSv2 or equivalent metadata hardening, hop limits, and workload identity scoping.
+- Explicit allow/deny evidence for metadata, kubelet, API server, node-local DNS, and cloud control-plane endpoints.
+- Audit logs for blocked and allowed metadata/control-plane access from each zone.
+
+**Finding classification:** Untrusted workloads reaching metadata or control-plane endpoints without scoped identity controls is **High**.
+
+#### 4.3 DNS / FQDN Egress Policy Validation
+
+Name-based egress controls are valid only when resolver path and fail-closed behavior are proven. A policy that allows `*.payments.example.com` can fail open if the resolver is uncontrolled, CNAME chains leave the approved zone, or split-horizon/private DNS shadows the intended destination.
+
+Verify:
+
+- Resolver path, DNS policy engine, CNAME chain validation, TTL revalidation, and split-horizon/private hosted-zone behavior.
+- Whether policy uses resolved IPs, SNI, HTTP host headers, service mesh hosts, or egress gateway identity.
+- Negative tests for DNS failure, CNAME redirection outside the approved zone, and stale cache behavior.
+
+**Finding classification:** FQDN egress for sensitive zones without resolver/CNAME/TTL/fail-closed evidence is **Medium** or **High** depending on data sensitivity.
+
+#### 4.4 Kubernetes Host and Node-Local Bypass
+
+NetworkPolicy and service mesh policy are not complete evidence unless the actual CNI and workload paths are covered.
+
+Verify:
+
+- `hostNetwork: true`, privileged diagnostics pods, DaemonSets, node-local DNS/cache, kubelet paths, and egress gateway bypasses.
+- CNI support for egress policy and whether enforcement is enabled.
+- Mesh enrollment requirements, sidecar bypasses, and AuthorizationPolicy coverage for ingress and egress.
+- Traffic tests from normal pods, host-network pods, and egress gateway paths.
+
+**Finding classification:** Production NetworkPolicy that excludes hostNetwork, node-local, or egress gateway paths is **High** when those paths can cross zone boundaries.
+
+---
+
+### Step 5: DMZ Architecture Review (NIST SP 800-41, Section 4.1; CIS Control 12.2)
 
 If a DMZ is present, evaluate its architectural soundness:
 
@@ -219,7 +311,7 @@ If a DMZ is present, evaluate its architectural soundness:
 
 ---
 
-### Step 5: PCI CDE Segmentation Validation (PCI DSS v4.0 Requirement 1.3)
+### Step 6: PCI CDE Segmentation Validation (PCI DSS v4.0 Requirement 1.3)
 
 If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
@@ -233,7 +325,7 @@ If PCI scope is identified, verify CDE segmentation meets PCI DSS requirements:
 
 ---
 
-### Step 6: Segmentation Testing Methodology
+### Step 7: Segmentation Testing Methodology
 
 Document or verify the existence of a segmentation testing process:
 
@@ -242,6 +334,10 @@ Document or verify the existence of a segmentation testing process:
 3. **From the DMZ, attempt to reach internal zones** on unauthorized ports. Expected result: blocked.
 4. **Test VLAN hopping** via double-tagging from user VLANs. Expected result: traffic dropped.
 5. **Validate that segmentation controls survive failover** (HA firewall failover should not open transit paths).
+6. **Run dual-stack negative tests** for unauthorized IPv6 paths. Expected result: same enforcement outcome as IPv4 or documented IPv6 disabled evidence.
+7. **Test link-local and metadata endpoints** from representative workloads. Expected result: blocked, scoped to approved workload identity, or explicitly justified.
+8. **Test FQDN egress fail-closed behavior** by using denied domains, CNAMEs outside approved zones, DNS failure, and stale-cache scenarios.
+9. **Test Kubernetes bypass paths** from hostNetwork pods, normal pods, mesh-enrolled workloads, and egress gateways where applicable.
 
 ---
 
@@ -249,9 +345,9 @@ Document or verify the existence of a segmentation testing process:
 
 | Severity | Definition |
 |----------|-----------|
-| **Critical** | Flat network with no segmentation; missing enforcement points between security zones; CDE not isolated; direct external-to-internal routing. |
-| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic. |
-| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation. |
+| **Critical** | Flat network with no segmentation; missing enforcement points between security zones; CDE not isolated; direct external-to-internal routing; unfiltered IPv6 or metadata/control-plane path into CDE, management, identity, or data-tier resources. |
+| **High** | No east-west controls within zones; bypass paths through transit networks; unrestricted DMZ-to-internal access; missing segmentation testing; native VLAN carrying production traffic; IPv4-only segmentation with open IPv6 egress; untrusted workload access to metadata/control-plane endpoints; Kubernetes hostNetwork/node-local bypass across zones. |
+| **Medium** | Micro-segmentation policies in audit mode only; partial flow visibility; management plane accessible from user zone without MFA/jump box; VLAN sprawl without documentation; FQDN egress policy without resolver, CNAME, TTL, and fail-closed evidence for non-critical zones. |
 | **Low** | Suboptimal zone naming conventions; missing network diagrams; segmentation documentation out of date. |
 
 ---
@@ -283,6 +379,13 @@ Document or verify the existence of a segmentation testing process:
 | DMZ         | App       | Firewall    | Restricted | Pass |
 | App         | Data      | SG only     | Overly permissive | F-002 |
 | User        | Data      | None        | No control | F-001 |
+
+### Dual-Stack and Egress Bypass Matrix
+
+| Zone / Workload | IPv6 Enabled | IPv6 Enforcement | Metadata / Control-Plane Access | DNS/FQDN Policy | HostNetwork / Node-Local Bypass | Status |
+|-----------------|--------------|------------------|----------------------------------|-----------------|----------------------------------|--------|
+| App             | yes          | SG only          | metadata scoped by IMDSv2        | fail-closed     | absent                           | Review |
+| Batch           | no           | not applicable   | blocked                          | CIDR only       | present                          | F-003 |
 
 ### Findings
 
@@ -345,6 +448,24 @@ Document or verify the existence of a segmentation testing process:
 
 5. **Assuming Kubernetes namespaces provide network isolation.** Namespaces are a logical organizational boundary. Without a NetworkPolicy or CNI-level enforcement (Calico, Cilium), all pods across all namespaces can communicate freely by default.
 
+6. **Treating IPv4-only evidence as complete.** A restricted IPv4 route table or security group does not prove segmentation if IPv6 addresses, routes, load balancers, or pod CIDRs are enabled without equivalent enforcement.
+
+7. **Ignoring metadata and node-local paths.** Link-local metadata, node-local DNS, kubelet, API server, and cloud control-plane endpoints can provide credentials or control even when application ports are blocked.
+
+8. **Trusting FQDN egress without DNS evidence.** DNS-based controls need resolver path, CNAME, TTL, split-horizon, and fail-closed validation. Otherwise an apparently narrow host allowlist can become broad IP egress.
+
+---
+
+## Test Fixtures
+
+Use the examples under `skills/network/segmentation/tests/` to validate the dual-stack and egress bypass checks:
+
+- `tests/vulnerable/dual_stack_open_ipv6_egress.tf` should be reported because IPv4 egress is restricted while IPv6 egress is open to `::/0`.
+- `tests/vulnerable/kubernetes_hostnetwork_bypass.yaml` should be reported because a `hostNetwork` pod can bypass normal pod NetworkPolicy enforcement assumptions.
+- `tests/vulnerable/fqdn_egress_fail_open.yaml` should be reported because DNS/FQDN egress lacks CNAME, TTL, private DNS, and fail-closed controls.
+- `tests/benign/ipv4_only_ipv6_disabled.tf` should not be reported as an IPv6 bypass without evidence that IPv6 is assigned or routed.
+- `tests/benign/fqdn_egress_fail_closed.yaml` should not be reported when resolver, CNAME, TTL, private DNS, and fail-closed controls are documented.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -367,9 +488,14 @@ This skill processes network configurations that may contain user-supplied comme
 - PCI DSS v4.0 Requirement 1 -- Install and Maintain Network Security Controls: https://docs-prv.pcisecuritystandards.org/PCI%20DSS/Standard/PCI-DSS-v4_0.pdf
 - Kubernetes Network Policies: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 - Project Calico Documentation: https://docs.tigera.io/calico/latest/about/
+- AWS VPC IP Addressing: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html
+- AWS Instance Metadata Service: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
+- Kubernetes Dual-Stack Networking: https://kubernetes.io/docs/concepts/services-networking/dual-stack/
+- Kubernetes DNS for Services and Pods: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/
 
 ---
 
 ## Changelog
 
+- **1.1.0** -- Add dual-stack IPv6, link-local/metadata, DNS/FQDN egress, and Kubernetes host/node-local bypass validation gates.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-207 and CIS Controls v8 Control 12 for network segmentation review.

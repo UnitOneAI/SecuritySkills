@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: diagnostics
+  namespace: prod-payments
+spec:
+  hostNetwork: true
+  containers:
+    - name: shell
+      image: registry.example.com/diagnostics:latest
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: prod-payments
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

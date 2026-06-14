@@ -1,0 +1,9 @@
+egress_policy:
+  allow:
+    - fqdn: "api.payments.example.com"
+  dns_controls:
+    resolver: controlled-coredns
+    cname_chain_validation: enforced_within_zone
+    ttl_revalidation: 60s
+    fail_closed_on_dns_error: true
+    private_dns_shadowing: checked
