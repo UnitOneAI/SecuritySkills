@@ -1,0 +1,56 @@
+{
+  "id": "scim-stale-entitlement-after-disable",
+  "skill": "scim-provisioning-deprovisioning-security",
+  "classification": "vulnerable",
+  "flow": "scim_deprovisioning",
+  "risk_summary": "A SCIM disable event marks the user inactive but leaves app-local admin roles, API tokens, and cached sessions active after termination.",
+  "evidence": {
+    "source_event": {
+      "event_id": "evt-termination-77",
+      "tenant_id": "tenant-a",
+      "external_id": "emp-1042",
+      "active": false,
+      "groups": []
+    },
+    "mapper_behavior": {
+      "match_key": "email",
+      "on_active_false": "disable_login_only",
+      "revoke_groups": false,
+      "revoke_api_tokens": false,
+      "clear_sessions": false
+    },
+    "downstream_state_after_sync": {
+      "login_enabled": false,
+      "roles": [
+        "workspace-admin",
+        "billing-owner"
+      ],
+      "api_tokens_active": 2,
+      "cached_sessions_active": 1
+    },
+    "missing_controls": [
+      "immutable externalId match",
+      "role and group revocation on disable",
+      "API token and session revocation",
+      "deprovisioning retry visibility",
+      "post-sync reconciliation"
+    ]
+  },
+  "expected_findings": [
+    {
+      "gate": "SCIM-LIFE-01",
+      "severity": "Medium",
+      "reason": "The mapper matches lifecycle events by mutable email instead of a tenant-scoped immutable identifier."
+    },
+    {
+      "gate": "SCIM-LIFE-04",
+      "severity": "High",
+      "reason": "Deprovisioning disables login but leaves admin roles, billing access, API tokens, and cached sessions active."
+    },
+    {
+      "gate": "SCIM-LIFE-06",
+      "severity": "Medium",
+      "reason": "No reconciliation evidence detects drift between the source termination event and app-local entitlements."
+    }
+  ]
+}

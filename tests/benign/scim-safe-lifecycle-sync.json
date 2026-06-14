@@ -1,0 +1,53 @@
+{
+  "id": "scim-safe-lifecycle-sync",
+  "skill": "scim-provisioning-deprovisioning-security",
+  "classification": "benign",
+  "flow": "scim_lifecycle_sync",
+  "risk_summary": "The SCIM integration binds users by tenant-scoped externalId, applies least-privilege defaults, revokes downstream access on disable, and reconciles app state after sync.",
+  "evidence": {
+    "source_event": {
+      "event_id": "evt-disable-9001",
+      "tenant_id": "tenant-a",
+      "external_id": "emp-1042",
+      "version": 44,
+      "active": false,
+      "groups": []
+    },
+    "mapper_controls": [
+      "match by tenant_id plus external_id",
+      "ignore email as a linking key",
+      "use event version to reject stale replay",
+      "remove app-local groups and roles on group removal or disable",
+      "revoke sessions, refresh tokens, API tokens, and SCIM-created credentials on disable",
+      "queue partial failures for owner-visible retry"
+    ],
+    "reconciliation": {
+      "cadence_hours": 24,
+      "compares": [
+        "source active flag",
+        "source groups",
+        "app-local roles",
+        "sessions",
+        "API tokens",
+        "licenses"
+      ],
+      "alerts_on": [
+        "privileged role after disable",
+        "duplicate externalId",
+        "failed downstream revoke",
+        "stale group membership"
+      ]
+    }
+  },
+  "expected_assessment": {
+    "gate_results": {
+      "SCIM-LIFE-01": "pass",
+      "SCIM-LIFE-02": "pass",
+      "SCIM-LIFE-03": "pass",
+      "SCIM-LIFE-04": "pass",
+      "SCIM-LIFE-05": "pass",
+      "SCIM-LIFE-06": "pass"
+    },
+    "review_note": "The flow is a safe comparator because lifecycle authority is immutable and tenant-scoped, deprovisioning revokes downstream access, stale replay is rejected, and reconciliation detects drift."
+  }
+}
