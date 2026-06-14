@@ -13,7 +13,7 @@ phase: [respond, recover]
 frameworks: [NIST-SP-800-61r2, SANS-IH]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -61,6 +61,9 @@ Before beginning, gather or confirm the following. Mark each item as obtained or
 - [ ] **Current state** -- Is the attack ongoing, contained, or resolved? What actions have already been taken?
 - [ ] **Existing IR plan** -- Does the organization have a documented IR plan, designated IR team, and established communication channels?
 - [ ] **Regulatory obligations** -- Applicable breach notification requirements (GDPR 72-hour rule, HIPAA, state breach notification laws, SEC 4-day rule, PCI DSS).
+- [ ] **Notification clock triggers** -- When each legal, regulatory, contractual, insurance, or customer notification clock may have started, and what evidence supports that timestamp.
+- [ ] **Communications trust state** -- Whether SSO, corporate email, chat, endpoint management, ticketing, and conferencing systems remain trusted for incident coordination.
+- [ ] **External messaging freeze** -- Whether public statements, support replies, sales/customer-success messaging, and vendor/customer updates require legal or incident commander approval before release.
 - [ ] **Third-party dependencies** -- Managed security providers (MSSP/MDR), cyber insurance carrier notification requirements, external IR retainer.
 
 ---
@@ -108,6 +111,9 @@ Verify that the foundational elements for incident response are in place. If gap
 | Cyber insurance policy and carrier contact | [ ] | Notification within 24-72h typical |
 | External IR retainer (if applicable) | [ ] | |
 | Regulatory notification requirements documented | [ ] | GDPR, HIPAA, state laws, SEC |
+| Notification Clock Register exists | [ ] | Trigger time, source, owner, deadline, decision evidence |
+| Trusted Communications Matrix exists | [ ] | Primary and out-of-band channels, compromise assumptions |
+| External messaging approval path defined | [ ] | Legal, incident commander, comms, customer-facing teams |
 | Evidence storage with chain-of-custody procedures | [ ] | |
 
 ### Phase 2: Detection and Analysis (NIST) / Identification (SANS)
@@ -278,6 +284,30 @@ Restore systems to normal operations:
 
 Use the appropriate communication template based on the audience.
 
+Before sending or withholding any external notification, build and maintain the notification clock and trusted communications records below. These records keep the response factual when impact is still uncertain and prevent normal business channels from making inconsistent statements while legal and incident leadership are still evaluating obligations.
+
+**Notification Clock Register:**
+
+| Obligation | Trigger Timestamp (UTC) | Source / Jurisdiction / Contract | Owner | Deadline | Decision | Evidence Reference |
+|------------|--------------------------|----------------------------------|-------|----------|----------|--------------------|
+| [GDPR / HIPAA / state law / SEC / customer contract / cyber insurance / vendor] | [YYYY-MM-DD HH:MM] | [legal source, policy clause, contract section, or counsel note] | [Legal / Privacy / Compliance / Insurance owner] | [deadline or "not applicable"] | [Notify / Delay / Not required / Under review] | [ticket, memo, counsel note, evidence ID] |
+
+**Trusted Communications Matrix:**
+
+| Channel | Trusted for IR? | Compromise Assumption | Approved Use | Backup / Out-of-Band Path | Owner |
+|---------|-----------------|-----------------------|--------------|---------------------------|-------|
+| Corporate email | [Yes / No / Unknown] | [SSO, mailbox rules, admin access, phishing exposure] | [Allowed / frozen / internal only] | [phone bridge, secure messenger, IR portal] | [name] |
+| Chat / collaboration | [Yes / No / Unknown] | [SSO/session compromise, bot tokens, guest access] | [Allowed / frozen / internal only] | [phone bridge, separate tenant, war room] | [name] |
+| Endpoint management | [Yes / No / Unknown] | [MDM/RMM compromise, attacker visibility] | [Allowed / frozen / containment only] | [manual phone tree, clean device pool] | [name] |
+| Customer support system | [Yes / No / Unknown] | [ticket visibility, macro misuse, impersonation risk] | [approved messaging only] | [status page, approved email alias] | [name] |
+
+**Communications freeze and approval path:**
+
+- Freeze public statements, support macros, sales/customer-success outreach, and vendor/customer updates until an incident commander and legal owner approve the message.
+- Record who approved each message, the factual basis used, the audience, the delivery channel, and the exact version sent.
+- If a notification is delayed or deemed not required, preserve counsel or compliance rationale, evidence reviewed, unresolved assumptions, and next review time.
+- If normal email, chat, SSO, or endpoint-management tooling may be compromised, switch coordination to documented out-of-band channels before discussing containment plans, customer impact, or attacker observations.
+
 **Internal Executive Notification (SEV-1/SEV-2):**
 
 ```
@@ -412,6 +442,30 @@ and recommended immediate actions. Lead with the most critical fact.]
 |---|---|---|---|
 | [Executive / Legal / Regulator / Customer / Insurance] | [Yes / No / Pending] | [timestamp] | [Email / Phone / Portal] |
 
+### Notification Clock Register
+| Obligation | Trigger Timestamp (UTC) | Source / Jurisdiction / Contract | Owner | Deadline | Decision | Evidence Reference |
+|---|---|---|---|---|---|---|
+| [GDPR / HIPAA / state law / SEC / customer contract / cyber insurance / vendor] | [timestamp] | [source] | [owner] | [deadline] | [Notify / Delay / Not required / Under review] | [evidence ID] |
+
+### Trusted Communications Matrix
+| Channel | Trusted for IR? | Compromise Assumption | Approved Use | Backup / Out-of-Band Path | Owner |
+|---|---|---|---|---|---|
+| [Email / Chat / Phone / Bridge / Ticketing / Status page] | [Yes / No / Unknown] | [assumption] | [allowed use] | [backup channel] | [owner] |
+
+### External Communications Approval
+- **communications freeze active:** [Yes / No]
+- **Approved External Statement Version:** [version/hash or "none"]
+- **Approved By:** [Incident Commander / Legal / Communications owner]
+- **Approval Timestamp:** [YYYY-MM-DD HH:MM UTC]
+- **Support/Sales/Customer Success Guidance:** [approved script or "paused"]
+
+### No-Notification Decision Evidence
+If any potential notification was delayed or deemed not required, document the evidence and decision owner here.
+
+| Obligation Considered | Decision | Decision Owner | Evidence Reviewed | Next Review Time |
+|---|---|---|---|---|
+| [obligation] | [Not required / delayed / under review] | [owner] | [evidence IDs] | [timestamp] |
+
 ### Escalation Decisions
 [Document any escalation triggers hit and actions taken]
 
@@ -467,6 +521,14 @@ Reconnecting systems to the network before thoroughly removing all persistence m
 ### Pitfall 5: Neglecting Regulatory Notification Deadlines
 
 Breach notification regulations impose strict timelines that begin running at the moment of discovery, not at the conclusion of investigation. GDPR requires notification within 72 hours of becoming aware of a personal data breach. Missing these deadlines exposes the organization to regulatory penalties independent of the incident itself. Track notification deadlines from the moment a potential data breach is identified, and involve legal counsel early.
+
+### Pitfall 6: Using Compromised Channels for Incident Communications
+
+An identity-provider, email, chat, or endpoint-management compromise can make normal coordination channels unsafe. If the attacker can read response discussions or alter customer-facing messages, the response can tip off the adversary, mislead customers, or create inconsistent regulatory evidence. Maintain a Trusted Communications Matrix and move SEV-1/SEV-2 coordination to approved out-of-band channels until those systems are validated.
+
+### Pitfall 7: Treating No-Notification Decisions as Informal
+
+Not every incident requires regulator, customer, or insurance notification, but the decision must be evidence-backed. An undocumented "no notice needed" decision is weak during later legal review. Preserve who made the decision, which facts were known at the time, which assumptions remained unresolved, and when the decision will be revisited if impact changes.
 
 ---
 
