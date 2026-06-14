@@ -1,0 +1,51 @@
+{
+  "id": "machine-user-scoped-workload-identity",
+  "skill": "machine-user-lifecycle-review",
+  "classification": "benign",
+  "flow": "workload_identity_lifecycle",
+  "risk_summary": "A CI deployment identity uses short-lived workload identity federation, scoped permissions, named ownership, review cadence, and deprovisioning hooks.",
+  "evidence": {
+    "identity": {
+      "name": "ci-deploy-prod-api",
+      "type": "workload_identity",
+      "owner": "platform-release-team",
+      "purpose": "deploy signed production API releases from protected main branch",
+      "environment": "production",
+      "review_cadence_days": 90,
+      "expires_on_repository_archive": true
+    },
+    "credential": {
+      "type": "oidc_workload_federation",
+      "ttl_minutes": 15,
+      "bound_claims": [
+        "repository",
+        "workflow",
+        "branch",
+        "environment",
+        "audience"
+      ]
+    },
+    "permissions": [
+      "prod:deployments:create",
+      "prod:artifacts:read"
+    ],
+    "audit_and_deprovisioning": [
+      "deployment approval id is logged",
+      "credential subject is logged on every token exchange",
+      "owner transfer is required before team deactivation",
+      "repository archive disables identity binding",
+      "unused identity alert fires after 30 days"
+    ]
+  },
+  "expected_assessment": {
+    "gate_results": {
+      "MACH-ID-01": "pass",
+      "MACH-ID-02": "pass",
+      "MACH-ID-03": "pass",
+      "MACH-ID-04": "pass",
+      "MACH-ID-05": "pass",
+      "MACH-ID-06": "pass"
+    },
+    "review_note": "The flow is a safe comparator because authority is short-lived, scoped to a protected workload boundary, owned by an active team, and observable through deployment provenance."
+  }
+}

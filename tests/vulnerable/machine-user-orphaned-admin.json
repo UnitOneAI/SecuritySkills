@@ -1,0 +1,58 @@
+{
+  "id": "machine-user-orphaned-admin",
+  "skill": "machine-user-lifecycle-review",
+  "classification": "vulnerable",
+  "flow": "automation_identity_lifecycle",
+  "risk_summary": "A legacy reporting bot keeps privileged production access with a long-lived static token after the owner and source system are inactive.",
+  "evidence": {
+    "identity": {
+      "name": "reporting-bot-prod",
+      "type": "service_account",
+      "owner": "former-data-platform-owner",
+      "purpose": "temporary migration reporting",
+      "created_at": "2024-01-10T00:00:00Z",
+      "last_reviewed_at": null
+    },
+    "credential": {
+      "type": "static_api_token",
+      "created_at": "2024-01-10T00:00:00Z",
+      "expires_at": null,
+      "rotation_policy": "none"
+    },
+    "permissions": [
+      "prod:reports:read",
+      "prod:exports:write",
+      "prod:admin:impersonate"
+    ],
+    "missing_controls": [
+      "active owner",
+      "purpose expiry",
+      "credential rotation",
+      "least privilege review",
+      "deprovisioning trigger",
+      "unusual export alerting"
+    ]
+  },
+  "expected_findings": [
+    {
+      "gate": "MACH-ID-01",
+      "severity": "High",
+      "reason": "The identity has no active owner, no review cadence, and a temporary purpose with no expiry."
+    },
+    {
+      "gate": "MACH-ID-02",
+      "severity": "High",
+      "reason": "The static API token has no expiration or rotation record."
+    },
+    {
+      "gate": "MACH-ID-03",
+      "severity": "High",
+      "reason": "The bot retains production export and impersonation privileges beyond the documented reporting purpose."
+    },
+    {
+      "gate": "MACH-ID-05",
+      "severity": "Medium",
+      "reason": "Owner and source-system inactivity do not trigger deprovisioning."
+    }
+  ]
+}
