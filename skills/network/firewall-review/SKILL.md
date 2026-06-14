@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -80,6 +80,9 @@ Record all discovered files. Categorize each by:
 - **Platform:** iptables, nftables, pf, cloud security groups, Kubernetes NetworkPolicy, vendor-specific (Palo Alto, Fortinet, Cisco ASA).
 - **Direction:** Perimeter (north-south) vs. internal (east-west).
 - **Scope:** Server, endpoint, network segment.
+- **Address family:** IPv4, IPv6, or dual-stack. Include `ip6tables`, IPv6 security group entries, IPv6 listener settings, and IPv6 subnet assignments.
+- **Abstraction:** Literal CIDR, cloud service tag, managed prefix list, CDN/WAF/provider range, network object group, Kubernetes selector, or private endpoint alias.
+- **Enforcement layer:** Security group, network ACL, route table, host firewall, Kubernetes NetworkPolicy, WAF/CDN policy, or resource-level policy.
 
 ---
 
@@ -254,6 +257,71 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 
 ---
 
+#### 2.8 IPv6 Parity Review
+
+Modern cloud and host firewalls often maintain separate IPv4 and IPv6 rule paths. A safe IPv4 rule base does not prove the same control exists for IPv6. Every public IPv4 exposure must have an explicit IPv6 review path, and every "IPv4-only" finding must prove IPv6 is disabled or equivalently restricted at all relevant layers.
+
+**What to verify:**
+
+- Every public IPv4 inbound rule has a corresponding IPv6 rule review result.
+- Any claim that exposure is IPv4-only includes evidence that IPv6 is disabled at the load balancer/listener, subnet, interface, host firewall, security group, Kubernetes ingress/service, and WAF/CDN layers where applicable.
+- Dual-stack listeners enforce the same source, destination, port, protocol, logging, and default-deny controls for IPv4 and IPv6.
+- IPv6 security group or firewall rules do not contain broad `::/0` permits that are absent from the IPv4 review.
+- Flow-log or effective-access tests include IPv6 paths where IPv6 is enabled or potentially inherited from platform defaults.
+
+**Patterns to check:** broad IPv6 accepts such as `::/0`, `ip6tables` permits without source restrictions, dual-stack listeners with IPv4-only policy checks, and IPv4-only Kubernetes `ipBlock` rules on dual-stack services.
+
+**Finding classification:** Public IPv6 exposure with no equivalent IPv4 control is **Critical** for inbound. Missing proof that IPv6 is disabled or restricted is **High** when the resource can be dual-stack.
+
+---
+
+#### 2.9 Service Tag and Prefix List Expansion
+
+Cloud service tags, managed prefix lists, CDN/WAF provider ranges, and network object groups hide the actual network surface behind friendly names. Reviewers must expand these abstractions before deciding whether a rule is narrow, overbroad, shadowed, or acceptable.
+
+**What to verify:**
+
+- Expand each provider-managed service tag, prefix list, CDN/WAF range, or object group at review time.
+- Record the expansion source, command or API used, timestamp, region, service boundary, and owner of the source list.
+- Compare expanded ranges to the intended service, account, VPC/VNet, region, environment, and data classification boundary.
+- Use expanded ranges when evaluating shadowed rules, broad egress rules, and any/any equivalents.
+- Identify shared or centrally managed prefix lists and confirm who approves updates and consumers.
+
+- Prefer provider APIs or canonical published range feeds for expansion evidence, such as AWS managed prefix list entries, Azure service tag exports, GCP cloud IP ranges, and CDN/WAF provider range feeds.
+
+**Finding classification:** A broad service tag or prefix list that expands outside the intended boundary is **High** for inbound and **Medium/High** for outbound depending on data sensitivity. Missing expansion evidence is **Medium** by default and **High** for public or sensitive paths.
+
+---
+
+#### 2.10 Provider Range Drift and Split Enforcement
+
+Provider IP ranges and service tags change over time. A firewall rule that is correct today can silently drift if nobody owns updates or if one enforcement layer is IPv4-only while another is dual-stack. Evaluate both drift controls and split enforcement across layers.
+
+**Provider Range Drift Evidence:**
+
+- Document the owner for each provider range, managed prefix list, CDN/WAF range, or service tag dependency.
+- Verify automation, subscription, IaC data source, scheduled job, or change-management evidence that keeps ranges current.
+- Confirm stale ranges are removed and new ranges are reviewed before becoming effective.
+- Require rollback evidence or alerting for failed provider-range updates.
+
+**Split Enforcement Matrix:** Build a layer-by-layer matrix for security groups/NSGs, network ACLs/routes, host firewalls, Kubernetes NetworkPolicies, WAF/CDN rules, and resource policies. Record whether IPv4 and IPv6 are both reviewed, the effective restriction at each layer, and the evidence source.
+
+**Broad Provider Tag Compensating Controls:**
+
+Some managed services require broad tags such as `Internet`, `AzureCloud`, provider-wide service tags, or all CDN ranges. Do not automatically fail these when there is strong compensating evidence, including:
+
+- Private endpoint, private link, VPC endpoint, or service endpoint restrictions.
+- Resource policies limiting source account, tenant, project, organization, principal, or network origin.
+- Identity-based access controls that fail closed and are tested independently of the network rule.
+- Data-plane constraints that prevent access to unintended resources even if the provider tag is broad.
+- Change evidence showing the broad tag is the narrowest provider-supported option and is reviewed periodically.
+
+If these controls are absent or only asserted without evidence, classify the broad provider tag as overbroad.
+
+**Finding classification:** Broad provider tags without compensating resource-level controls are **High** for sensitive egress or public ingress. Missing drift ownership or update automation is **Medium**, elevated to **High** when stale ranges create public exposure.
+
+---
+
 ### Step 3: Compile Assessment Report
 
 Produce the final report using the following structure.
@@ -265,8 +333,8 @@ Produce the final report using the following structure.
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Missing default deny; any/any inbound rules. Immediate exploitation risk. |
-| **High** | Overly permissive outbound rules; shadowed deny rules; no logging on deny actions; missing anti-spoofing; unused rules to decommissioned resources. |
-| **Medium** | Shadowed permit rules; missing egress DNS restriction; unused rules (active resources); missing logging on sensitive permits; missing stealth rules. |
+| **High** | Overly permissive outbound rules; shadowed deny rules; no logging on deny actions; missing anti-spoofing; unused rules to decommissioned resources; unreviewed dual-stack exposure; broad provider tags without compensating controls. |
+| **Medium** | Shadowed permit rules; missing egress DNS restriction; unused rules (active resources); missing logging on sensitive permits; missing stealth rules; missing service-tag expansion evidence; missing provider range owner/update evidence. |
 | **Low** | Rule documentation gaps; suboptimal rule ordering with no current security impact; cosmetic rule base issues. |
 
 ---
@@ -317,6 +385,31 @@ Produce the final report using the following structure.
 | SMTP (25)     | Yes/No    | <mail server IPs>      |
 | HTTPS (443)   | Yes/No    | <proxy or direct>      |
 
+### IPv6 Parity Review
+| Resource / Rule | IPv4 Exposure | IPv6 Exposure | IPv6 Disabled or Restricted Evidence | Result |
+|-----------------|---------------|---------------|--------------------------------------|--------|
+| <rule id>       | <source/port> | <source/port> | <listener/subnet/host/WAF evidence>  | Pass/Fail |
+
+### Service Tag and Prefix List Expansion
+| Rule | Tag / Prefix List / Provider Range | Expansion Source and Timestamp | Intended Boundary | Out-of-Bound Ranges |
+|------|------------------------------------|--------------------------------|-------------------|---------------------|
+| <rule id> | <tag/list name> | <command/API/source> | <region/service/account> | <ranges or none> |
+
+### Split Enforcement Matrix
+| Asset | Security Group / NSG | NACL / Route | Host Firewall | Kubernetes Policy | WAF/CDN/Resource Policy |
+|-------|----------------------|--------------|---------------|-------------------|-------------------------|
+| <asset> | <IPv4/IPv6 status> | <IPv4/IPv6 status> | <IPv4/IPv6 status> | <IPv4/IPv6 status> | <IPv4/IPv6 status> |
+
+### Provider Range Drift Evidence
+| Range Source | Owner | Update Mechanism | Last Reviewed | Failure Alerting |
+|--------------|-------|------------------|---------------|------------------|
+| <provider/tag/list> | <team/person> | <automation/change ticket> | <date> | <alert/runbook> |
+
+### Broad Provider Tag Compensating Controls
+| Rule | Broad Tag | Why Narrowing Is Not Feasible | Resource-Level Control Evidence | Residual Risk |
+|------|-----------|-------------------------------|---------------------------------|---------------|
+| <rule id> | <tag> | <provider constraint> | <policy/private endpoint/identity proof> | <risk> |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -357,9 +450,13 @@ Produce the final report using the following structure.
 
 3. **Ignoring IPv6 rules.** Many environments have parallel IPv4 and IPv6 rule bases (ip6tables, IPv6 security group rules). If IPv6 is not explicitly disabled at the interface level, an unmanaged IPv6 rule base can bypass all IPv4 firewall controls.
 
-4. **Assuming hit count of zero means the rule is unused.** Hit counters reset on firewall reload or failover. Verify the counter baseline timestamp before recommending rule removal. Cross-reference with SIEM/flow data where available.
+4. **Trusting friendly cloud service tag names without expansion.** Names such as `AzureCloud`, `Internet`, managed prefix lists, and CDN ranges can include more networks than the intended dependency. Expand them before assessing scope, shadowing, or egress exposure.
 
-5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
+5. **Assuming provider range updates are automatic.** Provider IP ranges and prefix lists can drift. Without owner, automation, and failure alert evidence, allowlists may become stale or unexpectedly broad.
+
+6. **Assuming hit count of zero means the rule is unused.** Hit counters reset on firewall reload or failover. Verify the counter baseline timestamp before recommending rule removal. Cross-reference with SIEM/flow data where available.
+
+7. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
 ---
 
@@ -386,4 +483,5 @@ This skill processes firewall configurations that may contain user-supplied comm
 
 ## Changelog
 
+- **1.0.1** -- Added IPv6 parity review, service tag / prefix list expansion, provider range drift evidence, split enforcement matrix, and broad provider tag compensating control guidance.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.
