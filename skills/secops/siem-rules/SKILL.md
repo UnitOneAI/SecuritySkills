@@ -12,7 +12,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -432,7 +432,37 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 2. **Statistical analysis:** Calculate mean, median, and standard deviation of the daily/hourly result count.
 3. **Threshold selection:** Set the initial threshold at mean + 2 standard deviations to capture anomalous activity while filtering normal variance.
 4. **Iterative tuning:** After deployment, review alerts weekly for the first month. Adjust the threshold based on TP/FP ratio.
-5. **Exclusion management:** Add exclusions for confirmed legitimate activity. Document each exclusion with a ticket reference and review date.
+5. **Exclusion management:** Add exclusions for confirmed legitimate activity. Document each exclusion with a ticket reference, owner, exact scope, and expiry date.
+
+**Suppression lifecycle gates:**
+
+Treat narrow, temporary suppressions as acceptable tuning only when they have all of the following evidence:
+
+- **Owner and ticket:** named detection owner plus incident/change/tuning ticket.
+- **Exact scope:** bounded to the specific asset, account, process, command line, IP range, parser version, or maintenance window that created the false positive.
+- **Expiry:** explicit date or duration, with production monitoring for expired suppressions that remain active.
+- **Residual detection path:** explanation of what still alerts if the same account, host, or process is abused outside the approved scope.
+- **Regression fixture:** at least one should-alert event and one should-not-alert event proving the suppression does not hide the intended detection.
+
+Flag suppressions as detection blind spots when they are global, permanent, scoped only to a username/shared account, lack an expiry, omit a ticket/owner, or are not covered by regression fixtures.
+
+```kql
+// Benign: scoped to one expected process on one asset and expires automatically.
+DeviceProcessEvents
+| where Timestamp > ago(1h)
+| where FileName =~ "powershell.exe"
+| where not(
+    DeviceName == "build-01"
+    and InitiatingProcessFileName == "signed-builder.exe"
+    and Timestamp < datetime(2026-07-01)
+)
+```
+
+```spl
+`comment("Risky: permanent username-only suppression")`
+index=edr sourcetype=process process_name=powershell.exe
+| search user!="svc-build"
+```
 
 **Threshold tuning parameters:**
 
@@ -444,6 +474,8 @@ index=wineventlog sourcetype="WinEventLog:Security" EventCode=4624 LogonType=3
 | `lookback period` | Historical data to evaluate | `ago(1h)`, `ago(24h)` |
 | `frequency` | How often the rule runs | Every 5m, 15m, 1h |
 | `suppression window` | Cooldown after firing to prevent duplicate alerts | 1h, 4h, 24h |
+| `suppression expiry` | Date or duration when an exclusion must be reviewed or removed | `2026-07-01`, `14d` |
+| `fixture coverage` | Positive and benign events that prove tuning behavior | `should_alert`, `should_not_alert` |
 
 **KQL alert rule scheduling (Sentinel Analytics Rule):**
 
@@ -479,6 +511,8 @@ Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Comp
 | Last triggered date | Within 90 days | > 180 days (rule may be stale or ineffective) |
 | Query execution time | < 30 seconds | > 2 minutes (performance issue) |
 | Exclusion count | < 10 | > 20 (rule may need fundamental redesign) |
+| Expired suppressions | 0 active | Any expired suppression still deployed |
+| Fixture regression coverage | Positive and benign fixtures for each promoted rule | Rule conversion or tuning without fixtures |
 
 **Quarterly review checklist:**
 
@@ -488,6 +522,19 @@ Entity mapping:      Account -> UserPrincipalName, IP -> IPAddress, Host -> Comp
 4. Has the TP/FP ratio changed significantly?
 5. Are there new exclusions needed or obsolete exclusions to remove?
 6. Has the threat landscape changed in ways that require rule logic updates?
+7. Are all active suppressions still scoped, ticketed, owned, and unexpired?
+8. Do regression fixtures prove converted KQL/SPL/Sigma logic still alerts on the same malicious event and stays quiet on approved benign activity?
+
+**Rule conversion regression checks:**
+
+When converting Sigma, KQL, SPL, or vendor content, require fixtures that exercise the old and new field names. Parser and CIM upgrades often rename fields such as `Account` to `TargetUserName`, `DeviceName` to `host`, or `Process` to `process_name`; the converted rule must prove equivalent alert behavior before promotion.
+
+Minimum fixture set:
+
+- One positive event that should alert before and after conversion.
+- One benign event that should not alert.
+- One suppression-scoped benign event proving the exclusion is exact.
+- One out-of-scope event using the same user or host that still alerts.
 
 ---
 
@@ -533,6 +580,7 @@ Produce SIEM rule deliverables in this structure:
 | Time window | [Xm/h] | [Why this window] |
 | Frequency | [Xm/h] | [How often to run] |
 | Suppression | [Xh] | [Cooldown period] |
+| Suppression Expiry | [YYYY-MM-DD or duration] | [Why this is temporary] |
 
 ### Entity Mapping
 | Entity Type | Source Field |
@@ -544,11 +592,25 @@ Produce SIEM rule deliverables in this structure:
 ### Known False Positives
 - [List specific FP sources]
 
+### Suppression Controls
+| Field | Value |
+|-------|-------|
+| Owner | [Detection owner] |
+| Ticket | [Incident/change/tuning ticket] |
+| Scope | [Exact asset/account/process/IP/parser scope] |
+| Expiry | [Date or duration] |
+| Expired Suppression Monitor | [How expired suppressions alert] |
+| Residual Detection | [What still alerts outside the approved scope] |
+
 ### Tuning Guidance
 - [Specific tuning recommendations]
 
 ### Validation
 - [How to test the rule produces a true positive]
+- [Positive fixture event that should alert]
+- [Benign fixture event that should not alert]
+- [Suppression-scoped fixture that should not alert until expiry]
+- [Out-of-scope fixture using the same user/host/process that should alert]
 ```
 
 ---
@@ -631,6 +693,14 @@ Deploying a rule without confirming it fires on known-malicious activity is depl
 ### Pitfall 5: Failing to Suppress Duplicate Alerts
 
 A detection rule that fires every 5 minutes on the same ongoing activity (e.g., a brute force attack lasting 2 hours) floods the alert queue with duplicates. Configure alert suppression or deduplication to prevent the same incident from generating hundreds of identical alerts. Use suppression windows and entity-based grouping to consolidate related alerts.
+
+### Pitfall 6: Letting Tuning Suppressions Become Permanent Blind Spots
+
+Suppressions created for maintenance windows, parser migrations, build hosts, or known business processes must expire. A username-only or process-only exclusion can hide attacker reuse of the same account or binary. Prefer precise scopes that include asset, process, command line, source, and time boundary, then add monitoring for expired suppressions that remain in production.
+
+### Pitfall 7: Promoting Converted Rules Without Regression Fixtures
+
+Sigma-to-KQL, Sigma-to-SPL, and parser-normalization changes can silently break a rule when field names change. Do not promote a converted rule unless positive and benign fixtures prove the old and new logic behave the same. Include a fixture that catches the intended malicious event after conversion and another that proves the approved suppression remains narrow.
 
 ---
 
