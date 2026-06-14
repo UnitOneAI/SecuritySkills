@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -136,6 +136,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: passkey-recovery-ceremony-review
+    name: "Passkey Recovery Ceremony Review"
+    tags: [identity, passkey, webauthn, account-recovery, mfa]
+    role: [security-engineer, appsec-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [NIST-SP-800-63B, OWASP-ASVS, FIDO2-WebAuthn, CIS-Controls-v8]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/identity/passkey-recovery-ceremony-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------
@@ -582,13 +594,13 @@ roles:
   - id: security-engineer
     name: "Security Engineer"
     description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review, passkey-recovery-ceremony-review]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web, passkey-recovery-ceremony-review]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer

@@ -1,0 +1,19 @@
+{
+  "name": "stale trusted device can replace passkey",
+  "category": "identity",
+  "skill": "passkey-recovery-ceremony-review",
+  "severity": "medium",
+  "scenario": {
+    "trusted_device_cookie_age_days": 180,
+    "device_posture_checked": false,
+    "fresh_user_verification_required": false,
+    "can_add_replacement_passkey": true,
+    "remembered_browsers_revoked": false,
+    "lost_device_flow": "trusts_existing_cookie"
+  },
+  "expected_findings": [
+    "PRC-DEVICE-01",
+    "PRC-DEVICE-02",
+    "PRC-DEVICE-06"
+  ]
+}

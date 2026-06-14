@@ -1,0 +1,19 @@
+{
+  "name": "passkey support-assisted replacement without dual control",
+  "category": "identity",
+  "skill": "passkey-recovery-ceremony-review",
+  "severity": "high",
+  "scenario": {
+    "support_action": "remove_existing_passkeys_and_enroll_new_recovery_factor",
+    "identity_proofing": "knowledge_based_questions",
+    "dual_control_required": false,
+    "customer_notification_suppressible": true,
+    "audit_includes_support_actor": false,
+    "post_recovery_review": false
+  },
+  "expected_findings": [
+    "PRC-SUPPORT-01",
+    "PRC-SUPPORT-02",
+    "PRC-AUDIT-02"
+  ]
+}

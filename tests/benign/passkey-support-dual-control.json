@@ -1,0 +1,15 @@
+{
+  "name": "support-assisted passkey reset with dual control",
+  "category": "identity",
+  "skill": "passkey-recovery-ceremony-review",
+  "scenario": {
+    "support_action": "initiate_restricted_recovery_state",
+    "identity_proofing": "documented_high_assurance_evidence",
+    "dual_control_required": true,
+    "customer_notification_suppressible": false,
+    "audit_includes_support_actor": true,
+    "post_recovery_review": true,
+    "new_passkey_activation": "requires_owner_confirmation"
+  },
+  "expected_result": "Support workflow is reviewable and does not silently replace passkeys."
+}

@@ -1,0 +1,15 @@
+{
+  "name": "lost-device passkey reenrollment revokes stale sessions",
+  "category": "identity",
+  "skill": "passkey-recovery-ceremony-review",
+  "scenario": {
+    "lost_device_reported": true,
+    "old_authenticator_disabled": true,
+    "trusted_device_cookie_accepted_as_sole_proof": false,
+    "fresh_verification_path": "recovery_code_plus_risk_review",
+    "remembered_browsers_revoked": true,
+    "refresh_tokens_revoked": true,
+    "audit_event": "passkey_recovery_device_loss_completed"
+  },
+  "expected_result": "Device loss recovery avoids trusting the lost device and records revocation evidence."
+}

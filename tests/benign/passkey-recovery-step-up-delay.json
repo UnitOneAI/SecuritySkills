@@ -1,0 +1,16 @@
+{
+  "name": "passkey recovery requires step-up and activation delay",
+  "category": "identity",
+  "skill": "passkey-recovery-ceremony-review",
+  "scenario": {
+    "account_assurance": "passkey_required",
+    "recovery_method": "backup_code_or_existing_authenticator",
+    "new_passkey_enrollment": "pending_until_delay_and_owner_confirmation",
+    "step_up_required": true,
+    "token_ttl_minutes": 10,
+    "token_single_use": true,
+    "session_revocation_after_recovery": true,
+    "owner_notification": "sent at recovery start and completion"
+  },
+  "expected_result": "No downgrade finding when evidence confirms fresh proof, short-lived token, delay, notification, and session revocation."
+}

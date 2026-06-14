@@ -37,7 +37,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is about infrastructure security (e.g., "review our Kubernetes RBAC") or program-level maturity (e.g., "assess our overall security posture"), use the `security-engineer` or `vciso` role bundle instead. This bundle is for application-layer security work.
 
-**Skills:** All skills referenced in this bundle are available: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`, `api-security`, `dependency-scanning`, `owasp-top-10-web`, `sast-config`, `agent-security`.
+**Skills:** All skills referenced in this bundle are available: `threat-modeling`, `secure-code-review`, `llm-top-10`, `prompt-injection`, `api-security`, `passkey-recovery-ceremony-review`, `dependency-scanning`, `owasp-top-10-web`, `sast-config`, `agent-security`.
 
 ---
 

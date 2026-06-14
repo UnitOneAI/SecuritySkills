@@ -1,0 +1,21 @@
+{
+  "name": "passkey email-only recovery downgrade",
+  "category": "identity",
+  "skill": "passkey-recovery-ceremony-review",
+  "severity": "high",
+  "scenario": {
+    "account_assurance": "passkey_required",
+    "recovery_method": "email_magic_link",
+    "new_passkey_enrollment": "allowed_immediately",
+    "step_up_required": false,
+    "token_ttl_minutes": 60,
+    "token_single_use": false,
+    "session_revocation_after_recovery": false,
+    "owner_notification": "sent only after enrollment"
+  },
+  "expected_findings": [
+    "PRC-DOWN-01",
+    "PRC-TOKEN-01",
+    "PRC-DEVICE-04"
+  ]
+}
