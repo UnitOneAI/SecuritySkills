@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -100,6 +100,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/access-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: service-desk-approval-bypass-review
+    name: "Service Desk Approval Bypass Review"
+    tags: [identity, auth, service-desk, approval, access-control]
+    role: [security-engineer, appsec-engineer, vciso]
+    phase: [design, build, operate, review]
+    activity: [review, assess, audit]
+    frameworks: [OWASP-ASVS, NIST-SP-800-53-AC, CIS-Controls-v8]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/identity/service-desk-approval-bypass-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: rbac-design
