@@ -1,0 +1,47 @@
+{
+  "id": "device-enrollment-bound-attestation",
+  "skill": "device-enrollment-trust-review",
+  "classification": "benign",
+  "flow": "managed_endpoint_enrollment",
+  "risk_summary": "Enrollment binds a single-use token to the authenticated user, tenant, hardware-backed device key, and fresh MDM attestation before trusted status can be consumed.",
+  "evidence": {
+    "request": {
+      "tenant_id": "tenant-a",
+      "user_id": "user-17",
+      "enrollment_intent_id": "enroll-9001",
+      "device_key_thumbprint": "sha256:example-device-key",
+      "attestation_timestamp": "2026-06-14T14:00:00Z",
+      "policy_version": "device-trust-2026-06"
+    },
+    "controls": [
+      "single-use token bound to user, tenant, enrollment intent, and expiry",
+      "hardware-backed key proof required during token redemption",
+      "fresh MDM attestation required before trusted status",
+      "re-enrollment of an existing device record requires explicit review",
+      "revocation clears certificates, trusted-device cookies, posture cache, and refresh tokens",
+      "access consumers re-check current device trust at sensitive boundaries"
+    ],
+    "audit_fields": [
+      "actor_id",
+      "tenant_id",
+      "device_id",
+      "device_key_thumbprint",
+      "policy_version",
+      "token_consumed_at",
+      "attestation_timestamp",
+      "trust_state_before",
+      "trust_state_after"
+    ]
+  },
+  "expected_assessment": {
+    "gate_results": {
+      "DEV-ENROLL-01": "pass",
+      "DEV-ENROLL-02": "pass",
+      "DEV-POSTURE-01": "pass",
+      "DEV-REENROLL-01": "pass",
+      "DEV-OPERATOR-01": "pass",
+      "DEV-AUTHZ-01": "pass"
+    },
+    "review_note": "The flow is a safe comparator because trust is single-use, bound to user and device proof, fresh at access time, and revocable across downstream credentials."
+  }
+}

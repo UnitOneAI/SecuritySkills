@@ -1,0 +1,52 @@
+{
+  "id": "device-enrollment-weak-serial-trust",
+  "skill": "device-enrollment-trust-review",
+  "classification": "vulnerable",
+  "flow": "trusted_device_enrollment",
+  "risk_summary": "The enrollment endpoint marks a device trusted from a reusable token and a self-declared serial number without proof of ownership or fresh device attestation.",
+  "evidence": {
+    "request": {
+      "tenant_id": "tenant-a",
+      "user_id": "user-17",
+      "token": "enroll-link-abc",
+      "serial_number": "SN-12345",
+      "hostname": "finance-laptop"
+    },
+    "token_policy": {
+      "expires_in_hours": 72,
+      "single_use": false,
+      "bound_to_user": false,
+      "bound_to_device_key": false
+    },
+    "worker_pseudocode": [
+      "if enrollment_token_exists(token):",
+      "  device = find_or_create_device(serial_number)",
+      "  device.trusted = true",
+      "  device.owner = user_id"
+    ],
+    "missing_controls": [
+      "hardware-backed key proof",
+      "MDM or platform attestation",
+      "single-use enrollment token",
+      "tenant/user token binding",
+      "re-enrollment review for existing serial numbers"
+    ]
+  },
+  "expected_findings": [
+    {
+      "gate": "DEV-ENROLL-01",
+      "severity": "High",
+      "reason": "Trust is created from mutable identifiers without authoritative device ownership proof."
+    },
+    {
+      "gate": "DEV-ENROLL-02",
+      "severity": "High",
+      "reason": "The enrollment token is reusable and not bound to a user or device key."
+    },
+    {
+      "gate": "DEV-AUTHZ-01",
+      "severity": "Medium",
+      "reason": "Downstream consumers may suppress step-up based on a trust state created by the weak enrollment path."
+    }
+  ]
+}
