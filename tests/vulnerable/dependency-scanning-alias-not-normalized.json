@@ -1,0 +1,17 @@
+{
+  "id": "dependency-scanning-alias-not-normalized",
+  "skill": "dependency-scanning",
+  "expected_severity": "medium",
+  "scenario": "An npm alias redirects a dependency name, but the review runs CVE and license lookup against the declared alias instead of the resolved package.",
+  "signals": [
+    "package.json declares left-pad: npm:@acme/left-pad-safe@1.3.0",
+    "lockfile records @acme/left-pad-safe with integrity metadata",
+    "scanner output reports left-pad instead of the alias target",
+    "license review omits the resolved @acme package"
+  ],
+  "expected_findings": [
+    "DEP-RESOLVE-05 alias dependency was not normalized",
+    "vulnerability and license conclusions target the wrong package",
+    "resolved package name, version, source registry, and integrity must be recorded"
+  ]
+}

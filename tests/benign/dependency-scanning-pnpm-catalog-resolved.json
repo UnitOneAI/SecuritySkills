@@ -1,0 +1,16 @@
+{
+  "id": "dependency-scanning-pnpm-catalog-resolved",
+  "skill": "dependency-scanning",
+  "expected_result": "pass",
+  "scenario": "A pnpm catalog centralizes dependency versions and the review includes the catalog source and lockfile resolution.",
+  "controls": [
+    "pnpm-workspace.yaml defines catalog entries for react and zod",
+    "package.json uses catalog: specs",
+    "pnpm-lock.yaml records the resolved versions and integrity hashes",
+    "scanner findings use the resolved package versions, not the catalog token"
+  ],
+  "review_notes": [
+    "catalog: is normalized before CVE lookup",
+    "centralized workspace version source is included in evidence"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "dependency-scanning-private-scope-public-fallback",
+  "skill": "dependency-scanning",
+  "expected_severity": "high",
+  "scenario": "A private scoped npm dependency has no committed or CI registry mapping, so it can resolve from the public registry.",
+  "signals": [
+    "package.json declares @company/auth as a production dependency",
+    ".npmrc and .yarnrc.yml are absent from the repository",
+    "CI runs npm ci without an internal registry environment variable",
+    "lockfile evidence does not prove the package came from a private registry"
+  ],
+  "expected_findings": [
+    "DEP-RESOLVE-03 missing private-scope registry evidence",
+    "DEP-RESOLVE-04 dependency confusion risk due to public registry fallback",
+    "review must fail closed until local and CI registry sources are documented"
+  ]
+}

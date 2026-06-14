@@ -1,0 +1,16 @@
+{
+  "id": "dependency-scanning-private-registry-mapped",
+  "skill": "dependency-scanning",
+  "expected_result": "pass",
+  "scenario": "An internal npm scope is mapped to a private registry in both committed config and CI install settings.",
+  "controls": [
+    ".npmrc maps @company to https://npm.pkg.github.com",
+    "CI sets NODE_AUTH_TOKEN only for the private registry",
+    "lockfile resolved URL uses the private registry",
+    "public registry fallback is disabled by registry routing rules"
+  ],
+  "review_notes": [
+    "private scope has registry-resolution evidence",
+    "dependency confusion is not reported solely because the package is absent from public npm"
+  ]
+}

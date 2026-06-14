@@ -1,0 +1,17 @@
+{
+  "id": "dependency-scanning-unresolved-catalog",
+  "skill": "dependency-scanning",
+  "expected_severity": "medium",
+  "scenario": "A pnpm workspace uses catalog dependencies, but the catalog source is not included in the review evidence.",
+  "signals": [
+    "package.json contains react: catalog: and zod: catalog:",
+    "pnpm-lock.yaml is present",
+    "pnpm-workspace.yaml is missing from the evidence package",
+    "scanner output treats catalog: as an unknown version"
+  ],
+  "expected_findings": [
+    "DEP-RESOLVE-02 missing canonical catalog version source",
+    "DEP-RESOLVE-05 CVE and license lookup cannot target the actual selected versions",
+    "request pnpm-workspace.yaml or equivalent catalog evidence before final classification"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "dependency-scanning-pnpm-workspace-alias",
+  "skill": "dependency-scanning",
+  "expected_result": "pass",
+  "scenario": "A pnpm monorepo intentionally resolves workspace packages and npm aliases through committed workspace and lockfile evidence.",
+  "controls": [
+    "packageManager pins pnpm version",
+    "pnpm-workspace.yaml declares apps and packages roots",
+    "pnpm-lock.yaml resolves @acme/ui to a local directory",
+    "npm alias left-pad resolves to @acme/left-pad-safe with integrity metadata"
+  ],
+  "review_notes": [
+    "workspace:* is not a missing public package",
+    "alias target is normalized before CVE and license lookup"
+  ]
+}

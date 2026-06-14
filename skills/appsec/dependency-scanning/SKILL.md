@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, CycloneDX, SPDX, CISA-KEV]
 difficulty: intermediate
 time_estimate: "15-30min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -32,7 +32,7 @@ Identify known vulnerabilities, license compliance violations, and supply chain 
 
 This skill activates when any of the following are present:
 
-- A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
+- A package manifest is shared or referenced: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `.yarnrc.yml`, `.pnpmrc`, `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`.
 - The user asks about dependency security, vulnerability scanning, SBOM generation, or supply chain risk.
 - A CI/CD pipeline configuration references dependency audit steps.
 
@@ -90,6 +90,74 @@ Direct dependencies are explicitly declared. Transitive dependencies are pulled 
 - Use `npm audit --omit=dev`, `pip-audit`, `govulncheck`, or `cargo audit` to scan the full resolved dependency tree.
 - Pin critical transitive dependencies using overrides/resolutions (`npm overrides`, `pip` constraints files, `go.mod replace`).
 - Evaluate dependency tree depth before adopting new packages: `npm ls --all`, `pipdeptree`, `go mod graph`.
+
+## Package Manager Resolution Evidence
+
+Dependency security conclusions must be made against the resolved dependency
+graph, not only the package names written in a manifest. Modern package
+managers can redirect, alias, override, or source dependencies from workspace
+catalogs and private registries. Normalize resolver behavior before assigning
+CVE, license, typosquatting, or dependency-confusion findings.
+
+### Resolver Evidence Gates
+
+| Gate | Evidence Required | Risk If Missing |
+|---|---|---|
+| DEP-RESOLVE-01 | Identify package manager and version from `packageManager`, lockfile type, Corepack config, and CI install command. | Scanner may use npm semantics against pnpm, Yarn, or mixed workspaces. |
+| DEP-RESOLVE-02 | Parse canonical version sources such as `pnpm-workspace.yaml` catalogs, Yarn `resolutions`, npm/pnpm `overrides`, lockfile entries, package aliases, and `workspace:` protocols. | Benign workspace/catalog/alias entries can be reported as unknown packages, or actual selected versions can be missed. |
+| DEP-RESOLVE-03 | For every private scope or internal-looking package, record effective registry source from `.npmrc`, `.yarnrc.yml`, `.pnpmrc`, registry proxy config, or CI environment configuration. | Private packages can fall back to a public registry in CI or developer machines, enabling dependency confusion. |
+| DEP-RESOLVE-04 | Flag dependency confusion only when private or internal packages can resolve from a public registry, registry evidence is absent, or CI overrides local registry policy. | Reviewers may either miss real public fallback risk or over-report safe internal workspace packages. |
+| DEP-RESOLVE-05 | Normalize `workspace:`, `catalog:`, npm alias syntax, overrides/resolutions, and lockfile package keys to resolved package name, version, source registry, and artifact integrity before CVE/license lookup. | Vulnerability and license matching can target the wrong package or fail to evaluate the real package. |
+
+### Node.js Resolver Review
+
+When reviewing npm, pnpm, or Yarn projects, capture:
+
+- declared package manager and version (`packageManager`, Corepack, CI image,
+  install command)
+- lockfile type and package manager mode (`package-lock.json`, `pnpm-lock.yaml`,
+  `yarn.lock`, Plug'n'Play, workspace mode)
+- workspace definitions (`pnpm-workspace.yaml`, Yarn workspaces, npm
+  workspaces)
+- catalog or centralized version sources (`catalog:` entries in pnpm,
+  dependency constraints, monorepo package policies)
+- alias and override behavior (`npm:`, `overrides`, `resolutions`,
+  `packageExtensions`, patched dependencies)
+- registry configuration for private scopes and internal packages
+
+Treat these patterns as benign only when resolver evidence supports them:
+
+- `workspace:*`, `workspace:^`, or lockfile entries resolving to local
+  directories under the declared workspace roots
+- `catalog:` entries resolved by a committed workspace catalog
+- npm alias syntax such as `left-pad: npm:@acme/left-pad-safe@1.3.0` when the
+  lockfile integrity and source package match the intended replacement
+- scoped packages that are mapped to an internal registry in both local and CI
+  configuration
+
+Report findings when:
+
+- a private scope such as `@company/*` lacks committed or CI registry mapping
+- CI install steps override `.npmrc`, `.yarnrc.yml`, `.pnpmrc`, or registry
+  environment variables in a way that permits public fallback
+- a lockfile shows an internal package resolved from `registry.npmjs.org` or
+  another public registry
+- a dependency uses `catalog:` or `workspace:` but the authoritative catalog or
+  workspace file is missing from the review evidence
+- alias, override, or resolution entries redirect a dependency to a package
+  that has not been included in CVE, license, maintainer, and provenance review
+
+### False Positive Guardrails
+
+Do not classify a package as typosquatting or dependency confusion solely
+because:
+
+- the manifest contains `workspace:*` or `catalog:` instead of a semver range
+- the package name is private-scoped and absent from public npm
+- an npm alias maps a public-looking name to a vetted internal package
+- an override or resolution changes the package name used for lookup
+
+Instead, state the resolver evidence that makes the dependency safe or unsafe.
 
 ## Vulnerability Triage: EPSS + CVSS + CISA KEV
 
@@ -213,6 +281,17 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
 
+### Resolver Evidence
+
+| Package | Declared Spec | Resolved Package | Version | Source | Evidence |
+|---------|---------------|------------------|---------|--------|----------|
+| ...     | ...           | ...              | ...     | ...    | package manager, lockfile, registry config |
+
+- [ ] Package manager and version identified
+- [ ] Workspace, catalog, alias, override, and resolution rules normalized
+- [ ] Private scope registry mapping verified locally and in CI
+- [ ] Public registry fallback risk assessed
+
 ### Recommendations
 
 1. [Prioritized list of remediation actions]
@@ -221,13 +300,15 @@ When performing a dependency scan, produce findings in the following structure:
 ## Procedure
 
 1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
-2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
-3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
-4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
-5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
-6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+2. **Determine resolver mode**: Identify package manager, version, workspace mode, registry configuration, CI install command, and lockfile authority.
+3. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
+4. **Normalize resolved dependencies**: Map workspace, catalog, alias, override, resolution, and private-registry entries to their effective package name, version, source, and integrity metadata.
+5. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
+6. **Vulnerability scan**: Cross-reference resolved packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
+7. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
+8. **Typosquatting and dependency-confusion check**: Review dependency names, resolver evidence, and private registry mappings before assigning typosquatting or public-fallback risk.
+9. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+10. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Prompt Injection Safety Notice
 
