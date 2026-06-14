@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [CIS-Controls-v8, NIST-SP-800-41-Rev1]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -69,6 +69,11 @@ Use Glob and Grep to locate firewall configuration files, ACL definitions, and n
 **/firewall-rule*
 **/*nsg*
 **/*nacl*
+**/*service-tag*
+**/*prefix-list*
+**/*ip-ranges*
+**/*cdn*
+**/*waf*
 
 # Infrastructure-as-Code definitions
 **/*.tf          # Terraform (aws_security_group, google_compute_firewall, azurerm_network_security_group)
@@ -80,6 +85,8 @@ Record all discovered files. Categorize each by:
 - **Platform:** iptables, nftables, pf, cloud security groups, Kubernetes NetworkPolicy, vendor-specific (Palo Alto, Fortinet, Cisco ASA).
 - **Direction:** Perimeter (north-south) vs. internal (east-west).
 - **Scope:** Server, endpoint, network segment.
+- **Address family:** IPv4, IPv6, or dual-stack.
+- **Abstraction type:** Literal CIDR, provider service tag, managed prefix list, FQDN rule, CDN/provider range, Kubernetes selector, or vendor object.
 
 ---
 
@@ -254,6 +261,63 @@ Egress filtering prevents compromised internal hosts from establishing unrestric
 
 ---
 
+#### 2.8 Dual-Stack, Service-Tag, and Provider-Range Effective Exposure
+
+Modern firewall policy often hides the real reachable surface behind IPv6 defaults, provider-managed service tags, shared prefix lists, CDN/WAF ranges, FQDN rules, Kubernetes policy layers, or host firewalls. Review the effective path before scoring a rule as safe or unsafe.
+
+**IPv6 parity checks:**
+
+- For every public IPv4 allow rule, verify whether an equivalent IPv6 path exists (`::/0`, public IPv6 CIDRs, IPv6 security group rules, `ip6tables`, cloud load balancer IPv6 listeners, Kubernetes dual-stack services).
+- If a finding is marked IPv4-only, require evidence that IPv6 is disabled or equivalently restricted at every relevant enforcement layer: edge/WAF, load balancer, security group or NSG, subnet ACL, host firewall, and Kubernetes NetworkPolicy/CNI where applicable.
+- Treat `0.0.0.0/0` closed but `::/0` open as equivalent public exposure, not as a lower-risk exception.
+- Verify split enforcement: security groups, NACLs, host firewalls, WAF/CDN controls, Kubernetes NetworkPolicy, service mesh policy, and egress gateways must agree across IPv4 and IPv6.
+
+**Service tag / prefix list / provider range checks:**
+
+- Expand cloud service tags, managed prefix lists, CDN/WAF provider ranges, and vendor address objects at review time. Record the expansion source, retrieval timestamp, region/service filter, and resulting CIDR families.
+- Do not flag a broad provider tag automatically when compensating controls prove the resource is still constrained, such as private endpoint, resource policy, identity condition, storage/firewall data-plane restriction, WAF origin validation, or mTLS.
+- Flag broad tags such as `Internet`, `AzureCloud`, all-provider ranges, shared prefix lists, or CDN source ranges when there is no resource-level control proving the destination cannot be widened outside the intended service or region.
+- Require drift controls for provider-managed ranges: owner, update automation, last successful refresh, failure alerting, and change review for manually copied CIDR lists.
+
+**Detection methods using allowed tools:**
+
+```
+# IPv6 and dual-stack exposure
+Grep: "::/0|ipv6_cidr_blocks|destination_ipv6|source_ipv6|ip6tables|ip -6|dual-stack|ipFamilyPolicy|ipFamilies" in **/*.{tf,yaml,yml,json,conf}
+
+# Provider-managed abstractions and range drift
+Grep: "service_tag|serviceTags|AzureCloud|Internet|prefix_list|managed_prefix|aws_ip_ranges|goog.json|cloud.json|cdn|waf|FQDN|fqdn_tags" in **/*.{tf,yaml,yml,json,conf}
+
+# Split enforcement layers
+Grep: "network_acl|security_group|azurerm_network_security_rule|google_compute_firewall|NetworkPolicy|CiliumNetworkPolicy|AuthorizationPolicy|ingressGateway|egressGateway" in **/*.{tf,yaml,yml,json}
+```
+
+**Effective exposure evidence table:**
+
+| Evidence Item | Required Evidence | Risk If Missing |
+|---|---|---|
+| IPv6 status | IPv6 disabled proof or equivalent IPv6 rule review across all layers | Public IPv6 bypass of IPv4 controls |
+| Expanded abstraction | Service tag, prefix list, CDN/WAF, or vendor object expansion with timestamp/source | Friendly name hides broad provider or Internet exposure |
+| Region/service scope | Region, service, account/project, and environment filter | Rule includes services or regions outside the intended boundary |
+| Compensating controls | Private endpoint, resource policy, identity condition, origin validation, WAF rule, or mTLS evidence | Broad network allow becomes effective data-plane access |
+| Drift management | Owner, automation, last refresh, failed-refresh alerting, and change review | Stale provider ranges silently block or expose traffic |
+| Split enforcement | SG/NACL/host/WAF/Kubernetes/service-mesh parity for IPv4 and IPv6 | One layer allows what another layer appears to deny |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| FW-DUAL-01: Public IPv6 allow (`::/0` or public IPv6 CIDR) exists where IPv4 is restricted | Critical for inbound, High for outbound |
+| FW-DUAL-02: IPv6 is assumed absent without evidence at edge, load balancer, cloud firewall, host, and Kubernetes layers | High |
+| FW-TAG-01: Service tag, prefix list, CDN/WAF range, or vendor object is accepted without expansion evidence | High |
+| FW-TAG-02: Broad provider tag or all-provider range lacks private endpoint, identity, resource-policy, or origin-validation controls | High |
+| FW-DRIFT-01: Provider/CDN range allowlist is manually copied with no owner, refresh cadence, or failed-refresh alert | Medium |
+| FW-SPLIT-01: Security group, NACL, host firewall, WAF/CDN, Kubernetes, or service mesh policy disagree across IPv4/IPv6 | High |
+
+**Benign boundary:** A broad managed tag or prefix list may be acceptable when expansion evidence is current and the destination is also constrained by resource-level controls. An IPv4-only rule may be acceptable when there is explicit evidence that IPv6 is disabled or equivalently denied across the effective path.
+
+---
+
 ### Step 3: Compile Assessment Report
 
 Produce the final report using the following structure.
@@ -317,6 +381,11 @@ Produce the final report using the following structure.
 | SMTP (25)     | Yes/No    | <mail server IPs>      |
 | HTTPS (443)   | Yes/No    | <proxy or direct>      |
 
+### Dual-Stack and Provider Abstraction Evidence
+| Control | IPv4 Evidence | IPv6 Evidence | Expanded Object / Tag | Compensating Control | Status |
+|---------|---------------|---------------|------------------------|----------------------|--------|
+| <rule/resource> | <CIDR/rule> | <IPv6 disabled or matching rule> | <service tag/prefix expansion source> | <private endpoint/resource policy/origin validation> | Pass/Fail/Not Evaluable |
+
 ### Prioritized Remediation Plan
 1. **[Critical]** <action item with control reference>
 2. **[High]** <action item with control reference>
@@ -361,6 +430,10 @@ Produce the final report using the following structure.
 
 5. **Conflating network ACLs with security groups in cloud environments.** In AWS, NACLs are stateless and operate at the subnet level; security groups are stateful and operate at the instance level. Both must be audited. A permissive NACL can undermine restrictive security group rules for responses.
 
+6. **Trusting friendly provider names without expansion.** A service tag, managed prefix list, CDN object, or FQDN rule is not automatically narrow. Expand it, record the source and timestamp, and verify resource-level controls before treating the rule as constrained.
+
+7. **Reviewing one enforcement layer as the effective path.** A restrictive security group does not prove exposure is blocked if IPv6, WAF/CDN, host firewall, Kubernetes NetworkPolicy, service mesh, or egress gateway policy disagrees. Record the layers that actually see the traffic.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -381,9 +454,14 @@ This skill processes firewall configurations that may contain user-supplied comm
 - NIST SP 800-41 Rev 1, Guidelines on Firewalls and Firewall Policy: https://csrc.nist.gov/publications/detail/sp/800-41/rev-1/final
 - NIST SP 800-41 Rev 1 (PDF): https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-41r1.pdf
 - CIS Benchmarks (platform-specific firewall hardening): https://www.cisecurity.org/cis-benchmarks
+- AWS IP address ranges: https://docs.aws.amazon.com/vpc/latest/userguide/aws-ip-ranges.html
+- Azure service tags: https://learn.microsoft.com/azure/virtual-network/service-tags-overview
+- Google Cloud IP address ranges: https://cloud.google.com/vpc/docs/configure-private-google-access#ip-addr-defaults
+- Kubernetes IPv4/IPv6 dual-stack: https://kubernetes.io/docs/concepts/services-networking/dual-stack/
 
 ---
 
 ## Changelog
 
+- **1.0.1** -- Added IPv6 parity, service tag/prefix list expansion, provider range drift, and split enforcement evidence gates.
 - **1.0.0** -- Initial release. Full coverage of CIS Controls v8 (4.4, 4.5) and NIST SP 800-41 Rev 1 firewall audit methodology.

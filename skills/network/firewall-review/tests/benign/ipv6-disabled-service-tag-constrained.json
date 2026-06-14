@@ -1,0 +1,49 @@
+{
+  "case_id": "ipv6-disabled-service-tag-constrained",
+  "expected_decision": "pass",
+  "scenario": "Storage egress uses a provider service tag, but the effective path is private-endpoint and identity constrained, and IPv6 is disabled at every relevant layer.",
+  "firewall_rule": {
+    "direction": "egress",
+    "destination_abstraction": "Azure Storage service tag",
+    "ipv4_destination": "Storage.EastUS expanded ranges reviewed 2026-06-14",
+    "ipv6_destination": "none",
+    "ports": [
+      "tcp/443"
+    ]
+  },
+  "evidence": {
+    "service_tag_expansion": {
+      "source": "provider service tag export",
+      "retrieved_at": "2026-06-14T20:00:00Z",
+      "region_filter": "eastus",
+      "families_reviewed": [
+        "ipv4",
+        "ipv6"
+      ]
+    },
+    "ipv6_parity": {
+      "edge": "no IPv6 listener",
+      "load_balancer": "IPv6 disabled",
+      "network_security_group": "no destination IPv6 allow",
+      "host_firewall": "IPv6 default deny",
+      "kubernetes": "not applicable"
+    },
+    "compensating_controls": [
+      "private endpoint enabled",
+      "storage account public network access disabled",
+      "managed identity required",
+      "resource policy restricts approved subscription"
+    ],
+    "drift_management": {
+      "owner": "network-platform",
+      "refresh_cadence": "weekly",
+      "failed_refresh_alert": true
+    }
+  },
+  "should_not_flag": [
+    "FW-DUAL-01",
+    "FW-TAG-01",
+    "FW-TAG-02",
+    "FW-DRIFT-01"
+  ]
+}

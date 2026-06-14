@@ -1,0 +1,50 @@
+{
+  "case_id": "ipv6-any-service-tag-no-expansion",
+  "expected_decision": "finding",
+  "scenario": "Inbound IPv4 is restricted, but IPv6 is open to the Internet and outbound provider tags are accepted without expansion or resource-level controls.",
+  "rules": [
+    {
+      "name": "allow-https-ipv4-restricted",
+      "direction": "ingress",
+      "source": "203.0.113.0/24",
+      "destination": "web-tier",
+      "ports": [
+        "tcp/443"
+      ]
+    },
+    {
+      "name": "allow-https-ipv6-any",
+      "direction": "ingress",
+      "source": "::/0",
+      "destination": "web-tier",
+      "ports": [
+        "tcp/443"
+      ]
+    },
+    {
+      "name": "allow-provider-egress",
+      "direction": "egress",
+      "destination_abstraction": "AzureCloud",
+      "ports": [
+        "tcp/443"
+      ],
+      "service_tag_expanded": false,
+      "resource_level_controls": []
+    }
+  ],
+  "missing_evidence": [
+    "IPv6 disabled proof at edge, load balancer, cloud firewall, and host",
+    "service tag expansion source and timestamp",
+    "region or service filter for provider tag",
+    "private endpoint, identity condition, resource policy, or origin validation",
+    "provider range refresh owner and failed-refresh alert"
+  ],
+  "expected_findings": [
+    "FW-DUAL-01: public IPv6 allow exists while IPv4 is restricted",
+    "FW-DUAL-02: IPv6 absence is assumed without effective-path evidence",
+    "FW-TAG-01: provider service tag is accepted without expansion evidence",
+    "FW-TAG-02: broad provider tag lacks resource-level controls",
+    "FW-DRIFT-01: provider range allowlist has no owner or refresh evidence"
+  ],
+  "minimum_severity": "High"
+}
