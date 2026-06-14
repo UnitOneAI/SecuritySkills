@@ -111,7 +111,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -122,6 +122,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 | OWASP Top 10 (Web) | `skills/appsec/owasp-top-10-web/` | OWASP Top 10 2021 |
 | API Security Review | `skills/appsec/api-security/` | OWASP API Security Top 10 2023 |
 | Dependency Scanning | `skills/appsec/dependency-scanning/` | SLSA v1.0, CycloneDX, SPDX |
+| Mobile Secret Storage Review | `skills/appsec/mobile-secret-storage-review/` | OWASP MASVS, OWASP MSTG, CWE-312/CWE-922 |
 
 ### AI Security
 
@@ -218,8 +219,8 @@ Pre-configured skill sequences for common security roles. Each bundle orchestrat
 |------|-------------|--------|
 | **vCISO** | Security program leadership, risk assessment, compliance, board reporting | nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling |
 | **SOC Analyst** | Alert triage, threat hunting, incident investigation, detection engineering | alert-triage, detection-engineering, ir-playbook, log-analysis, cve-triage |
-| **Security Engineer** | Building security into products and infrastructure | secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review |
-| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web |
+| **Security Engineer** | Building security into products and infrastructure | secure-code-review, dependency-scanning, mobile-secret-storage-review, cve-triage, secrets-management, pipeline-security, container-security, iam-review |
+| **AppSec Engineer** | Application security design, testing, and code review | threat-modeling, secure-code-review, api-security, dependency-scanning, mobile-secret-storage-review, prompt-injection, owasp-top-10-web |
 | **Cloud Security Engineer** | Cloud posture, IaC review, container security, identity | aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access |
 
 ---
