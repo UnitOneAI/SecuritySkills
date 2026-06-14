@@ -1,0 +1,18 @@
+{
+  "case": "opaque QR request bound to client, tenant, and displaying device",
+  "flow_type": "qr_login",
+  "qr_payload": "https://login.example.test/qr/rq_2f5d0f6c9e3b4a01b7c0",
+  "server_state": {
+    "request_id_entropy_bits": 128,
+    "ttl_seconds": 180,
+    "bound_tenant": "tenant_123",
+    "bound_client_id": "desktop-app",
+    "bound_display_device_id": "device_456",
+    "stores_tokens_in_qr": false
+  },
+  "approval_screen": {
+    "shows_device_context": true,
+    "requires_explicit_approval": true
+  },
+  "expected_result": "No finding when server-side state and explicit approval are verified."
+}

@@ -1,0 +1,19 @@
+{
+  "case": "bearer token embedded in QR login URL",
+  "flow_type": "qr_login",
+  "qr_payload": "https://login.example.test/scan?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fake",
+  "server_state": {
+    "request_id": null,
+    "ttl_seconds": 900,
+    "server_side_binding": false
+  },
+  "telemetry": {
+    "access_log_contains_full_url": true,
+    "analytics_records_query_string": true
+  },
+  "expected_findings": [
+    "QR-AUTH-01",
+    "QR-AUTH-04"
+  ],
+  "why_vulnerable": "The QR code is a bearer credential and the full credential-bearing URL is logged."
+}

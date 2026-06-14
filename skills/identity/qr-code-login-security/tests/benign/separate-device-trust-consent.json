@@ -1,0 +1,17 @@
+{
+  "case": "device trust enrollment requires separate consent and step-up",
+  "flow_type": "qr_login_with_optional_device_trust",
+  "approval_screen": {
+    "shows_target_device": true,
+    "shows_app_name": true,
+    "requires_login_approval": true,
+    "separate_trust_device_checkbox": true,
+    "requires_step_up_for_trust": true
+  },
+  "post_approval_effects": {
+    "login_session_created": true,
+    "trusted_device_created_only_if_selected": true,
+    "trusted_device_revocable": true
+  },
+  "expected_result": "No trusted-device finding when long-lived trust requires separate user intent and step-up."
+}

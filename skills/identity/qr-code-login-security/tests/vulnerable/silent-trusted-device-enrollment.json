@@ -1,0 +1,21 @@
+{
+  "case": "QR login silently enrolls trusted device",
+  "flow_type": "qr_login",
+  "approval_screen": {
+    "shows_target_device": true,
+    "shows_app_name": true,
+    "shows_trusted_device_enrollment": false,
+    "requires_explicit_approval": true,
+    "requires_step_up": false
+  },
+  "post_approval_effects": {
+    "login_session_created": true,
+    "refresh_token_days": 90,
+    "trusted_device_created": true
+  },
+  "expected_findings": [
+    "trusted-device-enrollment-without-consent",
+    "missing-step-up-for-long-lived-device-trust"
+  ],
+  "why_vulnerable": "The user approves a one-time login but receives a long-lived trusted-device grant without separate consent."
+}

@@ -1,0 +1,23 @@
+{
+  "case": "approval can be replayed after first token issuance",
+  "flow_type": "device_authorization",
+  "pending_request": {
+    "request_id_entropy_bits": 128,
+    "ttl_seconds": 600,
+    "state_before_approval": "pending",
+    "state_after_token_issued": "approved",
+    "consumed_state_recorded": false
+  },
+  "polling": {
+    "rate_limit": true,
+    "backoff": true
+  },
+  "test_observation": {
+    "first_token_exchange": "200 OK",
+    "second_token_exchange_same_request": "200 OK"
+  },
+  "expected_findings": [
+    "QR-REPLAY-01"
+  ],
+  "why_vulnerable": "The server does not atomically transition an approved request to a consumed terminal state."
+}

@@ -1,0 +1,15 @@
+{
+  "case": "denied request stops polling and cannot be consumed",
+  "flow_type": "device_authorization",
+  "pending_request": {
+    "ttl_seconds": 300,
+    "state_before_user_action": "pending",
+    "state_after_denial": "denied",
+    "terminal_state": true
+  },
+  "test_observation": {
+    "poll_after_denial": "access_denied",
+    "token_exchange_after_denial": "400 invalid_grant"
+  },
+  "expected_result": "No replay finding because denial immediately terminates the request."
+}

@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -88,6 +88,18 @@ skills:
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/identity/iam-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: qr-code-login-security
+    name: "QR-code Login Security Review"
+    tags: [identity, authentication, qr-code, device-pairing]
+    role: [security-engineer, appsec-engineer, architect, vciso]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [NIST-SP-800-63B, OWASP-ASVS, RFC-8628, CWE]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/qr-code-login-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: access-review
