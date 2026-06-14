@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -136,6 +136,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: privileged-cli-tooling-review
+    name: "Privileged CLI Tooling Review"
+    tags: [identity, privileged-cli, operator-tools, authorization]
+    role: [security-engineer, appsec-engineer, cloud-security-engineer]
+    phase: [design, build, review, operate]
+    activity: [review, audit]
+    frameworks: [NIST-SP-800-53-AC-6, NIST-SP-800-53-AU, CIS-Controls-v8, OWASP-ASVS]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/privileged-cli-tooling-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------
