@@ -1,0 +1,50 @@
+{
+  "case": "browser-extension-sso-boundary-bound",
+  "description": "A managed browser extension keeps SSO authority bound to explicit origins, actor context, tenant context, and audited helper commands.",
+  "extension": {
+    "manifest_version": 3,
+    "permissions": [
+      "storage",
+      "nativeMessaging"
+    ],
+    "optional_permissions": [
+      "activeTab"
+    ],
+    "host_permissions": [
+      "https://admin.example-saas.test/sso-helper/*",
+      "https://idp.example.test/oauth2/callback"
+    ],
+    "content_scripts": [
+      {
+        "matches": [
+          "https://admin.example-saas.test/sso-helper/*"
+        ],
+        "js": ["content.js"],
+        "all_frames": false
+      }
+    ]
+  },
+  "controls": {
+    "message_validation": "content and background handlers require exact origin, source tab, schema, nonce, and correlation ID",
+    "authority_binding": "server returns actorId, tenantId, role, assuranceLevel, origin, and policyVersion before privileged actions",
+    "token_handling": "extension stores only an audience-bound short-lived handle and clears it on logout, tenant switch, and profile lock",
+    "native_helper": "native host allows only signed export status checks with actor, tenant, origin, and approval ID",
+    "managed_policy": "enterprise policy changes require owner, approval reason, expiry, and audit event",
+    "tests": [
+      "reject disallowed origin",
+      "reject iframe message",
+      "reject replayed nonce",
+      "clear storage on logout",
+      "separate incognito profile state",
+      "deny native helper without approval"
+    ]
+  },
+  "pass_gates": [
+    "BXS-01",
+    "BXS-02",
+    "BXS-03",
+    "BXS-04",
+    "BXS-05",
+    "BXS-06"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "case": "browser-extension-sso-context-confusion",
+  "description": "A browser extension trusts page-provided SSO context and broad host permissions when performing privileged background actions.",
+  "extension": {
+    "manifest_version": 3,
+    "permissions": [
+      "storage",
+      "cookies",
+      "nativeMessaging",
+      "tabs"
+    ],
+    "host_permissions": [
+      "https://*.example-saas.test/*",
+      "https://idp.example.test/*"
+    ],
+    "content_scripts": [
+      {
+        "matches": [
+          "https://*.example-saas.test/*",
+          "https://idp.example.test/*"
+        ],
+        "js": ["content.js"],
+        "all_frames": true
+      }
+    ]
+  },
+  "flow": {
+    "page_message_trust": "content script forwards window.postMessage payloads to background without origin, source, nonce, or schema validation",
+    "authority_source": "background worker uses tenantId and role values supplied by the page payload",
+    "token_handling": "extension reads SSO token from localStorage and stores it in chrome.storage.local without tenant or expiry binding",
+    "native_helper": "background worker calls native host exportTenantData with page-supplied tenantId",
+    "logout_cleanup": "logout clears web app cookies but leaves extension storage and native helper state intact"
+  },
+  "expected_findings": [
+    "BXS-01",
+    "BXS-02",
+    "BXS-03",
+    "BXS-04",
+    "BXS-06"
+  ]
+}
