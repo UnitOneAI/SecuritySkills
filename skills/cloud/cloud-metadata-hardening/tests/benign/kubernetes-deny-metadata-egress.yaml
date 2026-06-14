@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: public-api
+  namespace: production
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-api
+  namespace: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: public-api
+  template:
+    metadata:
+      labels:
+        app: public-api
+    spec:
+      serviceAccountName: public-api
+      automountServiceAccountToken: false
+      containers:
+        - name: api
+          image: example/public-api:1.0.0
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: public-api-egress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: public-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 203.0.113.10/32
+      ports:
+        - protocol: TCP
+          port: 443

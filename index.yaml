@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -185,6 +185,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/cloud/iac-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: cloud-metadata-hardening
+    name: "Cloud Metadata Hardening Review"
+    tags: [cloud, metadata, ssrf, iam, kubernetes]
+    role: [cloud-security-engineer, security-engineer, appsec-engineer]
+    phase: [build, deploy, operate, review]
+    activity: [review, assess, audit]
+    frameworks: [CIS-AWS-v3.0.0, MITRE-ATT&CK-T1552.005, CWE-918, OWASP-SSRF-Prevention]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/cloud/cloud-metadata-hardening/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: container-security
@@ -594,5 +606,5 @@ roles:
   - id: cloud-security-engineer
     name: "Cloud Security Engineer"
     description: "Cloud security posture, IaC review, container security, identity"
-    skills: [aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access]
+    skills: [aws-review, azure-review, gcp-review, iac-security, cloud-metadata-hardening, container-security, zero-trust-assessment, privileged-access]
     file: roles/cloud-security-engineer/SKILL.md
