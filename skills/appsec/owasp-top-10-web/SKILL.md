@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -69,6 +69,16 @@ Before including any finding in the report, apply the following verification gat
 4. **One finding per distinct vulnerability.** Do not report multiple findings for the same underlying vulnerability pattern appearing in related code paths. Consolidate variants (e.g., two SQL injection points in the same query builder) into a single finding with multiple locations noted.
 5. **Match findings to ground-truth severity.** Only report findings at severity levels proportional to actual exploitable impact. Infrastructure-level observations (missing headers, missing tooling, general architectural gaps) that lack a specific exploitable code path should be omitted or downgraded to Informational.
 
+**Browser messaging and token-storage verification gate:**
+
+Use this gate when reviewing SPAs, embedded widgets, OAuth popups, checkout iframes, admin consoles, and browser extensions.
+
+- `postMessage(..., "*")` is a finding only when sensitive state, account-link actions, checkout/auth state, privileged UI commands, or user-controlled data crosses a trust boundary. Do not flag non-sensitive resize or analytics pings that carry no credentials or authorization decisions.
+- A message receiver is safe only when it validates both `event.origin` against an exact allowlist and `event.data` against a strict schema before dispatching actions. Origin checks alone are insufficient when unvalidated `action`, `redirect`, `url`, `accountId`, or `token` fields drive behavior.
+- Treat OAuth popup flows as authentication paths: require exact origin checks, one-time `state`/nonce validation, and narrow message types before accepting tokens, codes, or account-link completion events.
+- Browser storage findings depend on token sensitivity and lifetime. Non-sensitive UI preferences in `localStorage` are not findings; bearer tokens, refresh tokens, long-lived API keys, or privileged session material in `localStorage`/script-readable storage are findings unless a compensating architecture is documented.
+- `sessionStorage` reduces persistence but remains script-readable after XSS. Downgrade only when the token is short-lived, audience-scoped, rotated, and protected by CSP plus no dangerous DOM sinks.
+
 ---
 
 ### A01:2021 — Broken Access Control
@@ -81,6 +91,7 @@ Before including any finding in the report, apply the following verification gat
 - Direct object references (IDOR) where user-supplied IDs are used to fetch records without ownership validation.
 - Endpoints that rely solely on client-side enforcement (hidden UI elements) rather than server-side checks.
 - CORS misconfigurations that permit arbitrary origins or reflect the `Origin` header without validation.
+- Cross-window or iframe messaging that sends sensitive data to wildcard origins, reflects untrusted parent origins, or accepts privileged message actions without origin and payload-schema validation.
 - Missing HTTP method restrictions (e.g., a route that accepts PUT/DELETE but only intended for GET).
 - JWT or session tokens that contain role claims without server-side verification against a trusted source.
 - Path traversal in file-serving endpoints.
@@ -95,6 +106,7 @@ Before including any finding in the report, apply the following verification gat
 | CWE-352 | Cross-Site Request Forgery (CSRF) |
 | CWE-284 | Improper Access Control |
 | CWE-285 | Improper Authorization |
+| CWE-346 | Origin Validation Error |
 | CWE-639 | Authorization Bypass Through User-Controlled Key |
 | CWE-862 | Missing Authorization |
 | CWE-863 | Incorrect Authorization |
@@ -109,6 +121,8 @@ params\.id|req\.params|request\.args\.get.*id
 csrf.*disable|csrf.*false|@csrf_exempt
 # Permissive CORS
 Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
+# Cross-window message trust boundary issues
+postMessage\(.*\*|addEventListener\(['"]message|onmessage\s*=
 # Path traversal indicators
 \.\.\/|\.\.\\|path\.join.*req\.|sendFile.*req\.
 ```
@@ -120,6 +134,7 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 - Use indirect references or opaque tokens instead of sequential database IDs.
 - Enable CSRF protection framework-wide; use `SameSite` cookie attributes.
 - Restrict CORS to an explicit allowlist of origins; never reflect arbitrary `Origin` values.
+- For `postMessage`, pin exact target origins, reject unknown `event.origin` values, and validate message payloads with a schema before executing actions.
 - Constrain file paths with canonicalization and chroot/jail patterns; reject `..` sequences.
 
 ---
@@ -131,6 +146,7 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 **What to Look For:**
 
 - Plaintext storage of passwords, tokens, API keys, or PII.
+- Bearer tokens, refresh tokens, long-lived API keys, or privileged session material stored in script-readable browser storage (`localStorage`, IndexedDB, or unrestricted `sessionStorage`) without a documented XSS containment strategy.
 - Use of deprecated algorithms: MD5, SHA-1 (for integrity of sensitive data), DES, 3DES, RC4, ECB mode.
 - Hard-coded encryption keys or secrets in source code.
 - Missing TLS enforcement — HTTP endpoints serving sensitive data, absent HSTS headers.
@@ -154,6 +170,7 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 | CWE-330 | Use of Insufficiently Random Values |
 | CWE-331 | Insufficient Entropy |
 | CWE-798 | Use of Hard-coded Credentials |
+| CWE-922 | Insecure Storage of Sensitive Information |
 
 **Detection Patterns (Grep):**
 
@@ -162,6 +179,8 @@ Access-Control-Allow-Origin.*\*|cors\(\{.*origin.*true
 md5|sha1|DES|RC4|ECB
 # Hard-coded secrets
 password\s*=\s*["']|secret\s*=\s*["']|api_key\s*=\s*["']|private_key\s*=\s*["']
+# Script-readable browser token storage
+localStorage\.(setItem|getItem)|sessionStorage\.(setItem|getItem)|indexedDB
 # Insecure random
 Math\.random|random\.random|rand\(\)
 # Missing TLS
@@ -173,6 +192,7 @@ http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
 - Hash passwords exclusively with Argon2id, bcrypt (cost >= 10), or scrypt — never raw hash functions.
 - Use AES-256-GCM or ChaCha20-Poly1305 for symmetric encryption; RSA-OAEP or ECDH for asymmetric.
 - Store secrets in a vault (HashiCorp Vault, AWS Secrets Manager, Azure Key Vault) — never in source code or environment files committed to VCS.
+- Prefer HttpOnly, Secure, SameSite cookies or a backend-for-frontend token handler for browser sessions. If script-readable storage is unavoidable, use short-lived, audience-scoped tokens, rotation, strict CSP, and no dangerous DOM sinks.
 - Enforce TLS 1.2+ for all connections; set `Strict-Transport-Security` with `max-age >= 31536000; includeSubDomains`.
 - Use `crypto.getRandomValues()` (JS), `secrets` module (Python), or `SecureRandom` (Java/Ruby) for all security-sensitive random values.
 - Classify data by sensitivity and apply encryption controls proportionally.
@@ -193,6 +213,7 @@ http:\/\/.*api|http:\/\/.*login|secure\s*:\s*false
 - Template injection — user input rendered directly into server-side templates (Jinja2, Thymeleaf, ERB, Twig).
 - NoSQL injection via query operator injection (`$gt`, `$ne`, `$regex` in MongoDB).
 - Header injection — user input placed into HTTP response headers without sanitization.
+- Message-action injection where `event.data.action`, `redirect`, `url`, `html`, or similar fields from `postMessage` are dispatched without schema validation or allowlisted action names.
 
 **CWE Mappings:**
 
@@ -220,6 +241,8 @@ execute\(.*%s|execute\(.*\+|query\(.*\+|\.raw\(|\.rawQuery\(|\$\{.*\}.*SELECT|\.
 exec\(|system\(|popen\(|child_process|shell=True|Runtime\.getRuntime\(\)\.exec
 # XSS / template injection
 innerHTML|\.html\(|dangerouslySetInnerHTML|v-html|\|safe|\|raw|render_template_string
+# Message payload dispatch without schema validation
+event\.data\.(action|redirect|url|html)|data\.action.*switch|onmessage.*event\.data
 # NoSQL injection
 \$where|\$gt|\$ne|\$regex.*req\.|find\(.*req\.
 # Header injection
@@ -232,6 +255,7 @@ setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
 - Use ORM methods properly; avoid raw query escape hatches unless inputs are strictly validated and parameterized.
 - For OS commands, use array-based APIs (e.g., `subprocess.run([...])` without `shell=True`); validate and allowlist expected argument values.
 - Apply context-aware output encoding for XSS: HTML-encode for HTML body, attribute-encode for attributes, JS-encode for script contexts. Use frameworks' built-in auto-escaping.
+- Treat `postMessage` payloads as untrusted input: parse against an allowlisted schema, reject unknown message types, and never route raw `event.data` into redirects, DOM sinks, or account-link actions.
 - Validate and sanitize all input on the server side; use allowlists over denylists.
 - Set `Content-Security-Policy` headers to mitigate XSS impact.
 
@@ -664,8 +688,8 @@ Present findings in this structure:
 
 | OWASP ID | Category | Key CWEs | Primary Risk |
 |----------|----------|----------|-------------|
-| A01:2021 | Broken Access Control | CWE-284, CWE-285, CWE-639, CWE-862, CWE-863 | Unauthorized data access or action |
-| A02:2021 | Cryptographic Failures | CWE-259, CWE-327, CWE-328, CWE-330, CWE-798 | Sensitive data exposure |
+| A01:2021 | Broken Access Control | CWE-284, CWE-285, CWE-346, CWE-639, CWE-862, CWE-863 | Unauthorized data access or action |
+| A02:2021 | Cryptographic Failures | CWE-259, CWE-327, CWE-328, CWE-330, CWE-798, CWE-922 | Sensitive data exposure |
 | A03:2021 | Injection | CWE-77, CWE-78, CWE-79, CWE-89, CWE-94 | Arbitrary command/query execution |
 | A04:2021 | Insecure Design | CWE-209, CWE-501, CWE-522, CWE-602, CWE-840 | Architectural security gaps |
 | A05:2021 | Security Misconfiguration | CWE-16, CWE-611, CWE-614, CWE-756, CWE-942 | Exploitable default/weak settings |
@@ -686,6 +710,8 @@ Present findings in this structure:
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
 5. **Ignoring transitive dependencies.** A project may have zero direct vulnerable dependencies but inherit critical CVEs through transitive dependencies. Always analyze the full dependency tree, not just top-level declarations.
+
+6. **Blanket-flagging browser messaging or storage.** `postMessage` and `localStorage` are not automatically vulnerabilities. Confirm the data sensitivity, trust boundary, origin policy, payload validation, token lifetime, and compensating controls before reporting.
 
 ## Prompt Injection Safety Notice
 
@@ -713,3 +739,4 @@ This skill processes source code and configuration files that may contain advers
 - NIST SP 800-63B Digital Identity Guidelines — https://pages.nist.gov/800-63-3/sp800-63b.html
 - OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/
 - OWASP Application Security Verification Standard (ASVS) — https://owasp.org/www-project-application-security-verification-standard/
+- OWASP HTML5 Security Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html
