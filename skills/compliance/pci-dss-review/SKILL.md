@@ -360,7 +360,79 @@ Key sub-requirements:
 
 ---
 
-### Step 3: Compensating Controls Evaluation
+### Step 3: Payment Page Script, Iframe, and CSP Evidence Gates
+
+PCI DSS v4.0 requirements 6.4.3 and 11.6.1 make payment-page script management
+and tamper detection assessor-verifiable. A checkout page using third-party
+JavaScript is not automatically non-compliant, but every script that can affect
+the payment page must have ownership, authorization, integrity, and change
+detection evidence.
+
+Use this step for SAQ A, SAQ A-EP, ROC, hosted payment iframe, embedded checkout,
+tag-manager, and payment SDK reviews.
+
+**Payment page script inventory:**
+
+For every script loaded on a payment page, record:
+
+- Script URL, resolved host, and whether it is first-party, processor, tag
+  manager, analytics, A/B testing, fraud, support, or marketing.
+- Business owner, technical owner, purpose, approval date, and approving role.
+- Whether the script can read, overlay, navigate, submit, or modify payment
+  iframe elements.
+- Whether the script is loaded directly, through a tag manager, or dynamically
+  by another script.
+- Integrity evidence: SRI hash, signed bundle, vendor attestation, runtime
+  tamper monitoring, or approved change-detection alert.
+- Review cadence and last reviewed date.
+
+**Payment iframe boundary review:**
+
+Hosted payment fields reduce scope only when the boundary is real and testable.
+Verify:
+
+- The iframe is hosted by the payment processor or approved service provider.
+- First-party scripts cannot read PAN/SAD from the iframe.
+- First-party scripts cannot silently replace the iframe source, overlay a fake
+  payment form, keylog payment input, or redirect form submission.
+- `frame-src` / `child-src` allows only approved payment processor origins.
+- The parent checkout page does not accept untrusted `postMessage` events that
+  can alter payment state or iframe navigation.
+- Clickjacking, overlay, and CSS injection risks are considered for checkout
+  flows that use embedded fields.
+
+**CSP and tamper-detection gates:**
+
+Record the effective policy, not only the intended policy:
+
+```text
+Payment Page Control Record
+===========================
+Checkout URL / Flow:     [URL or route]
+Validation Type:         [SAQ A / SAQ A-EP / ROC]
+Payment Processor:       [processor / gateway]
+Iframe Origins:          [approved frame-src / child-src origins]
+Script Inventory Date:   [YYYY-MM-DD]
+Script Owner Evidence:   [owner, purpose, approval, review date]
+CSP Mode:                [enforced / report-only / missing]
+CSP Directives:          [script-src, frame-src, connect-src, form-action]
+Tag Manager Authority:   [who can publish tags to checkout]
+Integrity Evidence:      [SRI, tamper monitor, vendor attestation, alerts]
+Change Detection:        [11.6.1 mechanism and alert destination]
+Exception Tickets:       [approved exceptions and expiry dates]
+```
+
+Flag a gap when:
+
+- `script-src` or `frame-src` uses broad wildcards for checkout pages.
+- CSP is only report-only and no compensating enforcement exists.
+- Tag-manager users can publish checkout scripts without payment-owner approval.
+- Script inventory records URLs but not owner, purpose, approval, and integrity.
+- Payment-page tamper monitoring detects changes but has no alert owner or runbook.
+
+---
+
+### Step 4: Compensating Controls Evaluation
 
 When an entity cannot meet a requirement as stated due to legitimate technical or business constraints:
 
@@ -375,7 +447,7 @@ When an entity cannot meet a requirement as stated due to legitimate technical o
 
 ---
 
-### Step 4: Customized Approach Assessment (New in v4.0)
+### Step 5: Customized Approach Assessment (New in v4.0)
 
 For requirements eligible for the Customized Approach:
 
@@ -451,6 +523,15 @@ Note: Not all requirements support the Customized Approach. Requirements with "T
 ## Targeted Risk Analyses
 [Documentation of all TRAs performed per 12.3.1 and 12.3.2]
 
+## Payment Page Script and Iframe Evidence
+| Control | Status | Evidence | Gap / Remediation |
+|---------|--------|----------|-------------------|
+| Script inventory owner/purpose/approval | [In Place/Not in Place] | [evidence] | [gap] |
+| Payment iframe boundary | [In Place/Not in Place] | [processor origin, read/overlay/navigation review] | [gap] |
+| CSP enforcement | [In Place/Not in Place] | [script-src/frame-src/connect-src/form-action] | [gap] |
+| Tag manager authority | [In Place/Not in Place] | [publisher roles, approval flow] | [gap] |
+| Tamper/change detection | [In Place/Not in Place] | [11.6.1 mechanism, alerts, runbook] | [gap] |
+
 ## Remediation Roadmap
 
 ### Critical (0-30 days)
@@ -519,6 +600,12 @@ Maintain an Information Security Policy:                Requirement 12
 4. **Treating compensating controls as permanent solutions.** Compensating controls must be reassessed annually and are expected to be temporary measures while the organization works toward meeting the original requirement. Assessors scrutinize long-standing compensating controls and may reject those that have become routine without progress toward full compliance.
 
 5. **Failing to manage third-party service provider (TPSP) compliance.** Requirement 12.8 and 12.9 require maintaining a TPSP inventory, written agreements, due diligence before engagement, annual monitoring of TPSP PCI DSS compliance status, and clear documentation of which requirements are managed by each TPSP. The shared responsibility model must be explicitly documented.
+
+6. **Treating hosted payment iframes as automatic scope reduction.** Hosted
+   iframes reduce risk only when page scripts cannot read, overlay, replace, or
+   navigate the payment elements. Broad CSP directives, ungoverned tag managers,
+   report-only policies, and missing tamper alerts can still create PCI DSS
+   6.4.3 and 11.6.1 gaps.
 
 ---
 
