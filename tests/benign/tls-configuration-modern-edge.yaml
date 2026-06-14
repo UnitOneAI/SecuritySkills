@@ -1,0 +1,23 @@
+case: tls-configuration-modern-edge
+description: Modern TLS boundary with verified HTTPS origin and scoped mTLS.
+expect_findings: []
+edge:
+  server_name: app.example.com
+  tls_protocols:
+    - TLSv1.2
+    - TLSv1.3
+  cipher_policy: mozilla-modern-compatible
+  certificate:
+    chain_file: /etc/tls/fullchain.pem
+    renewal_monitor: cert-expiry-prod
+origin:
+  protocol: https
+  verify_certificate: true
+  expected_san: origin.internal.example.com
+mtls:
+  enabled: true
+  client_ca_scope: partner-api-clients
+  identity_mapping:
+    source: uri_san
+    allowed_prefix: spiffe://prod.example/partner/
+  revocation_runbook: partner-certificate-rotation

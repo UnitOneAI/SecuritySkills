@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -389,7 +389,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md
@@ -515,6 +515,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/network/dns-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: tls-configuration-review
+    name: "TLS Configuration Review"
+    tags: [network, tls, crypto, certificates]
+    role: [security-engineer, cloud-security-engineer]
+    phase: [deploy, operate, review]
+    activity: [review, audit, configure]
+    frameworks: [NIST-SP-800-52r2, Mozilla-Server-Side-TLS, CWE-295, CWE-326]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/network/tls-configuration-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- DevSecOps ------------------------------------------------------------

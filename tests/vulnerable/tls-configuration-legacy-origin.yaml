@@ -1,0 +1,26 @@
+case: tls-configuration-legacy-origin
+description: Legacy public TLS plus unauthenticated edge-to-origin transport.
+expect_findings:
+  - id: TLS-LEGACY-PROTOCOLS
+    severity: High
+    evidence: ssl_protocols includes TLSv1 and TLSv1.1
+  - id: TLS-ORIGIN-PLAINTEXT
+    severity: High
+    evidence: CDN origin protocol is http-only for authenticated traffic
+  - id: TLS-CERT-VALIDATION-DISABLED
+    severity: High
+    evidence: backend client disables certificate verification
+nginx:
+  server_name: app.example.com
+  ssl_protocols:
+    - TLSv1
+    - TLSv1.1
+    - TLSv1.2
+  ssl_ciphers: "HIGH:!aNULL:!MD5"
+cdn_origin:
+  mode: flexible
+  origin_protocol: http
+  forwards_authorization_header: true
+backend_client:
+  language: node
+  rejectUnauthorized: false

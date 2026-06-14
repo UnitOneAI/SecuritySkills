@@ -38,7 +38,7 @@ Invoke this role bundle when any of the following conditions are true:
 
 If the ask is about application-layer security (e.g., "review this API for BOLA"), use the `appsec-engineer` role bundle. If the ask is about overall security program maturity, use the `vciso` role bundle. This bundle is for cloud infrastructure security.
 
-**Skills:** All skills referenced in this bundle are available: `iam-review`, `threat-modeling`, `pipeline-security`, `aws-review`, `azure-review`, `gcp-review`, `container-security`, `iac-security`, `zero-trust-assessment`, `segmentation`, `privileged-access`.
+**Skills:** All skills referenced in this bundle are available: `iam-review`, `threat-modeling`, `pipeline-security`, `aws-review`, `azure-review`, `gcp-review`, `container-security`, `iac-security`, `tls-configuration-review`, `zero-trust-assessment`, `segmentation`, `privileged-access`.
 
 ---
 
