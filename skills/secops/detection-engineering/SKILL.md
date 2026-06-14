@@ -345,6 +345,73 @@ detections/
 5. **Deploy:** Push converted rules to SIEM via API (Sentinel Analytics Rules API, Splunk REST API)
 6. **Monitor:** Track rule performance metrics (fire rate, TP rate, MTTD)
 
+### Step 7: Promotion, Canary, and Rollback Gates
+
+Treat detection releases like production code. A detection should not move from
+test to production solely because it matches a single incident or passes syntax
+validation. Require promotion evidence that proves the rule is safe to operate,
+has an owner, and can be rolled back without deleting audit history.
+
+**Promotion states:**
+
+| State | Purpose | Required Evidence |
+|-------|---------|-------------------|
+| `experimental` | Draft logic under development | Rule owner, ATT&CK mapping, fixture plan |
+| `test` | Validated in non-production or shadow mode | Known-good and known-bad fixtures, conversion output, expected fire rate |
+| `canary` | Limited production rollout | Canary scope, monitoring window, owner approval, rollback artifact |
+| `stable` | Full production deployment | Canary results, baseline comparison, severity approval, post-promotion review date |
+| `deprecated` | Retired but retained for audit | Replacement rule or retirement reason, disable date, owner approval |
+
+**Release gate checklist:**
+
+- [ ] Rule ID, version, owner, and parser/log-source dependencies are recorded.
+- [ ] Known-bad fixtures trigger the rule and known-good fixtures do not.
+- [ ] Converted SIEM query is attached or linked for the target platform.
+- [ ] Expected fire count, acceptable false-positive range, and severity are documented.
+- [ ] Canary scope is defined, such as 10 pilot endpoints, one tenant, one region,
+      one business unit, or shadow-mode alerts only.
+- [ ] Canary window is time-boxed and long enough to observe normal business cycles.
+- [ ] Rollback artifact is retained: previous rule version, parser version, disable
+      procedure, and owner who can approve rollback.
+- [ ] Post-promotion health review is scheduled with fire rate, true-positive rate,
+      analyst feedback, and missed-event review.
+
+**Canary evidence record:**
+
+```text
+Detection Promotion Record
+==========================
+Rule ID / Version:        [rule-id] / [YYYY.MM.DD or semver]
+ATT&CK Technique:         [Txxxx.xxx]
+Owner / Approver:         [team or individual]
+Parser Dependencies:      [parser name/version, log source, schema]
+Promotion State:          [test -> canary -> stable]
+Canary Scope:             [hosts, tenants, regions, users, or shadow mode]
+Canary Window:            [start/end UTC]
+Expected Fire Count:      [range per day or per canary window]
+Observed Fire Count:      [count]
+Known-Good Fixture Result:[pass/fail]
+Known-Bad Fixture Result: [pass/fail]
+Severity Decision:        [low/medium/high + rationale]
+Rollback Artifact:        [previous rule commit, disable runbook, parser version]
+Post-Promotion Review:    [date and owner]
+```
+
+**Rollback requirements:**
+
+- Disable or revert the rule through a versioned change, not an untracked UI edit.
+- Preserve the failed rule version, deployment timestamp, and reason for rollback.
+- Keep parser updates tied to the rule release; parser rollback may be required
+  when a schema change breaks multiple detections.
+- Record whether alerts generated during the failed rollout were suppressed,
+  bulk-closed, or reviewed manually.
+
+Rare detections are not automatically low value. A rule can be healthy with a
+low fire count when the canary scope is intentionally narrow, the expected
+volume is documented, and rule health metrics are monitored. Conversely, a rule
+that floods analysts during canary should not be promoted until severity,
+filters, parser dependencies, and owner approval are revisited.
+
 ---
 
 ## 4. Findings Classification
@@ -394,6 +461,16 @@ Produce detection engineering deliverables in this structure:
 - **Converted Query:** [KQL/SPL/EQL equivalent if requested]
 - **Estimated False Positive Rate:** [Low / Medium / High]
 - **Tuning Recommendations:** [Specific filter additions]
+
+### Promotion and Rollback Evidence
+| Gate | Status | Evidence |
+|---|---|---|
+| Fixture tests | [Pass/Fail/N/A] | [known-good/known-bad result links] |
+| Canary scope | [Defined/Missing] | [hosts, tenants, region, shadow mode] |
+| Expected volume | [Defined/Missing] | [expected fire count and baseline] |
+| Parser dependency | [Recorded/Missing] | [parser/log-source version] |
+| Rollback artifact | [Present/Missing] | [previous rule version or disable runbook] |
+| Post-promotion review | [Scheduled/Missing] | [date and owner] |
 ```
 
 ---
@@ -493,6 +570,14 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 ### Pitfall 5: Mapping Detections to ATT&CK Techniques Incorrectly
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
+
+### Pitfall 6: Promoting Detections Without Canary or Rollback Evidence
+
+A detection that passes syntax checks can still fail operationally if it floods
+analysts, depends on a broken parser, or changes severity without production
+baseline evidence. Require a canary window, expected fire count, parser/version
+dependency record, owner approval, rollback artifact, and post-promotion health
+review before marking a rule stable.
 
 ---
 
