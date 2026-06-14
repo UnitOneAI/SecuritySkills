@@ -3,7 +3,7 @@
 **Drop structured security skills into your AI coding agent. Get instant, framework-grounded security expertise.**
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Skills: 45](https://img.shields.io/badge/Skills-45-green.svg)
+![Skills: 46](https://img.shields.io/badge/Skills-46-green.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-compatible-purple.svg)
 ![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-compatible-purple.svg)
 ![Cursor](https://img.shields.io/badge/Cursor-compatible-purple.svg)
@@ -111,7 +111,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 
 ## Skills
 
-45 skills across 10 security domains.
+46 skills across 10 security domains.
 
 ### Application Security
 
@@ -121,6 +121,7 @@ This is why some skills ship extra `.md` files alongside `SKILL.md` (e.g. `cloud
 | Secure Code Review | `skills/appsec/secure-code-review/` | OWASP ASVS 4.0.3, CWE Top 25 |
 | OWASP Top 10 (Web) | `skills/appsec/owasp-top-10-web/` | OWASP Top 10 2021 |
 | API Security Review | `skills/appsec/api-security/` | OWASP API Security Top 10 2023 |
+| WebSocket Authorization Review | `skills/appsec/websocket-authz-review/` | OWASP ASVS, OWASP API Security Top 10, CWE-285 |
 | Dependency Scanning | `skills/appsec/dependency-scanning/` | SLSA v1.0, CycloneDX, SPDX |
 
 ### AI Security

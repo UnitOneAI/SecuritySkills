@@ -1,0 +1,23 @@
+{
+  "case": "websocket-cross-tenant-broadcast",
+  "category": "vulnerable",
+  "description": "A notification worker broadcasts sensitive account events to a global namespace instead of tenant-scoped rooms.",
+  "framework": "websocket-gateway",
+  "event": {
+    "name": "invoice.updated",
+    "dataClass": "financial",
+    "broadcastTarget": "global:notifications",
+    "tenantFilterApplied": false
+  },
+  "fanout": {
+    "adapter": "redis-pubsub",
+    "topic": "notifications",
+    "preservesTenantMetadata": false
+  },
+  "expectedFindings": [
+    "WS-BCAST-01",
+    "WS-BCAST-02",
+    "WS-AUDIT-01"
+  ],
+  "expectedSeverity": "critical"
+}

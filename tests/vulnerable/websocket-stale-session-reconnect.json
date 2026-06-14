@@ -1,0 +1,30 @@
+{
+  "case": "websocket-stale-session-reconnect",
+  "category": "vulnerable",
+  "description": "Reconnect restores previous room memberships after logout and role downgrade without fresh authorization.",
+  "framework": "python-websockets",
+  "session": {
+    "tokenExpiresAt": "2026-06-14T10:00:00Z",
+    "logoutClosesSocket": false,
+    "roleChangeRevokesRooms": false,
+    "reconnectRunsAuthz": false
+  },
+  "storedRooms": [
+    "tenant-a:admin",
+    "tenant-a:billing"
+  ],
+  "attack": {
+    "sequence": [
+      "user joins admin room",
+      "admin role is removed",
+      "network reconnect occurs",
+      "server restores cached admin room"
+    ]
+  },
+  "expectedFindings": [
+    "WS-SESSION-01",
+    "WS-SESSION-02",
+    "WS-SESSION-03"
+  ],
+  "expectedSeverity": "high"
+}

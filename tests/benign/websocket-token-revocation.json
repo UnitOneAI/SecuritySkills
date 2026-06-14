@@ -1,0 +1,24 @@
+{
+  "case": "websocket-token-revocation",
+  "category": "benign",
+  "description": "Active sockets are disconnected or reauthorized when tokens expire, users log out, or room membership changes.",
+  "framework": "realtime-gateway",
+  "sessionControls": {
+    "tokenExpiryDisconnectsSocket": true,
+    "logoutClosesSocket": true,
+    "roleChangeReauthorizesRooms": true,
+    "reconnectRequiresFreshToken": true
+  },
+  "revocationEvents": [
+    "logout",
+    "account_disabled",
+    "role_removed",
+    "mfa_reset",
+    "session_revoked"
+  ],
+  "audit": {
+    "logsDisconnectReason": true,
+    "logsRoomRevocation": true
+  },
+  "expectedDecision": "no finding"
+}

@@ -1,0 +1,26 @@
+{
+  "case": "websocket-room-join-without-authz",
+  "category": "vulnerable",
+  "description": "A Socket.IO handler joins client-supplied rooms without checking tenant or document membership.",
+  "framework": "socket.io",
+  "handler": {
+    "event": "join",
+    "codePattern": "socket.on('join', room => socket.join(room))",
+    "authorizationCheck": false,
+    "roomIdSource": "client_payload"
+  },
+  "connection": {
+    "authenticated": true,
+    "userId": "user-123",
+    "tenantId": "tenant-a"
+  },
+  "attack": {
+    "requestedRoom": "tenant-b:board:finance-roadmap",
+    "impact": "cross-tenant room membership and message access"
+  },
+  "expectedFindings": [
+    "WS-ROOM-01",
+    "WS-ROOM-02"
+  ],
+  "expectedSeverity": "critical"
+}

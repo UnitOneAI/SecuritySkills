@@ -1,0 +1,23 @@
+{
+  "case": "websocket-scoped-broadcasts",
+  "category": "benign",
+  "description": "Sensitive broadcasts are scoped to tenant/resource-specific rooms and fan-out preserves recipient filtering metadata.",
+  "framework": "graphql-subscriptions",
+  "broadcast": {
+    "event": "invoice.updated",
+    "targetRoom": "tenant:tenant-a:invoice:inv-123",
+    "recipientFilter": "canReadInvoice(user, tenantId, invoiceId)",
+    "globalNamespaceUsed": false
+  },
+  "fanout": {
+    "adapter": "nats",
+    "topic": "tenant.tenant-a.invoice.inv-123",
+    "preservesTenantMetadata": true
+  },
+  "controls": {
+    "payloadMinimized": true,
+    "recipientCountLogged": true,
+    "rateLimitEnabled": true
+  },
+  "expectedDecision": "no finding"
+}

@@ -1,0 +1,23 @@
+{
+  "case": "websocket-tenant-scoped-room-join",
+  "category": "benign",
+  "description": "Room joins are authorized against tenant and document membership before server-generated room ids are used.",
+  "framework": "socket.io",
+  "handler": {
+    "event": "joinDocument",
+    "authorizationCheck": "assertCanReadDocument(socket.user.id, tenantId, documentId)",
+    "roomIdSource": "server_generated",
+    "roomIdPattern": "tenant:{tenantId}:document:{documentId}"
+  },
+  "connection": {
+    "authenticated": true,
+    "originAllowed": true,
+    "tokenVerified": true
+  },
+  "audit": {
+    "logsJoinDecision": true,
+    "logsPolicyId": true,
+    "logsTenantAndDocument": true
+  },
+  "expectedDecision": "no finding"
+}

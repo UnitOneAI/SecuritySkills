@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -63,6 +63,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/appsec/api-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: websocket-authz-review
+    name: "WebSocket Authorization Review"
+    tags: [appsec, websocket, realtime, authorization, api]
+    role: [appsec-engineer, security-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, OWASP-API-Security-2023, CWE-285]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/websocket-authz-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning
