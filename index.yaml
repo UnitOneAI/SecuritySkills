@@ -1,12 +1,12 @@
 # index.yaml
-# Security Skills Index — unitoneai/security-skills
+# Security Skills Index â€” unitoneai/security-skills
 # Schema version: 1.0
 # Discovery: grep tags, jq .skills[], or LLM native parse
 
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 52
   role_count: 5
 
 tag_vocabulary:
@@ -77,6 +77,18 @@ skills:
     file: skills/appsec/dependency-scanning/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
+  - id: sandboxed-code-execution-egress-review
+    name: "Sandboxed Code Execution Egress Review"
+    tags: [appsec, sandbox, code-execution, egress, isolation]
+    role: [appsec-engineer, security-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, NIST-SP-800-53, MITRE-ATT&CK]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/appsec/sandboxed-code-execution-egress-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
   # -- Identity -------------------------------------------------------------
   - id: iam-review
     name: "IAM Security Review"
@@ -112,6 +124,54 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/rbac-design/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: tenant-domain-takeover-review
+    name: "Tenant Domain Takeover Review"
+    tags: [identity, auth, multi-tenant, domain-verification, takeover]
+    role: [security-engineer, appsec-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, NIST-SP-800-63B, NIST-SP-800-53]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/tenant-domain-takeover-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: cross-tenant-search-suggestion-review
+    name: "Cross-Tenant Search Suggestion Review"
+    tags: [identity, auth, multi-tenant, search, data-leakage]
+    role: [security-engineer, appsec-engineer, architect]
+    phase: [design, build, review]
+    activity: [review, assess, test]
+    frameworks: [OWASP-ASVS, OWASP-API-Security-2023, NIST-SP-800-53]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/cross-tenant-search-suggestion-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: machine-user-lifecycle-review
+    name: "Machine User Lifecycle Review"
+    tags: [identity, auth, machine-identity, service-accounts, automation]
+    role: [security-engineer, appsec-engineer, cloud-security-engineer]
+    phase: [design, build, operate, review]
+    activity: [review, assess, monitor]
+    frameworks: [NIST-SP-800-53, CIS-Controls-v8, OWASP-ASVS]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/machine-user-lifecycle-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: scim-provisioning-deprovisioning-security
+    name: "SCIM Provisioning and Deprovisioning Security"
+    tags: [identity, scim, provisioning, deprovisioning, lifecycle]
+    role: [security-engineer, appsec-engineer, cloud-security-engineer]
+    phase: [design, build, operate, review]
+    activity: [review, assess, audit]
+    category: Identity
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/scim-provisioning-deprovisioning-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: zero-trust-assessment
@@ -197,6 +257,30 @@ skills:
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/cloud/container-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: geo-redundant-secret-replication-review
+    name: "Geo-Redundant Secret Replication Review"
+    tags: [cloud, secrets, kms, multi-region, disaster-recovery]
+    role: [cloud-security-engineer, security-engineer, devsecops]
+    phase: [design, build, operate, review]
+    activity: [review, assess, monitor]
+    frameworks: [NIST-SP-800-53, CIS-Controls-v8, ISO-27001]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/cloud/geo-redundant-secret-replication-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: data-warehouse-sharing-boundary-review
+    name: "Data Warehouse Sharing Boundary Review"
+    tags: [cloud, data-warehouse, data-sharing, analytics, privacy]
+    role: [cloud-security-engineer, security-engineer]
+    phase: [design, build, operate, review]
+    activity: [review, assess, audit]
+    category: Cloud
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/cloud/data-warehouse-sharing-boundary-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Vulnerability Management ---------------------------------------------
@@ -569,7 +653,7 @@ skills:
 roles:
   - id: vciso
     name: "Virtual CISO"
-    description: "Security program leadership — risk assessment, compliance, board reporting"
+    description: "Security program leadership â€” risk assessment, compliance, board reporting"
     skills: [nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling]
     file: roles/vciso/SKILL.md
 
@@ -581,18 +665,18 @@ roles:
 
   - id: security-engineer
     name: "Security Engineer"
-    description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    description: "Building security into products and infrastructure â€” reviews, tooling, remediation"
+    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review, tenant-domain-takeover-review, cross-tenant-search-suggestion-review, machine-user-lifecycle-review, scim-provisioning-deprovisioning-security, geo-redundant-secret-replication-review, data-warehouse-sharing-boundary-review]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, sandboxed-code-execution-egress-review, tenant-domain-takeover-review, cross-tenant-search-suggestion-review, machine-user-lifecycle-review, scim-provisioning-deprovisioning-security, prompt-injection, owasp-top-10-web]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
     name: "Cloud Security Engineer"
     description: "Cloud security posture, IaC review, container security, identity"
-    skills: [aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access]
+    skills: [aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access, machine-user-lifecycle-review, scim-provisioning-deprovisioning-security, geo-redundant-secret-replication-review, data-warehouse-sharing-boundary-review]
     file: roles/cloud-security-engineer/SKILL.md
