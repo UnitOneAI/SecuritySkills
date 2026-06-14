@@ -1,0 +1,15 @@
+Resources:
+  ExportFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt ExportFunctionRole.Arn
+      Environment:
+        Variables:
+          PAYMENT_SECRET_ARN: !Ref PaymentSecretArn
+  ExportFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref ExportFunction
+      AuthType: AWS_IAM

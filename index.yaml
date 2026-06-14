@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -185,6 +185,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/cloud/iac-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: serverless-function-security
+    name: "Serverless Function Security Review"
+    tags: [cloud, serverless, lambda, iam, appsec]
+    role: [cloud-security-engineer, appsec-engineer, security-engineer]
+    phase: [build, deploy, review]
+    activity: [review, test]
+    frameworks: [OWASP-Serverless-Top-10, AWS-Lambda-Security, CWE-250, CWE-732, CWE-798]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/cloud/serverless-function-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: container-security
@@ -389,7 +401,7 @@ skills:
     role: [vciso, security-engineer]
     phase: [assess, operate]
     activity: [audit, assess]
-    frameworks: [ISO/IEC-27001:2022, ISO/IEC-27002:2022]
+    frameworks: ["ISO/IEC-27001:2022", "ISO/IEC-27002:2022"]
     difficulty: intermediate
     time_estimate: "90-180min"
     file: skills/compliance/iso27001-gap/SKILL.md
@@ -582,17 +594,17 @@ roles:
   - id: security-engineer
     name: "Security Engineer"
     description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, serverless-function-security, container-security, iam-review]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
     name: "AppSec Engineer"
     description: "Application security design, testing, and code review"
-    skills: [threat-modeling, secure-code-review, api-security, dependency-scanning, prompt-injection, owasp-top-10-web]
+    skills: [threat-modeling, secure-code-review, api-security, serverless-function-security, dependency-scanning, prompt-injection, owasp-top-10-web]
     file: roles/appsec-engineer/SKILL.md
 
   - id: cloud-security-engineer
     name: "Cloud Security Engineer"
     description: "Cloud security posture, IaC review, container security, identity"
-    skills: [aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access]
+    skills: [aws-review, azure-review, gcp-review, iac-security, serverless-function-security, container-security, zero-trust-assessment, privileged-access]
     file: roles/cloud-security-engineer/SKILL.md

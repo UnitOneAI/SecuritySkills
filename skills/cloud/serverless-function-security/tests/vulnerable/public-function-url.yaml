@@ -1,0 +1,15 @@
+Resources:
+  ExportFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: arn:aws:iam::111122223333:role/lambda-admin
+      Environment:
+        Variables:
+          PAYMENT_API_KEY: sk_live_example
+  ExportFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref ExportFunction
+      AuthType: NONE
