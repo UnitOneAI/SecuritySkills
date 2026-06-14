@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-14"
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -540,6 +540,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/devsecops/secrets-management/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: geo-redundant-secret-replication-review
+    name: "Geo-Redundant Secret Replication Review"
+    tags: [devsecops, secrets, replication, resilience, residency]
+    role: [security-engineer, cloud-security-engineer, devsecops]
+    phase: [design, deploy, operate]
+    activity: [review, audit]
+    frameworks: [OWASP-Secrets-Management, NIST-SP-800-57-Part1-Rev5, NIST-SP-800-53-Rev5]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/devsecops/geo-redundant-secret-replication-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: sast-config
