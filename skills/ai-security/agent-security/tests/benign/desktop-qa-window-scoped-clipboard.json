@@ -1,0 +1,55 @@
+{
+  "case_id": "desktop-qa-window-scoped-clipboard",
+  "expected_decision": "pass",
+  "scenario": "A desktop QA assistant replays tester steps only inside a local staging browser window.",
+  "agent": {
+    "purpose": "local staging QA replay",
+    "browser_profile": "dedicated-staging-profile",
+    "tool_scope": {
+      "screenshot": {
+        "windows_allowlist": [
+          "Acme Staging"
+        ],
+        "monitors": [
+          "primary"
+        ],
+        "retention": "memory_only",
+        "redaction": [
+          "password_fields",
+          "otp_fields",
+          "payment_forms",
+          "kyc_forms"
+        ]
+      },
+      "click": {
+        "coordinate_bounds_required": true,
+        "active_window_validation": true
+      },
+      "clipboard_read": {
+        "requires_user_gesture": true,
+        "max_chars": 2000,
+        "source_context_logged": true,
+        "deny_patterns": [
+          "password",
+          "token",
+          "otp"
+        ]
+      }
+    },
+    "approval_gates": {
+      "external_send": "human_approval_required",
+      "file_upload": "human_approval_required",
+      "payment_or_kyc_page": "blocked"
+    }
+  },
+  "evidence": {
+    "window_scope": "named window allowlist with active-window validation",
+    "clipboard_scope": "explicit user gesture and sensitive pattern filtering",
+    "external_transfer": "blocked unless approval shows source, destination, and exact content"
+  },
+  "should_not_flag": [
+    "AGENT-DESK-01",
+    "AGENT-DESK-02",
+    "AGENT-DESK-03"
+  ]
+}

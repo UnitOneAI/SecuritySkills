@@ -14,7 +14,7 @@ phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -79,6 +79,8 @@ Before beginning the assessment, gather the following. If any item is unavailabl
 | Agent architecture diagram | Design docs, README, infrastructure code | Maps trust boundaries, delegation chains, tool surface |
 | Tool/function definitions | Code files defining tool schemas, OpenAPI specs, MCP server configs | Determines what each agent can do and with what parameters |
 | Permission/IAM configuration | Cloud IAM, role definitions, service account configs, .env files | Reveals whether least-privilege is enforced |
+| Desktop and browser automation scope | UI automation manifests, browser profile configs, OS permission prompts, tool policy | Determines whether screen, click, and browser tools are constrained to the intended app |
+| Screen/OCR and clipboard policy | Screenshot redaction config, monitor/window allowlists, clipboard read/write controls | Prevents unrelated apps, secrets, OTPs, and customer data from entering model context or external actions |
 | Human approval gate implementation | Workflow code, UI code, approval service configs | Determines if HITL is architecturally sound or bypassable |
 | Agent identity and credential management | Auth middleware, secret managers, token configs | Exposes credential scope and rotation practices |
 | Multi-agent communication protocol | Message bus configs, inter-agent APIs, shared state stores | Identifies trust boundary violations |
@@ -247,6 +249,58 @@ Evaluate the design, placement, and robustness of human approval gates in the ag
 | Single approval mechanism for all risk levels (no tiered review) | Medium |
 | No approval fatigue management (high volume of undifferentiated requests) | Medium |
 | Approval logic implemented in application code modifiable at runtime | Medium |
+
+---
+
+### Step 3.5 -- Desktop Observation and Clipboard Boundary Review
+
+Evaluate whether desktop, browser, screenshot, OCR, click, and clipboard tools are scoped to the intended task boundary. Treat screen pixels and clipboard contents as cross-application data sources: they can expose unrelated windows, personal browser sessions, password managers, payment forms, OTP prompts, customer records, and internal chats even when the agent has no direct file-system or database tool.
+
+**What to look for in code and configuration:**
+
+- **Window and monitor scope:** Are screenshot/OCR/click tools constrained to a named application, browser profile, tab, window handle, or coordinate boundary? Or can they capture every monitor and visible window?
+- **Sensitive-screen handling:** Are password fields, OTP prompts, payment/KYC forms, production consoles, inboxes, and customer-record pages blocked or redacted before model ingestion and logging?
+- **Clipboard provenance:** Does clipboard read access require a user gesture or explicit source context? Can clipboard text from another app be pasted into external messages, forms, or API calls?
+- **Desktop profile separation:** Does the agent use a dedicated staging browser/profile without the user's live cookies, password manager, extensions, and personal tabs?
+- **External send controls:** If screen/OCR or clipboard-derived content can leave the local machine, is there an approval gate with source/provenance shown to the approver?
+- **Retention and logging:** Are screen captures and OCR text memory-only or time-bounded, and are sensitive captures excluded from logs and model training telemetry?
+
+**Detection methods using allowed tools:**
+
+```
+# Find desktop observation and clipboard tools
+Grep: "screenshot|screen_capture|capture_screen|ocr|pyautogui|playwright|selenium|click|coordinate" in **/*.{py,ts,js,yaml,yml}
+Grep: "clipboard|pasteboard|read_clipboard|write_clipboard|clipboardy|pyperclip|navigator.clipboard" in **/*.{py,ts,js,yaml,yml}
+
+# Find scoping and redaction controls
+Grep: "window_allowlist|window_title|browser_profile|monitor|redact|mask|password|otp|payment|kyc" in **/*.{py,ts,js,yaml,yml}
+Grep: "external_send|send_message|post_to|upload|webhook|approval|required_user_gesture" in **/*.{py,ts,js,yaml,yml}
+```
+
+**Desktop and clipboard control matrix:**
+
+| Control | Acceptable Evidence | Finding Trigger |
+|---|---|---|
+| Screen scope | App/window/tab allowlist, single-monitor scope, coordinate bounds tied to active window | Full-screen or all-monitor capture with no task boundary |
+| OCR handling | Redaction before model/log ingestion; sensitive-page blocklist; memory-only retention | Raw OCR text from unrelated windows is logged or sent remotely |
+| Clipboard read | User gesture, source app context, max length, sensitive-pattern filtering | Silent clipboard reads or reads before every external send |
+| Clipboard write/paste | Destination allowlist and preview before paste/send | Clipboard data pasted into external apps or forms without approval |
+| Browser profile | Dedicated profile, no password manager or personal session cookies | Agent operates in the user's everyday browser profile |
+| External transfer | HITL gate showing source, destination, and exact content | Screen/clipboard-derived content can be uploaded, posted, or messaged automatically |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| AGENT-DESK-01: Full-screen or all-monitor capture/OCR is available without window/app allowlisting | Critical |
+| AGENT-DESK-02: Screen/OCR text can be transmitted to remote services or external recipients without approval | Critical |
+| AGENT-DESK-03: Agent can silently read clipboard contents and use them in external messages, forms, or API calls | High |
+| AGENT-DESK-04: Desktop agent runs inside a user's everyday browser/profile with live cookies, password manager, or personal tabs | High |
+| AGENT-DESK-05: Sensitive screens such as OTP, payment, KYC, credential, or production admin pages are not blocked or redacted | High |
+| AGENT-DESK-06: Click tools use raw coordinates without active-window binding or focus-change validation | Medium |
+| AGENT-DESK-07: Screen capture or OCR retention is not bounded or is included in broad telemetry/logging | Medium |
+
+**NIST AI RMF mapping:** MAP 3.5 (context and impact of AI system capabilities), MEASURE 2.5 (failure mode analysis), MANAGE 2.2 (risk response mechanisms), MANAGE 2.4 (tracking and responding to AI risks).
 
 ---
 
@@ -498,7 +552,7 @@ Glob: **/security_architecture*
 ## Findings
 
 ### Finding [N]: [Title]
-- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
+- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Desktop Observation / Clipboard | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
 - **Severity:** [Critical | High | Medium | Low | Informational]
 - **OWASP Agentic AI Category:** [AG01-AG10 or N/A]
 - **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
@@ -516,10 +570,17 @@ Glob: **/security_architecture*
 | Permission Model | [rating] | [one-line summary] | [priority] |
 | Least-Privilege Design | [rating] | [one-line summary] | [priority] |
 | HITL Gate Placement | [rating] | [one-line summary] | [priority] |
+| Desktop Observation / Clipboard | [rating] | [one-line summary] | [priority] |
 | Blast Radius Containment | [rating] | [one-line summary] | [priority] |
 | Audit Trail Completeness | [rating] | [one-line summary] | [priority] |
 | Rollback Capability | [rating] | [one-line summary] | [priority] |
 | Multi-Agent Trust Boundaries | [rating] | [one-line summary] | [priority] |
+
+## Desktop Observation and Clipboard Controls
+
+| Tool | Scope Boundary | Sensitive-Screen Handling | Clipboard Controls | External Send Gate | Retention |
+|---|---|---|---|---|---|
+| [screenshot/OCR/clipboard tool] | [window/app/profile/monitor scope] | [redaction/blocklist] | [gesture/provenance/filtering] | [approval required?] | [memory-only/time-bound/logged] |
 
 ## Recommendations
 [Prioritized list of architectural improvements]
@@ -568,6 +629,16 @@ Glob: **/security_architecture*
 4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
 
 5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+
+6. **Treating desktop automation as just another tool.** A screenshot or clipboard tool can cross application boundaries even when the agent's intended task is narrow. Reviewers should require window/profile scope, sensitive-screen redaction, clipboard provenance, and approval before screen- or clipboard-derived content is sent outside the local task context.
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.3 | 2026-06-14 | Added desktop observation, OCR, browser-profile, and clipboard boundary review gates with output evidence fields. |
 
 ---
 
