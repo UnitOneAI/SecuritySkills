@@ -1,0 +1,29 @@
+workflow: service-desk-access-request
+ticket: SD-20491
+requester: manager@example.com
+subject: analyst@example.com
+requested_action: add_group
+requested_group: readonly-reporting
+ticket_state: approved
+approver: app-owner@example.com
+approval_record:
+  approval_id: apr_01HX7
+  immutable_subject: analyst@example.com
+  immutable_action: add_group
+  immutable_group: readonly-reporting
+  approver_authority: app_owner_for_reporting
+  expires_at: '2026-06-15T10:30:00Z'
+  single_use_idempotency_key: idem_3c8b7f
+fulfillment_worker:
+  reads_immutable_approval_record: true
+  rechecks_policy_at_execution: true
+  service_account_permissions:
+    - directory.groups.add_member:readonly-reporting
+audit:
+  ticket_id: SD-20491
+  downstream_change_id: iamchg_8831
+  correlation_id: corr_abc123
+  append_only: true
+expected_result: |
+  This should not be flagged as approval bypass. The approval is scoped,
+  time-bound, single-use, and reconciled to downstream IAM evidence.

@@ -1,0 +1,23 @@
+workflow: service-desk-access-request
+ticket: SD-18422
+requester: analyst@example.com
+subject: analyst@example.com
+requested_action: add_group
+requested_group: prod-db-admin
+ticket_state: approved
+approver: team-lead@example.com
+approval_record:
+  immutable_subject: false
+  immutable_group: false
+  expires_at: null
+  single_use_idempotency_key: null
+fulfillment_worker:
+  reads_ticket_fields_at_execution: true
+  rechecks_policy_at_execution: false
+  service_account_permissions:
+    - directory.groups.add_member
+    - directory.groups.remove_member
+    - directory.users.reset_mfa
+risk: |
+  The approval is replayable and mutable. A ticket field change or webhook retry can
+  grant a different group without a fresh authorization decision.

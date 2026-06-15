@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -136,6 +136,18 @@ skills:
     difficulty: intermediate
     time_estimate: "45-90min"
     file: skills/identity/privileged-access/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: service-desk-approval-bypass-review
+    name: "Service Desk Approval Bypass Review"
+    tags: [identity, service-desk, approval, auth]
+    role: [security-engineer, appsec-engineer, vciso]
+    phase: [design, build, operate, review]
+    activity: [review, audit, assess]
+    frameworks: [NIST-SP-800-53-AC, NIST-SP-800-53-IA, OWASP-ASVS]
+    difficulty: intermediate
+    time_estimate: "45-90min"
+    file: skills/identity/service-desk-approval-bypass-review/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   # -- Cloud ----------------------------------------------------------------
@@ -570,7 +582,7 @@ roles:
   - id: vciso
     name: "Virtual CISO"
     description: "Security program leadership — risk assessment, compliance, board reporting"
-    skills: [nist-csf-assessment, soc2-gap, iam-review, cve-triage, threat-modeling]
+    skills: [nist-csf-assessment, soc2-gap, iam-review, service-desk-approval-bypass-review, cve-triage, threat-modeling]
     file: roles/vciso/SKILL.md
 
   - id: soc-analyst
@@ -582,7 +594,7 @@ roles:
   - id: security-engineer
     name: "Security Engineer"
     description: "Building security into products and infrastructure — reviews, tooling, remediation"
-    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review]
+    skills: [secure-code-review, dependency-scanning, cve-triage, secrets-management, pipeline-security, container-security, iam-review, service-desk-approval-bypass-review]
     file: roles/security-engineer/SKILL.md
 
   - id: appsec-engineer
