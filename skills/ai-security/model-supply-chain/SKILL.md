@@ -14,7 +14,7 @@ phase: [build, review, operate]
 frameworks: [OWASP-LLM03-2025, SLSA-v1.0, MITRE-ATLAS]
 difficulty: advanced
 time_estimate: "45-90min"
-version: "1.0.2"
+version: "1.0.3"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -130,6 +130,61 @@ Glob: **/config.json
 | Model pulled from unverified third-party source (not the original publisher) | High |
 | No model card or provenance documentation available | Medium |
 | Checksums verified but against values stored in the same repository as the model (self-referential) | Medium |
+
+---
+
+### Step 1.1 -- Serialization Safety Evidence Gate
+
+Do not treat "the model has a checksum" as proof that loading it is safe. A checksum can prove byte stability, but it does not prove that the serialization format is non-executable or that the loader is configured defensively. Review every model-loading path for the actual artifact format, loader API, runtime framework version, and any explicit unsafe override.
+
+**What to look for in code and configuration:**
+
+- Pickle-backed model artifacts (`.pkl`, `.pickle`, `.pt`, `.pth`, many `.bin` checkpoints) loaded in application, conversion, migration, evaluation, or CI jobs.
+- `torch.load(...)` calls that omit `weights_only=True`, set `weights_only=False`, or rely on an older PyTorch default where full pickle loading is still the default behavior.
+- `from_pretrained(...)` or framework wrappers that load pickle-backed checkpoints indirectly, especially when `use_safetensors` is absent or set to `False`.
+- `trust_remote_code=True`, custom model classes, or conversion scripts that execute registry-provided Python code before or during model loading.
+- Safetensors conversion pipelines that download the unsafe pickle artifact first, convert it on a developer workstation or CI runner, and then publish the converted file without recording the original digest, converter version, isolated environment, and post-conversion hash.
+- Allowlisted safe globals, custom unpicklers, or compatibility shims that are broader than the exact tensor classes needed for the model.
+
+**Detection methods using allowed tools:**
+
+```
+# Locate model artifacts and potentially executable checkpoint formats
+Glob: **/*.{pkl,pickle,pt,pth,bin,ckpt,safetensors,onnx,gguf,ggml}
+
+# Locate direct and indirect loading paths
+Grep: "torch.load|pickle.load|joblib.load|dill.load|cloudpickle|from_pretrained|load_state_dict" in **/*.py
+Grep: "weights_only|use_safetensors|trust_remote_code|safe_globals|add_safe_globals" in **/*.py
+
+# Locate conversion and publishing workflows
+Grep: "convert|safetensors|save_pretrained|push_to_hub|upload_file" in **/*.{py,yaml,yml,sh}
+```
+
+**Serialization evidence table:**
+
+| Model | Artifact | Loader | Safety Control | Conversion Provenance | Status |
+|---|---|---|---|---|---|
+| `classifier-v3` | `model.safetensors` | `safe_open` | Non-pickle format, pinned digest | Internal registry conversion job with source digest and output hash | Pass |
+| `legacy-ranker` | `ranker.pth` | `torch.load` | `weights_only=False` for custom class | No isolated conversion record | Fail |
+
+**Review questions:**
+
+- Is the runtime using a PyTorch version where `weights_only=True` is guaranteed, or is the code explicit so the result is stable across environments?
+- If unsafe loading is required for a legacy checkpoint, is it restricted to an isolated conversion job with no production secrets, no network egress, and a signed converted artifact as the only promoted output?
+- Does production load the converted non-pickle artifact, rather than repeating unsafe deserialization at runtime?
+- Are `trust_remote_code=True` and custom model classes reviewed as executable code dependencies with pinned revisions and code-owner approval?
+- Can the team reproduce which source artifact, digest, conversion tool version, and output digest produced the production model?
+
+**Finding classification:**
+
+| Condition | Severity |
+|---|---|
+| Production or CI loads an untrusted pickle-backed model with `weights_only=False` or equivalent unsafe loader behavior | Critical |
+| Unsafe deserialization is required for conversion but runs with production secrets, broad filesystem access, or network egress | High |
+| `from_pretrained` can fall back to pickle-backed weights when a safetensors artifact exists | High |
+| `trust_remote_code=True` is enabled without pinned revision and code review evidence | High |
+| Conversion to safetensors lacks source digest, converter version, isolated environment, or output digest evidence | Medium |
+| Loader behavior depends on framework defaults instead of explicit `weights_only` / `use_safetensors` settings | Medium |
 
 ---
 
@@ -506,6 +561,7 @@ Assess whether architectural and procedural controls exist to detect model backd
 | Domain | Current State | Target State | Gap Severity |
 |---|---|---|---|
 | Model provenance | [description] | [recommendation] | [severity] |
+| Serialization safety | [description] | [recommendation] | [severity] |
 | Training data lineage | [description] | [recommendation] | [severity] |
 | Fine-tuning pipeline | [description] | [recommendation] | [severity] |
 | Inference dependencies | [description] | [recommendation] | [severity] |
@@ -547,6 +603,8 @@ Assess whether architectural and procedural controls exist to detect model backd
 
 5. **Evaluating models only on benchmarks.** Standard benchmarks measure general capability, not supply chain integrity. A backdoored model will perform normally on benchmarks by design. Behavioral differential testing with curated, domain-specific test sets that probe for targeted manipulation is required to surface backdoors.
 
+6. **Converting unsafe checkpoints without preserving provenance.** Converting `.bin`, `.pt`, or `.pth` files to `safetensors` is useful only when the conversion job is isolated and records the source digest, converter version, output digest, and promotion approval. Otherwise the team may replace a runtime deserialization risk with an untraceable supply-chain step.
+
 ---
 
 ## References
@@ -562,3 +620,10 @@ Assess whether architectural and procedural controls exist to detect model backd
 - Hugging Face. "Safetensors: A Simple and Safe Serialization Format" -- https://huggingface.co/docs/safetensors
 - NIST AI Risk Management Framework 1.0 -- https://www.nist.gov/aiframework
 - Open Source Security Foundation (OpenSSF) -- https://openssf.org
+
+---
+
+## Changelog
+
+- **1.0.3** -- Added serialization safety evidence gate covering pickle-backed checkpoints, explicit loader controls, safetensors conversion provenance, `trust_remote_code`, and loader-safety output reporting.
+
