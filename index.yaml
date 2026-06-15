@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-06-15"
-  skill_count: 46
+last_updated: "2026-06-15"
+  skill_count: 47
   role_count: 5
 
 tag_vocabulary:
@@ -607,4 +607,16 @@ roles:
     difficulty: intermediate
     time_estimate: "30-60min"
     file: skills/secops/cache-key-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: runtime-debug-endpoint-security
+    name: "Runtime Debug Endpoint Security"
+    tags: [appsec, debug, diagnostics, production-security]
+    role: [security-engineer, appsec-engineer, backend-developer]
+    phase: [build, review, operate]
+    activity: [review, assess]
+    frameworks: [OWASP-Top10-2021]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/runtime-debug-endpoint-security/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
