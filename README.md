@@ -92,6 +92,14 @@ argument-hint: "[target-file-or-directory]"
 # context: fork                       # optional
 ```
 
+The machine-readable schema for this frontmatter lives at
+[`schemas/skill.schema.json`](schemas/skill.schema.json). Validate all skills
+and role bundles locally with:
+
+```bash
+ruby scripts/validate_skill_schema.rb
+```
+
 ### Progressive disclosure (keep `SKILL.md` lean)
 
 Claude's skill guidance: when a `SKILL.md` would exceed ~500 lines, **don't inline everything** — split detail into sibling reference files in the same directory and link to them from `SKILL.md`. The agent loads a reference only when it needs it, so the entrypoint stays cheap to load.

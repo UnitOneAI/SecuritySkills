@@ -13,42 +13,5 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Validate frontmatter in skill and role files
-        run: |
-          EXIT_CODE=0
-          REQUIRED_FIELDS=("name" "description" "version" "author" "license" "injection-hardened" "allowed-tools" "tags" "role" "phase" "frameworks" "difficulty" "time_estimate")
-
-          FILES=$(find skills/ roles/ -name 'SKILL.md' 2>/dev/null || true)
-
-          if [ -z "$FILES" ]; then
-            echo "No .md files found in skills/ or roles/."
-            exit 0
-          fi
-
-          while IFS= read -r file; do
-            echo "Checking: $file"
-
-            FRONTMATTER=$(awk '/^---$/{if(++c==2) exit} c==1' "$file")
-
-            if [ -z "$FRONTMATTER" ]; then
-              echo "  ERROR: No YAML frontmatter found (missing --- delimiters)"
-              EXIT_CODE=1
-              continue
-            fi
-
-            for field in "${REQUIRED_FIELDS[@]}"; do
-              if ! echo "$FRONTMATTER" | grep -qE "^${field}:"; then
-                echo "  ERROR: Missing required field: $field"
-                EXIT_CODE=1
-              fi
-            done
-          done <<< "$FILES"
-
-          if [ "$EXIT_CODE" -ne 0 ]; then
-            echo ""
-            echo "FAIL: One or more files have missing required frontmatter fields."
-            exit 1
-          fi
-
-          echo ""
-          echo "All frontmatter checks passed."
+      - name: Validate skill schema
+        run: ruby scripts/validate_skill_schema.rb

@@ -144,7 +144,13 @@ argument-hint: "[target-file-or-directory]"
 ```
 
 Use [SKILL_TEMPLATE.md](SKILL_TEMPLATE.md) as the source of truth for the
-required body sections and submission checklist.
+required body sections and submission checklist. The machine-readable
+frontmatter contract lives in [schemas/skill.schema.json](schemas/skill.schema.json)
+and is enforced by CI. Run it locally before opening a PR:
+
+```bash
+ruby scripts/validate_skill_schema.rb
+```
 
 ---
 

@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/UnitOneAI/SecuritySkills/schemas/skill.schema.json",
+  "title": "SecuritySkills SKILL.md Frontmatter",
+  "description": "Canonical machine-readable contract for SecuritySkills SKILL.md frontmatter. The Markdown body remains the place for detailed outputs, evidence, remediation, and references, while this schema validates the metadata agents and CI need for discovery.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "description",
+    "tags",
+    "role",
+    "phase",
+    "frameworks",
+    "difficulty",
+    "time_estimate",
+    "version",
+    "author",
+    "license",
+    "allowed-tools",
+    "injection-hardened"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Kebab-case skill identifier. For skills, this must match the skill directory name."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 40,
+      "description": "Agent-facing summary of what the skill does and when it should be invoked."
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      },
+      "description": "Discovery tags covering domain, activity, technology, or role context."
+    },
+    "role": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      },
+      "description": "Role bundles that should include or invoke this skill."
+    },
+    "phase": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      },
+      "description": "Lifecycle phases where the skill applies."
+    },
+    "frameworks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 2
+      },
+      "description": "Frameworks, standards, taxonomies, or benchmark versions cited by the skill. Control IDs in findings must resolve to these references."
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["beginner", "intermediate", "advanced"],
+      "description": "Expected operator skill level."
+    },
+    "time_estimate": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Expected time to run the skill for a typical target."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version for the skill contract and content."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 2,
+      "description": "GitHub handle, organization, or maintainer identity."
+    },
+    "license": {
+      "type": "string",
+      "minLength": 2,
+      "description": "License covering the skill content."
+    },
+    "allowed-tools": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 2
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 2
+          }
+        }
+      ],
+      "description": "Tool names the skill may use. Existing skills may use a comma-separated string; new tooling may normalize this to an array."
+    },
+    "injection-hardened": {
+      "type": "boolean",
+      "description": "True only after the skill has been reviewed against prompt injection guidance."
+    },
+    "argument-hint": {
+      "type": "string",
+      "minLength": 2,
+      "description": "Optional invocation argument hint shown to users or agents."
+    },
+    "context": {
+      "type": "string",
+      "minLength": 2,
+      "description": "Optional execution context hint."
+    },
+    "disable-model-invocation": {
+      "type": "boolean",
+      "description": "Optional role-bundle guard for workflows that should not directly invoke a model."
+    }
+  },
+  "x-securityskills": {
+    "bodySections": {
+      "outputs": "Document expected findings, evidence, remediation, or deliverables in the Markdown body.",
+      "references": "Document authoritative framework and control references in the Markdown body or sibling reference files."
+    },
+    "referenceFiles": "Long framework tables, tool rules, benchmark checklists, and language-specific guidance should live in sibling Markdown files linked from SKILL.md."
+  }
+}
