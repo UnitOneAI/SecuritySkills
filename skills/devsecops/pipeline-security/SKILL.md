@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -220,6 +220,8 @@ permissions:
 - Use of floating version ranges in dependency manifests without lock files.
 - Missing integrity checks (no `npm ci` vs `npm install`, no `--frozen-lockfile`).
 - Dependency confusion risk: private package names that could be squatted on public registries.
+- Reusable workflows referenced by mutable branch or tag instead of immutable commit SHA.
+- No documented update policy for pinned actions, reusable workflows, or pinned build containers.
 
 **Grep patterns:**
 
@@ -229,9 +231,18 @@ npm ci
 yarn install --frozen-lockfile
 pip install -r requirements.txt  # vs pip install with --require-hashes
 poetry install --no-update
+
+# Reusable workflows should be pinned like dependencies
+uses: org/repo/.github/workflows/deploy.yml@main
+uses: org/repo/.github/workflows/deploy.yml@v1
+uses: org/repo/.github/workflows/deploy.yml@a1b2c3d4...
+
+# Update policy for pinned dependencies
+dependabot.yml
+renovate.json
 ```
 
-**Finding format:** Report dependency pinning status, lock file presence, automated update tooling, and whether install commands use locked/frozen modes.
+**Finding format:** Report dependency pinning status, lock file presence, automated update tooling, whether install commands use locked/frozen modes, and whether reusable workflows are pinned and maintained like supply-chain dependencies.
 
 ---
 
@@ -362,9 +373,12 @@ docker.sock
 **What to look for:**
 
 - Third-party GitHub Actions referenced by mutable tag instead of pinned SHA.
+- First-party or same-organization GitHub Actions referenced by mutable branch or tag. These are still mutable and should be reviewed as dependencies.
+- Docker-based actions and job/service containers referenced by mutable tag instead of digest.
 - Use of unverified or low-reputation Actions from the marketplace.
 - Third-party services with broad OAuth scopes on the repository.
 - Missing allow-list for approved Actions (GitHub Actions `allowed-actions` policy).
+- Actions that fetch unpinned scripts or binaries at runtime, weakening the value of action pinning.
 
 **Specific patterns:**
 
@@ -372,14 +386,39 @@ docker.sock
 # BAD: Mutable tag reference -- can be changed by the action author
 - uses: some-org/some-action@v1
 - uses: some-org/some-action@main
+- uses: my-org/internal-action@main
+- uses: my-org/platform/.github/workflows/release.yml@v2
+- uses: docker://ghcr.io/some-org/release-tool:1.2.3
 
 # GOOD: Pinned to immutable SHA
 - uses: some-org/some-action@a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
 # With comment for readability:
 - uses: actions/checkout@a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 # v4.1.1
+
+# GOOD: Pinned reusable workflow and container digest
+uses: my-org/platform/.github/workflows/release.yml@a1b2c3d4e5f6...
+uses: docker://ghcr.io/some-org/release-tool@sha256:abcdef...
+
+# Also review job and service containers
+jobs:
+  release:
+    container:
+      image: ghcr.io/acme/build-image@sha256:abcdef...
+    services:
+      registry:
+        image: docker.io/library/registry@sha256:123456...
 ```
 
-**Finding format:** List all third-party actions, their pinning status (SHA vs. tag vs. branch), and whether an organizational allow-list policy is in place.
+**Exception guidance:** Mutable refs may be acceptable only for narrowly scoped, low-impact jobs such as read-only lint or formatting checks that have all of the following properties:
+
+- Token permissions are read-only.
+- No repository, cloud, package, or deployment secrets are exposed.
+- No artifact signing, release publishing, environment deployment, or write-back occurs.
+- The workflow does not run on self-hosted runners or privileged build containers.
+
+If any of those conditions are not met, mutable refs should be treated as a meaningful supply-chain finding rather than a low-risk exception.
+
+**Finding format:** List all third-party and first-party actions, reusable workflows, and Docker-based actions; record pinning status (SHA vs. tag vs. branch vs. digest), privileged job context, any allow-list policy, and the rationale for any low-impact exception.
 
 ---
 
@@ -389,9 +428,11 @@ docker.sock
 
 - Artifacts built and deployed without signing or attestation.
 - Container images pushed without digest pinning or signing (cosign, Notary).
+- Job or service containers in the build pipeline referenced by mutable tags instead of digests.
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
 - Missing provenance attestation (SLSA provenance, in-toto, Sigstore).
+- Provenance that attests only the output artifact but not the workflow file, action revisions, container digests, or other build inputs that produced it.
 
 **Grep patterns:**
 
@@ -412,9 +453,16 @@ sbom
 # Look for digest pinning in container references
 image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
+
+# Look for build input provenance
+uses: actions/attest-build-provenance
+subject-path:
+workflow:
+container:
+services:
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether build and runtime containers use digest pinning, and whether attestations bind the output to the workflow path/ref, action SHAs, container digests, and other privileged build inputs.
 
 ---
 
@@ -557,4 +605,5 @@ This skill processes user-supplied content including CI/CD configuration files, 
 
 ## Changelog
 
+- **1.0.1** -- Added immutable action and reusable-workflow pinning guidance, digest pinning for Docker-based actions and build containers, low-impact exception criteria for mutable refs, and provenance requirements for workflow/action/container inputs.
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
