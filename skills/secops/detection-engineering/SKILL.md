@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [MITRE-ATT&CK-v16, Sigma, Palantir-ADS]
 difficulty: advanced
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -58,6 +58,8 @@ Before beginning, gather or confirm:
 - [ ] **Existing detection coverage:** Current rules, known gaps, previous false positive history for similar detections.
 - [ ] **Detection priority:** Is this for a known active threat, proactive coverage expansion, or compliance requirement?
 - [ ] **Organizational naming conventions:** Rule ID format, severity taxonomy, and tagging standards used by the detection engineering team.
+- [ ] **Promotion and rollback policy:** Required test results, approvers, alert-volume thresholds, rollback owner, and emergency disable path before a rule can move from test to production.
+- [ ] **Canary telemetry:** Preview index, shadow-rule mode, limited user/host cohort, or other staged signal source that proves rule behavior before full production enablement.
 
 If the ATT&CK technique is provided but other context is missing, proceed with conservative assumptions (Windows enterprise environment, Sysmon + Windows Security logs available) and note assumptions in the output.
 
@@ -280,7 +282,7 @@ Map detection coverage against the ATT&CK matrix to identify gaps.
 | **None** | White | No detection rule exists for this technique |
 | **Theoretical** | Light Yellow | A rule exists but has not been validated or tested |
 | **Tested** | Light Green | Rule has been validated with synthetic test data (e.g., Atomic Red Team) |
-| **Operational** | Green | Rule is deployed in production, has been tuned, and has generated actionable alerts |
+| **Operational** | Green | Rule passed canary promotion, is deployed in production with rollback evidence, and has generated actionable alerts |
 | **Robust** | Dark Green | Multiple complementary rules cover different procedure examples; rule has caught real-world activity |
 
 **Heatmap construction process:**
@@ -342,8 +344,52 @@ detections/
 2. **Test:** Run Sigma rule against known-good and known-bad sample logs
 3. **Convert:** Use `sigma-cli` to convert Sigma to target SIEM query language
 4. **Review:** Require peer review (pull request) before merge
-5. **Deploy:** Push converted rules to SIEM via API (Sentinel Analytics Rules API, Splunk REST API)
-6. **Monitor:** Track rule performance metrics (fire rate, TP rate, MTTD)
+5. **Canary:** Run the converted rule in preview, shadow, or scoped production mode before broad enablement
+6. **Promote:** Require documented pass/fail criteria, approver, coverage delta, and false-positive budget before moving to production severity
+7. **Deploy:** Push converted rules to SIEM via API (Sentinel Analytics Rules API, Splunk REST API)
+8. **Monitor:** Track rule performance metrics (fire rate, TP rate, MTTD)
+9. **Rollback readiness:** Keep a tested disable, downgrade, or filter-revert path with owner and triggering thresholds
+
+### Step 7: Promotion, Canary, and Rollback Gates
+
+Treat detection rollout as a controlled release. A rule that passes syntax checks can still flood analysts, miss expected telemetry, or break downstream automation after it is enabled at production severity.
+
+**Promotion evidence required before production enablement:**
+
+| Gate | Required evidence | Fail condition |
+|------|-------------------|----------------|
+| **Canary scope** | Preview index, shadow rule, low-severity deployment, or limited host/user cohort is named | Rule moves directly from pull request to high-severity production alerting |
+| **Expected-volume baseline** | Historical query count, canary fire count, and projected daily alert volume are documented | Projected fire rate exceeds team budget or is unknown |
+| **True-positive proof** | Synthetic or real validation event appears in the canary telemetry with expected fields | Test event is absent, truncated, or missing response-critical fields |
+| **False-positive sample review** | Representative benign matches are sampled and dispositioned before promotion | Benign matches are not reviewed or filters are added without evidence |
+| **Downstream routing check** | Case creation, pager, SOAR playbook, enrichment, and suppression behavior are verified | Rule triggers an untested escalation path or bypasses normal triage context |
+| **Rollback owner and trigger** | Named owner, disable/downgrade command, and thresholds such as alert spike, query cost, or enrichment failure | No one can roll back the rule quickly during analyst overload |
+
+**Minimum promotion record:**
+
+```yaml
+promotion:
+  canary_mode: shadow | preview | scoped-production | low-severity
+  canary_scope: "[index/cohort/query window]"
+  canary_window: "[start/end UTC]"
+  expected_daily_volume: "[number and basis]"
+  observed_canary_volume: "[number]"
+  true_positive_validation: "[test ID or event reference]"
+  false_positive_sample_size: "[number reviewed]"
+  downstream_paths_verified: [case, pager, soar, enrichment, suppression]
+  promotion_decision: promote | hold | tune | retire
+  approver: "[person/team]"
+rollback:
+  owner: "[person/team]"
+  trigger_thresholds:
+    alert_volume: "[e.g., >50 alerts/hour]"
+    query_cost: "[platform-specific limit]"
+    enrichment_failure: "[percentage or condition]"
+  action: disable | downgrade | revert-filter | disable-routing
+  verification: "[how rollback is confirmed]"
+```
+
+**Do not mark coverage as Operational** unless the promotion record proves the rule survived canary testing, has a rollback owner, and preserves analyst response context after routing.
 
 ---
 
@@ -394,6 +440,16 @@ Produce detection engineering deliverables in this structure:
 - **Converted Query:** [KQL/SPL/EQL equivalent if requested]
 - **Estimated False Positive Rate:** [Low / Medium / High]
 - **Tuning Recommendations:** [Specific filter additions]
+
+### Promotion and Rollback Evidence
+| Gate | Evidence | Status |
+|------|----------|--------|
+| Canary scope | [preview index / shadow mode / scoped cohort] | [pass / fail / unknown] |
+| Expected vs observed volume | [baseline, canary count, projected daily count] | [pass / fail / unknown] |
+| TP validation event | [event reference / Atomic test / replay ID] | [pass / fail / unknown] |
+| FP sample review | [sample size, decisions, filter changes] | [pass / fail / unknown] |
+| Downstream routing | [case/pager/SOAR/enrichment verified] | [pass / fail / unknown] |
+| Rollback owner and trigger | [owner, thresholds, disable/downgrade action] | [pass / fail / unknown] |
 ```
 
 ---
@@ -494,6 +550,10 @@ Detection rules are not write-once artifacts. Log sources change, environments e
 
 Overly broad or incorrect ATT&CK mappings undermine coverage analysis. A rule that detects a specific PowerShell obfuscation technique should map to T1059.001 (PowerShell) and potentially T1027 (Obfuscated Files or Information), not to the parent T1059 alone. Use sub-technique IDs when the detection is specific to a sub-technique. Validate mappings against the ATT&CK technique definition and procedure examples.
 
+### Pitfall 6: Promoting Rules Without Canary or Rollback Evidence
+
+Passing Sigma lint and one synthetic test does not prove a detection is safe to run at production severity. A rule can create a case storm, page the wrong team, drop required fields during conversion, or make enrichment fail under volume. Require a canary window, observed-volume evidence, downstream routing check, and rollback trigger before calling the rule Operational.
+
 ---
 
 ## 8. Prompt Injection Safety Notice
@@ -514,7 +574,7 @@ This skill processes user-supplied content that may include log samples, detecti
 2. **MITRE ATT&CK Techniques** -- https://attack.mitre.org/techniques/enterprise/
 3. **MITRE ATT&CK Navigator** -- https://mitre-attack.github.io/attack-navigator/
 4. **Sigma Rule Specification** -- https://sigmahq.io/docs/guide/getting-started.html
-5. **SigmaHQ Rule Repository** -- https://github.com/SigmaHQ/sigma
+5. **SigmaHQ Rule Repository** -- https://github.com/SigmaHQ/sigma (4000+ community rules)
 6. **sigma-cli Conversion Tool** -- https://github.com/SigmaHQ/sigma-cli
 7. **pySigma Documentation** -- https://sigmahq-pysigma.readthedocs.io/
 8. **Palantir Alerting and Detection Strategy Framework** -- https://blog.palantir.com/alerting-and-detection-strategy-framework-52dc33722f68
