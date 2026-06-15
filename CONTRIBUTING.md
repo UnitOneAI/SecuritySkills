@@ -77,7 +77,7 @@ Improve an existing skill by submitting a Pull Request.
 **To submit an improvement:**
 1. Fork the repo and create a branch named `improve/[skill-name]-[brief-description]`
 2. Make your changes
-3. Add or update test cases demonstrating the improvement
+3. Add evidence demonstrating the improvement, such as minimal vulnerable and benign examples in the PR description or, once a test harness exists, repo fixtures
 4. Open a PR using the "Skill Improvement" template
 5. In the PR description, clearly explain what was wrong and what you fixed
 
@@ -95,17 +95,20 @@ Author a completely new security skill from scratch.
 skills/
   [category]/
     [skill-name]/
-      skill.yaml          # Skill definition (detection + remediation)
-      README.md           # Human-readable description, examples, rationale
-      tests/
-        vulnerable/       # Code samples that SHOULD trigger the skill
-        benign/           # Code samples that should NOT trigger the skill
+      SKILL.md            # Canonical skill entrypoint
+      *.md                # Optional sibling reference files for long detail
 ```
+
+`SKILL.md` is the only required skill definition file. Do not submit `skill.yaml`
+or a per-skill `README.md` as the primary definition. If guidance would make
+`SKILL.md` exceed roughly 500 lines, keep the entrypoint lean and move detailed
+patterns, benchmark checklists, or language-specific guidance into sibling
+Markdown files that are linked from `SKILL.md`.
 
 **To submit a new skill:**
 1. Fork the repo and create a branch named `new-skill/[skill-name]`
 2. Follow the skill structure above
-3. Include at least 3 vulnerable test cases and 3 benign test cases
+3. Include at least 3 vulnerable examples and 3 benign examples in the PR description or, once a test harness exists, repo fixtures
 4. Open a PR using the "New Skill" template
 5. Be prepared for review feedback — most new skills go through 1-2 revision cycles
 
@@ -113,51 +116,35 @@ skills/
 
 ## Skill Format Reference
 
-Each skill is defined in `skill.yaml` with the following structure:
+Each skill is a directory at `skills/<domain>/<skill-name>/` with `SKILL.md` as
+the canonical entrypoint. The file starts with YAML frontmatter, followed by
+Markdown sections that define when to use the skill, what to detect, hard rules,
+remediation, verification, gotchas, and references.
+
+### `SKILL.md` frontmatter
 
 ```yaml
-name: descriptive-skill-name
-version: "1.0"
+---
+name: descriptive-skill-name             # kebab-case, matches the directory
+description: >                           # what it does + when it auto-invokes
+  Reviews a target for a specific security outcome...
+tags: [appsec, review]                   # domain + activity keywords
+role: [security-engineer, appsec-engineer]
+phase: [build, review]
+frameworks: [OWASP-ASVS-4.0.3, CWE]      # real framework IDs only
+difficulty: intermediate                 # beginner | intermediate | advanced
+time_estimate: "30-60min"
+version: "1.0.0"
 author: your-github-handle
-category: injection | xss | auth | crypto | secrets | config | dependency | other
-severity: critical | high | medium | low
-languages:
-  - python
-  - javascript
-  # ... applicable languages
-
-description: |
-  One paragraph explaining what this skill detects, why it matters,
-  and what the real-world impact of this vulnerability class is.
-
-detection:
-  patterns:
-    - pattern: "the detection pattern or rule"
-      description: "what this specific pattern catches"
-  exceptions:
-    - pattern: "patterns to exclude (reduce false positives)"
-      description: "why this is safe"
-
-remediation:
-  approach: |
-    Describe the fix strategy in plain English.
-  automated: true | false
-  fix:
-    description: "what the automated fix does"
-    # fix implementation details
-
-references:
-  - url: "https://cwe.mitre.org/data/definitions/XXX.html"
-    description: "CWE reference"
-  - url: "https://owasp.org/..."
-    description: "OWASP reference"
-
-metadata:
-  cwe: ["CWE-XXX"]
-  owasp: ["A01:2021"]
-  created: "YYYY-MM-DD"
-  last_updated: "YYYY-MM-DD"
+license: MIT
+allowed-tools: Read, Grep, Glob
+injection-hardened: true
+argument-hint: "[target-file-or-directory]"
+---
 ```
+
+Use [SKILL_TEMPLATE.md](SKILL_TEMPLATE.md) as the source of truth for the
+required body sections and submission checklist.
 
 ---
 
