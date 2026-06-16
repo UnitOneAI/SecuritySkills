@@ -1,0 +1,249 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+INDEX_PATH = File.join(ROOT, "index.yaml")
+FIXTURE_ROOT = File.join(ROOT, "tests", "fixtures")
+OUTPUT_PATH = File.join(ROOT, "docs", "quality-scorecard.md")
+REQUIRED_FRONTMATTER_FIELDS = %w[
+  name description tags role phase frameworks difficulty time_estimate version
+  author license allowed-tools injection-hardened
+].freeze
+
+def rel(path)
+  path.delete_prefix("#{ROOT}#{File::SEPARATOR}")
+end
+
+def load_yaml(path)
+  YAML.safe_load(File.read(path), permitted_classes: [], aliases: false) || {}
+end
+
+def parse_value(raw)
+  value = raw.strip
+  return nil if value.empty?
+
+  if value.start_with?("[") && value.end_with?("]")
+    inner = value[1...-1].strip
+    return [] if inner.empty?
+
+    inner.split(",").map { |item| parse_value(item) }
+  elsif (value.start_with?('"') && value.end_with?('"')) ||
+        (value.start_with?("'") && value.end_with?("'"))
+    value[1...-1]
+  elsif value == "true"
+    true
+  elsif value == "false"
+    false
+  else
+    value
+  end
+end
+
+def parse_index(path)
+  section = nil
+  current = nil
+  items = { "skills" => [] }
+
+  File.readlines(path, chomp: true).each do |line|
+    stripped = line.strip
+    next if stripped.empty? || stripped.start_with?("#")
+
+    if line =~ /^([a-z_]+):\s*$/
+      section = Regexp.last_match(1)
+      current = nil
+      next
+    end
+
+    next unless section == "skills"
+
+    if line =~ /^  - ([A-Za-z0-9_-]+):\s*(.+?)\s*$/
+      current = {}
+      items["skills"] << current
+      current[Regexp.last_match(1)] = parse_value(Regexp.last_match(2))
+    elsif line =~ /^    ([A-Za-z0-9_-]+):\s*(.+?)\s*$/
+      next unless current
+
+      current[Regexp.last_match(1)] = parse_value(Regexp.last_match(2))
+    end
+  end
+
+  items
+end
+
+def frontmatter_for(path)
+  text = File.read(path)
+  match = text.match(/\A---\s*\n(.*?)\n---\s*(?:\n|\z)/m)
+  raise "missing YAML frontmatter delimited by ---" unless match
+
+  YAML.safe_load(match[1], permitted_classes: [], aliases: false) || {}
+end
+
+def fixture_manifests
+  return [] unless Dir.exist?(FIXTURE_ROOT)
+
+  Dir.glob(File.join(FIXTURE_ROOT, "*", "*", "manifest.yaml")).sort
+end
+
+def fixture_stats_by_skill
+  stats = Hash.new do |hash, key|
+    hash[key] = {
+      vulnerable_cases: 0,
+      benign_cases: 0,
+      expected_findings: 0,
+      mapped_findings: 0
+    }
+  end
+
+  fixture_manifests.each do |path|
+    manifest = load_yaml(path)
+    skill = manifest["skill"]
+    next if skill.nil? || skill == "_example"
+
+    findings = manifest["expected_findings"].is_a?(Array) ? manifest["expected_findings"] : []
+    case manifest["kind"]
+    when "vulnerable"
+      stats[skill][:vulnerable_cases] += 1
+      stats[skill][:expected_findings] += findings.size
+      stats[skill][:mapped_findings] += findings.count { |finding| finding.is_a?(Hash) && (finding["cwe"] || finding["framework"]) }
+    when "benign"
+      stats[skill][:benign_cases] += 1
+    end
+  end
+
+  stats
+end
+
+def frontmatter_status(skill_id, file_path)
+  return ["missing", []] unless File.file?(file_path)
+
+  frontmatter = frontmatter_for(file_path)
+  errors = []
+  missing = REQUIRED_FRONTMATTER_FIELDS.reject { |field| frontmatter.key?(field) }
+  errors << "missing #{missing.join(', ')}" unless missing.empty?
+  errors << "name mismatch" if frontmatter["name"] != skill_id
+  errors << "no frameworks" unless frontmatter["frameworks"].is_a?(Array) && !frontmatter["frameworks"].empty?
+
+  [errors.empty? ? "valid" : "invalid", errors]
+rescue StandardError => e
+  ["invalid", [e.message]]
+end
+
+def framework_status(index_entry, frontmatter_status_value, file_path, stats)
+  return "invalid" unless frontmatter_status_value == "valid"
+
+  frontmatter = frontmatter_for(file_path)
+  indexed = index_entry["frameworks"]
+  declared = frontmatter["frameworks"]
+  return "invalid" unless indexed.is_a?(Array) && declared.is_a?(Array) && indexed == declared
+  return "valid" if stats[:expected_findings].zero?
+
+  stats[:mapped_findings] == stats[:expected_findings] ? "valid" : "invalid"
+rescue StandardError
+  "invalid"
+end
+
+def readiness(stats, metadata_valid, framework_valid)
+  score = 0
+  score += 2 if metadata_valid
+  score += 1 if framework_valid
+
+  fixture_points =
+    if stats[:vulnerable_cases].positive? && stats[:benign_cases].positive?
+      2
+    elsif stats[:vulnerable_cases].positive? || stats[:benign_cases].positive?
+      1
+    else
+      0
+    end
+  score += fixture_points
+
+  status =
+    if score == 5
+      "covered"
+    elsif metadata_valid && framework_valid
+      "metadata-only"
+    else
+      "needs-attention"
+    end
+
+  ["#{score}/5", status]
+end
+
+def markdown_escape(value)
+  value.to_s.gsub("|", "\\|")
+end
+
+def generate_markdown
+  index = parse_index(INDEX_PATH)
+  skills = index.fetch("skills", [])
+  fixture_stats = fixture_stats_by_skill
+
+  lines = []
+  lines << "# Skill Quality Scorecard"
+  lines << ""
+  lines << "This file is generated by `ruby scripts/generate_quality_scorecard.rb`. Do not edit it by hand."
+  lines << ""
+  lines << "The scorecard uses deterministic repository evidence only: `index.yaml`, `SKILL.md` frontmatter, and `tests/fixtures/*/*/manifest.yaml`. The fixture harness validates expected evidence strings, but it does not execute skills against targets, so real-world accuracy and false-positive rates are tracked as `not measured` until an execution-based benchmark exists."
+  lines << ""
+  lines << "Readiness score:"
+  lines << ""
+  lines << "- 2 points: required frontmatter is present and matches the indexed skill id."
+  lines << "- 1 point: indexed frameworks match frontmatter and fixture findings include CWE or framework mappings."
+  lines << "- 2 points: both vulnerable and benign fixture coverage exist; 1 point for one-sided fixture coverage."
+  lines << ""
+  lines << "| Skill | Fixture coverage | True-positive fixtures | False-positive fixtures | Accuracy | False-positive rate | Framework accuracy | Last audit date | Score | Status |"
+  lines << "|---|---:|---:|---:|---|---|---|---|---:|---|"
+
+  skills.each do |entry|
+    skill_id = entry["id"]
+    file_path = File.join(ROOT, entry["file"].to_s)
+    stats = fixture_stats[skill_id]
+    frontmatter_status_value, = frontmatter_status(skill_id, file_path)
+    framework_status_value = framework_status(entry, frontmatter_status_value, file_path, stats)
+    score, status = readiness(stats, frontmatter_status_value == "valid", framework_status_value == "valid")
+
+    coverage = "#{stats[:vulnerable_cases]} vulnerable / #{stats[:benign_cases]} benign"
+    tp_fixtures = "#{stats[:expected_findings]} expected finding(s)"
+    fp_fixtures = "#{stats[:benign_cases]} benign case(s)"
+    accuracy = "not measured; #{stats[:expected_findings]} evidence string(s) validated"
+    false_positive_rate = "not measured; #{stats[:benign_cases]} benign fixture(s)"
+
+    lines << [
+      markdown_escape(skill_id),
+      markdown_escape(coverage),
+      markdown_escape(tp_fixtures),
+      markdown_escape(fp_fixtures),
+      markdown_escape(accuracy),
+      markdown_escape(false_positive_rate),
+      markdown_escape(framework_status_value),
+      "not recorded",
+      markdown_escape(score),
+      markdown_escape(status)
+    ].join(" | ").prepend("| ").concat(" |")
+  end
+
+  lines << ""
+  lines.join("\n")
+end
+
+def check_output(expected)
+  actual = File.file?(OUTPUT_PATH) ? File.read(OUTPUT_PATH) : nil
+  return true if actual == expected
+
+  warn "#{rel(OUTPUT_PATH)} is not current. Run `ruby scripts/generate_quality_scorecard.rb`."
+  false
+end
+
+expected = generate_markdown
+
+if ARGV == ["--check"]
+  exit(check_output(expected) ? 0 : 1)
+elsif ARGV.empty?
+  File.write(OUTPUT_PATH, expected)
+  puts "Wrote #{rel(OUTPUT_PATH)}"
+else
+  warn "Usage: ruby scripts/generate_quality_scorecard.rb [--check]"
+  exit 2
+end

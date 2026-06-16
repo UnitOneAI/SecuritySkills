@@ -112,6 +112,13 @@ Validate remediation regression manifests and expected auto-fix diffs with:
 ruby scripts/test_remediation_fixtures.rb
 ```
 
+Regenerate the deterministic skill quality scorecard with:
+
+```bash
+ruby scripts/generate_quality_scorecard.rb
+ruby scripts/generate_quality_scorecard.rb --check
+```
+
 CI/CD examples for GitHub Actions, GitLab CI, Azure DevOps, Jenkins,
 pre-commit, and local agent usage are available in
 [`docs/ci-cd-examples.md`](docs/ci-cd-examples.md). Validate those examples
