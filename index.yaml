@@ -462,7 +462,7 @@ skills:
     role: [soc-analyst]
     phase: [operate, respond]
     activity: [triage, investigate]
-    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61r2]
+    frameworks: [MITRE-ATT&CK-v16, NIST-SP-800-61-Rev2]
     difficulty: beginner
     time_estimate: "10-20min per alert"
     file: skills/secops/alert-triage/SKILL.md
