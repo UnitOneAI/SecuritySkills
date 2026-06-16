@@ -546,6 +546,7 @@ Before applying or proposing configuration changes, classify each remediation pa
 - **False-positive risks:** Treat findings as hypotheses until validated against asset criticality, compensating controls, environment intent, and recent authorized changes.
 - **Required evidence:** Support each finding with concrete artifacts such as file paths and line numbers, policy snippets, scanner output, logs, screenshots, control records, or reproducible steps.
 - **Normalized JSON:** When machine-readable output is requested, findings MUST be available as JSON that validates against [`schemas/finding.schema.json`](../../../schemas/finding.schema.json).
+- **SARIF JSON:** When SARIF output is requested, map normalized findings to SARIF 2.1.0-compatible JSON using [`docs/sarif-output.md`](../../../docs/sarif-output.md).
 - **Escalation rules:** Escalate immediately for suspected active compromise, exposed secrets, regulated-data exposure, critical exploitable vulnerabilities, privileged-access abuse, or when evidence is insufficient to safely disposition a high-impact risk.
 
 ---

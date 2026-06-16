@@ -76,7 +76,10 @@ When machine-readable output is requested, findings MUST be available as JSON
 that validates against the repo-level normalized contract:
 [`schemas/finding.schema.json`](schemas/finding.schema.json). See
 [`docs/normalized-json-output.md`](docs/normalized-json-output.md) for
-the top-level envelope and required fields.
+the top-level envelope and required fields. When SARIF is requested, map the
+normalized findings to SARIF 2.1.0-compatible JSON using
+[`docs/sarif-output.md`](docs/sarif-output.md); do not replace or bypass the
+normalized contract.
 
 **Before (vulnerable):**
 ```
@@ -165,6 +168,7 @@ skills/<domain>/<skill-name>/
 - [ ] Every framework ID is real and resolves (no invented control numbers)
 - [ ] At least one machine-matchable detection signal (regex / structural)
 - [ ] Findings can be emitted as normalized JSON per `schemas/finding.schema.json`
+- [ ] Findings can be emitted as SARIF-compatible JSON per `docs/sarif-output.md` when requested
 - [ ] Rules are hard constraints (no "consider"/"may")
 - [ ] Before/after remediation example present
 - [ ] Every fix recommendation includes `guidance`, `confidence`, `blast_radius`, `behavior_change_risk`, and `test_strategy`

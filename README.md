@@ -113,6 +113,8 @@ against [`schemas/finding.schema.json`](schemas/finding.schema.json). The
 top-level envelope, required run/skill metadata, finding fields, evidence,
 framework/CWE references, remediation fields, and test strategy requirements are
 documented in [`docs/normalized-json-output.md`](docs/normalized-json-output.md).
+When SARIF is requested, skills should map those normalized findings to
+SARIF 2.1.0-compatible JSON using [`docs/sarif-output.md`](docs/sarif-output.md).
 
 ### Progressive disclosure (keep `SKILL.md` lean)
 

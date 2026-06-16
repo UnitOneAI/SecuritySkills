@@ -5,6 +5,8 @@ that validates against [`schemas/finding.schema.json`](../schemas/finding.schema
 This contract is independent of SARIF. Downstream systems may map it to SARIF,
 ticketing systems, GRC platforms, dashboards, or vulnerability stores without
 changing individual skill output rules.
+See [`docs/sarif-output.md`](sarif-output.md) for the repo-level SARIF 2.1.0
+export mapping.
 
 ## Envelope
 

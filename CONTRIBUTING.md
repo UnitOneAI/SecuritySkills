@@ -167,6 +167,10 @@ top-level envelope and field semantics are documented in
 human-readable report sections may remain, but machine-readable finding output
 must use the normalized contract.
 
+When SARIF output is requested, map the normalized findings to SARIF
+2.1.0-compatible JSON using [docs/sarif-output.md](docs/sarif-output.md).
+SARIF is an export view; it must not replace the normalized JSON contract.
+
 ---
 
 ## Getting Started
