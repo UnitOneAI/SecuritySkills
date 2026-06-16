@@ -389,7 +389,7 @@ This skill processes user-supplied content including compliance documentation, p
 
 ## Limitations
 
-- This skill provides a readiness assessment, not a formal SOC 2 examination. Only a licensed CPA firm can issue a SOC 2 report.
-- The gap analysis is based on information available in the codebase and documentation. It cannot assess controls that exist only in human processes without documentation.
-- Scoring is subjective and should be validated by the organization's security leadership and, ideally, a qualified auditor.
-- This analysis uses the 2017 AICPA Trust Services Criteria (with 2022 updates). Verify with your auditor that these criteria are current for your engagement.
+- **Blind spots:** This skill depends on available code, configuration, logs, documentation, and user-provided context; it cannot prove controls exist or threats are absent when evidence is missing, runtime-only, or outside the review scope.
+- **False-positive risks:** Treat findings as hypotheses until validated against asset criticality, compensating controls, environment intent, and recent authorized changes.
+- **Required evidence:** Support each finding with concrete artifacts such as file paths and line numbers, policy snippets, scanner output, logs, screenshots, control records, or reproducible steps.
+- **Escalation rules:** Escalate immediately for suspected active compromise, exposed secrets, regulated-data exposure, critical exploitable vulnerabilities, privileged-access abuse, or when evidence is insufficient to safely disposition a high-impact risk.

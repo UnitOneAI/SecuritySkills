@@ -449,6 +449,15 @@ For each finding, produce a row with:
 
 ---
 
+## Limitations
+
+- **Blind spots:** This skill depends on available code, configuration, logs, documentation, and user-provided context; it cannot prove controls exist or threats are absent when evidence is missing, runtime-only, or outside the review scope.
+- **False-positive risks:** Treat findings as hypotheses until validated against asset criticality, compensating controls, environment intent, and recent authorized changes.
+- **Required evidence:** Support each finding with concrete artifacts such as file paths and line numbers, policy snippets, scanner output, logs, screenshots, control records, or reproducible steps.
+- **Escalation rules:** Escalate immediately for suspected active compromise, exposed secrets, regulated-data exposure, critical exploitable vulnerabilities, privileged-access abuse, or when evidence is insufficient to safely disposition a high-impact risk.
+
+---
+
 ## Prompt Injection Safety Notice
 
 This skill processes user-supplied content including IAM policies, access configurations, and identity provider settings. The agent must adhere to the following safety constraints:
