@@ -298,6 +298,59 @@ Use the following maturity scoring:
 **A.8.22 Segregation of networks** — Groups of services/users/systems segregated.
 **A.8.23 Web filtering** — Access to external websites managed to reduce exposure (new in 2022).
 **A.8.24 Use of cryptography** — Rules for effective use defined and implemented.
+
+##### Cryptographic Asset Inventory Mapping Gates
+
+When assessing A.8.24 cryptographic controls, require **complete inventory coverage** before marking as implemented:
+
+| Inventory Field | Description | Example |
+|----------------|-------------|---------|
+| **Asset Type** | Category of cryptographic asset | TLS certificate, signing key, encryption key, HMAC secret, KMS master key |
+| **Owner** | Named individual/role responsible for lifecycle | "Platform Team — key rotation every 90 days" |
+| **Algorithm** | Cryptographic algorithm and key size | RSA-2048, AES-256, Ed25519, SHA-256 |
+| **Storage Location** | Where the key/material is stored | AWS KMS, HashiCorp Vault, HSM, application config, hardware token |
+| **Rotation Date** | When the key was last rotated or next rotation scheduled | "Rotated 2026-01-15, next 2026-04-15" |
+| **Data Scope** | What data/systems the key protects | "Customer PII encryption at rest", "API request signing" |
+| **Exception Status** | Whether the key has a documented exception for deprecation/weakness | "None" or "Approved exception: legacy system migration Q3 2026" |
+
+**False Positive Guidance — Central KMS Authority:**
+
+Do NOT flag a service for missing local crypto inventory when:
+- A central KMS or key management service maintains authoritative inventory
+- The service's keys are tracked in the central system with owner, rotation, and algorithm fields
+- The service can reference the central inventory by key ID or alias
+
+Flag as a gap only if the service uses cryptographic keys that are NOT tracked in any central inventory or if the central inventory lacks the required fields (owner, rotation, algorithm, data scope).
+
+**Missed Variants — Detect These Gaps:**
+
+| Variant | Detection Pattern | Why It Matters |
+|---------|------------------|----------------|
+| TLS-only inventory | "TLS certificates are inventoried, but application signing keys and webhook HMAC secrets are omitted" | Crypto inventory needs coverage beyond TLS to include signing, encryption, and integrity assets |
+| Deprecated algorithm without lifecycle | "Deprecated algorithm use is known in code, but the asset inventory lacks owner, rotation date, or migration exception" | Without ownership and lifecycle fields, weak cryptography cannot be tracked to remediation |
+| Key sprawl without ownership | "Multiple services reference the same key alias but no single owner is accountable" | Key sprawl without ownership creates accountability gaps |
+
+**Edge Cases — Valid Inventory Structures:**
+
+| Scenario | Valid If... | Flag If... |
+|----------|------------|------------|
+| BYOK keys | Customer-managed keys are inventoried with owner and rotation schedule | BYOK keys exist without customer accountability documentation |
+| Cloud-managed keys | Cloud provider keys are listed with service owner and rotation policy | Cloud keys are assumed managed but not verified |
+| Short-lived workload certificates | Auto-rotation is documented with responsible team and monitoring | Certificates rotate but no one monitors expiration or renewal failures |
+| Offline backup keys | Keys are inventoried with storage location, access control, and recovery procedure | Backup keys exist but location and access are undocumented |
+| Third-party signing keys | Vendor keys are tracked with contract terms, rotation obligations, and monitoring | Vendor keys are used but not inventoried or contractually managed |
+
+**Remediation Quality Checklist:**
+
+When recommending cryptographic inventory improvements, ensure remediation addresses:
+
+- [ ] All cryptographic asset types inventoried (not just TLS)
+- [ ] Owner identified for each key/secret
+- [ ] Algorithm and key size documented
+- [ ] Storage location specified
+- [ ] Rotation date/schedule defined
+- [ ] Data scope documented (what the key protects)
+- [ ] Exception status tracked for deprecated/weak algorithms
 **A.8.25 Secure development life cycle** — Rules established and applied.
 **A.8.26 Application security requirements** — Identified, specified, approved.
 **A.8.27 Secure system architecture and engineering principles** — Established, documented, maintained, applied.
