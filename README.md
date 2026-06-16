@@ -106,6 +106,15 @@ Validate skill fixture manifests and expected evidence strings with:
 ruby scripts/test_skill_fixtures.rb
 ```
 
+CI/CD examples for GitHub Actions, GitLab CI, Azure DevOps, Jenkins,
+pre-commit, and local agent usage are available in
+[`docs/ci-cd-examples.md`](docs/ci-cd-examples.md). Validate those examples
+locally with:
+
+```bash
+ruby scripts/validate_ci_cd_examples.rb
+```
+
 ### Normalized finding JSON
 
 Every skill must be able to emit findings as normalized JSON that validates

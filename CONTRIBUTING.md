@@ -158,6 +158,13 @@ If your contribution includes skill test fixtures, also run:
 ruby scripts/test_skill_fixtures.rb
 ```
 
+If your contribution changes CI/CD examples, update
+[docs/ci-cd-examples.md](docs/ci-cd-examples.md) and run:
+
+```bash
+ruby scripts/validate_ci_cd_examples.rb
+```
+
 ### Normalized JSON output
 
 Every skill must be able to emit findings as normalized JSON that validates

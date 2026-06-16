@@ -1,0 +1,20 @@
+repos:
+  - repo: local
+    hooks:
+      - id: securityskills-schema
+        name: Validate SecuritySkills schema
+        entry: ruby scripts/validate_skill_schema.rb
+        language: system
+        pass_filenames: false
+
+      - id: securityskills-index
+        name: Validate SecuritySkills index
+        entry: ruby scripts/validate_index.rb
+        language: system
+        pass_filenames: false
+
+      - id: securityskills-fixtures
+        name: Validate SecuritySkills fixtures
+        entry: ruby scripts/test_skill_fixtures.rb
+        language: system
+        pass_filenames: false

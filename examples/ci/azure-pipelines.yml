@@ -1,0 +1,29 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - script: |
+      ruby --version
+      ruby scripts/validate_skill_schema.rb
+      ruby scripts/validate_index.rb
+      ruby scripts/test_skill_fixtures.rb
+      mkdir -p artifacts/securityskills
+    displayName: Validate SecuritySkills repository
+
+  - task: PublishBuildArtifacts@1
+    displayName: Publish normalized JSON and SARIF artifacts
+    condition: always()
+    inputs:
+      PathtoPublish: artifacts/securityskills
+      ArtifactName: securityskills-artifacts
+      publishLocation: Container

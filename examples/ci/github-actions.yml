@@ -1,0 +1,40 @@
+name: SecuritySkills validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate skills, index, and fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+
+      - name: Run SecuritySkills validation
+        run: |
+          ruby scripts/validate_skill_schema.rb
+          ruby scripts/validate_index.rb
+          ruby scripts/test_skill_fixtures.rb
+
+      - name: Prepare optional SecuritySkills artifacts
+        if: always()
+        run: mkdir -p artifacts/securityskills
+
+      - name: Upload normalized JSON and SARIF artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: securityskills-artifacts
+          path: |
+            artifacts/securityskills/*.json
+            artifacts/securityskills/*.sarif
+          if-no-files-found: ignore

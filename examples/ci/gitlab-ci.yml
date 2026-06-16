@@ -1,0 +1,17 @@
+stages:
+  - validate
+
+securityskills:validate:
+  stage: validate
+  image: ruby:3.2
+  script:
+    - ruby scripts/validate_skill_schema.rb
+    - ruby scripts/validate_index.rb
+    - ruby scripts/test_skill_fixtures.rb
+    - mkdir -p artifacts/securityskills
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - artifacts/securityskills/*.json
+      - artifacts/securityskills/*.sarif

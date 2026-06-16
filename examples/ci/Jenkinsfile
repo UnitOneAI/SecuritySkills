@@ -1,0 +1,23 @@
+pipeline {
+  agent any
+
+  stages {
+    stage('Validate SecuritySkills') {
+      steps {
+        sh '''
+          ruby --version
+          ruby scripts/validate_skill_schema.rb
+          ruby scripts/validate_index.rb
+          ruby scripts/test_skill_fixtures.rb
+          mkdir -p artifacts/securityskills
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'artifacts/securityskills/**/*', allowEmptyArchive: true
+    }
+  }
+}
