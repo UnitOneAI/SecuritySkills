@@ -95,6 +95,17 @@ Any of these conditions forces `human-review-required`:
 - Unclear ownership, missing tests for a high-impact path, conflicting framework guidance, or evidence that the finding may be a false positive.
 - Any remediation that would weaken an existing security control to make a tool pass.
 
+## Fixer Workflow Review Gates
+
+Fixer-capable workflows must pass these gates before any applied patch is considered ready for handoff:
+
+1. **Scope gate:** State the files, settings, and behaviors that are in scope; avoid unrelated refactors, formatting churn, dependency updates, or opportunistic cleanup.
+2. **Approval gate:** Request explicit approval before assisted-fix or human-review-required work proceeds, and before any change that affects hard-gated areas even when a patch can be drafted.
+3. **Review gate:** Provide reviewer evidence that includes the finding, policy category, changed files, behavior-change risk, verification performed or still required, and any assumptions the reviewer must confirm.
+4. **Rollback gate:** Provide rollback guidance for every proposed or applied change, including the exact revert path when local patches are used or the operational rollback owner when the change cannot be reverted locally.
+
+Applied fixes must be isolated to the smallest viable patch. If the agent discovers unrelated defects while fixing, it should report them separately instead of expanding the patch. If rollback is unclear, expensive, or depends on production state, classify the remediation as `human-review-required`.
+
 ## Skill Usage
 
-Fixer-capable skills must reference this policy when producing remediation guidance or patches. The policy classifies the remediation path only; it does not change finding schemas or require new output fields.
+Fixer-capable skills must reference this policy when producing remediation guidance or patches. Their workflows must include the review gates above and must not apply changes until the selected category allows it. The policy classifies the remediation path only; it does not change finding schemas or require new output fields.

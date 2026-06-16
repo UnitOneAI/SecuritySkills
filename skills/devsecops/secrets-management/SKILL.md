@@ -354,7 +354,7 @@ spec:
 
 ## Findings Classification
 
-Before applying or proposing fixes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+Before applying or proposing fixes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md). Include the policy review gate, reviewer evidence, and rollback guidance in the remediation plan.
 
 | Severity | Definition |
 |----------|-----------|

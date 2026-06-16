@@ -492,7 +492,7 @@ Produce the final report using the following structure:
 
 ### Prioritized Remediation Plan
 
-Before applying or proposing pipeline changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+Before applying or proposing pipeline changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md). Include the policy review gate, reviewer evidence, and rollback guidance in the remediation plan.
 
 1. **[Critical]** <CICD-SEC-X> -- <action item>
 2. **[High]** <CICD-SEC-X> -- <action item>

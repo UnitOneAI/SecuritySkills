@@ -124,7 +124,7 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Findings Classification
 
-Before applying or proposing container or Kubernetes changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+Before applying or proposing container or Kubernetes changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md). Include the policy review gate, reviewer evidence, and rollback guidance in the remediation plan.
 
 | Severity | Definition | Examples |
 |----------|-----------|----------|

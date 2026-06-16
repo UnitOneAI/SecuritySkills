@@ -68,7 +68,9 @@ reference/script file (§7), not inline. Every fix recommendation must include
 remediation guidance, confidence, blast radius, behavior-change risk, and a
 test strategy that names what proves the issue is fixed. If this skill can
 modify code or configuration, classify each remediation path using the repo-level
-`docs/fixer-policy.md` before applying changes.
+`docs/fixer-policy.md` before applying changes, isolate the patch to the finding,
+request approval when the policy requires it, and include review evidence plus
+rollback guidance in the handoff.
 
 **Before (vulnerable):**
 ```
@@ -160,6 +162,7 @@ skills/<domain>/<skill-name>/
 - [ ] Before/after remediation example present
 - [ ] Every fix recommendation includes `guidance`, `confidence`, `blast_radius`, `behavior_change_risk`, and `test_strategy`
 - [ ] Every `test_strategy` includes a summary plus recommended tests, generated tests, or both
+- [ ] Fixer-capable workflows reference `docs/fixer-policy.md` and include review and rollback gates
 - [ ] Falsifiable verification test defined (binary pass/fail)
 - [ ] Gotchas: ≥2 false positives + ≥1 precision trap
 - [ ] `SKILL.md` stays lean; long detail moved to reference files
