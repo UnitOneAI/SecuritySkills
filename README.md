@@ -124,6 +124,10 @@ framework/CWE references, remediation fields, and test strategy requirements are
 documented in [`docs/normalized-json-output.md`](docs/normalized-json-output.md).
 When SARIF is requested, skills should map those normalized findings to
 SARIF 2.1.0-compatible JSON using [`docs/sarif-output.md`](docs/sarif-output.md).
+When tracker handoff is requested, skills should map normalized findings to
+tracker-ready work items using
+[`docs/tracker-handoff.md`](docs/tracker-handoff.md) and
+[`schemas/tracker-handoff.schema.json`](schemas/tracker-handoff.schema.json).
 
 ### Progressive disclosure (keep `SKILL.md` lean)
 

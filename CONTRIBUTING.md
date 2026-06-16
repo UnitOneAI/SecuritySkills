@@ -178,6 +178,13 @@ When SARIF output is requested, map the normalized findings to SARIF
 2.1.0-compatible JSON using [docs/sarif-output.md](docs/sarif-output.md).
 SARIF is an export view; it must not replace the normalized JSON contract.
 
+When tracker handoff output is requested, map normalized findings to
+tracker-ready work items using
+[docs/tracker-handoff.md](docs/tracker-handoff.md). Tracker handoff is an export
+view for systems such as DefectDojo, Jira, and Linear; it must include title,
+severity, evidence, owner, SLA, and remediation, and must not require a live
+tracker integration.
+
 ---
 
 ## Getting Started

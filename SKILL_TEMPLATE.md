@@ -79,7 +79,11 @@ that validates against the repo-level normalized contract:
 the top-level envelope and required fields. When SARIF is requested, map the
 normalized findings to SARIF 2.1.0-compatible JSON using
 [`docs/sarif-output.md`](docs/sarif-output.md); do not replace or bypass the
-normalized contract.
+normalized contract. When tracker handoff is requested, map normalized findings
+to tracker-ready work items using
+[`docs/tracker-handoff.md`](docs/tracker-handoff.md); include title, severity,
+evidence, owner, SLA, and remediation without performing live tracker
+integration.
 
 **Before (vulnerable):**
 ```
@@ -169,6 +173,7 @@ skills/<domain>/<skill-name>/
 - [ ] At least one machine-matchable detection signal (regex / structural)
 - [ ] Findings can be emitted as normalized JSON per `schemas/finding.schema.json`
 - [ ] Findings can be emitted as SARIF-compatible JSON per `docs/sarif-output.md` when requested
+- [ ] Findings can be emitted as tracker handoff JSON per `docs/tracker-handoff.md` when requested
 - [ ] Rules are hard constraints (no "consider"/"may")
 - [ ] Before/after remediation example present
 - [ ] Every fix recommendation includes `guidance`, `confidence`, `blast_radius`, `behavior_change_risk`, and `test_strategy`

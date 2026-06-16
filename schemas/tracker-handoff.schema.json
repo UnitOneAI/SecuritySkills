@@ -1,0 +1,381 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/UnitOneAI/SecuritySkills/schemas/tracker-handoff.schema.json",
+  "title": "SecuritySkills Tracker Handoff Output",
+  "description": "Machine-readable tracker-ready work item envelope derived from normalized SecuritySkills findings for DefectDojo, Jira, Linear, or equivalent issue trackers. This schema describes export data only and does not perform live integration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "work_items"],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0",
+      "description": "Version of this tracker handoff envelope."
+    },
+    "source": {
+      "$ref": "#/$defs/source",
+      "description": "Metadata from the normalized finding envelope that produced this handoff."
+    },
+    "work_items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/workItem"
+      },
+      "description": "Tracker-ready work items derived from normalized findings."
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "low", "medium", "high", "critical"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalized_schema_version", "run_id", "generated_at"],
+      "properties": {
+        "normalized_schema_version": {
+          "const": "1.0.0",
+          "description": "Version of schemas/finding.schema.json used as the source contract."
+        },
+        "run_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "generated_at": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "ISO 8601 timestamp for when this handoff was generated."
+        },
+        "target": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "skill_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "skill_version": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "workItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source_finding_id",
+        "title",
+        "severity",
+        "evidence",
+        "owner",
+        "sla",
+        "remediation",
+        "tracker_fields"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Stable handoff item identifier within this export."
+        },
+        "source_finding_id": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Normalized finding id that produced this work item."
+        },
+        "source_finding_fingerprint": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Normalized finding fingerprint used for tracker deduplication when available."
+        },
+        "title": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Concise tracker issue title."
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ready", "blocked", "deferred"],
+          "description": "Handoff readiness status, not the target tracker status."
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Issue context suitable for a tracker description body."
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "description": "Concrete evidence copied or summarized from the normalized finding."
+        },
+        "owner": {
+          "$ref": "#/$defs/owner",
+          "description": "Responsible person, team, service, or resolver queue for the work item."
+        },
+        "sla": {
+          "$ref": "#/$defs/sla",
+          "description": "Expected remediation target for the work item."
+        },
+        "remediation": {
+          "$ref": "#/$defs/remediation",
+          "description": "Remediation guidance and validation requirements copied from the normalized finding."
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "description": "Tracker labels or tags to apply during import."
+        },
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/reference"
+          },
+          "description": "External standards, advisories, or knowledge-base links useful to the assignee."
+        },
+        "tracker_fields": {
+          "$ref": "#/$defs/trackerFields",
+          "description": "Tracker-specific field mappings. Values are import hints, not API calls."
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "summary"],
+      "properties": {
+        "location": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "summary": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "artifact_type": {
+          "type": "string",
+          "enum": ["source", "config", "policy", "log", "scan_result", "cloud_resource", "identity", "network", "document", "other"]
+        },
+        "snippet": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["person", "team", "service", "queue"]
+        },
+        "id": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Tracker account ID, team key, service ID, group alias, or queue name."
+        },
+        "display_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "sla": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["due_at", "policy"],
+      "properties": {
+        "due_at": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "ISO 8601 date or timestamp when remediation is due."
+        },
+        "policy": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "SLA policy name or rationale, such as severity-based remediation standard."
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guidance", "validation"],
+      "properties": {
+        "guidance": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "validation": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Test strategy summary or command set that proves remediation is complete."
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "blast_radius": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "behavior_change_risk": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["cve", "cwe", "framework", "advisory", "vendor", "documentation", "other"]
+        },
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "trackerFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defectdojo", "jira", "linear"],
+      "properties": {
+        "defectdojo": {
+          "$ref": "#/$defs/defectDojoFields"
+        },
+        "jira": {
+          "$ref": "#/$defs/jiraFields"
+        },
+        "linear": {
+          "$ref": "#/$defs/linearFields"
+        }
+      }
+    },
+    "defectDojoFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "severity", "description", "mitigation", "unique_id_from_tool"],
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["Info", "Low", "Medium", "High", "Critical"]
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "mitigation": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "unique_id_from_tool": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "component_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "cwe": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "references": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "due_date": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "jiraFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "description", "issue_type", "priority", "assignee", "due_date"],
+      "properties": {
+        "summary": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "issue_type": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "priority": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "assignee": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "due_date": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "security_level": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "linearFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "description", "priority", "assignee_id", "team_key", "due_date"],
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "assignee_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "team_key": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "due_date": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "label_names": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "state_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    }
+  }
+}
