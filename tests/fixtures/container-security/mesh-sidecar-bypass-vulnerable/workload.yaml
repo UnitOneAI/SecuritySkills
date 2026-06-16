@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: payments
+spec:
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+      annotations:
+        sidecar.istio.io/inject: "false"
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "10.0.0.0/8"
+    spec:
+      hostNetwork: true
+      containers:
+        - name: app
+          image: registry.example.com/payments-api:1.2.3
+          ports:
+            - containerPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mesh-only
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: payments-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              istio-injection: enabled

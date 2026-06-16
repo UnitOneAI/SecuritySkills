@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: payments
+spec:
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+      annotations:
+        sidecar.istio.io/inject: "true"
+    spec:
+      containers:
+        - name: app
+          image: registry.example.com/payments-api:1.2.3
+          ports:
+            - containerPort: 8080
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: payments-strict-mtls
+  namespace: payments
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-direct-pod-traffic
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

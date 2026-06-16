@@ -1,0 +1,5 @@
+skill: container-security
+case_id: mesh-sidecar-bypass-benign
+kind: benign
+target: workload.yaml
+expected_findings: []

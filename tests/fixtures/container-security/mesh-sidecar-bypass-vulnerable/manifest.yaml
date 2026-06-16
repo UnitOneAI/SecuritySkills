@@ -1,0 +1,9 @@
+skill: container-security
+case_id: mesh-sidecar-bypass-vulnerable
+kind: vulnerable
+target: workload.yaml
+expected_findings:
+  - id: service-mesh-sidecar-bypass
+    severity: high
+    framework: NIST SP 800-190 CM-8
+    evidence_contains: 'hostNetwork: true'
