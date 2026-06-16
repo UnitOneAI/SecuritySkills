@@ -106,6 +106,12 @@ Validate skill fixture manifests and expected evidence strings with:
 ruby scripts/test_skill_fixtures.rb
 ```
 
+Validate remediation regression manifests and expected auto-fix diffs with:
+
+```bash
+ruby scripts/test_remediation_fixtures.rb
+```
+
 CI/CD examples for GitHub Actions, GitLab CI, Azure DevOps, Jenkins,
 pre-commit, and local agent usage are available in
 [`docs/ci-cd-examples.md`](docs/ci-cd-examples.md). Validate those examples

@@ -158,6 +158,13 @@ If your contribution includes skill test fixtures, also run:
 ruby scripts/test_skill_fixtures.rb
 ```
 
+If your contribution adds or changes an auto-fix candidate, include remediation
+fixture expectations and run:
+
+```bash
+ruby scripts/test_remediation_fixtures.rb
+```
+
 If your contribution changes CI/CD examples, update
 [docs/ci-cd-examples.md](docs/ci-cd-examples.md) and run:
 

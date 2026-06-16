@@ -7,3 +7,25 @@ expected_findings:
     severity: high
     cwe: CWE-89
     evidence_contains: "SELECT * FROM users WHERE email = '"
+remediation:
+  category: auto-fix
+  expected_files:
+    - path: app.js
+      after: expected/app.js
+      expected_diff_contains:
+        - "-  const sql = \"SELECT * FROM users WHERE email = '\" + req.query.email + \"'\";"
+        - '+  const rows = await dbClient.query("SELECT * FROM users WHERE email = ?", [req.query.email]);'
+        - "+module.exports = { usersHandler };"
+      expected_after_contains:
+        - 'dbClient.query("SELECT * FROM users WHERE email = ?", [req.query.email])'
+    - path: app.test.js
+      after: expected/app.test.js
+      expected_diff_contains:
+        - "+++ after/app.test.js"
+        - '+const { usersHandler } = require("./app");'
+        - "+    expect(db.query).toHaveBeenCalledWith("
+        - '+      "SELECT * FROM users WHERE email = ?",'
+        - '+      ["alice@example.test"]'
+        - '+    expect(res.json).toHaveBeenCalledWith([{ id: 1, email: "alice@example.test" }]);'
+      expected_after_contains:
+        - "preserves the user lookup response while parameterizing email input"
