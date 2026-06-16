@@ -100,6 +100,12 @@ and role bundles locally with:
 ruby scripts/validate_skill_schema.rb
 ```
 
+Validate skill fixture manifests and expected evidence strings with:
+
+```bash
+ruby scripts/test_skill_fixtures.rb
+```
+
 ### Progressive disclosure (keep `SKILL.md` lean)
 
 Claude's skill guidance: when a `SKILL.md` would exceed ~500 lines, **don't inline everything** — split detail into sibling reference files in the same directory and link to them from `SKILL.md`. The agent loads a reference only when it needs it, so the entrypoint stays cheap to load.

@@ -152,6 +152,12 @@ and is enforced by CI. Run it locally before opening a PR:
 ruby scripts/validate_skill_schema.rb
 ```
 
+If your contribution includes skill test fixtures, also run:
+
+```bash
+ruby scripts/test_skill_fixtures.rb
+```
+
 ---
 
 ## Getting Started

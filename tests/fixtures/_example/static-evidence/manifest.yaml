@@ -1,0 +1,9 @@
+skill: _example
+case_id: static-evidence
+kind: vulnerable
+target: sample.txt
+expected_findings:
+  - id: example-hardcoded-secret
+    severity: medium
+    cwe: CWE-798
+    evidence_contains: "password = \"not-a-real-secret\""

@@ -1,0 +1,4 @@
+This tiny fixture keeps the static harness executable before real skill
+fixtures land.
+
+password = "not-a-real-secret"
