@@ -65,9 +65,10 @@ Hard rules only — falsifiable and enforceable. No "consider" / "may" language.
 
 What the agent emits or changes when this fires. Keep complex logic in a
 reference/script file (§7), not inline. Every fix recommendation must include
-remediation guidance, confidence, blast radius, and behavior-change risk. If this
-skill can modify code or configuration, classify each remediation path using the
-repo-level `docs/fixer-policy.md` before applying changes.
+remediation guidance, confidence, blast radius, behavior-change risk, and a
+test strategy that names what proves the issue is fixed. If this skill can
+modify code or configuration, classify each remediation path using the repo-level
+`docs/fixer-policy.md` before applying changes.
 
 **Before (vulnerable):**
 ```
@@ -86,7 +87,20 @@ remediations:
     confidence: high                    # low | medium | high
     blast_radius: "<affected files, users, systems, integrations, or workflows>"
     behavior_change_risk: medium        # low | medium | high
-    test_strategy: "<optional validation approach>"
+    test_strategy:
+      summary: "<what proves this remediation fixed the finding>"
+      recommended_tests:
+        - name: "<test name>"
+          type: regression              # static | unit | integration | e2e | regression | manual
+          purpose: "<vulnerable behavior or regression this test proves>"
+          command: "<command or manual check to run>"
+          expected_result: "<binary passing result>"
+      generated_tests:
+        - path: "<path/to/generated_test_file>"
+          type: regression              # static | unit | integration | e2e | regression
+          purpose: "<vulnerable behavior or regression this generated test proves>"
+          command: "<command that runs the generated test>"
+          expected_result: "<binary passing result>"
 ```
 
 ## 5. Verification (falsifiable)
@@ -144,7 +158,8 @@ skills/<domain>/<skill-name>/
 - [ ] At least one machine-matchable detection signal (regex / structural)
 - [ ] Rules are hard constraints (no "consider"/"may")
 - [ ] Before/after remediation example present
-- [ ] Every fix recommendation includes `guidance`, `confidence`, `blast_radius`, and `behavior_change_risk`
+- [ ] Every fix recommendation includes `guidance`, `confidence`, `blast_radius`, `behavior_change_risk`, and `test_strategy`
+- [ ] Every `test_strategy` includes a summary plus recommended tests, generated tests, or both
 - [ ] Falsifiable verification test defined (binary pass/fail)
 - [ ] Gotchas: ≥2 false positives + ≥1 precision trap
 - [ ] `SKILL.md` stays lean; long detail moved to reference files

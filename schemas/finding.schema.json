@@ -71,7 +71,7 @@
           "items": {
             "$ref": "#/$defs/remediation"
           },
-          "description": "Every fix recommendation for this finding. Each item must include remediation guidance, confidence, blast radius, and behavior-change risk."
+          "description": "Every fix recommendation for this finding. Each item must include remediation guidance, confidence, blast radius, behavior-change risk, and test strategy."
         }
       },
       "anyOf": [
@@ -86,7 +86,7 @@
     "remediation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["guidance", "confidence", "blast_radius", "behavior_change_risk"],
+      "required": ["guidance", "confidence", "blast_radius", "behavior_change_risk", "test_strategy"],
       "properties": {
         "guidance": {
           "$ref": "#/$defs/nonEmptyString",
@@ -105,8 +105,94 @@
           "description": "Risk that the remediation changes intended application or operational behavior."
         },
         "test_strategy": {
+          "$ref": "#/$defs/testStrategy",
+          "description": "Required validation strategy proving the remediation fixes the finding. Include recommended tests, generated tests, or both."
+        }
+      }
+    },
+    "testStrategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary"],
+      "properties": {
+        "summary": {
           "$ref": "#/$defs/nonEmptyString",
-          "description": "Optional validation strategy for the remediation. Kept optional because test strategy requirements are defined separately."
+          "description": "Concise explanation of what proves the remediation fixed the issue."
+        },
+        "recommended_tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/recommendedTest"
+          },
+          "description": "Tests the user or agent should run when tests are not generated directly."
+        },
+        "generated_tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/generatedTest"
+          },
+          "description": "Test files or cases produced as part of the remediation."
+        }
+      },
+      "anyOf": [
+        {
+          "required": ["recommended_tests"]
+        },
+        {
+          "required": ["generated_tests"]
+        }
+      ]
+    },
+    "recommendedTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "purpose", "command", "expected_result"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["static", "unit", "integration", "e2e", "regression", "manual"]
+        },
+        "purpose": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Behavior, vulnerability condition, or regression this test proves."
+        },
+        "command": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Command or manual check to execute for this test."
+        },
+        "expected_result": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "generatedTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "purpose", "command", "expected_result"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Path to the generated or modified test file."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["static", "unit", "integration", "e2e", "regression"]
+        },
+        "purpose": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Behavior, vulnerability condition, or regression this generated test proves."
+        },
+        "command": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Command that runs the generated test."
+        },
+        "expected_result": {
+          "$ref": "#/$defs/nonEmptyString"
         }
       }
     }
