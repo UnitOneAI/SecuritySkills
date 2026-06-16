@@ -408,6 +408,8 @@ Remediation: Validate the URL scheme (allow only `https`), resolve the hostname 
 
 ## Findings Classification
 
+Before applying or proposing patches, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 Each finding produced by this review must include the following fields:
 
 | Field | Description |

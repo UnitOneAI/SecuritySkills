@@ -479,6 +479,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 
 ## Findings Classification
 
+Before applying or proposing configuration changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |

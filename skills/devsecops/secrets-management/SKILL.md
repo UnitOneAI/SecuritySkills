@@ -354,6 +354,8 @@ spec:
 
 ## Findings Classification
 
+Before applying or proposing fixes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | Committed secrets in current codebase or git history (unrotated); no secret detection tooling; .env with production credentials committed. |

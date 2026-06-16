@@ -124,6 +124,8 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Findings Classification
 
+Before applying or proposing container or Kubernetes changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Container escape, cluster compromise, or credential exposure | Privileged containers, Docker socket mounts, cluster-admin bound to application SA, secrets in plaintext manifests, `hostPID`/`hostNetwork` on app pods |

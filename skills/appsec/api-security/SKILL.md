@@ -53,6 +53,8 @@ For detailed checklist items with vulnerable code patterns, remediation examples
 
 ## Findings Classification
 
+Before applying or proposing patches, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 Each finding produced by this review must include the following fields:
 
 | Field | Description |

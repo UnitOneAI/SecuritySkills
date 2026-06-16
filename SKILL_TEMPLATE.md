@@ -64,7 +64,9 @@ Hard rules only — falsifiable and enforceable. No "consider" / "may" language.
 ## 4. Remediation
 
 What the agent emits or changes when this fires. Keep complex logic in a
-reference/script file (§7), not inline.
+reference/script file (§7), not inline. If this skill can modify code or
+configuration, classify each remediation path using the repo-level
+`docs/fixer-policy.md` before applying changes.
 
 **Before (vulnerable):**
 ```

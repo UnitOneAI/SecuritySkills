@@ -437,6 +437,8 @@ jobs:
 
 ## Findings Classification
 
+Before applying or proposing configuration changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No SAST tooling deployed; CWE Top 5 weaknesses with zero rule coverage for languages in active use. |

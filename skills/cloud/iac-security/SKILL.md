@@ -109,6 +109,8 @@ Produce the final report using the structure defined in the Output Format sectio
 
 ## Findings Classification
 
+Before applying or proposing infrastructure changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 | Severity | Definition | Examples |
 |----------|-----------|----------|
 | **Critical** | Immediate exploitability, data exposure, or credential compromise | Hardcoded secrets, public S3 buckets with data, unrestricted ingress on all ports, `*:*` IAM policies, public database endpoints |

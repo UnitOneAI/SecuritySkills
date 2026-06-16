@@ -183,6 +183,8 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 
 ## Assessment Output Template
 
+Before applying or proposing dependency changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md).
+
 When performing a dependency scan, produce findings in the following structure:
 
 ```
