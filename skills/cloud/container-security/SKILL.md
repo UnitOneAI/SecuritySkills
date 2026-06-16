@@ -113,6 +113,22 @@ Evaluate all container and Kubernetes configurations against CIS Docker Benchmar
 
 For detailed CIS benchmark checklist items, NIST SP 800-190 countermeasure tables, and comprehensive security context evaluation criteria, see [cis-benchmarks.md](cis-benchmarks.md) in this skill directory.
 
+#### Service Mesh Sidecar Bypass Evidence Gate
+
+When reviewing Istio, Linkerd, Consul, Envoy-based, or other service mesh controls, do not treat mesh policy as equivalent to network segmentation until the effective traffic path is proven. Mesh authorization, mTLS, and egress policy findings require evidence for both the intended mesh boundary and any route that can avoid the sidecar or mesh dataplane.
+
+Before filing a sidecar bypass finding, collect concrete evidence for at least one attacker-controlled bypass path:
+
+- Workloads using `hostNetwork`, host ports, host namespace sharing, privileged networking capabilities, or direct node networking that can avoid sidecar interception.
+- Init, sidecar, or ephemeral containers that are not covered by injection, policy, or egress controls for the pod.
+- Pod, namespace, Helm, or mesh annotations that disable injection, exclude inbound or outbound ports, exclude IP ranges, or opt the workload out of mesh policy.
+- AuthorizationPolicy, PeerAuthentication, destination, egress, or namespace scoping that protects only in-mesh traffic while allowing direct pod IP, service CIDR, node-local, or external egress paths.
+- Missing or ineffective Kubernetes NetworkPolicy default-deny controls that leave a non-mesh route open even though the mesh policy looks restrictive.
+
+Benign exception pattern: do not flag a workload solely because it uses mesh policy if the reviewed artifacts show both mesh policy and Kubernetes NetworkPolicy deny direct pod bypass paths for the relevant namespace, workload selectors, ports, and egress destinations. In that case, record the evidence as a pass or informational note unless another concrete bypass path is present.
+
+For remediation, require a verification step that proves the effective boundary after the fix: cite the updated workload, namespace, mesh policy, and NetworkPolicy artifacts, then confirm the previously identified non-mesh path is blocked or forced through the intended sidecar/dataplane. Include rollback guidance for policy changes that could interrupt service-to-service traffic.
+
 ---
 
 ### Step 7: Compile Assessment Report
@@ -259,6 +275,7 @@ Before applying or proposing container or Kubernetes changes, classify each reme
 5. **`readOnlyRootFilesystem` breaks many applications.** When recommending this control, also recommend adding writable `emptyDir` volume mounts for directories the application needs to write to (e.g., `/tmp`, `/var/cache`).
 6. **Network policies are additive, not subtractive.** A default-deny policy must be explicitly created. Without it, all pod-to-pod traffic is allowed regardless of other NetworkPolicy resources.
 7. **Distroless images have no shell.** While this is excellent for security, note that debugging requires ephemeral containers (`kubectl debug`). Flag this as a consideration, not a problem.
+8. **Service mesh policy can be bypassed outside the sidecar path.** Check host networking, injection exclusions, direct pod IP or service CIDR routes, egress exceptions, and namespace scoping before classifying mesh controls as effective segmentation.
 
 ---
 

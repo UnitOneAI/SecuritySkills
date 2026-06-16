@@ -431,6 +431,37 @@ spec:
 
 **Critical check:** A default-deny NetworkPolicy should exist in every namespace.
 
+#### Service Mesh Sidecar and mTLS Boundary Checks
+
+When service mesh resources are present, validate that mesh policy and Kubernetes network controls enforce the same boundary. Mesh policy alone is not sufficient evidence of segmentation because workloads may still reach peers through paths that avoid the sidecar or mesh dataplane.
+
+Before reporting a service mesh bypass, require evidence of all three conditions:
+
+- **Source:** an attacker-controlled or compromised workload, init container, ephemeral container, or sidecar in scope.
+- **Path:** a reachable direct pod IP, service CIDR, node-local, host-network, excluded-port, excluded-IP-range, or external egress route that avoids the intended sidecar or mTLS enforcement.
+- **Impact:** access crosses a tenant, namespace, service, privilege, or data boundary that the mesh policy was expected to protect.
+
+Flag as High or Critical when reviewed artifacts show any of these bypass paths:
+
+```yaml
+# host networking can avoid sidecar interception for application workloads
+spec:
+  hostNetwork: true
+
+# injection or traffic interception exclusions can leave direct paths open
+metadata:
+  annotations:
+    sidecar.istio.io/inject: "false"
+    traffic.sidecar.istio.io/excludeOutboundPorts: "5432"
+    traffic.sidecar.istio.io/excludeOutboundIPRanges: "10.0.0.0/8"
+```
+
+Also check for namespace-scoped mTLS, authorization, or egress policies that apply only to injected mesh traffic while NetworkPolicy still allows direct pod-to-pod or unrestricted egress traffic.
+
+**Benign exception:** Do not report a finding when mesh policy and Kubernetes NetworkPolicy both deny the direct pod path for the same namespace, workload selectors, ports, and egress destinations, and no attacker-controlled route is evidenced. Record the artifacts as a pass or informational note.
+
+**Remediation verification:** The fix must prove that the same source workload cannot reach the protected destination except through the intended sidecar or mTLS path, and that NetworkPolicy or equivalent CNI policy denies direct pod-to-pod and egress routes.
+
 ### CIS 5.4 -- Secrets Management
 
 #### CIS 5.4.1 -- Prefer using Secrets as files over Secrets as environment variables
