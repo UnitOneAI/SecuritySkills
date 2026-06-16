@@ -1,0 +1,5 @@
+skill: prompt-injection
+case_id: retrieved-content-data-benign
+kind: benign
+target: system_prompt.md
+expected_findings: []

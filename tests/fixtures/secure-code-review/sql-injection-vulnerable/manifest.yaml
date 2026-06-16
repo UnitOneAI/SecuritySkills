@@ -1,0 +1,9 @@
+skill: secure-code-review
+case_id: sql-injection-vulnerable
+kind: vulnerable
+target: app.js
+expected_findings:
+  - id: sql-injection-string-concat
+    severity: high
+    cwe: CWE-89
+    evidence_contains: "SELECT * FROM users WHERE email = '"

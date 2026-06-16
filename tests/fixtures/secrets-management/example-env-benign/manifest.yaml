@@ -1,0 +1,5 @@
+skill: secrets-management
+case_id: example-env-benign
+kind: benign
+target: settings.env.example
+expected_findings: []

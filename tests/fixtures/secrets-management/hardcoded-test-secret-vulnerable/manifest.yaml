@@ -1,0 +1,9 @@
+skill: secrets-management
+case_id: hardcoded-test-secret-vulnerable
+kind: vulnerable
+target: settings.env
+expected_findings:
+  - id: hardcoded-api-key
+    severity: critical
+    cwe: CWE-798
+    evidence_contains: "sk_test_FAKE_DO_NOT_USE_1234567890"

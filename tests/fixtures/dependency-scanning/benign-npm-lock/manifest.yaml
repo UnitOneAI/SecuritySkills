@@ -1,0 +1,5 @@
+skill: dependency-scanning
+case_id: benign-npm-lock
+kind: benign
+target: package-lock.json
+expected_findings: []

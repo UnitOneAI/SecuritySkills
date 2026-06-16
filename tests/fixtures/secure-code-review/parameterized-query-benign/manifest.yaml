@@ -1,0 +1,5 @@
+skill: secure-code-review
+case_id: parameterized-query-benign
+kind: benign
+target: app.js
+expected_findings: []

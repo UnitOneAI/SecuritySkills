@@ -1,0 +1,5 @@
+skill: api-security
+case_id: admin-auth-benign
+kind: benign
+target: routes.js
+expected_findings: []

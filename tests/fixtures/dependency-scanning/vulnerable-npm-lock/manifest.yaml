@@ -1,0 +1,9 @@
+skill: dependency-scanning
+case_id: vulnerable-npm-lock
+kind: vulnerable
+target: package-lock.json
+expected_findings:
+  - id: vulnerable-lodash
+    severity: high
+    cwe: CWE-400
+    evidence_contains: '"lodash": "4.17.20"'

@@ -1,0 +1,9 @@
+skill: api-security
+case_id: missing-admin-auth-vulnerable
+kind: vulnerable
+target: routes.js
+expected_findings:
+  - id: missing-admin-authorization
+    severity: high
+    framework: OWASP API1:2023
+    evidence_contains: 'app.get("/api/admin/users", (req, res) => {'
