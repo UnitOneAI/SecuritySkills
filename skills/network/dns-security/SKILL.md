@@ -13,7 +13,7 @@ phase: [operate]
 frameworks: [NIST-SP-800-81-Rev2, CIS-Controls-v8]
 difficulty: intermediate
 time_estimate: "20-40min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -86,11 +86,12 @@ Use Glob and Grep to locate DNS server configurations, resolver settings, and re
 **/unbound*
 ```
 
-Categorize discovered configurations:
+Categorize discovered configurations and preserve resolver-chain evidence:
 - **Authoritative servers:** BIND, PowerDNS, Route53 hosted zones, Cloud DNS zones.
 - **Recursive resolvers:** Unbound, BIND (recursion enabled), CoreDNS, systemd-resolved.
 - **Protective DNS / filtering:** RPZ, Pi-hole, Cisco Umbrella, Cloudflare Gateway, Quad9.
 - **Client settings:** resolv.conf, DHCP-distributed resolver addresses.
+- **Resolver-chain hops:** Client stub -> local proxy -> recursive resolver -> upstream forwarder. Record protocol, port, and destination for each hop before classifying transport as plaintext or encrypted.
 
 ---
 
@@ -169,11 +170,15 @@ Evaluate whether DNS queries are protected in transit.
 
 **What to verify:**
 
-- **Enterprise resolvers:** DoT or DoH is configured for forwarding to upstream resolvers.
+- **Enterprise resolvers:** DoT or DoH is configured for forwarding to upstream resolvers, or a local resolver proxy terminates encrypted DNS before forwarding over a trusted loopback/private hop.
 - **Client enforcement:** Clients are configured to use the enterprise resolver via DoT/DoH, not public DoH endpoints that bypass corporate DNS policy.
+- **Effective DoH policy:** Browser, endpoint-management, firewall, and resolver controls agree on whether DoH is allowed, blocked, or redirected to enterprise resolvers.
+- **Resolver-chain evidence:** Trace each observed resolver path from client configuration to final upstream. Do not flag a plain `forwarders` or `resolv.conf` hop as external plaintext until you confirm it is not pointing at a local DoT/DoH proxy such as Unbound, dnscrypt-proxy, cloudflared, or systemd-resolved.
 - **DoH bypass risk:** Browsers (Firefox, Chrome) may use built-in DoH providers, bypassing corporate DNS filtering. Verify that:
   - Canary domain `use-application-dns.net` resolves to NXDOMAIN (signals browsers to disable built-in DoH).
   - Network policy blocks known public DoH endpoints if corporate DNS filtering is required.
+  - Managed browser policies explicitly disable public DoH or pin browsers to an approved enterprise DoH endpoint.
+  - Endpoint telemetry or proxy logs show whether clients actually attempted public DoH after the policy was applied.
 
 **Patterns to check:**
 
@@ -188,9 +193,24 @@ tls://8.8.8.8
 
 # BIND forwarder (no native DoT -- requires stunnel or proxy)
 forwarders { 1.1.1.1; };  # Plaintext -- flag as finding
+
+# BIND forwarding to a local encrypted DNS proxy
+forwarders { 127.0.0.1 port 5353; };  # Verify local proxy upstream before flagging
+
+# dnscrypt-proxy / cloudflared / systemd-resolved local proxy indicators
+listen_addresses = ['127.0.0.1:5353']
+proxy-dns: true
+DNSOverTLS=yes
 ```
 
-**Finding classification:** DNS queries forwarded in plaintext to external resolvers over untrusted networks is **Medium**. No DoH bypass controls when DNS filtering is deployed is **High**.
+**Evidence gates before filing a DoH or plaintext-forwarding finding:**
+
+- Confirm the resolver-chain endpoint: loopback/private local proxy hops require proxy-upstream evidence before classification.
+- Collect at least one enforcement artifact: managed browser policy, MDM profile, firewall/proxy rule, resolver configuration, or endpoint telemetry.
+- Distinguish **untrusted external plaintext forwarding** from **trusted internal plaintext hop to an encrypted proxy**.
+- If DNS filtering is required, verify both policy intent and observed behavior; a documented policy without telemetry is only partial evidence.
+
+**Finding classification:** DNS queries forwarded in plaintext to external resolvers over untrusted networks is **Medium**. No DoH bypass controls when DNS filtering is deployed is **High**. Reporting a local proxy hop as external plaintext without checking its encrypted upstream is a **false positive** and should be downgraded or withheld until resolver-chain evidence is available.
 
 ---
 
@@ -328,6 +348,12 @@ abcdef0123456789.dnscat.example.com TXT
 |----------|-------------------|--------------------|--------------|--------------|
 | ns1      | Enabled/Disabled  | DoT/DoH/Plaintext  | Yes/No       | Yes/No       |
 
+### Resolver Chain and DoH Policy Evidence
+
+| Client / Segment | Stub Resolver | Local Proxy | Recursive Resolver | Upstream Transport | DoH Policy Source | Observed Bypass Attempts |
+|------------------|---------------|-------------|--------------------|--------------------|-------------------|--------------------------|
+| workstation      | 127.0.0.53    | cloudflared | dns-filter.local   | DoH to approved endpoint | MDM/browser policy | Yes/No/Unknown |
+
 ### Findings
 
 #### [F-001] <Finding Title>
@@ -384,6 +410,8 @@ abcdef0123456789.dnscat.example.com TXT
 
 4. **Ignoring DNS over TCP.** DNS is not UDP-only. DNS over TCP (port 53) supports large responses and is required for zone transfers. Some tunneling tools prefer TCP for reliability. Firewall rules and monitoring must cover both UDP and TCP port 53.
 
+5. **Flagging local resolver proxies as plaintext external forwarding.** A resolver that forwards to `127.0.0.1`, `::1`, or an internal proxy listener may still use DoT/DoH upstream. Validate the proxy configuration and upstream transport before reporting a plaintext forwarding finding.
+
 ---
 
 ## Limitations
@@ -423,4 +451,5 @@ This skill processes DNS configuration files that may contain user-supplied zone
 
 ## Changelog
 
+- **1.0.1** -- Added effective DoH policy and resolver-chain evidence gates to reduce false positives around local encrypted DNS proxies.
 - **1.0.0** -- Initial release. Full coverage of NIST SP 800-81 Rev 2 and CIS Controls v8 Control 9.2 for DNS security review.
