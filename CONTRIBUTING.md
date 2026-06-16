@@ -180,6 +180,10 @@ If your contribution changes CI/CD examples, update
 ruby scripts/validate_ci_cd_examples.rb
 ```
 
+Release artifacts are checksummed by the GitHub release workflow. See
+[docs/release-integrity.md](docs/release-integrity.md) before changing release
+packaging.
+
 ### Normalized JSON output
 
 Every skill must be able to emit findings as normalized JSON that validates
