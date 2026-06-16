@@ -27,5 +27,14 @@ Validate the registry locally with:
 ruby scripts/validate_framework_registry.rb
 ```
 
-Future stale-framework checks should use `date_reviewed` and `owner` from this
-registry instead of scraping individual skill files.
+Report references whose `date_reviewed` value is older than the review policy
+window with:
+
+```bash
+ruby scripts/validate_framework_registry.rb --stale --max-age-days 365
+```
+
+The scheduled `Validate framework registry` workflow runs this stale-reference
+report weekly. Owners should refresh stale entries by confirming the source URL,
+updating `version` when the upstream framework has changed, and setting a new
+`date_reviewed`.

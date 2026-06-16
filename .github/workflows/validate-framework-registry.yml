@@ -1,0 +1,23 @@
+name: Validate framework registry
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  validate-framework-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate framework registry shape
+        run: ruby scripts/validate_framework_registry.rb
+
+      - name: Report stale framework references
+        run: ruby scripts/validate_framework_registry.rb --stale --max-age-days 365

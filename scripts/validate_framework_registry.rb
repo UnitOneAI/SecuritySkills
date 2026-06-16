@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "yaml"
+require "date"
 
 ROOT = File.expand_path("..", __dir__)
 REGISTRY_PATH = File.join(ROOT, "data", "frameworks.yaml")
@@ -9,6 +10,7 @@ REQUIRED_TOP_LEVEL = %w[schema_version last_reviewed required_families reference
 REQUIRED_ENTRY_FIELDS = %w[id family name version url date_reviewed owner aliases].freeze
 REQUIRED_FAMILIES = %w[OWASP NIST MITRE CIS CVSS SSVC EPSS SLSA CycloneDX SPDX].freeze
 DATE_PATTERN = /\A\d{4}-\d{2}-\d{2}\z/
+DEFAULT_MAX_AGE_DAYS = 365
 
 def rel(path)
   path.delete_prefix("#{ROOT}#{File::SEPARATOR}")
@@ -27,6 +29,56 @@ end
 def validate_string(value, label, errors)
   errors << "#{label} must be a non-empty string" unless value.is_a?(String) && !value.empty?
 end
+
+def usage
+  warn "Usage: ruby scripts/validate_framework_registry.rb [--stale] [--max-age-days DAYS] [--as-of YYYY-MM-DD]"
+  exit 2
+end
+
+def parse_date_argument(value)
+  Date.iso8601(value)
+rescue Date::Error
+  usage
+end
+
+def parse_args(argv)
+  options = {
+    stale: false,
+    max_age_days: DEFAULT_MAX_AGE_DAYS,
+    as_of: Date.today
+  }
+
+  until argv.empty?
+    case argv.shift
+    when "--stale"
+      options[:stale] = true
+    when "--max-age-days"
+      value = argv.shift
+      usage unless value&.match?(/\A\d+\z/)
+      options[:max_age_days] = value.to_i
+    when "--as-of"
+      value = argv.shift
+      usage unless value
+      options[:as_of] = parse_date_argument(value)
+    else
+      usage
+    end
+  end
+
+  options
+end
+
+def validate_staleness(entry, prefix, options, errors)
+  return unless options[:stale] && entry["date_reviewed"].to_s.match?(DATE_PATTERN)
+
+  reviewed = Date.iso8601(entry["date_reviewed"])
+  age_days = (options[:as_of] - reviewed).to_i
+  return if age_days <= options[:max_age_days]
+
+  errors << "#{prefix}: #{entry['id']} reviewed #{age_days} days ago; owner #{entry['owner']} must refresh by #{options[:max_age_days]} days"
+end
+
+options = parse_args(ARGV.dup)
 
 errors = []
 registry = load_registry(errors)
@@ -81,6 +133,8 @@ else
       errors << "#{prefix}.date_reviewed must use YYYY-MM-DD"
     end
 
+    validate_staleness(entry, prefix, options, errors)
+
     aliases = entry["aliases"]
     unless aliases.is_a?(Array) && !aliases.empty?
       errors << "#{prefix}.aliases must be a non-empty array"
@@ -105,7 +159,8 @@ else
 end
 
 if errors.empty?
-  puts "OK: validated framework registry with #{references.size} reference(s)."
+  stale_suffix = options[:stale] ? " and no references older than #{options[:max_age_days]} days as of #{options[:as_of]}" : ""
+  puts "OK: validated framework registry with #{references.size} reference(s)#{stale_suffix}."
 else
   puts "FAIL: framework registry validation failed."
   errors.each { |error| puts "  - #{error}" }

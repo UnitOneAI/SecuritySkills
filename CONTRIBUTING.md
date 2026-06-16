@@ -170,6 +170,7 @@ If your contribution adds or changes framework references, update
 
 ```bash
 ruby scripts/validate_framework_registry.rb
+ruby scripts/validate_framework_registry.rb --stale --max-age-days 365
 ```
 
 If your contribution changes CI/CD examples, update

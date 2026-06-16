@@ -123,6 +123,7 @@ Validate framework provenance, versions, owners, and review dates with:
 
 ```bash
 ruby scripts/validate_framework_registry.rb
+ruby scripts/validate_framework_registry.rb --stale --max-age-days 365
 ```
 
 CI/CD examples for GitHub Actions, GitLab CI, Azure DevOps, Jenkins,
