@@ -64,9 +64,10 @@ Hard rules only — falsifiable and enforceable. No "consider" / "may" language.
 ## 4. Remediation
 
 What the agent emits or changes when this fires. Keep complex logic in a
-reference/script file (§7), not inline. If this skill can modify code or
-configuration, classify each remediation path using the repo-level
-`docs/fixer-policy.md` before applying changes.
+reference/script file (§7), not inline. Every fix recommendation must include
+remediation guidance, confidence, blast radius, and behavior-change risk. If this
+skill can modify code or configuration, classify each remediation path using the
+repo-level `docs/fixer-policy.md` before applying changes.
 
 **Before (vulnerable):**
 ```
@@ -76,6 +77,16 @@ configuration, classify each remediation path using the repo-level
 **After (remediated):**
 ```
 <what the agent should produce>
+```
+
+**Fix recommendation output:**
+```yaml
+remediations:
+  - guidance: "<concrete remediation steps or patch guidance>"
+    confidence: high                    # low | medium | high
+    blast_radius: "<affected files, users, systems, integrations, or workflows>"
+    behavior_change_risk: medium        # low | medium | high
+    test_strategy: "<optional validation approach>"
 ```
 
 ## 5. Verification (falsifiable)
@@ -133,6 +144,7 @@ skills/<domain>/<skill-name>/
 - [ ] At least one machine-matchable detection signal (regex / structural)
 - [ ] Rules are hard constraints (no "consider"/"may")
 - [ ] Before/after remediation example present
+- [ ] Every fix recommendation includes `guidance`, `confidence`, `blast_radius`, and `behavior_change_risk`
 - [ ] Falsifiable verification test defined (binary pass/fail)
 - [ ] Gotchas: ≥2 false positives + ≥1 precision trap
 - [ ] `SKILL.md` stays lean; long detail moved to reference files
