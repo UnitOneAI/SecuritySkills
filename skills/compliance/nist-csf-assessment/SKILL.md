@@ -168,6 +168,55 @@ Assess:
 - Is the cybersecurity budget commensurate with identified risks?
 - Are cybersecurity responsibilities included in hiring, performance reviews, and termination processes?
 
+##### Governance Accountability Evidence Gates
+
+When assessing GV.RR accountability, require **all five evidence elements** before marking accountability as implemented:
+
+| Evidence Element | Description | Example |
+|-----------------|-------------|---------|
+| **Decision Owner** | Named individual or role (not just committee) who can accept cybersecurity risk | "CISO Jane Doe has final authority on risk acceptance decisions up to $500K" |
+| **Authority Source** | Documented source granting decision authority | Board resolution, charter, delegation letter, or policy section |
+| **Review Cadence** | Defined frequency for reviewing accountability effectiveness | Quarterly risk committee review, annual charter renewal |
+| **Evidence Artifact** | Concrete proof the accountability structure operates | Meeting minutes, signed risk acceptance decisions, RACI matrix with dates |
+| **Escalation Path** | Defined process when accountable party cannot resolve | "If CISO and CTO disagree, escalate to Risk Committee within 5 business days" |
+
+**False Positive Guidance — Committee-Based Accountability:**
+
+Do NOT flag committee-based governance as a gap when:
+- The charter names specific decision owners with defined authority scopes
+- Decision rights, owner names, meeting cadence, and evidence artifacts are explicit
+- The committee has documented escalation paths and quorum requirements
+
+A security steering committee with named decision owners, authority sources, review cadence, evidence artifacts, and escalation paths is a **valid Tier 3 implementation**. Flag as a gap only if any of the five elements are missing or if the committee exists on paper but has no meeting history or decision records.
+
+**Missed Variants — Detect These Gaps:**
+
+| Variant | Detection Pattern | Why It Matters |
+|---------|------------------|----------------|
+| No accountable executive for risk acceptance | "Govern category marked implemented, but risk acceptance decisions have no accountable executive owner" | Operational approvals without governance-level accountability mean risks are accepted without strategic oversight |
+| Ticket approvals without governance review | "Policy exceptions are approved in tickets, but no CSF profile owner reviews exception trends" | Operational approvals do not prove governance-level accountability or continuous improvement |
+| Delegated authority without traceability | "Risk decisions are delegated to business units but not tracked to accountable roles" | Delegation without traceability breaks accountability chains |
+
+**Edge Cases — Valid Accountability Structures:**
+
+| Scenario | Valid If... | Flag If... |
+|----------|------------|------------|
+| Shared services | Service owner has documented accountability for cybersecurity risk in SLAs | Accountability is ambiguous or undocumented |
+| Subsidiaries | Parent-subsidiary governance charter defines cybersecurity accountability boundaries | Subsidiary operates without parent oversight or charter |
+| Outsourced SOCs | MSSP contract specifies accountable roles for incident response and risk decisions | SOC operates without defined accountability to organizational leadership |
+| Committee charters | Charter names decision owners, authority scopes, cadence, evidence, escalation | Charter exists but has no meeting history or decision records |
+| Delegated risk owners | Delegation is documented with authority source and review cadence | Delegation is informal or undocumented |
+
+**Remediation Quality Checklist:**
+
+When recommending governance accountability improvements, ensure remediation addresses all five elements:
+
+- [ ] Decision owner identified with named role/individual
+- [ ] Authority source documented (charter, policy, resolution)
+- [ ] Review cadence defined (quarterly, annual, event-driven)
+- [ ] Evidence artifact specified (what to produce and retain)
+- [ ] Escalation path documented (when and how to escalate)
+
 #### 2.3 Policy (GV.PO)
 
 **GV.PO-01**: Policy for managing cybersecurity risks is established based on organizational context, cybersecurity strategy, and priorities and is communicated and enforced
