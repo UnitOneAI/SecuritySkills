@@ -1,0 +1,198 @@
+schema_version: "1.0.0"
+last_reviewed: "2026-06-16"
+required_families:
+  - OWASP
+  - NIST
+  - MITRE
+  - CIS
+  - CVSS
+  - SSVC
+  - EPSS
+  - SLSA
+  - CycloneDX
+  - SPDX
+references:
+  - id: OWASP-Top-10-2021
+    family: OWASP
+    name: OWASP Top 10
+    version: "2021"
+    url: https://owasp.org/Top10/
+    date_reviewed: "2026-06-16"
+    owner: appsec
+    aliases: [OWASP-Top-10, OWASP-Top-10-2021]
+  - id: OWASP-API-Security-2023
+    family: OWASP
+    name: OWASP API Security Top 10
+    version: "2023"
+    url: https://owasp.org/API-Security/editions/2023/en/0x00-header/
+    date_reviewed: "2026-06-16"
+    owner: appsec
+    aliases: [OWASP-API-Security-2023]
+  - id: OWASP-ASVS-4.0.3
+    family: OWASP
+    name: OWASP Application Security Verification Standard
+    version: "4.0.3"
+    url: https://owasp.org/www-project-application-security-verification-standard/
+    date_reviewed: "2026-06-16"
+    owner: appsec
+    aliases: [OWASP-ASVS, OWASP-ASVS-4.0.3]
+  - id: OWASP-LLM-Top-10-2025
+    family: OWASP
+    name: OWASP Top 10 for Large Language Model Applications
+    version: "2025"
+    url: https://genai.owasp.org/llm-top-10/
+    date_reviewed: "2026-06-16"
+    owner: ai-security
+    aliases: [OWASP-LLM-Top-10-2025, OWASP-LLM01-2025, OWASP-LLM02-2025, OWASP-LLM03-2025]
+  - id: OWASP-Agentic-AI
+    family: OWASP
+    name: OWASP Agentic AI Security
+    version: "current"
+    url: https://genai.owasp.org/
+    date_reviewed: "2026-06-16"
+    owner: ai-security
+    aliases: [OWASP-Agentic-AI]
+  - id: OWASP-Testing-Guide-v4.2
+    family: OWASP
+    name: OWASP Web Security Testing Guide
+    version: "4.2"
+    url: https://owasp.org/www-project-web-security-testing-guide/
+    date_reviewed: "2026-06-16"
+    owner: appsec
+    aliases: [OWASP-Testing-Guide-v4.2]
+  - id: OWASP-CICD-Top-10
+    family: OWASP
+    name: OWASP Top 10 CI/CD Security Risks
+    version: "current"
+    url: https://owasp.org/www-project-top-10-ci-cd-security-risks/
+    date_reviewed: "2026-06-16"
+    owner: devsecops
+    aliases: [OWASP-CICD-Top-10]
+  - id: NIST-CSF-2.0
+    family: NIST
+    name: NIST Cybersecurity Framework
+    version: "2.0"
+    url: https://www.nist.gov/cyberframework
+    date_reviewed: "2026-06-16"
+    owner: compliance
+    aliases: [NIST-CSF-2.0]
+  - id: NIST-SP-800-53-Rev5
+    family: NIST
+    name: NIST SP 800-53 Security and Privacy Controls
+    version: "Revision 5, Update 1"
+    url: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+    date_reviewed: "2026-06-16"
+    owner: compliance
+    aliases: [NIST-SP-800-53, NIST-SP-800-53-AC, NIST-SP-800-53-AC-6]
+  - id: NIST-SP-800-63B
+    family: NIST
+    name: NIST SP 800-63B Digital Identity Guidelines
+    version: "Revision 4"
+    url: https://csrc.nist.gov/pubs/sp/800/63/b/4/final
+    date_reviewed: "2026-06-16"
+    owner: identity
+    aliases: [NIST-SP-800-63B]
+  - id: NIST-SP-800-207
+    family: NIST
+    name: NIST SP 800-207 Zero Trust Architecture
+    version: "Final"
+    url: https://csrc.nist.gov/pubs/sp/800/207/final
+    date_reviewed: "2026-06-16"
+    owner: identity
+    aliases: [NIST-SP-800-207]
+  - id: NIST-AI-RMF-1.0
+    family: NIST
+    name: NIST AI Risk Management Framework
+    version: "1.0"
+    url: https://www.nist.gov/itl/ai-risk-management-framework
+    date_reviewed: "2026-06-16"
+    owner: ai-security
+    aliases: [NIST-AI-RMF, NIST-AI-RMF-1.0]
+  - id: MITRE-ATTACK
+    family: MITRE
+    name: MITRE ATT&CK
+    version: "v19.1"
+    url: https://attack.mitre.org/resources/versions/
+    date_reviewed: "2026-06-16"
+    owner: secops
+    aliases: [MITRE-ATT&CK, MITRE-ATT&CK-v16, MITRE-ATT&CK-v19.1]
+  - id: MITRE-ATLAS
+    family: MITRE
+    name: MITRE ATLAS
+    version: "current"
+    url: https://atlas.mitre.org/
+    date_reviewed: "2026-06-16"
+    owner: ai-security
+    aliases: [MITRE-ATLAS]
+  - id: CWE
+    family: MITRE
+    name: Common Weakness Enumeration
+    version: "current"
+    url: https://cwe.mitre.org/
+    date_reviewed: "2026-06-16"
+    owner: appsec
+    aliases: [CWE, CWE-Top-25]
+  - id: CIS-Controls-v8
+    family: CIS
+    name: CIS Critical Security Controls
+    version: "v8"
+    url: https://www.cisecurity.org/controls/v8
+    date_reviewed: "2026-06-16"
+    owner: compliance
+    aliases: [CIS-Controls-v8]
+  - id: CIS-Benchmarks
+    family: CIS
+    name: CIS Benchmarks
+    version: "current"
+    url: https://www.cisecurity.org/cis-benchmarks
+    date_reviewed: "2026-06-16"
+    owner: cloud
+    aliases: [CIS-Benchmarks, CIS-AWS-v3.0.0, CIS-Azure-v2.1.0, CIS-GCP-v2.0.0, CIS-Docker-v1.6.0, CIS-Kubernetes-v1.9.0]
+  - id: CVSS-4.0
+    family: CVSS
+    name: Common Vulnerability Scoring System
+    version: "4.0"
+    url: https://www.first.org/cvss/v4.0/
+    date_reviewed: "2026-06-16"
+    owner: vuln-management
+    aliases: [CVSS-4.0]
+  - id: SSVC-2.1
+    family: SSVC
+    name: Stakeholder-Specific Vulnerability Categorization
+    version: "2.1"
+    url: https://certcc.github.io/SSVC/
+    date_reviewed: "2026-06-16"
+    owner: vuln-management
+    aliases: [SSVC, SSVC-2.1]
+  - id: EPSS-v4
+    family: EPSS
+    name: Exploit Prediction Scoring System
+    version: "v4"
+    url: https://www.first.org/epss/
+    date_reviewed: "2026-06-16"
+    owner: vuln-management
+    aliases: [EPSS, EPSS-v3, EPSS-v4]
+  - id: SLSA-v1.2
+    family: SLSA
+    name: Supply-chain Levels for Software Artifacts
+    version: "1.2"
+    url: https://slsa.dev/spec/
+    date_reviewed: "2026-06-16"
+    owner: devsecops
+    aliases: [SLSA, SLSA-v1.0, SLSA-v1.2]
+  - id: CycloneDX-1.7
+    family: CycloneDX
+    name: CycloneDX Software Bill of Materials Standard
+    version: "1.7"
+    url: https://cyclonedx.org/specification/overview/
+    date_reviewed: "2026-06-16"
+    owner: devsecops
+    aliases: [CycloneDX, CycloneDX-1.5, CycloneDX-1.7]
+  - id: SPDX-3.0.1
+    family: SPDX
+    name: System Package Data Exchange
+    version: "3.0.1"
+    url: https://spdx.github.io/spdx-spec/v3.0.1/
+    date_reviewed: "2026-06-16"
+    owner: devsecops
+    aliases: [SPDX, SPDX-2.3, SPDX-3.0.1]

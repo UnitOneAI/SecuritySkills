@@ -165,6 +165,13 @@ fixture expectations and run:
 ruby scripts/test_remediation_fixtures.rb
 ```
 
+If your contribution adds or changes framework references, update
+[data/frameworks.yaml](data/frameworks.yaml) and run:
+
+```bash
+ruby scripts/validate_framework_registry.rb
+```
+
 If your contribution changes CI/CD examples, update
 [docs/ci-cd-examples.md](docs/ci-cd-examples.md) and run:
 

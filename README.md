@@ -119,6 +119,12 @@ ruby scripts/generate_quality_scorecard.rb
 ruby scripts/generate_quality_scorecard.rb --check
 ```
 
+Validate framework provenance, versions, owners, and review dates with:
+
+```bash
+ruby scripts/validate_framework_registry.rb
+```
+
 CI/CD examples for GitHub Actions, GitLab CI, Azure DevOps, Jenkins,
 pre-commit, and local agent usage are available in
 [`docs/ci-cd-examples.md`](docs/ci-cd-examples.md). Validate those examples
