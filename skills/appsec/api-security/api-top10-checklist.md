@@ -17,6 +17,8 @@ BOLA occurs when an API endpoint accepts an object identifier from the client an
 - Authorization logic that checks only whether the user is authenticated, not whether they own or have access to the specific object.
 - Sequential or predictable resource identifiers (auto-increment integers) that enable enumeration.
 - Batch or list endpoints that return objects without filtering by the caller's permissions.
+- Cursor-based pagination or search tokens that can be replayed across tenant, account, or filter boundaries.
+- Opaque cursors that encode a sort key or record ID but omit tenant scope, permission version, or server-side revalidation on each page request.
 
 ### REST Vulnerable Patterns
 
@@ -80,6 +82,40 @@ const resolvers = {
 };
 ```
 
+### Cursor Pagination Patterns
+
+```python
+# VULNERABLE: Cursor advances by ID only; tenant scope is never re-checked
+@app.route('/api/v1/invoices')
+@require_auth
+def list_invoices():
+    cursor = request.args.get("cursor")
+    query = Invoice.query.order_by(Invoice.id.asc())
+    if cursor:
+        query = query.filter(Invoice.id > decode_cursor(cursor)["last_id"])
+    invoices = query.limit(50).all()
+    return jsonify([invoice.to_dict() for invoice in invoices])
+```
+
+```python
+# SECURE: Cursor stays bound to tenant scope and current authorization
+@app.route('/api/v1/invoices')
+@require_auth
+def list_invoices():
+    cursor = request.args.get("cursor")
+    scope = {"tenant_id": current_user.tenant_id, "role": current_user.role}
+    query = Invoice.query.filter_by(tenant_id=current_user.tenant_id).order_by(Invoice.id.asc())
+    if cursor:
+        decoded = decode_cursor(cursor)
+        if decoded["tenant_id"] != current_user.tenant_id:
+            return jsonify({"error": "Invalid cursor"}), 400
+        query = query.filter(Invoice.id > decoded["last_id"])
+    invoices = query.limit(50).all()
+    return jsonify([invoice.to_dict() for invoice in invoices])
+```
+
+**Benign exception:** Do not flag cursor pagination by default when the cursor is opaque, the server binds it to tenant/user scope, and every page request re-checks authorization before returning results. The finding needs proof that a cursor from one scope can fetch data from another scope or outlive a permission change.
+
 ### BOLA vs BFLA Distinction
 
 BOLA and BFLA (API5:2023) are frequently confused. The distinction is critical for accurate findings:
@@ -99,8 +135,11 @@ Both can coexist in a single endpoint. An endpoint may lack both a role check (B
 - [ ] Every endpoint that accepts a resource identifier enforces ownership or relationship-based access control.
 - [ ] Authorization checks happen at the data access layer, not only at the controller/route layer.
 - [ ] Batch/list endpoints filter results by the caller's permissions.
+- [ ] Cursor-based pagination and search tokens are bound to tenant/user scope and revalidated on every follow-up request.
 - [ ] Resource identifiers are UUIDs or non-sequential values to resist enumeration.
 - [ ] GraphQL resolvers enforce authorization on every field that returns sensitive data.
+- [ ] Findings about cursor tenant isolation include concrete evidence that cross-tenant replay, stale authorization reuse, or filter-bypass is actually possible.
+- [ ] Remediation includes a regression test proving a cursor from tenant A cannot fetch tenant B data after filter, role, or membership changes.
 
 ---
 
