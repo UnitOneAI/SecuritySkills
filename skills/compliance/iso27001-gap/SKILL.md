@@ -213,6 +213,61 @@ Use the following maturity scoring:
 **A.5.5 Contact with authorities** — Establish/maintain contact with relevant authorities.
 **A.5.6 Contact with special interest groups** — Establish/maintain contact with security forums and professional associations.
 **A.5.7 Threat intelligence** — Collect and analyze threat intelligence (new in 2022).
+
+##### Threat Intelligence to Risk Register Evidence Gates
+
+When assessing A.5.7 threat intelligence, require **traceable evidence flow** from intelligence to risk register before marking as implemented:
+
+| Evidence Element | Description | Example |
+|-----------------|-------------|---------|
+| **Intelligence Source** | Documented source of threat intelligence | CISA advisories, sector ISAC, vendor bulletins, internal SOC feeds |
+| **Relevance Decision** | Documented assessment of whether intelligence applies to organizational assets | "Relevant: affects our use of Log4j in payment processing" |
+| **Risk Register Link** | Traceable connection to risk register item | Risk ID, register entry, or documented decision not to create entry |
+| **Treatment Owner** | Named individual/role responsible for risk response | "Platform Team Lead — implement patch by 2026-04-01" |
+| **Residual Score Update** | Risk score updated if intelligence changes threat landscape | "Residual risk updated from Medium to High after advisory" |
+| **Review Timestamp** | When the intelligence was reviewed and decision made | "Reviewed 2026-03-15, decision documented in risk committee minutes" |
+
+**False Positive Guidance — Advisory-Only Feeds:**
+
+Do NOT flag as a gap when:
+- Threat intelligence feed is documented as advisory only
+- Feed items are triaged in a quarterly risk review workflow
+- Relevance decisions are documented even if no risk register entry is created
+- Intelligence is assessed and determined not relevant to organizational assets
+
+Flag as a gap only if relevant intelligence is received but:
+- No relevance decision is documented
+- Relevant intelligence creates no risk register entry or documented acceptance
+- Risk register scores are not updated when threat severity changes
+
+**Missed Variants — Detect These Gaps:**
+
+| Variant | Detection Pattern | Why It Matters |
+|---------|------------------|----------------|
+| Supplier-specific advisory ignored | "Sector-specific ransomware advisory affects a critical supplier, but no risk register item or treatment decision is created" | Relevant threat intelligence should create traceable risk acceptance, mitigation, or monitoring evidence |
+| Severity change without review | "Threat feed severity changes from medium to critical, but risk register residual score and owner review stay unchanged" | Changed intelligence should trigger risk review freshness checks |
+| Stale intelligence window | "Intelligence from 6+ months ago is still the basis for risk decisions without freshness review" | Expired intelligence windows may not reflect current threat landscape |
+
+**Edge Cases — Reviewer Judgment Required:**
+
+| Scenario | Valid If... | Flag If... |
+|----------|------------|------------|
+| False-positive indicators | Intelligence is assessed and determined not relevant with documented reasoning | Intelligence is ignored without assessment |
+| Duplicate feeds | Same intelligence from multiple sources is triaged once with documented consolidation | Each feed creates separate uncoordinated responses |
+| Supplier-only exposure | Intelligence affects supplier but supplier risk is tracked in third-party register | Supplier exposure is not tracked in any register |
+| Regional advisories | Regional intelligence is assessed for organizational relevance | Regional intelligence is assumed irrelevant without assessment |
+| Expired intelligence windows | Old intelligence is explicitly marked as expired and refreshed | Old intelligence is still the basis for current risk decisions |
+
+**Remediation Quality Checklist:**
+
+When recommending threat intelligence improvements, ensure remediation addresses:
+
+- [ ] Intelligence source documented
+- [ ] Relevance decision recorded (relevant/not relevant with reasoning)
+- [ ] Risk register link established (or documented reason for no entry)
+- [ ] Treatment owner identified
+- [ ] Residual score updated if threat landscape changed
+- [ ] Review timestamp recorded
 **A.5.8 Information security in project management** — Integrated into project management.
 **A.5.9 Inventory of information and other associated assets** — Developed and maintained.
 **A.5.10 Acceptable use of information and other associated assets** — Rules identified, documented, implemented.
