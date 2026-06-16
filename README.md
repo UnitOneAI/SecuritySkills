@@ -106,6 +106,14 @@ Validate skill fixture manifests and expected evidence strings with:
 ruby scripts/test_skill_fixtures.rb
 ```
 
+### Normalized finding JSON
+
+Every skill must be able to emit findings as normalized JSON that validates
+against [`schemas/finding.schema.json`](schemas/finding.schema.json). The
+top-level envelope, required run/skill metadata, finding fields, evidence,
+framework/CWE references, remediation fields, and test strategy requirements are
+documented in [`docs/normalized-json-output.md`](docs/normalized-json-output.md).
+
 ### Progressive disclosure (keep `SKILL.md` lean)
 
 Claude's skill guidance: when a `SKILL.md` would exceed ~500 lines, **don't inline everything** — split detail into sibling reference files in the same directory and link to them from `SKILL.md`. The agent loads a reference only when it needs it, so the entrypoint stays cheap to load.
@@ -241,7 +249,7 @@ Pre-configured skill sequences for common security roles. Each bundle orchestrat
 ## What Makes This Different
 
 - **Framework-grounded.** Every skill cites real control IDs from OWASP, NIST, MITRE ATT&CK, or CIS. No invented controls. No hallucinated references.
-- **Consistent output format.** Structured findings with severity, CWE mapping, framework reference, evidence, and remediation -- every time.
+- **Consistent output format.** Structured findings with severity, CWE mapping, framework reference, evidence, remediation, and normalized JSON -- every time.
 - **AI-security skills that don't exist elsewhere.** OWASP LLM Top 10, Agentic AI security, prompt injection testing, model supply chain review.
 - **Multi-agent compatible.** Same skill file works with Claude Code, Gemini CLI, Cursor, Codex CLI, OpenClaw, and Kiro.
 - **Prompt-injection hardened.** Every skill reviewed against OWASP LLM01:2025. CI scans for injection patterns on every PR.

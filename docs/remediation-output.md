@@ -1,7 +1,9 @@
 # Remediation Output Fields
 
 SecuritySkills fix recommendations should be emitted as structured remediation
-items under each finding. Every remediation item must include:
+items under each finding in the normalized JSON envelope documented in
+[`docs/normalized-json-output.md`](normalized-json-output.md). Every remediation
+item must include:
 
 - `guidance`: concrete remediation steps or patch guidance.
 - `confidence`: `low`, `medium`, or `high` confidence that the recommendation is correct for the observed evidence.
@@ -44,5 +46,5 @@ remediations:
           expected_result: "All login redirect regression examples pass."
 ```
 
-The machine-readable contract lives in
+The machine-readable JSON schema lives in
 [`schemas/finding.schema.json`](../schemas/finding.schema.json).

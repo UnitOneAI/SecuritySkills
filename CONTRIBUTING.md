@@ -158,6 +158,15 @@ If your contribution includes skill test fixtures, also run:
 ruby scripts/test_skill_fixtures.rb
 ```
 
+### Normalized JSON output
+
+Every skill must be able to emit findings as normalized JSON that validates
+against [schemas/finding.schema.json](schemas/finding.schema.json). The required
+top-level envelope and field semantics are documented in
+[docs/normalized-json-output.md](docs/normalized-json-output.md). Existing
+human-readable report sections may remain, but machine-readable finding output
+must use the normalized contract.
+
 ---
 
 ## Getting Started

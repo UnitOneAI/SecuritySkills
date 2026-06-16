@@ -388,6 +388,7 @@ Published by NTIA in July 2021 as part of Executive Order 14028 implementation. 
 - **Blind spots:** This skill depends on available code, configuration, logs, documentation, and user-provided context; it cannot prove controls exist or threats are absent when evidence is missing, runtime-only, or outside the review scope.
 - **False-positive risks:** Treat findings as hypotheses until validated against asset criticality, compensating controls, environment intent, and recent authorized changes.
 - **Required evidence:** Support each finding with concrete artifacts such as file paths and line numbers, policy snippets, scanner output, logs, screenshots, control records, or reproducible steps.
+- **Normalized JSON:** When machine-readable output is requested, findings MUST be available as JSON that validates against [`schemas/finding.schema.json`](../../../schemas/finding.schema.json).
 - **Escalation rules:** Escalate immediately for suspected active compromise, exposed secrets, regulated-data exposure, critical exploitable vulnerabilities, privileged-access abuse, or when evidence is insufficient to safely disposition a high-impact risk.
 
 ---

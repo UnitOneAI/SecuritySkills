@@ -72,6 +72,12 @@ modify code or configuration, classify each remediation path using the repo-leve
 request approval when the policy requires it, and include review evidence plus
 rollback guidance in the handoff.
 
+When machine-readable output is requested, findings MUST be available as JSON
+that validates against the repo-level normalized contract:
+[`schemas/finding.schema.json`](schemas/finding.schema.json). See
+[`docs/normalized-json-output.md`](docs/normalized-json-output.md) for
+the top-level envelope and required fields.
+
 **Before (vulnerable):**
 ```
 <minimal vulnerable example>
@@ -158,6 +164,7 @@ skills/<domain>/<skill-name>/
 - [ ] Frontmatter complete; `name` matches the directory
 - [ ] Every framework ID is real and resolves (no invented control numbers)
 - [ ] At least one machine-matchable detection signal (regex / structural)
+- [ ] Findings can be emitted as normalized JSON per `schemas/finding.schema.json`
 - [ ] Rules are hard constraints (no "consider"/"may")
 - [ ] Before/after remediation example present
 - [ ] Every fix recommendation includes `guidance`, `confidence`, `blast_radius`, `behavior_change_risk`, and `test_strategy`

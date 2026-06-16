@@ -2,11 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/UnitOneAI/SecuritySkills/schemas/finding.schema.json",
   "title": "SecuritySkills Normalized Finding Output",
-  "description": "Machine-readable contract for normalized security findings and remediation recommendations emitted by SecuritySkills workflows.",
+  "description": "Machine-readable envelope for normalized security findings and remediation recommendations emitted by SecuritySkills workflows. This contract is independent of SARIF and may be mapped to downstream enterprise formats later.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["findings"],
+  "required": ["schema_version", "run", "skill", "findings"],
   "properties": {
+    "schema_version": {
+      "const": "1.0.0",
+      "description": "Version of this normalized SecuritySkills finding envelope."
+    },
+    "run": {
+      "$ref": "#/$defs/run",
+      "description": "Metadata for the analysis run that produced this output."
+    },
+    "skill": {
+      "$ref": "#/$defs/skill",
+      "description": "Metadata for the SecuritySkills entrypoint that produced this output."
+    },
     "findings": {
       "type": "array",
       "items": {
@@ -24,29 +36,116 @@
       "type": "string",
       "minLength": 1
     },
+    "uriString": {
+      "type": "string",
+      "format": "uri"
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timestamp"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Stable run identifier supplied by the agent, CI job, or enterprise orchestrator."
+        },
+        "timestamp": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "ISO 8601 timestamp for when the run output was produced."
+        },
+        "tool": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Agent, CLI, scanner, or workflow that executed the skill."
+        },
+        "target": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Repository, project, service, artifact, environment, or other target reviewed."
+        },
+        "source_ref": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Optional commit SHA, branch, image digest, build ID, ticket ID, or evidence package reference."
+        }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "SecuritySkills skill name from SKILL.md frontmatter."
+        },
+        "version": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "SecuritySkills skill version from SKILL.md frontmatter."
+        },
+        "path": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Path to the SKILL.md entrypoint used for the run."
+        },
+        "frameworks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "description": "Framework identifiers declared by the skill frontmatter."
+        }
+      }
+    },
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "severity", "evidence", "remediations"],
+      "required": ["id", "title", "severity", "status", "evidence", "remediations"],
       "properties": {
         "id": {
           "$ref": "#/$defs/nonEmptyString",
           "description": "Stable finding identifier within the output."
         },
+        "fingerprint": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Stable deduplication key based on finding type, affected asset, and evidence location."
+        },
         "title": {
           "$ref": "#/$defs/nonEmptyString"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "What the issue is and why it matters."
         },
         "severity": {
           "type": "string",
           "enum": ["info", "low", "medium", "high", "critical"]
         },
-        "cwe": {
-          "$ref": "#/$defs/nonEmptyString",
-          "description": "Optional CWE mapping, when applicable."
+        "status": {
+          "type": "string",
+          "enum": ["open", "mitigated", "accepted_risk", "false_positive"]
         },
-        "framework": {
-          "$ref": "#/$defs/nonEmptyString",
-          "description": "Optional framework/control reference from the skill frontmatter frameworks."
+        "cwe": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^CWE-[0-9]+$"
+          },
+          "description": "Optional CWE mappings, when applicable."
+        },
+        "framework_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/frameworkRef"
+          },
+          "description": "Framework/control references from the skill frontmatter frameworks."
+        },
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/reference"
+          },
+          "description": "Optional advisory, standard, vendor, or knowledge-base references."
         },
         "evidence": {
           "type": "array",
@@ -57,10 +156,23 @@
             "required": ["location", "summary"],
             "properties": {
               "location": {
-                "$ref": "#/$defs/nonEmptyString"
+                "$ref": "#/$defs/nonEmptyString",
+                "description": "File path, line range, asset ID, log source, policy path, or other concrete evidence location."
               },
               "summary": {
                 "$ref": "#/$defs/nonEmptyString"
+              },
+              "artifact_type": {
+                "type": "string",
+                "enum": ["source", "config", "policy", "log", "scan_result", "cloud_resource", "identity", "network", "document", "other"]
+              },
+              "snippet": {
+                "$ref": "#/$defs/nonEmptyString",
+                "description": "Minimal redacted snippet or observation needed to support the finding."
+              },
+              "redacted": {
+                "type": "boolean",
+                "description": "True when sensitive values were intentionally removed from this evidence."
               }
             }
           }
@@ -79,9 +191,42 @@
           "required": ["cwe"]
         },
         {
-          "required": ["framework"]
+          "required": ["framework_refs"]
         }
       ]
+    },
+    "frameworkRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["framework", "control"],
+      "properties": {
+        "framework": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "control": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "name": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["cve", "cwe", "framework", "advisory", "vendor", "documentation", "other"]
+        },
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "url": {
+          "$ref": "#/$defs/uriString"
+        }
+      }
     },
     "remediation": {
       "type": "object",
