@@ -4,15 +4,28 @@
 # Default owners for all files
 * @kamalsrini
 
-# AI security skills require review from a maintainer with AI security background
-# per SECURITY.md Section 4: "Any skill in the ai-security/ directory requires
-# review from a maintainer with AI security background"
+# Domain skill ownership gates. Replace @kamalsrini or add teams when GitHub
+# teams are available; keep these patterns so branch protection can require
+# CODEOWNER review by domain.
+skills/appsec/ @kamalsrini
+skills/cloud/ @kamalsrini
 skills/ai-security/ @kamalsrini
+skills/compliance/ @kamalsrini
+skills/secops/ @kamalsrini
+
+# Adjacent domain surfaces.
+skills/devsecops/ @kamalsrini
+skills/identity/ @kamalsrini
+skills/incident-response/ @kamalsrini
+skills/network/ @kamalsrini
+skills/vuln-management/ @kamalsrini
+roles/ @kamalsrini
 
 # CI/CD workflows require maintainer review (supply chain risk)
 .github/workflows/ @kamalsrini
 
 # Index and contributing guidelines require maintainer review
 index.yaml @kamalsrini
+data/frameworks.yaml @kamalsrini
 CONTRIBUTING.md @kamalsrini
 SECURITY.md @kamalsrini

@@ -180,6 +180,13 @@ If your contribution changes CI/CD examples, update
 ruby scripts/validate_ci_cd_examples.rb
 ```
 
+If your contribution changes skill ownership or review routing, update
+[.github/CODEOWNERS](.github/CODEOWNERS) and run:
+
+```bash
+ruby scripts/validate_codeowners.rb
+```
+
 Release artifacts are checksummed by the GitHub release workflow. See
 [docs/release-integrity.md](docs/release-integrity.md) before changing release
 packaging.
