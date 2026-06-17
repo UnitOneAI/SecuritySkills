@@ -184,14 +184,14 @@ Suppression Record:
 
 ##### Drift Evidence Gates
 
-Suppressions are point-in-time assessments. The environment drifts; the suppression may not. The following gates MUST be enforced:
+Suppressions are point‑in‑time assessments. The environment drifts; the suppression may not. The following drift gates MUST be enforced to keep suppressions valid:
 
-1. **Suppression age gate:** Any suppression older than its `expires_at` date MUST be flagged for immediate re-review. If `expires_at` is null, flag as "orphaned" and escalate.
-2. **Plugin update gate:** When a scanner vendor updates a plugin's detection logic (new version, new check method), all suppressions for that plugin ID MUST be re-evaluated. The old evidence may no longer apply.
-3. **Asset exposure gate:** When an asset's network exposure changes (new public IP, zone migration, firewall rule change), all suppressions referencing that asset MUST be re-evaluated.
-4. **Package change gate:** When the scoped package instance changes version, installation source, or configuration, the suppression MUST be re-evaluated.
-5. **Compensating control gate:** When a compensating control referenced in a suppression is modified, removed, or its coverage changes, the suppression MUST be re-evaluated and the finding MUST be reclassified as a true positive until the control is verified.
-6. **Quarterly review gate:** All active suppressions MUST be reviewed quarterly regardless of other triggers. Suppressons that pass review are re-dated; those that fail review are reopened.
+1. **Plugin update gate:** Re‑evaluate suppression if the scanner vendor updates the plugin's detection logic.
+2. **Asset exposure gate:** Re‑evaluate suppression if the asset's network exposure (e.g., firewall rule, zone migration, public IP) changes.
+3. **Package change gate:** Re‑evaluate suppression if the scoped package instance changes version, source, or configuration.
+4. **Compensating control gate:** Re‑evaluate suppression if the compensating control is modified, removed, or its coverage changes.
+
+(Quarterly review and suppression‑age gates remain part of the overall lifecycle but are handled elsewhere.)
 
 ```
 Drift Gate Check:
@@ -429,13 +429,15 @@ Highlight the most impactful tuning recommendations.]
 
 ### Suppression Inventory
 
-| Plugin/CVE | Scope | Disposition | Owner | Created | Expires | Age (days) | Re-open Triggers | Tier |
-|---|---|---|---|---|---|---|---|---|
-| [ID] | [Asset+pkg / Group / Global] | [Confirmed FP / Compensated risk] | [Name] | [YYYY-MM-DD] | [YYYY-MM-DD] | [N] | [list] | [Safe/Moderate/Risky/Dangerous] |
+|| Plugin/CVE | Scope | Disposition | Owner | Created | Expires | Age (days) | Re-open Triggers | Tier |
+---|---|---|---|---|---|---|---|---|
+|| [ID] | [Asset+pkg / Group / Global] | [Confirmed FP / Compensated risk] | [Name] | [YYYY-MM-DD] | [YYYY-MM-DD] | [N] | [list] | [Safe/Moderate/Risky/Dangerous] |
 
 **Total active suppressions:** [N]
 **Orphaned (no owner):** [N]
 **Expired (past expiry date):** [N]
+**Indefinite (no expiry):** [N]
+**Compensated risk misclassified as FP:** [N — flag these as classification errors]
 **Indefinite (no expiry):** [N]
 **Compensated risk misclassified as FP:** [N — flag these as classification errors]
 
