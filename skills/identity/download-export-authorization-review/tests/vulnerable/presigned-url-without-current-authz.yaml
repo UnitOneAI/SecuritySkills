@@ -1,0 +1,23 @@
+export_flow:
+  name: invoice-pdf-download
+  generation:
+    endpoint: POST /api/reports/invoices/export
+    authorization_checked: "invoice screen access only"
+    stored_metadata:
+      export_id: exp_123
+      file_key: invoices/tenant-a/2026-06.zip
+      created_by: user_17
+  delivery:
+    endpoint: GET /api/exports/exp_123/url
+    behavior: "returns existing S3 pre-signed URL"
+    current_authorization_recheck: false
+    link_ttl_minutes: 10080
+    revocation_supported: false
+  abuse_case:
+    - user_17 is removed from tenant-a after generation
+    - user_17 can still retrieve the export for seven days
+    - anyone with the copied URL can download the file
+expected_finding:
+  id: EXP-GET-03
+  severity: high
+  reason: "pre-signed URL possession is treated as authorization after access changes"
