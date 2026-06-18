@@ -12,7 +12,7 @@ phase: [build, review]
 frameworks: [OWASP-Top-10-2021]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.1"
+version: "1.0.2"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -230,6 +230,7 @@ setHeader\(.*req\.|res\.set\(.*req\.|response\.addHeader.*request\.getParameter
 
 - Use parameterized queries (prepared statements) for all SQL — no exceptions.
 - Use ORM methods properly; avoid raw query escape hatches unless inputs are strictly validated and parameterized.
+- **Type-safe query builders are NOT immune to injection.** Kysely (`.raw()`), Drizzle (`sql\`\`` template), TypeORM (`.query()`), and similar "type-safe" ORMs offer raw expression escape hatches that bypass type guarantees and can introduce SQLi. Audit all raw escape usage explicitly (CVE-2026-32763, Kysely, CVSS 8.2).
 - For OS commands, use array-based APIs (e.g., `subprocess.run([...])` without `shell=True`); validate and allowlist expected argument values.
 - Apply context-aware output encoding for XSS: HTML-encode for HTML body, attribute-encode for attributes, JS-encode for script contexts. Use frameworks' built-in auto-escaping.
 - Validate and sanitize all input on the server side; use allowlists over denylists.
@@ -681,7 +682,7 @@ Present findings in this structure:
 
 2. **Confusing output encoding with input validation.** Input validation rejects malformed data; output encoding neutralizes data for a specific rendering context. Both are required. Validating input alone does not prevent stored XSS if the output is not encoded when rendered.
 
-3. **Assuming ORM usage eliminates SQL injection.** ORMs provide parameterized queries by default, but nearly every ORM offers raw query escape hatches. A single `raw()`, `execute()`, or `$queryRaw` call with string interpolation reintroduces SQL injection.
+3. **Assuming ORM usage eliminates SQL injection.** ORMs provide parameterized queries by default, but nearly every ORM offers raw query escape hatches. A single `raw()`, `execute()`, or `$queryRaw` call with string interpolation reintroduces SQL injection. This applies equally to "type-safe" query builders: Kysely's `.raw()`, Drizzle's `sql\`\`` template, and TypeORM's `.query()` can all introduce injection if string interpolation is used (CVE-2026-32763, CVSS 8.2).
 
 4. **Reporting deprecated algorithms without context.** MD5 used for non-security checksums (e.g., cache busting, ETags) is not a cryptographic failure. Only flag weak algorithms when they protect sensitive data, passwords, or integrity-critical operations. State the security impact clearly.
 
