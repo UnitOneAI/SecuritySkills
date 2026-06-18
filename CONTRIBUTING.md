@@ -191,6 +191,9 @@ Release artifacts are checksummed by the GitHub release workflow. See
 [docs/release-integrity.md](docs/release-integrity.md) before changing release
 packaging.
 
+Maintainers can use [docs/pr-intake-loop.md](docs/pr-intake-loop.md) to turn
+incoming GitHub PRs into Linear-tracked review, verification, and merge work.
+
 ### Normalized JSON output
 
 Every skill must be able to emit findings as normalized JSON that validates
