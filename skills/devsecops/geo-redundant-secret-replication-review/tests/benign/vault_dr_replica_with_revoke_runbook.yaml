@@ -1,0 +1,15 @@
+vault:
+  primary_cluster: prod-us-east
+  dr_replication:
+    enabled: true
+    secondary_cluster: prod-us-west
+    operator_group: tenant-a-break-glass
+    approval_ticket_required: true
+    access_expires_minutes: 30
+  rotation_runbook:
+    steps:
+      - rotate primary secret
+      - rotate secondary replica
+      - revoke stale leases in both clusters
+      - invalidate application secret caches
+      - verify audit events for actor, ticket, reason, region, and expiry

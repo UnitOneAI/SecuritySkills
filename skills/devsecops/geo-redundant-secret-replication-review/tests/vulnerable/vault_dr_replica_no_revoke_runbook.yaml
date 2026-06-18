@@ -1,0 +1,14 @@
+vault:
+  primary_cluster: prod-us-east
+  dr_replication:
+    enabled: true
+    secondary_cluster: prod-eu-west
+    operator_group: global-platform-admins
+  rotation_runbook:
+    steps:
+      - rotate primary secret
+      - restart primary workload
+    missing:
+      - secondary cluster revoke
+      - cache invalidation
+      - break-glass audit review
