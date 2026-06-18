@@ -222,6 +222,11 @@ ZT-NET-08: DNS traffic unencrypted and unmonitored
 ZT-NET-09: No NDR capability — lateral movement detection is blind spot
 ZT-NET-10: Microsegmentation policies not dynamically updated based on threat intelligence
 ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
+ZT-NET-12: Private app connector fails open — traffic bypasses connector on outage instead of failing closed
+ZT-NET-13: Emergency bypass for private apps persists after outage resolution (no expiry, no owner, no audit trail)
+ZT-NET-14: Split DNS exposes internal app addresses directly when connector is down
+ZT-NET-15: Connector health check passes but policy sync is stale or failing silently
+ZT-NET-16: Private apps reachable from "trusted" network segments without policy enforcement
 ```
 
 #### Microsegmentation Readiness Assessment
@@ -234,6 +239,19 @@ ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
 | **Environment support** | Does the tool cover VMs, containers, serverless, and multi-cloud? |
 | **Monitoring and alerting** | Can violations be detected and alerted in real-time? |
 | **Rollback capability** | Can policies be rolled back without outage if misconfigured? |
+
+---
+
+#### Private App Connector Fail-Open Readiness
+
+| Readiness Factor | Assessment Criteria |
+|---|---|
+| **Fail-closed behavior** | When connector is disabled or unreachable, does traffic to private apps fail closed (denied) rather than routing around the connector? |
+| **Policy sync validation** | Does connector health check include policy sync status, not just connectivity heartbeat? |
+| **DNS enforcement** | Are internal app DNS names only resolvable through the connector/tunnel, not via split DNS on corporate networks? |
+| **Bypass governance** | Is emergency bypass time-limited, approval-required, and automatically revoked after expiry? |
+| **Direct route testing** | With connector disabled, can private apps be reached via direct IP/VPN? (Should be no.) |
+| **Audit trail** | Are all connector failures, bypass activations, and policy sync events logged and alerted? |
 
 ---
 
