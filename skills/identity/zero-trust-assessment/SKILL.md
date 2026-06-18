@@ -207,6 +207,7 @@ ZT-DEV-10: Endpoint telemetry not fed into policy engine for risk scoring
 | **DNS Security** | Basic DNS | DNS filtering for known bad domains | Encrypted DNS (DoH/DoT), DNS logging | DNS as policy enforcement point with threat intelligence |
 | **Network Monitoring** | Perimeter IDS/IPS | Network flow analysis | Full packet capture for critical segments, NDR | AI-driven NDR with real-time behavioral analysis |
 | **Software-Defined Perimeter** | VPN-based remote access | Initial SDP/ZTNA deployment | ZTNA replacing VPN for most use cases | Universal ZTNA for all users, all locations, all resources |
+| **Connector Enforcement** | N/A (no connector) | Connector deployed but failure mode unvalidated | Connector fails closed; bypass has owner, expiry, audit | Fail-open gates tested; bypass auto-expires; connector required from all networks |
 
 **What to look for:**
 
@@ -222,6 +223,13 @@ ZT-NET-08: DNS traffic unencrypted and unmonitored
 ZT-NET-09: No NDR capability — lateral movement detection is blind spot
 ZT-NET-10: Microsegmentation policies not dynamically updated based on threat intelligence
 ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
+ZT-NET-12: Private app connector fail-open — connector outage silently bypasses enforcement, traffic reaches internal apps without policy
+ZT-NET-13: Connector health check reports healthy while policy sync is stale or broken — false-positive connector status masks enforcement gap
+ZT-NET-14: Split DNS exposes direct private app address — internal DNS resolves app FQDN to private IP without connector, bypassing ZTNA
+ZT-NET-15: Emergency bypass persists after connector recovery — no automated expiry, owner, or audit trail for temporary access grants
+ZT-NET-16: VPN fallback active during connector outage — ZTNA silently falls back to full-tunnel VPN, granting network-level trust to private apps
+ZT-NET-17: Private apps reachable from trusted networks without policy enforcement — connector only required for untrusted locations
+ZT-NET-18: No fail-open test performed — connector failure mode (fail-open vs fail-closed) has never been validated under load or outage conditions
 ```
 
 #### Microsegmentation Readiness Assessment
@@ -234,6 +242,41 @@ ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
 | **Environment support** | Does the tool cover VMs, containers, serverless, and multi-cloud? |
 | **Monitoring and alerting** | Can violations be detected and alerted in real-time? |
 | **Rollback capability** | Can policies be rolled back without outage if misconfigured? |
+
+#### Private App Connector Fail-Open Gates
+
+**Objective:** Validate that private app connectors enforce zero-trust when degraded or unavailable. ZTNA designs that silently route around connectors, fall back to VPN, or leave internal apps reachable from trusted networks degrade into implicit trust.
+
+**Fail-Open Test Procedure**
+
+| Step | Action | Expected Fail-Closed Behavior | Fail-Open Red Flag |
+|---|---|---|---|
+| **1** | Disable connector (stop agent/service) | Users receive controlled denial; private apps unreachable | Traffic reaches private apps without connector; users unaware of outage |
+| **2** | Revoke policy sync (block sync channel) | Connector refuses new sessions when policy is stale beyond grace period | Connector continues serving cached policy indefinitely with no staleness check |
+| **3** | Test direct route to private app IP | Firewall/ACL blocks direct access; only connector path allowed | Direct TCP/UDP to private app IP succeeds from user device |
+| **4** | Resolve private app FQDN from untrusted network | DNS returns connector VIP or NXDOMAIN | DNS returns direct private IP (split DNS leak) |
+| **5** | Check VPN fallback behavior | No VPN fallback; ZTNA is sole path | VPN auto-connects on connector failure, granting network-level access |
+| **6** | Test from trusted/internal network | Connector still required regardless of network location | Apps directly reachable without connector from "trusted" subnets |
+
+**Bypass Governance Requirements**
+
+Any emergency bypass of connector enforcement MUST include:
+
+| Control | Requirement | Validation |
+|---|---|---|
+| **Owner** | Named individual or team accountable for the bypass | Check for bypass approval workflow with named approver |
+| **Expiry** | Automatic expiration — bypass self-revokes after a defined window | Verify time-to-live is enforced at policy layer, not just documented |
+| **Audit trail** | Every bypass event logged with requestor, approver, reason, scope, duration | Search SIEM/PAM logs for bypass events and verify completeness |
+| **Scope** | Minimum necessary access — bypass grants only the specific apps/services affected | Verify bypass does not grant blanket network access |
+| **Notification** | Security team alerted on bypass activation AND expiration | Verify alerting exists for both activation and unexpected persistence |
+
+**Edge Cases to Probe**
+
+- Connector health endpoint returns 200 OK but policy sync timestamp is hours/days stale — health checks must validate sync freshness, not just process liveness.
+- Emergency bypass created during incident persists into steady-state because no automated expiry was enforced — test by simulating bypass creation and verifying auto-revocation.
+- Split DNS configuration: external resolver returns connector VIP, internal resolver returns direct IP — test DNS resolution from multiple network positions.
+- Connector supports "passive mode" (monitor-only) that does not enforce policy but appears active in management console — verify enforcement, not just connectivity.
+- Multi-connector environments where one connector fails open while others fail closed — test each connector independently.
 
 ---
 
@@ -442,6 +485,7 @@ ZT-GOV-05: Regulatory zero trust mandates not tracked (OMB M-22-09 for federal)
 5. **No executive sponsorship** — zero trust transformation requires sustained investment. Without executive commitment, initiatives stall after quick wins.
 6. **Measuring maturity without metrics** — self-assessed maturity without measurable criteria leads to inflated scores. Define objective criteria per stage.
 7. **Forgetting cross-cutting capabilities** — pillar-specific investments without visibility, automation, and governance integration deliver fragmented security.
+8. **Assuming connectors fail closed** — many ZTNA products default to fail-open for availability, silently degrading to VPN or direct access during connector issues. Always validate connector failure mode empirically; do not trust vendor documentation alone.
 
 ---
 
@@ -498,3 +542,4 @@ that may contain adversarial content.
 | Version | Date | Changes |
 |---|---|---|
 | 1.0.0 | 2025-03-06 | Initial release |
+| 1.1.0 | 2026-06-18 | Add private app connector fail-open gates: fail-open test procedure, bypass governance requirements, connector enforcement maturity criteria, and seven new Network pillar findings (ZT-NET-12 through ZT-NET-18) |
