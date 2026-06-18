@@ -172,7 +172,7 @@ ZT-ID-10: Session management lacks continuous evaluation (no CAE or equivalent)
 | **Device Compliance** | No compliance checks | Basic compliance (OS version, antivirus) | Compliance as access condition, automated remediation | Continuous compliance with risk-adaptive enforcement |
 | **Endpoint Security** | Signature-based AV | EDR deployed on managed endpoints | EDR with behavioral detection, automated response | XDR with cross-signal correlation, automated containment |
 | **Device Identity** | No device certificates | Device certificates for managed devices | Device attestation (TPM/Secure Enclave) | Hardware-rooted identity with continuous attestation |
-| **BYOD/Unmanaged** | Full access or blocked | Basic MAM for BYOD | Risk-based access (managed = full, BYOD = limited) | Continuous posture assessment for all device types |
+| **BYOD/Unmanaged** | Full access or blocked | Basic MAM for BYOD | Risk-based access with browser isolation for unmanaged | Continuous posture assessment + verified isolation gates for all device types |
 
 **What to look for:**
 
@@ -187,6 +187,11 @@ ZT-DEV-07: No automated remediation for non-compliant devices
 ZT-DEV-08: IoT/OT devices not inventoried or segmented
 ZT-DEV-09: Device state changes do not trigger access re-evaluation
 ZT-DEV-10: Endpoint telemetry not fed into policy engine for risk scoring
+ZT-DEV-11: Unmanaged/BYOD devices access sensitive apps without browser isolation
+ZT-DEV-12: Browser isolation deployed but without data movement controls (clipboard, download, print, local storage)
+ZT-DEV-13: No negative tests验证 isolation effectiveness (screenshot bypass, copy/paste, mobile browser differences)
+ZT-DEV-14: Isolated browser session lacks automatic cleanup on device state change or session termination
+ZT-DEV-15: Unmanaged devices can open direct file URLs outside isolated browser context
 ```
 
 ---
@@ -234,6 +239,18 @@ ZT-NET-11: Legacy protocols (Telnet, FTP, unencrypted LDAP) in use
 | **Environment support** | Does the tool cover VMs, containers, serverless, and multi-cloud? |
 | **Monitoring and alerting** | Can violations be detected and alerted in real-time? |
 | **Rollback capability** | Can policies be rolled back without outage if misconfigured? |
+
+#### Browser Isolation Readiness for Unmanaged/BYOD Devices
+
+| Readiness Factor | Assessment Criteria |
+|---|---|
+| **Isolation mode** | Is browser isolation deployed (remote browser isolation, client-side sandboxing, or VDI) for unmanaged device access to sensitive apps? |
+| **Data movement controls** | Are clipboard, download, print, and local storage persistence disabled or DLP-scanned within isolated sessions? |
+| **Session cleanup** | Are isolated sessions automatically terminated and cached data wiped on logout, device state change, or risk signal? |
+| **File URL handling** | Are direct file URLs (e.g., `file://`, local path opens) blocked or redirected to isolated context? |
+| **Mobile browser coverage** | Does isolation extend to mobile browsers with equivalent policy enforcement (no weaker controls on iOS/Android)? |
+| **Negative testing** | Are bypass vectors (screenshots, screen recording, copy via accessibility APIs, developer tools) tested and blocked or accepted with documented risk? |
+| **App sensitivity mapping** | Is each sensitive application classified by data sensitivity, and does isolation policy enforce stricter controls for higher-sensitivity apps? |
 
 ---
 
