@@ -438,8 +438,6 @@ Highlight the most impactful tuning recommendations.]
 **Expired (past expiry date):** [N]
 **Indefinite (no expiry):** [N]
 **Compensated risk misclassified as FP:** [N — flag these as classification errors]
-**Indefinite (no expiry):** [N]
-**Compensated risk misclassified as FP:** [N — flag these as classification errors]
 
 ### Drift Gate Audit
 
