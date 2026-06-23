@@ -181,6 +181,62 @@ Typosquatting (also called dependency confusion or combosquatting) is a supply c
 - Implement dependency confusion protections: claim your internal package names on public registries, or use registry proxy tools like Artifactory or Nexus with routing rules.
 - Run `socket.dev`, `npm audit signatures`, or `sigstore` verification to validate package provenance.
 
+## Authoritative Dependency Evidence Gates
+
+Dependency findings must distinguish declared intent from installed reality. A
+manifest-only signal is not enough to score exposure when a lockfile, CI install
+mode, SBOM, or build artifact proves a different resolved package tree.
+
+### Manifest, Lockfile, and Build Alignment
+
+Before scoring a vulnerable dependency, identify the authoritative artifact:
+
+1. **Manifest intent**: declared ranges in `package.json`, `pyproject.toml`,
+   `go.mod`, `Cargo.toml`, or equivalent files.
+2. **Resolved install**: pinned versions in `package-lock.json`,
+   `pnpm-lock.yaml`, `yarn.lock`, `poetry.lock`, `go.sum`, `Cargo.lock`,
+   `packages.lock.json`, or equivalent lockfiles.
+3. **Build evidence**: SBOMs, container layers, package manager logs, release
+   artifacts, or CI install commands such as `npm ci`,
+   `pnpm install --frozen-lockfile`, `yarn --immutable`,
+   `pip install --require-hashes`, `cargo build --locked`, or
+   `dotnet restore --locked-mode`.
+
+Apply these gates:
+
+- If the manifest range looks vulnerable but the lockfile and build artifact pin
+  a patched version, report the manifest range as maintenance debt instead of an
+  installed vulnerable dependency.
+- If the manifest and lockfile disagree, flag **lockfile drift** and state
+  whether CI installs from the lockfile or resolves fresh versions.
+- If a dependency bot PR changes the manifest without updating the lockfile,
+  require a lockfile refresh or build evidence before treating the fix as
+  complete.
+- In monorepos, map each manifest to the lockfile and package manager used by
+  that workspace. Do not let one workspace's clean lockfile clear another
+  workspace's dependency tree.
+- When evidence is missing, classify the result as needing evidence or human
+  review rather than overstating confirmed exposure.
+
+### Private Registry and Namespace Proof
+
+For scoped or internal package names, verify registry identity before declaring
+dependency confusion risk:
+
+- Check `.npmrc`, `.yarnrc.yml`, `.pypirc`, `pip.conf`, `nuget.config`,
+  `settings.xml`, package source mappings, or CI registry configuration for
+  explicit source-to-namespace bindings.
+- For npm and pnpm, verify scoped registry mappings such as
+  `@company:registry=https://registry.company.example/` and confirm the lockfile
+  `resolved` URL points to the intended private registry.
+- For NuGet, require `<packageSourceMapping>` entries that bind internal package
+  prefixes to the private feed.
+- For Maven, verify repository IDs and groupId ownership for internal
+  coordinates before comparing them with public artifacts.
+- If private namespace proof is absent and a public package can satisfy the same
+  name, flag dependency confusion exposure. If proof is present, record the
+  mapping and avoid a false positive.
+
 ## Assessment Output Template
 
 Before applying or proposing dependency changes, classify each remediation path using [Security Fixer Policy](../../../docs/fixer-policy.md). Include the policy review gate, reviewer evidence, and rollback guidance in the remediation plan.
@@ -214,6 +270,8 @@ When performing a dependency scan, produce findings in the following structure:
 - [ ] Packages with install scripts
 - [ ] Unmaintained packages (no release in 2+ years)
 - [ ] Dependency confusion risk (internal name collisions)
+- [ ] Manifest/lockfile/build artifact drift
+- [ ] Missing private registry namespace proof
 
 ### Recommendations
 
@@ -224,12 +282,13 @@ When performing a dependency scan, produce findings in the following structure:
 
 1. **Identify manifests**: Use Glob to locate all package manifest and lockfiles in the project.
 2. **Inventory dependencies**: Read manifest files to enumerate direct dependencies and their declared version ranges.
-3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions.
+3. **Analyze lockfiles**: Read lockfiles to map the full transitive dependency tree with pinned versions, then compare them with manifests and CI install mode for drift.
 4. **Vulnerability scan**: Cross-reference packages and versions against known CVE databases. Apply the EPSS+CVSS+KEV triage model.
 5. **License audit**: Extract license declarations from lockfiles or registry metadata. Flag copyleft and unlicensed packages.
 6. **Typosquatting check**: Review dependency names for patterns described in the detection section.
-7. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
-8. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
+7. **Private registry proof**: Verify namespace-to-registry mappings for internal or scoped package names before scoring dependency confusion risk.
+8. **Supply chain assessment**: Evaluate SLSA posture -- lockfile presence, pinned versions, provenance availability.
+9. **Report**: Produce the assessment using the output template above, with prioritized remediation recommendations.
 
 ## Limitations
 

@@ -1,0 +1,5 @@
+skill: dependency-scanning
+case_id: manifest-range-lockfile-patched-benign
+kind: benign
+target: evidence.md
+expected_findings: []

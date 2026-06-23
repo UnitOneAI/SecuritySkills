@@ -16,7 +16,7 @@ Readiness score:
 | secure-code-review | 1 vulnerable / 1 benign | 1 expected finding(s) | 1 benign case(s) | not measured; 1 evidence string(s) validated | not measured; 1 benign fixture(s) | valid | not recorded | 5/5 | covered |
 | owasp-top-10-web | 0 vulnerable / 0 benign | 0 expected finding(s) | 0 benign case(s) | not measured; 0 evidence string(s) validated | not measured; 0 benign fixture(s) | valid | not recorded | 3/5 | metadata-only |
 | api-security | 1 vulnerable / 1 benign | 1 expected finding(s) | 1 benign case(s) | not measured; 1 evidence string(s) validated | not measured; 1 benign fixture(s) | valid | not recorded | 5/5 | covered |
-| dependency-scanning | 1 vulnerable / 1 benign | 1 expected finding(s) | 1 benign case(s) | not measured; 1 evidence string(s) validated | not measured; 1 benign fixture(s) | valid | not recorded | 5/5 | covered |
+| dependency-scanning | 3 vulnerable / 2 benign | 3 expected finding(s) | 2 benign case(s) | not measured; 3 evidence string(s) validated | not measured; 2 benign fixture(s) | valid | not recorded | 5/5 | covered |
 | iam-review | 0 vulnerable / 0 benign | 0 expected finding(s) | 0 benign case(s) | not measured; 0 evidence string(s) validated | not measured; 0 benign fixture(s) | valid | not recorded | 3/5 | metadata-only |
 | access-review | 0 vulnerable / 0 benign | 0 expected finding(s) | 0 benign case(s) | not measured; 0 evidence string(s) validated | not measured; 0 benign fixture(s) | valid | not recorded | 3/5 | metadata-only |
 | rbac-design | 0 vulnerable / 0 benign | 0 expected finding(s) | 0 benign case(s) | not measured; 0 evidence string(s) validated | not measured; 0 benign fixture(s) | valid | not recorded | 3/5 | metadata-only |

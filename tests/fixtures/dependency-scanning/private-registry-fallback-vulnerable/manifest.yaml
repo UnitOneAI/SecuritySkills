@@ -1,0 +1,9 @@
+skill: dependency-scanning
+case_id: private-registry-fallback-vulnerable
+kind: vulnerable
+target: evidence.md
+expected_findings:
+  - id: private-registry-namespace-proof-missing
+    severity: high
+    framework: SLSA-v1.0
+    evidence_contains: 'No scoped registry mapping exists for @company/*, and the lockfile resolved @company/utils from the public npm registry'

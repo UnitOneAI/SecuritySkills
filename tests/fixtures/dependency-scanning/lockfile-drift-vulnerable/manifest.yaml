@@ -1,0 +1,9 @@
+skill: dependency-scanning
+case_id: lockfile-drift-vulnerable
+kind: vulnerable
+target: evidence.md
+expected_findings:
+  - id: lockfile-drift
+    severity: medium
+    framework: SLSA-v1.0
+    evidence_contains: 'package-lock.json still resolves lodash 4.17.20 while package.json declares lodash ^4.17.21'
