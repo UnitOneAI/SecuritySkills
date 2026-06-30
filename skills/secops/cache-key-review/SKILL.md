@@ -1,5 +1,5 @@
 ---
-name: tenant-aware-cache-key-review
+name: cache-key-review
 description: >
   Reviews multi-tenant applications for cache-key authority completeness,
   authorization-before-cache-hit, access-change invalidation, and edge/CDN
@@ -89,7 +89,7 @@ def get_user_data(user_id):
     cached = cache.get(cache_key)
     if cached:
         return cached  # Could return another tenant's data!
-    
+
     data = db.query("SELECT * FROM users WHERE id = ?", user_id)
     cache.set(cache_key, data, ttl=3600)
     return data
@@ -103,7 +103,7 @@ def get_user_data(tenant_id, user_id):
     cached = cache.get(cache_key)
     if cached:
         return cached
-    
+
     data = db.query("SELECT * FROM users WHERE tenant_id = ? AND id = ?", tenant_id, user_id)
     cache.set(cache_key, data, ttl=3600)
     return data

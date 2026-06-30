@@ -1,3 +1,25 @@
+---
+name: runtime-debug-endpoint-security
+description: >
+  Structured security review of runtime debug, diagnostic, and monitoring endpoints
+  across web backends, cloud infrastructure, and internal tooling. Covers Flask debug,
+  Django debug panel, Spring Boot Actuator, K8s API, Prometheus, Swagger/OpenAPI,
+  and custom diagnostic endpoints. Detects production information disclosure,
+  privilege escalation, and supply chain compromise vectors.
+tags: [appsec, debug-endpoints, information-disclosure, infrastructure-security]
+role: [security-engineer, appsec-engineer, backend-developer]
+phase: [build, operate, respond]
+frameworks: [OWASP-API-Security-2023, OWASP-Top-10-2021]
+difficulty: intermediate
+time_estimate: "30-60min"
+version: "1.0.0"
+author: daviediao-code
+license: MIT
+allowed-tools: Read, Grep, Glob
+injection-hardened: true
+argument-hint: "[target-directory-or-url]"
+---
+
 # Runtime Debug Endpoint Security
 
 ## Overview
