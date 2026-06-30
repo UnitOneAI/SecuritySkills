@@ -1,0 +1,9 @@
+{
+  "file": "app/debug_enabled.py",
+  "description": "Flask debug mode enabled in production deployment",
+  "vulnerable_code": "app = Flask(__name__)\napp.config['DEBUG'] = True\napp.run(host='0.0.0.0', port=5000)",
+  "finding": "Flask debug mode enabled with host='0.0.0.0' — exposes Werkzeug debugger console publicly",
+  "severity": "CRITICAL",
+  "owasp_ref": "OWASP-Top10-2021-A05",
+  "remediation": "Set DEBUG=False in production, bind to 127.0.0.1, use gunicorn/uwsgi"
+}

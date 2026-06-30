@@ -1,0 +1,8 @@
+{
+  "file": "app/cache.py",
+  "description": "Cache key without tenant scope",
+  "vulnerable_code": "def get_user_data(user_id):\n    cache_key = f\"user:{user_id}\"\n    cached = cache.get(cache_key)\n    if cached:\n        return cached  # Vulnerable: no tenant scope\n    data = db.query(\"SELECT * FROM users WHERE id = ?\", user_id)\n    cache.set(cache_key, data, ttl=3600)\n    return data",
+  "finding": "Cache key does not include tenant_id \u2014 can serve cross-tenant data",
+  "owasp_ref": "OWASP-API-Security-2023-A07",
+  "severity": "HIGH"
+}

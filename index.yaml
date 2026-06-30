@@ -5,8 +5,8 @@
 
 meta:
   version: "1.0.0"
-  last_updated: "2026-03-05"
-  skill_count: 45
+  last_updated: "2026-06-15"
+  skill_count: 47
   role_count: 5
 
 tag_vocabulary:
@@ -596,3 +596,26 @@ roles:
     description: "Cloud security posture, IaC review, container security, identity"
     skills: [aws-review, azure-review, gcp-review, iac-security, container-security, zero-trust-assessment, privileged-access]
     file: roles/cloud-security-engineer/SKILL.md
+  - id: cache-key-review
+    name: "Tenant-Aware Cache Key Review"
+    tags: [secops, cache, multi-tenant, code-review]
+    role: [security-engineer, appsec-engineer, backend-developer]
+    phase: [build, review, operate]
+    activity: [review, assess]
+    frameworks: [OWASP-API-Security-2023, NIST-SP-800-145, RFC-9110]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/secops/cache-key-review/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: runtime-debug-endpoint-security
+    name: "Runtime Debug Endpoint Security"
+    tags: [appsec, debug-endpoints, information-disclosure, infrastructure-security]
+    role: [security-engineer, appsec-engineer, backend-developer]
+    phase: [build, operate, respond]
+    activity: [review, assess]
+    frameworks: [OWASP-API-Security-2023, OWASP-Top-10-2021]
+    difficulty: intermediate
+    time_estimate: "30-60min"
+    file: skills/appsec/runtime-debug-endpoint-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
