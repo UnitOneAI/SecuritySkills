@@ -1,0 +1,19 @@
+skill: tenant-aware-cache-key-review
+case_id: tenant-context-drop-vulnerable
+kind: vulnerable
+target: routes.js
+expected_findings:
+  - id: TCK-001
+    severity: high
+    cwe: CWE-639
+    evidence_contains: "cacheKey = `project:${projectId}`;"
+remediation:
+  category: auto-fix
+  expected_files:
+    - path: routes.js
+      after: expected/routes.js
+      expected_diff_contains:
+        - "-  const cacheKey = `project:${projectId}`;"
+        - "+  const cacheKey = `tenant:${tenantId}:project:${projectId}:role:${role}`;"
+      expected_after_contains:
+        - "const cacheKey = `tenant:${tenantId}:project:${projectId}:role:${role}`;"

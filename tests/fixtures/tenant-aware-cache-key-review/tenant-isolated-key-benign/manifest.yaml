@@ -1,0 +1,5 @@
+skill: tenant-aware-cache-key-review
+case_id: tenant-isolated-key-benign
+kind: benign
+target: routes.js
+expected_findings: []
